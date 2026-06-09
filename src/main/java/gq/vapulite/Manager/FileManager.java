@@ -6,6 +6,7 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import gq.vapulite.Vapu.Client;
+import gq.vapulite.Vapu.VapeClickGui.VapeClickGui;
 import gq.vapulite.Vapu.modules.Module;
 import gq.vapulite.Vapu.utils.Helper;
 import gq.vapulite.Vapu.value.Mode;
@@ -125,6 +126,11 @@ public class FileManager {
                     module.setState(moduleJson.get("state").getAsBoolean(), false);
                 }
             }
+
+            // 恢复ClickGUI界面状态
+            if (jsonObject.has("_gui") && jsonObject.get("_gui").isJsonObject()) {
+                VapeClickGui.loadGuiState((JsonObject) jsonObject.get("_gui"));
+            }
         } finally {
             loading = false;
             captureCurrentSnapshot();
@@ -194,6 +200,9 @@ public class FileManager {
 
             jsonObject.add(module.name, moduleJson);
         }
+
+        // 保存ClickGUI界面状态（标签页/选中模块/详情子标签等）
+        jsonObject.add("_gui", VapeClickGui.saveGuiState());
 
         return gson.toJson(jsonObject);
     }
