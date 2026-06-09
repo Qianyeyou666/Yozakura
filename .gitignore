@@ -36,3 +36,9 @@ run
 Thumbs.db
 *.log
 *.tmp
+.idea/gradle.xml
+.idea/misc.xml
+.idea/runConfigurations/Minecraft_Client_IDEA.xml
+.idea/runConfigurations/Minecraft_Server_IDEA.xml
+build.gradle
+gradle.properties
