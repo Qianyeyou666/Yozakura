@@ -20,6 +20,9 @@ public final class ClickGuiIcons {
         if (name.contains("targethud")) {
             return FontLoaders.ICON_HEARTBEAT;
         }
+        if (name.contains("targetesp")) {
+            return FontLoaders.ICON_FOCUS;
+        }
         if (name.contains("keyboard") || name.contains("hud")) {
             return FontLoaders.ICON_LIST;
         }

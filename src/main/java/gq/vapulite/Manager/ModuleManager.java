@@ -80,6 +80,7 @@ public class ModuleManager {
         Modules.add(new StateMessage());
         Modules.add(new HUD());
         Modules.add(new TargetHUD());
+        Modules.add(new TargetESP());
         Modules.add(new KeyboardDisplay());
         Modules.add(new FullBright());
         Modules.add(new AutoTools());

@@ -35,6 +35,7 @@ public class TargetHUD extends Module {
 
     private final Numbers<Double> xPosition = new Numbers<Double>("X", "X", -1.0, -1.0, 2000.0, 1.0);
     private final Numbers<Double> yPosition = new Numbers<Double>("Y", "Y", -1.0, -1.0, 1200.0, 1.0);
+    private final Numbers<Double> scale = new Numbers<Double>("Scale", "Scale", 1.0, 0.65, 1.8, 0.05);
     private final Numbers<Double> xOffset = new Numbers<Double>("X Offset", "XOffset", 20.0, -260.0, 260.0, 1.0);
     private final Numbers<Double> yOffset = new Numbers<Double>("Y Offset", "YOffset", 24.0, -180.0, 180.0, 1.0);
     private final Option<Boolean> showAvatar = new Option<Boolean>("Avatar", "Avatar", true);
@@ -49,7 +50,7 @@ public class TargetHUD extends Module {
     public TargetHUD() {
         super("TargetHUD", Keyboard.KEY_NONE, ModuleType.Render, "Show target info when aiming at an entity");
         Chinese = "目标HUD";
-        this.addValues(xPosition, yPosition, xOffset, yOffset, showAvatar, showDistance, auraTarget);
+        this.addValues(xPosition, yPosition, scale, xOffset, yOffset, showAvatar, showDistance, auraTarget);
     }
 
     @Override
@@ -130,9 +131,11 @@ public class TargetHUD extends Module {
     private void drawHud(ScaledResolution sr, EntityLivingBase target, float alpha) {
         float width = 150.0f;
         float height = 48.0f;
+        float uiScale = scale.getValue().floatValue();
         float defaultX = sr.getScaledWidth() / 2.0f + xOffset.getValue().floatValue();
         float defaultY = sr.getScaledHeight() / 2.0f + yOffset.getValue().floatValue();
-        float[] pos = HudDrag.update("target_hud", xPosition, yPosition, defaultX, defaultY, width, height, sr);
+        float[] pos = HudDrag.update("target_hud", xPosition, yPosition, scale, defaultX, defaultY,
+                width * uiScale, height * uiScale, sr);
         float x = pos[0];
         float y = pos[1] + (HudDrag.isEditMode() ? 0.0f : (1.0f - alpha) * 8.0f);
         float avatar = Boolean.TRUE.equals(showAvatar.getValue()) ? 30.0f : 0.0f;
@@ -141,32 +144,40 @@ public class TargetHUD extends Module {
         int fillAlpha = Math.round(150.0f * alpha);
         int borderAlpha = Math.round(54.0f * alpha);
 
-        RenderUtil.drawSoftShadow(x, y, x + width, y + height, 7.0f,
-                withAlpha(0xFF000000, Math.round(70.0f * alpha)), 7, 3.2f);
-        RenderUtil.drawFrostedGlassRect(x, y, x + width, y + height, 7.0f, 0.9f,
-                withAlpha(GLASS, fillAlpha), withAlpha(BORDER, borderAlpha));
-        RenderUtil.drawHorizontalGradientRect(x + 9.0f, y + 4.0f, x + width - 9.0f, y + 5.2f,
-                withAlpha(ACCENT, Math.round(130.0f * alpha)), withAlpha(0xFF9D8CFF, Math.round(92.0f * alpha)));
+        GlStateManager.pushMatrix();
+        try {
+            GlStateManager.translate(x, y, 0.0f);
+            GlStateManager.scale(uiScale, uiScale, 1.0f);
+            GlStateManager.translate(-x, -y, 0.0f);
+            RenderUtil.drawSoftShadow(x, y, x + width, y + height, 7.0f,
+                    withAlpha(0xFF000000, Math.round(70.0f * alpha)), 7, 3.2f);
+            RenderUtil.drawFrostedGlassRect(x, y, x + width, y + height, 7.0f, 0.9f,
+                    withAlpha(GLASS, fillAlpha), withAlpha(BORDER, borderAlpha));
+            RenderUtil.drawHorizontalGradientRect(x + 9.0f, y + 4.0f, x + width - 9.0f, y + 5.2f,
+                    withAlpha(ACCENT, Math.round(130.0f * alpha)), withAlpha(0xFF9D8CFF, Math.round(92.0f * alpha)));
 
-        if (avatar > 0.0f) {
-            drawAvatar(target, x + 10.0f, y + 10.0f, avatar, alpha);
+            if (avatar > 0.0f) {
+                drawAvatar(target, x + 10.0f, y + 10.0f, avatar, alpha);
+            }
+
+            String name = trim(target == null ? "Target HUD" : target.getName(), FontLoaders.C18, textW);
+            String meta = buildMeta(target);
+            FontLoaders.C18.drawString(name, textX, y + 11.0f, withAlpha(TEXT, Math.round(242.0f * alpha)));
+            FontLoaders.C14.drawString(trim(meta, FontLoaders.C14, textW), textX, y + 25.0f,
+                    withAlpha(MUTED, Math.round(218.0f * alpha)));
+
+            float barX = textX;
+            float barY = y + height - 10.0f;
+            float barW = textW;
+            int healthColor = healthColor(healthAnimation);
+            RenderUtil.drawRoundedRect(barX, barY, barX + barW, barY + 3.2f, 1.6f,
+                    withAlpha(0xFF1E2630, Math.round(160.0f * alpha)));
+            RenderUtil.drawProgressBar(barX, barY, barX + barW, barY + 3.2f, 1.6f, healthAnimation,
+                    0x00000000, withAlpha(healthColor, Math.round(225.0f * alpha)));
+        } finally {
+            GlStateManager.popMatrix();
         }
-
-        String name = trim(target == null ? "Target HUD" : target.getName(), FontLoaders.C18, textW);
-        String meta = buildMeta(target);
-        FontLoaders.C18.drawString(name, textX, y + 11.0f, withAlpha(TEXT, Math.round(242.0f * alpha)));
-        FontLoaders.C14.drawString(trim(meta, FontLoaders.C14, textW), textX, y + 25.0f,
-                withAlpha(MUTED, Math.round(218.0f * alpha)));
-
-        float barX = textX;
-        float barY = y + height - 10.0f;
-        float barW = textW;
-        int healthColor = healthColor(healthAnimation);
-        RenderUtil.drawRoundedRect(barX, barY, barX + barW, barY + 3.2f, 1.6f,
-                withAlpha(0xFF1E2630, Math.round(160.0f * alpha)));
-        RenderUtil.drawProgressBar(barX, barY, barX + barW, barY + 3.2f, 1.6f, healthAnimation,
-                0x00000000, withAlpha(healthColor, Math.round(225.0f * alpha)));
-        HudDrag.drawHint("target_hud", x, y, width, height, 7.0f);
+        HudDrag.drawHint("target_hud", x, y, width * uiScale, height * uiScale, 7.0f * uiScale);
     }
 
     private void drawAvatar(EntityLivingBase target, float x, float y, float size, float alpha) {

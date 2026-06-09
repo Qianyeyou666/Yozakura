@@ -3,6 +3,7 @@ package gq.vapulite.Vapu.modules.combat;
 import gq.vapulite.Vapu.ModuleType;
 import gq.vapulite.Vapu.modules.Module;
 import gq.vapulite.Vapu.utils.TimerUtil;
+import gq.vapulite.Vapu.utils.RotationUtil;
 import gq.vapulite.Vapu.value.Mode;
 import gq.vapulite.Vapu.value.Numbers;
 import gq.vapulite.Vapu.value.Option;
@@ -47,6 +48,8 @@ public class KillAura extends Module {
 
     private int switchIndex;
     private int delayMs;
+    private int targetId = -1;
+    private final RotationUtil.State rotationState = new RotationUtil.State();
 
     public KillAura() {
         super("KillAura", Keyboard.KEY_NONE, ModuleType.Combat, "Auto attack nearby targets");
@@ -58,6 +61,8 @@ public class KillAura extends Module {
     @Override
     public void enable() {
         target = null;
+        targetId = -1;
+        rotationState.reset();
         switchIndex = 0;
         delayMs = CombatUtil.nextDelay(minCps.getValue(), cps.getValue());
     }
@@ -65,6 +70,8 @@ public class KillAura extends Module {
     @Override
     public void disable() {
         target = null;
+        targetId = -1;
+        rotationState.reset();
     }
 
     @SubscribeEvent
@@ -74,10 +81,14 @@ public class KillAura extends Module {
         }
         if (!isInGame() || CombatUtil.shouldPauseForScreen()) {
             target = null;
+            targetId = -1;
+            rotationState.reset();
             return;
         }
         if (Boolean.TRUE.equals(weaponOnly.getValue()) && !CombatUtil.isHoldingWeapon()) {
             target = null;
+            targetId = -1;
+            rotationState.reset();
             return;
         }
 
@@ -86,6 +97,8 @@ public class KillAura extends Module {
         CombatUtil.sortTargets(targets, priority.getValue());
         if (targets.isEmpty()) {
             target = null;
+            targetId = -1;
+            rotationState.reset();
             return;
         }
 
@@ -98,9 +111,14 @@ public class KillAura extends Module {
             target = targets.get(0);
         }
 
+        if (target != null && target.getEntityId() != targetId) {
+            targetId = target.getEntityId();
+            rotationState.reset();
+        }
+
         if (Boolean.TRUE.equals(rotate.getValue()) && target != null) {
             CombatUtil.faceEntity(target, yawSpeed.getValue().floatValue(), pitchSpeed.getValue().floatValue(),
-                    Boolean.TRUE.equals(onlyYaw.getValue()), 0.0f);
+                    Boolean.TRUE.equals(onlyYaw.getValue()), 0.18f, rotationState);
         }
 
         if (!timer.delay(delayMs)) {

@@ -2,6 +2,7 @@ package gq.vapulite.Vapu.modules.combat;
 
 import gq.vapulite.Vapu.ModuleType;
 import gq.vapulite.Vapu.modules.Module;
+import gq.vapulite.Vapu.utils.RotationUtil;
 import gq.vapulite.Vapu.value.Mode;
 import gq.vapulite.Vapu.value.Numbers;
 import gq.vapulite.Vapu.value.Option;
@@ -55,8 +56,7 @@ public class Aimbot extends Module {
     private long lastRandomAt;
     private float randomYaw;
     private float randomPitch;
-    private float yawVelocity;
-    private float pitchVelocity;
+    private final RotationUtil.State rotationState = new RotationUtil.State();
 
     public Aimbot() {
         super("Aimbot", Keyboard.KEY_NONE, ModuleType.Combat, "Smoothly aim at the best target");
@@ -102,8 +102,7 @@ public class Aimbot extends Module {
         if (target == null || nextTarget.getEntityId() != targetId) {
             targetChangedAt = System.currentTimeMillis();
             targetId = nextTarget.getEntityId();
-            yawVelocity = 0.0f;
-            pitchVelocity = 0.0f;
+            rotationState.reset();
         }
         target = nextTarget;
         if (System.currentTimeMillis() - targetChangedAt < reactionMs.getValue().longValue()) {
@@ -151,30 +150,13 @@ public class Aimbot extends Module {
         float yawDiff = MathHelper.wrapAngleTo180_float(rotations[0] - mc.thePlayer.rotationYaw);
         float pitchDiff = MathHelper.wrapAngleTo180_float(rotations[1] - mc.thePlayer.rotationPitch);
         float free = freeZone.getValue().floatValue();
-
-        if (Math.abs(yawDiff) > free) {
-            float yawStep = dynamicStep(yawDiff, yawSpeed.getValue().floatValue(), true);
-            mc.thePlayer.rotationYaw = CombatUtil.updateRotation(mc.thePlayer.rotationYaw, rotations[0], yawStep);
-        }
-        if (!Boolean.TRUE.equals(onlyYaw.getValue()) && Math.abs(pitchDiff) > free) {
-            float pitchStep = dynamicStep(pitchDiff, pitchSpeed.getValue().floatValue(), false);
-            mc.thePlayer.rotationPitch = CombatUtil.updateRotation(mc.thePlayer.rotationPitch, rotations[1], pitchStep);
-            mc.thePlayer.rotationPitch = MathHelper.clamp_float(mc.thePlayer.rotationPitch, -90.0f, 90.0f);
-        }
-    }
-
-    private float dynamicStep(float diff, float baseSpeed, boolean yaw) {
-        float abs = Math.abs(diff);
         float styleScale = style.getValue() == AimStyle.AGGRESSIVE ? 1.28f : style.getValue() == AimStyle.LEGIT ? 0.72f : 1.0f;
-        float distanceScale = MathHelper.clamp_float(abs / 55.0f, 0.24f, 1.18f);
-        float targetSpeed = baseSpeed * styleScale * distanceScale;
-        float jitter = (ThreadLocalRandom.current().nextFloat() - 0.5f) * 0.32f;
-        if (yaw) {
-            yawVelocity += (targetSpeed - yawVelocity) * 0.38f;
-            return Math.max(0.35f, yawVelocity + jitter);
-        }
-        pitchVelocity += (targetSpeed - pitchVelocity) * 0.34f;
-        return Math.max(0.25f, pitchVelocity + jitter);
+        float yawStep = yawSpeed.getValue().floatValue() * styleScale;
+        float pitchStep = pitchSpeed.getValue().floatValue() * styleScale;
+        float jitter = (ThreadLocalRandom.current().nextFloat() - 0.5f) * randomAmount.getValue().floatValue() * 0.10f;
+        RotationUtil.applyToPlayer(mc, rotations[0] + jitter, rotations[1],
+                yawStep, pitchStep, Boolean.TRUE.equals(onlyYaw.getValue()), free, rotationState,
+                style.getValue() == AimStyle.LEGIT ? 0.30f : 0.42f, 0.22f, true);
     }
 
     private float[] getSmartRotations(EntityLivingBase entity) {
@@ -234,8 +216,7 @@ public class Aimbot extends Module {
         this.target = null;
         this.targetId = -1;
         this.targetChangedAt = 0L;
-        this.yawVelocity = 0.0f;
-        this.pitchVelocity = 0.0f;
+        this.rotationState.reset();
     }
 
     public static void assistFaceEntity(Entity entity, float yaw, float pitch) {

@@ -9,6 +9,7 @@ import org.lwjgl.input.Mouse;
 public final class HudDrag {
     private static final Minecraft MC = Minecraft.getMinecraft();
     private static String activeId;
+    private static String selectedId;
     private static float dragOffsetX;
     private static float dragOffsetY;
 
@@ -22,6 +23,12 @@ public final class HudDrag {
     public static float[] update(String id, Numbers<Double> xValue, Numbers<Double> yValue,
                                  float defaultX, float defaultY, float width, float height,
                                  ScaledResolution sr) {
+        return update(id, xValue, yValue, null, defaultX, defaultY, width, height, sr);
+    }
+
+    public static float[] update(String id, Numbers<Double> xValue, Numbers<Double> yValue,
+                                 Numbers<Double> scaleValue, float defaultX, float defaultY,
+                                 float width, float height, ScaledResolution sr) {
         float x = resolvePosition(xValue, defaultX);
         float y = resolvePosition(yValue, defaultY);
         x = clamp(x, 2.0f, Math.max(2.0f, sr.getScaledWidth() - width - 2.0f));
@@ -30,6 +37,7 @@ public final class HudDrag {
         if (!isEditMode()) {
             if (!Mouse.isButtonDown(0)) {
                 activeId = null;
+                selectedId = null;
             }
             return new float[]{x, y};
         }
@@ -37,14 +45,13 @@ public final class HudDrag {
         boolean leftDown = Mouse.isButtonDown(0);
         int mouseX = mouseX(sr);
         int mouseY = mouseY(sr);
+        boolean hovered = isHovered(mouseX, mouseY, x, y, width, height);
 
         if (!leftDown) {
             activeId = null;
-            return new float[]{x, y};
-        }
-
-        if (activeId == null && isHovered(mouseX, mouseY, x, y, width, height)) {
+        } else if (activeId == null && hovered) {
             activeId = id;
+            selectedId = id;
             dragOffsetX = mouseX - x;
             dragOffsetY = mouseY - y;
         }
@@ -55,6 +62,10 @@ public final class HudDrag {
             setNumber(xValue, x);
             setNumber(yValue, y);
         }
+
+        float[] adjusted = updateScale(id, xValue, yValue, scaleValue, x, y, width, height, sr, hovered);
+        x = adjusted[0];
+        y = adjusted[1];
         return new float[]{x, y};
     }
 
@@ -65,14 +76,19 @@ public final class HudDrag {
         ScaledResolution sr = new ScaledResolution(MC);
         boolean hovered = isHovered(mouseX(sr), mouseY(sr), x, y, width, height);
         boolean active = id.equals(activeId);
-        if (!hovered && !active) {
+        boolean selected = id.equals(selectedId);
+        if (!hovered && !active && !selected) {
             return;
         }
-        int color = active ? 0xB870C1DC : 0x8870C1DC;
+        int color = active ? 0xC870C1DC : selected ? 0xB88B7CFF : 0x8870C1DC;
         RenderUtil.drawRoundedBorderedRect(x - 1.0f, y - 1.0f, x + width + 1.0f, y + height + 1.0f,
                 Math.max(2.0f, radius + 1.0f), 1.0f, 0x00000000, color);
         RenderUtil.drawRoundedRect(x + width / 2.0f - 12.0f, y + 4.0f,
                 x + width / 2.0f + 12.0f, y + 6.0f, 1.0f, color);
+        RenderUtil.drawRoundedRect(x + width - 9.0f, y + height - 9.0f,
+                x + width - 3.0f, y + height - 7.6f, 0.8f, color);
+        RenderUtil.drawRoundedRect(x + width - 7.6f, y + height - 7.6f,
+                x + width - 3.0f, y + height - 6.2f, 0.8f, color);
     }
 
     public static int mouseX(ScaledResolution sr) {
@@ -85,6 +101,10 @@ public final class HudDrag {
 
     public static boolean isDragging(String id) {
         return id != null && id.equals(activeId);
+    }
+
+    public static boolean isSelected(String id) {
+        return id != null && id.equals(selectedId);
     }
 
     private static float resolvePosition(Numbers<Double> value, float fallback) {
@@ -102,6 +122,44 @@ public final class HudDrag {
         if (Math.abs(value.getValue() - rounded) > 0.04D) {
             value.setValue(rounded);
         }
+    }
+
+    private static float[] updateScale(String id, Numbers<Double> xValue, Numbers<Double> yValue,
+                                       Numbers<Double> scaleValue, float x, float y, float width, float height,
+                                       ScaledResolution sr, boolean hovered) {
+        if (scaleValue == null || (!hovered && !id.equals(selectedId))) {
+            return new float[]{x, y};
+        }
+
+        int wheel = Mouse.getDWheel();
+        if (wheel == 0) {
+            return new float[]{x, y};
+        }
+
+        selectedId = id;
+        double current = scaleValue.getValue() == null ? 1.0D : scaleValue.getValue();
+        double step = scaleValue.getIncrement() == null ? 0.05D : Math.max(0.01D, scaleValue.getIncrement().doubleValue());
+        double min = scaleValue.getMinimum() == null ? 0.5D : scaleValue.getMinimum().doubleValue();
+        double max = scaleValue.getMaximum() == null ? 2.0D : scaleValue.getMaximum().doubleValue();
+        int steps = Math.max(1, Math.min(6, Math.abs(wheel) / 120));
+        double next = current + (wheel > 0 ? step : -step) * steps;
+        next = Math.max(min, Math.min(max, next));
+        next = Math.round(next * 100.0D) / 100.0D;
+        if (Math.abs(next - current) < 0.0001D) {
+            return new float[]{x, y};
+        }
+
+        float ratio = current <= 0.0D ? 1.0f : (float) (next / current);
+        float newWidth = Math.max(1.0f, width * ratio);
+        float newHeight = Math.max(1.0f, height * ratio);
+        float centerX = x + width / 2.0f;
+        float centerY = y + height / 2.0f;
+        x = clamp(centerX - newWidth / 2.0f, 2.0f, Math.max(2.0f, sr.getScaledWidth() - newWidth - 2.0f));
+        y = clamp(centerY - newHeight / 2.0f, 2.0f, Math.max(2.0f, sr.getScaledHeight() - newHeight - 2.0f));
+        scaleValue.setValue(next);
+        setNumber(xValue, x);
+        setNumber(yValue, y);
+        return new float[]{x, y};
     }
 
     private static boolean isHovered(float mouseX, float mouseY, float x, float y, float width, float height) {

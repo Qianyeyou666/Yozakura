@@ -1,6 +1,7 @@
 package gq.vapulite.Vapu.modules.combat;
 
 import gq.vapulite.Vapu.modules.Module;
+import gq.vapulite.Vapu.utils.RotationUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
@@ -120,48 +121,28 @@ final class CombatUtil {
     }
 
     static void faceEntity(Entity entity, float yawSpeed, float pitchSpeed, boolean onlyYaw, float freeZone) {
+        faceEntity(entity, yawSpeed, pitchSpeed, onlyYaw, freeZone, null);
+    }
+
+    static void faceEntity(Entity entity, float yawSpeed, float pitchSpeed, boolean onlyYaw, float freeZone,
+                           RotationUtil.State state) {
         if (!isReady() || entity == null) {
             return;
         }
         float[] rotations = getRotations(entity);
-        float yawDiff = MathHelper.wrapAngleTo180_float(rotations[0] - mc.thePlayer.rotationYaw);
-        float pitchDiff = MathHelper.wrapAngleTo180_float(rotations[1] - mc.thePlayer.rotationPitch);
-        if (Math.abs(yawDiff) > freeZone) {
-            mc.thePlayer.rotationYaw = updateRotation(mc.thePlayer.rotationYaw, rotations[0], yawSpeed);
-        }
-        if (!onlyYaw && Math.abs(pitchDiff) > freeZone) {
-            mc.thePlayer.rotationPitch = updateRotation(mc.thePlayer.rotationPitch, rotations[1], pitchSpeed);
-        }
+        RotationUtil.applyToPlayer(mc, rotations[0], rotations[1], yawSpeed, pitchSpeed, onlyYaw, freeZone,
+                state, 0.38f, 0.18f, true);
     }
 
     static float[] getRotations(Entity entity) {
-        double targetX = entity.posX;
-        double targetZ = entity.posZ;
-        double targetY;
         if (entity instanceof EntityLivingBase) {
-            EntityLivingBase living = (EntityLivingBase) entity;
-            targetY = living.posY + living.getEyeHeight() * 0.82D;
-        } else {
-            targetY = (entity.getEntityBoundingBox().minY + entity.getEntityBoundingBox().maxY) * 0.5D;
+            return RotationUtil.getRotations(mc, entity, 0.18D, 0.82D);
         }
-        double diffX = targetX - mc.thePlayer.posX;
-        double diffY = targetY - (mc.thePlayer.posY + mc.thePlayer.getEyeHeight());
-        double diffZ = targetZ - mc.thePlayer.posZ;
-        double dist = Math.sqrt(diffX * diffX + diffZ * diffZ);
-        float yaw = (float) (Math.toDegrees(Math.atan2(diffZ, diffX)) - 90.0D);
-        float pitch = (float) (-Math.toDegrees(Math.atan2(diffY, dist)));
-        return new float[]{yaw, MathHelper.clamp_float(pitch, -90.0f, 90.0f)};
+        return RotationUtil.getRotations(mc, entity, 0.0D, 0.5D);
     }
 
     static float updateRotation(float current, float target, float maxTurn) {
-        float delta = MathHelper.wrapAngleTo180_float(target - current);
-        if (delta > maxTurn) {
-            delta = maxTurn;
-        }
-        if (delta < -maxTurn) {
-            delta = -maxTurn;
-        }
-        return current + delta;
+        return RotationUtil.limitAngleChange(current, target, maxTurn);
     }
 
     static double getFovDifference(Entity entity) {

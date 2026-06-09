@@ -76,7 +76,7 @@ public class KeyboardDisplay extends Module {
         float defaultX = Math.min(xPosition.getValue().floatValue(), Math.max(0.0f, sr.getScaledWidth() - layout.width));
         float defaultY = sr.getScaledHeight() - layout.height - bottomMargin.getValue().floatValue();
         defaultY = Math.max(4.0f, Math.min(defaultY, sr.getScaledHeight() - layout.height - 4.0f));
-        float[] pos = HudDrag.update("keyboard_display", xPosition, yPosition, defaultX, defaultY,
+        float[] pos = HudDrag.update("keyboard_display", xPosition, yPosition, scale, defaultX, defaultY,
                 layout.width, layout.height, sr);
         float drawX = pos[0];
         float drawY = pos[1];

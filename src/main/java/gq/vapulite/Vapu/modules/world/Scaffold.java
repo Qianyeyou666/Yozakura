@@ -2,6 +2,7 @@ package gq.vapulite.Vapu.modules.world;
 
 import gq.vapulite.Vapu.ModuleType;
 import gq.vapulite.Vapu.modules.Module;
+import gq.vapulite.Vapu.utils.RotationUtil;
 import gq.vapulite.Vapu.value.Mode;
 import gq.vapulite.Vapu.value.Numbers;
 import gq.vapulite.Vapu.value.Option;
@@ -35,6 +36,8 @@ public class Scaffold extends Module {
     private final Mode<AimMode> aimMode = new Mode<AimMode>("Aim", "Aim", AimMode.values(), AimMode.SMOOTH);
     private final Numbers<Double> aimSpeed = new Numbers<Double>("Aim Speed", "AimSpeed", 28.0, 5.0, 90.0, 1.0);
     private final Numbers<Double> aimFov = new Numbers<Double>("Aim FOV", "AimFOV", 110.0, 25.0, 180.0, 5.0);
+    private final Numbers<Double> aimLockTicks = new Numbers<Double>("Aim Lock", "AimLock", 5.0, 0.0, 12.0, 1.0);
+    private final Numbers<Double> switchMargin = new Numbers<Double>("Switch Margin", "SwitchMargin", 18.0, 4.0, 45.0, 1.0);
     private final Numbers<Double> prediction = new Numbers<Double>("Prediction", "Prediction", 0.65, 0.0, 1.5, 0.05);
     private final Numbers<Double> edgeDistance = new Numbers<Double>("Edge Guard", "EdgeGuard", 0.22, 0.05, 0.45, 0.01);
     private final Option<Boolean> rightClickOnly = new Option<Boolean>("Right Click Only", "RightClickOnly", true);
@@ -53,11 +56,15 @@ public class Scaffold extends Module {
     private boolean holdingSneak;
     private PlaceTarget lastTarget;
     private int targetTicks;
+    private boolean hasSmoothedRotation;
+    private float smoothedYaw;
+    private float smoothedPitch;
 
     public Scaffold() {
         super("Scaffold", Keyboard.KEY_NONE, ModuleType.World, "Safe bridge assist that still requires manual right click");
-        this.addValues(aimMode, aimSpeed, aimFov, prediction, edgeDistance, rightClickOnly, smartAim, assistAim,
-                aimRightOnly, syncHead, edgeSneak, motionGuard, autoSwap, fullBlocks, keepY, towerSafety);
+        this.addValues(aimMode, aimSpeed, aimFov, aimLockTicks, switchMargin, prediction, edgeDistance, rightClickOnly,
+                smartAim, assistAim, aimRightOnly, syncHead, edgeSneak, motionGuard, autoSwap, fullBlocks, keepY,
+                towerSafety);
         Chinese = "安全搭路";
     }
 
@@ -68,6 +75,7 @@ public class Scaffold extends Module {
         }
         lastTarget = null;
         targetTicks = 0;
+        hasSmoothedRotation = false;
         releaseSneak();
     }
 
@@ -75,6 +83,7 @@ public class Scaffold extends Module {
     public void disable() {
         lastTarget = null;
         targetTicks = 0;
+        hasSmoothedRotation = false;
         releaseSneak();
     }
 
@@ -84,24 +93,21 @@ public class Scaffold extends Module {
             return;
         }
         if (!isInGame() || mc.currentScreen != null) {
-            lastTarget = null;
-            targetTicks = 0;
+            resetAimState();
             releaseSneak();
             return;
         }
 
         boolean useHeld = mc.gameSettings.keyBindUseItem.isKeyDown();
         if (Boolean.TRUE.equals(rightClickOnly.getValue()) && !useHeld) {
-            lastTarget = null;
-            targetTicks = 0;
+            resetAimState();
             releaseSneak();
             return;
         }
 
         if (!isHoldingPlaceableBlock()) {
             if (!Boolean.TRUE.equals(autoSwap.getValue()) || !selectBestBlock()) {
-                lastTarget = null;
-                targetTicks = 0;
+                resetAimState();
                 releaseSneak();
                 return;
             }
@@ -124,7 +130,15 @@ public class Scaffold extends Module {
 
         if (target != null && shouldAssistAim(useHeld)) {
             aimAt(target);
+        } else if (target == null) {
+            resetAimState();
         }
+    }
+
+    private void resetAimState() {
+        lastTarget = null;
+        targetTicks = 0;
+        hasSmoothedRotation = false;
     }
 
     private boolean shouldAssistAim(boolean useHeld) {
@@ -205,6 +219,11 @@ public class Scaffold extends Module {
                 }
             }
         }
+
+        PlaceTarget locked = refreshLockedTarget(predicted);
+        if (locked != null && shouldKeepLockedTarget(locked, best)) {
+            best = locked;
+        }
         rememberTarget(best);
         return best;
     }
@@ -219,11 +238,13 @@ public class Scaffold extends Module {
         addUnique(positions, new BlockPos(mc.thePlayer.posX + mc.thePlayer.motionX * (motionScale + 0.45D), y,
                 mc.thePlayer.posZ + mc.thePlayer.motionZ * (motionScale + 0.45D)));
 
-        float yaw = (float) Math.toRadians(mc.thePlayer.rotationYaw);
-        double forwardX = -MathHelper.sin(yaw) * 0.45D;
-        double forwardZ = MathHelper.cos(yaw) * 0.45D;
-        addUnique(positions, new BlockPos(mc.thePlayer.posX + forwardX, y, mc.thePlayer.posZ + forwardZ));
-        addUnique(positions, new BlockPos(mc.thePlayer.posX + forwardX * 1.45D, y, mc.thePlayer.posZ + forwardZ * 1.45D));
+        Vec3 move = getMovementDirection();
+        if (move != null) {
+            addUnique(positions, new BlockPos(mc.thePlayer.posX + move.xCoord * 0.45D, y,
+                    mc.thePlayer.posZ + move.zCoord * 0.45D));
+            addUnique(positions, new BlockPos(mc.thePlayer.posX + move.xCoord * 0.85D, y,
+                    mc.thePlayer.posZ + move.zCoord * 0.85D));
+        }
 
         BlockPos center = new BlockPos(mc.thePlayer.posX, y, mc.thePlayer.posZ);
         for (EnumFacing facing : EnumFacing.HORIZONTALS) {
@@ -267,6 +288,26 @@ public class Scaffold extends Module {
         return best;
     }
 
+    private PlaceTarget refreshLockedTarget(Vec3 predicted) {
+        if (lastTarget == null || !isReplaceable(lastTarget.target) || !isSolidSupport(lastTarget.support)) {
+            return null;
+        }
+        Vec3 hitVec = getHitVec(lastTarget.support, lastTarget.side, predicted);
+        PlaceTarget refreshed = new PlaceTarget(lastTarget.target, lastTarget.support, lastTarget.side, hitVec, 0.0D);
+        double score = scoreTarget(refreshed, predicted, 0);
+        return new PlaceTarget(lastTarget.target, lastTarget.support, lastTarget.side, hitVec, score);
+    }
+
+    private boolean shouldKeepLockedTarget(PlaceTarget locked, PlaceTarget best) {
+        if (best == null) {
+            return true;
+        }
+        if (targetTicks < aimLockTicks.getValue().intValue()) {
+            return true;
+        }
+        return locked.score <= best.score + switchMargin.getValue();
+    }
+
     private EnumFacing[] getPlaceSides() {
         EnumFacing[] sides = new EnumFacing[]{
                 EnumFacing.UP,
@@ -283,6 +324,20 @@ public class Scaffold extends Module {
         return new Vec3(mc.thePlayer.posX + mc.thePlayer.motionX * factor,
                 mc.thePlayer.posY,
                 mc.thePlayer.posZ + mc.thePlayer.motionZ * factor);
+    }
+
+    private Vec3 getMovementDirection() {
+        double x = mc.thePlayer.posX - mc.thePlayer.prevPosX;
+        double z = mc.thePlayer.posZ - mc.thePlayer.prevPosZ;
+        if (x * x + z * z < 0.0009D) {
+            x = mc.thePlayer.motionX;
+            z = mc.thePlayer.motionZ;
+        }
+        double length = Math.sqrt(x * x + z * z);
+        if (length < 0.03D) {
+            return null;
+        }
+        return new Vec3(x / length, 0.0D, z / length);
     }
 
     private Vec3 getHitVec(BlockPos support, EnumFacing side, Vec3 preferred) {
@@ -405,14 +460,25 @@ public class Scaffold extends Module {
         if (aimMode.getValue() == AimMode.LOCK) {
             mc.thePlayer.rotationYaw = rotations[0];
             mc.thePlayer.rotationPitch = rotations[1];
+            smoothedYaw = rotations[0];
+            smoothedPitch = rotations[1];
+            hasSmoothedRotation = true;
             syncPlayerHead(rotations[0]);
             return;
+        }
+        if (!hasSmoothedRotation) {
+            smoothedYaw = mc.thePlayer.rotationYaw;
+            smoothedPitch = mc.thePlayer.rotationPitch;
+            hasSmoothedRotation = true;
         }
         float yawDiff = Math.abs(MathHelper.wrapAngleTo180_float(rotations[0] - mc.thePlayer.rotationYaw));
         float pitchDiff = Math.abs(MathHelper.wrapAngleTo180_float(rotations[1] - mc.thePlayer.rotationPitch));
         float speed = getAdaptiveAimSpeed(yawDiff, pitchDiff);
-        mc.thePlayer.rotationYaw = updateRotation(mc.thePlayer.rotationYaw, rotations[0], speed);
-        mc.thePlayer.rotationPitch = updateRotation(mc.thePlayer.rotationPitch, rotations[1], Math.max(3.5F, speed * 0.82F));
+        float targetBlend = getTargetBlendSpeed(speed, yawDiff, pitchDiff);
+        smoothedYaw = updateRotation(smoothedYaw, rotations[0], targetBlend);
+        smoothedPitch = updateRotation(smoothedPitch, rotations[1], Math.max(2.5F, targetBlend * 0.72F));
+        mc.thePlayer.rotationYaw = updateRotation(mc.thePlayer.rotationYaw, smoothedYaw, speed);
+        mc.thePlayer.rotationPitch = updateRotation(mc.thePlayer.rotationPitch, smoothedPitch, Math.max(3.0F, speed * 0.78F));
         mc.thePlayer.rotationPitch = MathHelper.clamp_float(mc.thePlayer.rotationPitch, -90.0F, 90.0F);
         syncPlayerHead(mc.thePlayer.rotationYaw);
     }
@@ -430,13 +496,23 @@ public class Scaffold extends Module {
         return MathHelper.clamp_float(base * scale, 3.5F, 90.0F);
     }
 
+    private float getTargetBlendSpeed(float speed, float yawDiff, float pitchDiff) {
+        float error = MathHelper.sqrt_float(yawDiff * yawDiff + pitchDiff * pitchDiff);
+        float blend = Math.max(4.0F, speed * 0.58F);
+        if (error > 65.0F) {
+            blend = Math.max(blend, speed * 0.85F);
+        }
+        if (targetTicks > 2 && error < 28.0F) {
+            blend *= 0.55F;
+        }
+        return MathHelper.clamp_float(blend, 2.5F, 42.0F);
+    }
+
     private void syncPlayerHead(float yaw) {
         if (!Boolean.TRUE.equals(syncHead.getValue())) {
             return;
         }
-        mc.thePlayer.rotationYawHead = yaw;
-        mc.thePlayer.prevRotationYawHead = yaw;
-        mc.thePlayer.renderYawOffset = yaw;
+        RotationUtil.syncHead(mc, yaw);
     }
 
     private float[] rotationsTo(PlaceTarget target) {
@@ -453,8 +529,7 @@ public class Scaffold extends Module {
 
     private float updateRotation(float current, float target, float speed) {
         float difference = MathHelper.wrapAngleTo180_float(target - current);
-        float limited = MathHelper.clamp_float(difference, -speed, speed);
-        return current + limited;
+        return RotationUtil.limitAngleChange(current, target, speed);
     }
 
     private void setSneak(boolean sneak) {
