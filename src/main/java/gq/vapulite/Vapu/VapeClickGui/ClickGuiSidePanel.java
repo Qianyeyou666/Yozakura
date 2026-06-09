@@ -129,7 +129,7 @@ final class ClickGuiSidePanel {
         String[][] rows = new String[][]{
                 new String[]{"State", gui.selectedModule.getState() ? "Enabled" : "Disabled"},
                 new String[]{"Key", gui.getKeyName(gui.selectedModule)},
-                new String[]{"Options", String.valueOf(gui.selectedModule.getValues().size())}
+                new String[]{"Options", String.valueOf(gui.getVisibleValueCount(gui.selectedModule))}
         };
         for (int i = 0; i < rows.length; i++) {
             float rowY = y + i * 20.0f;
@@ -139,12 +139,15 @@ final class ClickGuiSidePanel {
                             220.0f * gui.openProgress));
         }
         List<Value> values = gui.selectedModule.getValues();
-        if (!values.isEmpty()) {
-            Value value = values.get(0);
+        for (Value value : values) {
+            if (gui.isHiddenPaletteValue(gui.selectedModule, value)) {
+                continue;
+            }
             gui.drawFont(gui.trim(value.getName(), FontLoaders.F14, 72.0f), gui.sideX + 16.0f, y + 65.0f,
                     gui.withAlpha(VapeClickGui.MUTED, 170.0f * gui.openProgress));
             gui.drawFont(gui.trim(gui.getValueText(value), FontLoaders.F14, 70.0f), gui.sideX + gui.sideW - 86.0f, y + 65.0f,
                     gui.withAlpha(VapeClickGui.TEXT, 215.0f * gui.openProgress));
+            break;
         }
     }
 

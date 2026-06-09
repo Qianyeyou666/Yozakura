@@ -134,6 +134,9 @@ final class ClickGuiDetailPanel {
                 continue;
             }
             Value value = values.get(i);
+            if (gui.isHiddenPaletteValue(module, value)) {
+                continue;
+            }
             float valueH = gui.getValueHeight(module, i);
             if (VapeClickGui.isHovered(x, valueY, x + width, valueY + valueH, mouseX, mouseY)) {
                 if (gui.isColorStart(module, i) && mouseButton == 0) {
@@ -250,26 +253,33 @@ final class ClickGuiDetailPanel {
         float paletteY = bounds[1];
         float paletteW = bounds[2];
         float paletteH = bounds[3];
-        float preview = 25.0f;
+        float preview = 31.0f;
         float previewX = x + w - preview;
         float active = gui.animateValueMap(gui.valueActiveProgress, red, gui.draggingColorRed == red ? 1.0f : 0.0f, 0.20f);
+        boolean hovered = VapeClickGui.isHovered(paletteX, paletteY, paletteX + paletteW, paletteY + paletteH, mouseX, mouseY);
 
         gui.drawFont("Color", x, y + 8.0f,
                 gui.withAlpha(VapeClickGui.TEXT, 245.0f * alpha * gui.openProgress));
-        gui.drawFont(rainbow ? "RGB Rainbow" : toHex(color), x, y + 25.0f,
+        gui.drawFont(rainbow ? "RGB Rainbow" : toHex(color), x, y + 24.0f,
                 gui.withAlpha(rainbow ? VapeClickGui.ACCENT : VapeClickGui.MUTED, 205.0f * alpha * gui.openProgress));
+        gui.drawFont("Double-click: RGB Rainbow", x, y + 42.0f,
+                gui.withAlpha(hovered || rainbow ? VapeClickGui.ACCENT : VapeClickGui.MUTED,
+                        (hovered || rainbow ? 214.0f : 154.0f) * alpha * gui.openProgress));
 
         RenderUtil.drawSoftShadow(paletteX, paletteY, paletteX + paletteW, paletteY + paletteH, 5.0f,
-                gui.withAlpha(color, (36.0f + active * 64.0f) * alpha * gui.openProgress), 5, 3.0f);
+                gui.withAlpha(color, (42.0f + active * 70.0f + (hovered ? 24.0f : 0.0f)) * alpha * gui.openProgress), 5, 3.2f);
         RenderUtil.drawFrostedGlassRect(paletteX - 1.0f, paletteY - 1.0f, paletteX + paletteW + 1.0f,
                 paletteY + paletteH + 1.0f, 6.0f, 0.8f,
                 gui.withAlpha(VapeClickGui.GLASS_FILL_SOFT, 120.0f * alpha * gui.openProgress),
                 gui.withAlpha(rainbow ? VapeClickGui.ACCENT : VapeClickGui.GLASS_BORDER,
-                        (rainbow ? 95.0f : 52.0f) * alpha * gui.openProgress));
+                        (rainbow ? 112.0f : hovered ? 78.0f : 52.0f) * alpha * gui.openProgress));
         drawPaletteGradient(paletteX, paletteY, paletteW, paletteH, alpha);
+        RenderUtil.drawHorizontalGradientRect(paletteX, paletteY, paletteX + paletteW, paletteY + paletteH,
+                gui.withAlpha(new Color(255, 255, 255).getRGB(), 56.0f * alpha * gui.openProgress),
+                gui.withAlpha(new Color(255, 255, 255).getRGB(), 0.0f));
         RenderUtil.drawGradientRect(paletteX, paletteY, paletteX + paletteW, paletteY + paletteH,
-                gui.withAlpha(new Color(255, 255, 255, 52).getRGB(), 38.0f * alpha * gui.openProgress),
-                gui.withAlpha(new Color(0, 0, 0, 132).getRGB(), 98.0f * alpha * gui.openProgress));
+                gui.withAlpha(new Color(255, 255, 255).getRGB(), 24.0f * alpha * gui.openProgress),
+                gui.withAlpha(new Color(0, 0, 0).getRGB(), 132.0f * alpha * gui.openProgress));
 
         float[] marker = getColorMarker(red, green, blue, paletteX, paletteY, paletteW, paletteH);
         RenderUtil.drawCircleOutline(marker[0], marker[1], 4.0f + active, 1.2f,
@@ -277,11 +287,11 @@ final class ClickGuiDetailPanel {
         RenderUtil.drawCircle(marker[0], marker[1], 0, 360, 2.1f,
                 gui.withAlpha(color, 240.0f * alpha * gui.openProgress));
 
-        RenderUtil.drawFrostedGlassRect(previewX, y + 9.0f, previewX + preview, y + 34.0f, 7.0f, 0.8f,
+        RenderUtil.drawFrostedGlassRect(previewX, y + 9.0f, previewX + preview, y + 40.0f, 7.0f, 0.8f,
                 gui.withAlpha(color, 230.0f * alpha * gui.openProgress),
                 gui.withAlpha(new Color(255, 255, 255).getRGB(), 70.0f * alpha * gui.openProgress));
         if (rainbow) {
-            RenderUtil.drawCircle(previewX + preview - 5.5f, y + 13.5f, 0, 360, 2.6f,
+            RenderUtil.drawCircle(previewX + preview - 6.5f, y + 15.5f, 0, 360, 3.0f,
                     gui.withAlpha(VapeClickGui.ACCENT, 230.0f * alpha * gui.openProgress));
         }
     }
@@ -302,11 +312,11 @@ final class ClickGuiDetailPanel {
 
     private float[] getPaletteBounds(float x, float y, float w) {
         float labelW = gui.getDetailLabelWidth(w);
-        float preview = 25.0f;
+        float preview = 31.0f;
         float paletteX = x + labelW;
         float paletteY = y + 9.0f;
-        float paletteW = Math.max(70.0f, w - labelW - preview - 12.0f);
-        return new float[]{paletteX, paletteY, paletteW, 25.0f};
+        float paletteW = Math.max(78.0f, w - labelW - preview - 12.0f);
+        return new float[]{paletteX, paletteY, paletteW, 31.0f};
     }
 
     private void setColorFromPalette(Numbers red, Numbers green, Numbers blue,
@@ -416,6 +426,9 @@ final class ClickGuiDetailPanel {
                     continue;
                 }
                 Value value = values.get(i);
+                if (gui.isHiddenPaletteValue(module, value)) {
+                    continue;
+                }
                 float valueH = gui.getValueHeight(module, i);
                 float rowAlpha = Math.max(0.0f, Math.min(1.0f, 1.0f - index * 0.015f));
                 if (valueY + valueH >= y - 2.0f && valueY <= y + h + 2.0f) {
@@ -537,6 +550,9 @@ final class ClickGuiDetailPanel {
                 continue;
             }
             Value v = values.get(i);
+            if (gui.isHiddenPaletteValue(gui.selectedModule, v)) {
+                continue;
+            }
             if (v == value) return y;
             y += gui.getValueHeight(gui.selectedModule, i);
         }

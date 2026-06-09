@@ -61,7 +61,7 @@ public class VapeClickGui extends GuiScreen {
     static final float SIDE_W = 170.0f;
     static final float DETAIL_HEADER_H = 98.0f;
     static final float VALUE_ROW_H = 26.0f;
-    static final float COLOR_ROW_H = 56.0f;
+    static final float COLOR_ROW_H = 64.0f;
     static final float SWITCH_W = 28.0f;
     static final float SWITCH_H = 14.0f;
     static final float SWITCH_HIT_PAD = 5.0f;
@@ -507,6 +507,10 @@ public class VapeClickGui extends GuiScreen {
     }
 
     float getValueHeight(Module module, int index) {
+        if (module != null && index >= 0 && index < module.getValues().size()
+                && isHiddenPaletteValue(module, module.getValues().get(index))) {
+            return 0.0f;
+        }
         if (isColorStart(module, index)) {
             return COLOR_ROW_H;
         }
@@ -528,6 +532,28 @@ public class VapeClickGui extends GuiScreen {
 
     boolean isColorContinuation(Module module, int index) {
         return isColorStart(module, index - 1) || isColorStart(module, index - 2);
+    }
+
+    boolean isHiddenPaletteValue(Module module, Value value) {
+        if (module == null || value == null || !(value instanceof Option)) {
+            return false;
+        }
+        String moduleName = module.getName() == null ? "" : module.getName().replace(" ", "").toLowerCase(Locale.ROOT);
+        String valueName = normalizeValueName(value);
+        return moduleName.equals("esp") && (valueName.equals("rainbow") || valueName.equals("paletterainbow"));
+    }
+
+    int getVisibleValueCount(Module module) {
+        if (module == null || module.getValues().isEmpty()) {
+            return 0;
+        }
+        int count = 0;
+        for (Value value : module.getValues()) {
+            if (!isHiddenPaletteValue(module, value)) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private boolean isNumberNamed(Value value, String name) {
