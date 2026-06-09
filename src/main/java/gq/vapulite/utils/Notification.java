@@ -1,7 +1,10 @@
 package gq.vapulite.utils;
 
 import gq.vapulite.Vapu.modules.Module;
+import gq.vapulite.Vapu.utils.ColorUtils;
+import gq.vapulite.Vapu.utils.RenderUtil;
 import gq.vapulite.Vapu.utils.TimerUtil;
+import gq.vapulite.font.FontLoaders;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.Tessellator;
@@ -25,6 +28,8 @@ public class Notification {
     private float animationY;
     private float width;
     private final float height;
+    private final long createdAt;
+    private long lastFrameMS;
 
     public Notification(String title, String message, Type type, long stayTime) {
         this(title, message, type, stayTime, null);
@@ -33,69 +38,56 @@ public class Notification {
     public Notification(String title, String message, Type type, long stayTime, Module module) {
         this.module = module;
 
-        this.message = message;
-        this.title = title;
-            isClassicNotification = true;
-            width = Math.max(mc.fontRendererObj.getStringWidth(message) + 30, 120);
-        this.height = 22.0f;
-        this.animationX = 140.0f;
-        this.type = type;
+        this.message = message == null ? "" : message;
+        this.title = title == null ? "" : title;
+        isClassicNotification = true;
+        width = Math.max(Math.max(FontLoaders.C18.getStringWidth(this.title), FontLoaders.C14.getStringWidth(this.message)) + 46, 150);
+        this.height = 38.0f;
+        this.animationX = 1.0f;
+        this.type = type == null ? Type.INFO : type;
         this.stayTime = stayTime;
+        this.createdAt = System.currentTimeMillis();
+        this.lastFrameMS = this.createdAt;
 
         this.timer = new TimerUtil();
         timer.reset();
     }
 
     public void draw(float x, float offsetY) {
-        float target = isFinished() ? width : 0;
-
-        this.animationX = AnimationUtils.getAnimationState(this.animationX, target, (Math.max(10, (Math.abs(this.animationX - (target))) * 40) * 0.4f));
+        long now = System.currentTimeMillis();
+        float delta = Math.max(1.0f, Math.min(50.0f, now - lastFrameMS));
+        lastFrameMS = now;
+        float target = isFinished() ? 1.0f : 0.0f;
+        float factor = 1.0f - (float) Math.pow(0.001D, delta / 260.0D);
+        this.animationX = lerp(this.animationX, target, factor);
 
         if (animationY == 0) {
             animationY = offsetY;
         }
 
-        animationY = AnimationUtils.getAnimationState(animationY, offsetY, (Math.max(10, (Math.abs(animationY - (offsetY))) * 40) * 0.3f));
+        animationY = lerp(animationY, offsetY, factor);
 
-        float x1 = x - width + this.animationX + (isClassicNotification ? 10 : 0);
-        float x2 = x + animationX + (isClassicNotification ? 10 : 0);
+        float x1 = x - width - 8.0f + this.animationX * (width + 12.0f);
+        float x2 = x1 + width;
 
-        float y1 = animationY - 2;
+        float y1 = animationY - height;
         float y2 = y1 + height;
+        int accent = getAccentColor();
+        int background = ColorUtils.applyAlpha(0xFF10131A, 185);
+        int border = ColorUtils.applyAlpha(accent, 120);
+        float progress = 1.0f - ColorUtils.clamp((now - createdAt) / (float) Math.max(1L, stayTime), 0.0f, 1.0f);
 
-        //Color LOL
-        int color = new Color(26, 26, 26, 200).getRGB();
-        int fontColor = 0xff000000;
-        switch (this.type) {
-            case MODULE:
-            case INFO:
-                color = 0xff4286f5;
-                fontColor = 0xff4286f5;
-                break;
-
-            case WARNING:
-                color = 0xffefbc12;
-                fontColor = 0xffefbc12;
-                break;
-
-            case ERROR:
-                color = 0xfff04747;
-                fontColor = 0xfff04747;
-                break;
-
-            case SUCCESS:
-                color = 0xff72b55e;
-                fontColor = 0xff23ad5c;
-        }
-
-            float width = 140.0f;
-            float height = 25.0f;
-            GuiRenderUtils.drawBorderedRect(x1 - 16, y1 - 15, width + 5, height, 0.5f, new Color(0, 0, 0, 150), new Color(200, 200, 200, 200));
-            mc.fontRendererObj.drawString(this.message, (int) (x1 - 8), (int) (y1 - 7), new Color(255, 255, 255).getRGB());
+        RenderUtil.drawSoftShadow(x1, y1, x2, y2, 6.0f, 0x90000000, 5, 3.0f);
+        RenderUtil.drawRoundedBorderedRect(x1, y1, x2, y2, 6.0f, 1.0f, background, border);
+        RenderUtil.drawRect(x1 + 4.0f, y1 + 6.0f, x1 + 7.0f, y2 - 6.0f, ColorUtils.applyAlpha(accent, 230));
+        FontLoaders.C18.drawString(getTitle(), x1 + 14.0f, y1 + 9.0f, 0xFFFFFFFF);
+        FontLoaders.C14.drawString(message, x1 + 14.0f, y1 + 23.0f, 0xFFC8D0DA);
+        RenderUtil.drawProgressBar(x1 + 10.0f, y2 - 4.0f, x2 - 10.0f, y2 - 2.0f, 1.5f, progress,
+                0x30000000, ColorUtils.applyAlpha(accent, 210));
     }
 
     public boolean shouldDelete() {
-        return isFinished() && this.animationX == width;
+        return isFinished() && this.animationX > 0.98f;
     }
 
     public float getHeight() {
@@ -104,6 +96,36 @@ public class Notification {
 
     private boolean isFinished() {
         return timer.delay(stayTime);
+    }
+
+    private String getTitle() {
+        if (title.length() > 0) {
+            return title;
+        }
+        if (module != null) {
+            return module.getName();
+        }
+        return type.name();
+    }
+
+    private int getAccentColor() {
+        switch (this.type) {
+            case MODULE:
+            case INFO:
+                return 0xFF42A5F5;
+            case WARNING:
+                return 0xFFFFC857;
+            case ERROR:
+                return 0xFFFF5C5C;
+            case SUCCESS:
+                return 0xFF5ED68A;
+            default:
+                return 0xFF42A5F5;
+        }
+    }
+
+    private float lerp(float current, float target, float factor) {
+        return current + (target - current) * ColorUtils.clamp(factor, 0.0f, 1.0f);
     }
 
     public void drawArrow(float left, float top, float right, float bottom, int color) {

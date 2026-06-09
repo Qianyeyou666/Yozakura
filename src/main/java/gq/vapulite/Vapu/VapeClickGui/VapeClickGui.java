@@ -912,6 +912,12 @@ public class VapeClickGui extends GuiScreen {
         return false;
     }
 
+    @Override
+    public void onGuiClosed() {
+        saveConfigOnClose();
+        super.onGuiClosed();
+    }
+
     private static boolean isHovered(float x, float y, float x2, float y2, int mouseX, int mouseY) {
         return mouseX >= x && mouseX <= x2 && mouseY >= y && mouseY <= y2;
     }

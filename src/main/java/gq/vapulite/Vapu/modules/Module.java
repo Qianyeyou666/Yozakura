@@ -1,5 +1,6 @@
 package gq.vapulite.Vapu.modules;
 
+import gq.vapulite.Manager.NotificationManager;
 import gq.vapulite.Vapu.ModuleType;
 import gq.vapulite.Vapu.utils.Helper;
 import gq.vapulite.Vapu.Client;
@@ -102,6 +103,10 @@ public class Module {
             } finally {
                 unregisterEvents();
             }
+        }
+
+        if (playSound && Client.MessageON && !NoToggle) {
+            NotificationManager.show(this.getName(), state ? "Enabled" : "Disabled", this);
         }
     }
 

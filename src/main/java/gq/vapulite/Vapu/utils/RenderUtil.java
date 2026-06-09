@@ -712,6 +712,88 @@ public class RenderUtil {
         }
     }
 
+    public static void drawLine(float x, float y, float x2, float y2, float lineWidth, int color) {
+        if (lineWidth <= 0.0f || getAlpha(color) <= 0) {
+            return;
+        }
+        RenderState.begin2D();
+        try {
+            GL11.glLineWidth(lineWidth);
+            RenderUtil.glColor(color);
+            GL11.glBegin(GL11.GL_LINES);
+            GL11.glVertex2f(x, y);
+            GL11.glVertex2f(x2, y2);
+            GL11.glEnd();
+        } finally {
+            RenderState.end2D();
+        }
+    }
+
+    public static void drawArcOutline(float x, float y, float radius, float start, float end, float lineWidth, int color) {
+        if (radius <= 0.0f || lineWidth <= 0.0f || getAlpha(color) <= 0) {
+            return;
+        }
+        if (start > end) {
+            float temp = start;
+            start = end;
+            end = temp;
+        }
+        int segments = Math.max(12, Math.min(120, (int) Math.ceil((end - start) / 3.0f)));
+        RenderState.begin2D();
+        try {
+            GL11.glLineWidth(lineWidth);
+            RenderUtil.glColor(color);
+            GL11.glBegin(GL11.GL_LINE_STRIP);
+            for (int i = 0; i <= segments; i++) {
+                float angle = start + (end - start) * i / segments;
+                double radians = Math.toRadians(angle);
+                GL11.glVertex2d(x + Math.cos(radians) * radius, y + Math.sin(radians) * radius);
+            }
+            GL11.glEnd();
+        } finally {
+            RenderState.end2D();
+        }
+    }
+
+    public static void drawCircleOutline(float x, float y, float radius, float lineWidth, int color) {
+        drawArcOutline(x, y, radius, 0.0f, 360.0f, lineWidth, color);
+    }
+
+    public static void drawProgressBar(float x, float y, float x2, float y2, float radius, float progress, int backgroundColor, int fillColor) {
+        float clampedProgress = RenderState.clamp01(progress);
+        if (getAlpha(backgroundColor) > 0) {
+            drawFastRoundedRect(Math.round(x), y, Math.round(x2), y2, radius, backgroundColor);
+        }
+        if (clampedProgress <= 0.0f || getAlpha(fillColor) <= 0) {
+            return;
+        }
+        float fillRight = x + (x2 - x) * clampedProgress;
+        RenderState.pushScissor(x, y, fillRight - x, y2 - y);
+        try {
+            drawFastRoundedRect(Math.round(x), y, Math.round(x2), y2, radius, fillColor);
+        } finally {
+            RenderState.popScissor();
+        }
+    }
+
+    public static void drawSoftShadow(float x, float y, float x2, float y2, float radius, int color, int layers, float spread) {
+        int alpha = getAlpha(color);
+        if (alpha <= 0 || layers <= 0 || spread <= 0.0f) {
+            return;
+        }
+        for (int i = layers; i >= 1; i--) {
+            float progress = i / (float) layers;
+            float offset = spread * progress;
+            int layerAlpha = Math.max(1, Math.round(alpha * progress * progress / 2.0f));
+            drawFastRoundedRect(Math.round(x - offset), y - offset, Math.round(x2 + offset), y2 + offset,
+                    radius + offset, applyAlpha(color, layerAlpha));
+        }
+    }
+
+    public static int applyAlpha(int color, int alpha) {
+        return (color & 0x00FFFFFF) | (Math.max(0, Math.min(255, alpha)) << 24);
+    }
+
     public static int getAlpha(int color) {
         return color >>> 24 & 255;
     }
