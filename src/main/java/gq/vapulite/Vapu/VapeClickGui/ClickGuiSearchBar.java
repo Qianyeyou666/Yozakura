@@ -16,7 +16,7 @@ final class ClickGuiSearchBar {
         boolean hovered = VapeClickGui.isHovered(x, y, x + w, y + VapeClickGui.SEARCH_H, mouseX, mouseY);
         gui.searchFocusProgress = gui.animate(gui.searchFocusProgress, gui.searchFocused ? 1.0f : hovered ? 0.55f : 0.0f, 0.20f);
         if (gui.searchFocusProgress > 0.02f) {
-            RenderUtil.drawSoftShadow(x - 1.5f, y - 1.5f, x + w + 1.5f, y + VapeClickGui.SEARCH_H + 1.5f, 15.0f,
+            RenderUtil.drawSoftShadow(x - 1f, y - 1f, x + w + 1f, y + VapeClickGui.SEARCH_H + 1f, 19.0f,
                     gui.withAlpha(VapeClickGui.ACCENT, 86.0f * gui.searchFocusProgress * gui.openProgress), 7, 4.0f);
         }
         gui.searchField.setBounds(x, y, w, VapeClickGui.SEARCH_H)
