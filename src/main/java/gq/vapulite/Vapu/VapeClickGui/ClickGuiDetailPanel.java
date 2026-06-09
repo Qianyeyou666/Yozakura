@@ -14,8 +14,10 @@ import java.util.Arrays;
 
 final class ClickGuiDetailPanel {
     private static final String[] DETAIL_TABS = new String[]{"General", "Targets", "Extra", "Rotation", "Visuals"};
+    private static final float DROPDOWN_ROW_H = 18.0f;
     private final VapeClickGui gui;
     private final UiPanel panel;
+    private Mode expandedMode; // 当前展开下拉栏的Mode，null表示没有展开
 
     ClickGuiDetailPanel(VapeClickGui gui) {
         this.gui = gui;
@@ -51,11 +53,24 @@ final class ClickGuiDetailPanel {
 
         drawTabs(y);
         drawDetailValues(y, mouseX, mouseY);
+        // 在 scissor 之外绘制 Mode 下拉栏，确保不被裁剪
+        if (expandedMode != null) {
+            drawModeDropdown(expandedMode, mouseX, mouseY);
+        }
     }
 
     boolean mouseClicked(int mouseX, int mouseY, int mouseButton) {
         if (gui.selectedModule == null) {
             return false;
+        }
+        // 优先处理展开的下拉栏点击
+        if (expandedMode != null && mouseButton == 0) {
+            if (handleDropdownClick(expandedMode, mouseX, mouseY)) {
+                return true;
+            }
+            // 点击下拉栏外部 → 关闭
+            expandedMode = null;
+            return true;
         }
         float headerToggleX = gui.getDetailSwitchX();
         float headerToggleY = gui.getDetailSwitchY(gui.contentY);
@@ -114,12 +129,8 @@ final class ClickGuiDetailPanel {
                     return true;
                 }
                 if (value instanceof Mode && mouseButton == 0) {
-                    nextMode((Mode) value);
-                    gui.valueActiveProgress.put(value, 1.0f);
-                    return true;
-                }
-                if (value instanceof Mode && mouseButton == 1) {
-                    previousMode((Mode) value);
+                    // 点击Mode → 展开/收起下拉栏
+                    expandedMode = (expandedMode == value) ? null : (Mode) value;
                     gui.valueActiveProgress.put(value, 1.0f);
                     return true;
                 }
@@ -312,21 +323,90 @@ final class ClickGuiDetailPanel {
                 gui.withAlpha(VapeClickGui.ACCENT, 150.0f * gui.openProgress));
     }
 
-    private void nextMode(Mode value) {
-        int index = Arrays.binarySearch(value.getModes(), value.getValue());
-        if (index < 0 || index + 1 >= value.getModes().length) {
-            value.setValue(value.getModes()[0]);
-        } else {
-            value.setValue(value.getModes()[index + 1]);
+    // ==================== Mode 下拉栏 ====================
+
+    /**
+     * 计算某个Mode值在屏幕上的渲染位置(考虑到设置滚动偏移)
+     */
+    private float getModeValueY(Mode value) {
+        float y = gui.getDetailValuesY(gui.contentY) + gui.settingsScroll;
+        for (Value v : gui.selectedModule.getValues()) {
+            if (v == value) return y;
+            y += gui.getValueHeight(v);
+        }
+        return y;
+    }
+
+    /**
+     * 绘制Mode下拉栏 — 在scissor之外渲染，展示所有可选的mode
+     */
+    private void drawModeDropdown(Mode value, int mouseX, int mouseY) {
+        Object[] modes = value.getModes();
+        if (modes.length == 0) return;
+
+        float labelW = gui.getDetailLabelWidth(gui.getDetailValuesWidth());
+        float pillW = Math.min(112.0f, Math.max(72.0f, gui.getDetailValuesWidth() - labelW));
+        float pillX = gui.getDetailValuesX() + gui.getDetailValuesWidth() - pillW;
+        float valueY = getModeValueY(value);
+        float dropdownY = valueY + 23.0f; // pill底部
+
+        int hoveredIndex = -1;
+        for (int i = 0; i < modes.length; i++) {
+            if (VapeClickGui.isHovered(pillX, dropdownY + i * DROPDOWN_ROW_H,
+                    pillX + pillW, dropdownY + (i + 1) * DROPDOWN_ROW_H, mouseX, mouseY)) {
+                hoveredIndex = i;
+                break;
+            }
+        }
+
+        // 下拉栏背景
+        float dropdownH = modes.length * DROPDOWN_ROW_H;
+        RenderUtil.drawFrostedGlassRect(pillX, dropdownY, pillX + pillW, dropdownY + dropdownH,
+                5.0f, 0.9f,
+                gui.withAlpha(new Color(18, 22, 30, 240).getRGB(), 238.0f * gui.openProgress),
+                gui.withAlpha(VapeClickGui.GLASS_BORDER, 62.0f * gui.openProgress));
+        RenderUtil.drawSoftShadow(pillX, dropdownY, pillX + pillW, dropdownY + dropdownH,
+                5.0f, gui.withAlpha(new Color(0, 0, 0, 200).getRGB(), 82.0f * gui.openProgress), 6, 3.0f);
+
+        // 每行
+        for (int i = 0; i < modes.length; i++) {
+            float rowY = dropdownY + i * DROPDOWN_ROW_H;
+            boolean selected = modes[i] == value.getValue();
+            boolean hovered = i == hoveredIndex;
+
+            if (hovered || selected) {
+                gui.drawSoftRect(pillX + 2.0f, rowY + 1.0f, pillX + pillW - 2.0f, rowY + DROPDOWN_ROW_H - 1.0f,
+                        4.0f, gui.withAlpha(selected ? new Color(88, 90, 178, 160).getRGB()
+                                : new Color(55, 58, 70, 140).getRGB(),
+                        (selected ? 178.0f : 110.0f) * gui.openProgress));
+            }
+            gui.drawFont(gui.trim(modes[i].toString(), FontLoaders.F14, pillW - 20.0f),
+                    pillX + 10.0f, rowY + 4.0f,
+                    gui.withAlpha(selected ? VapeClickGui.ACCENT : VapeClickGui.TEXT,
+                            (selected ? 240.0f : 210.0f) * gui.openProgress));
         }
     }
 
-    private void previousMode(Mode value) {
-        int index = Arrays.binarySearch(value.getModes(), value.getValue());
-        if (index <= 0) {
-            value.setValue(value.getModes()[value.getModes().length - 1]);
-        } else {
-            value.setValue(value.getModes()[index - 1]);
+    /**
+     * 处理下拉栏内的点击 — 点击某行则切换mode并关闭下拉栏
+     */
+    private boolean handleDropdownClick(Mode value, int mouseX, int mouseY) {
+        Object[] modes = value.getModes();
+        float labelW = gui.getDetailLabelWidth(gui.getDetailValuesWidth());
+        float pillW = Math.min(112.0f, Math.max(72.0f, gui.getDetailValuesWidth() - labelW));
+        float pillX = gui.getDetailValuesX() + gui.getDetailValuesWidth() - pillW;
+        float dropdownY = getModeValueY(value) + 23.0f;
+
+        for (int i = 0; i < modes.length; i++) {
+            float rowY = dropdownY + i * DROPDOWN_ROW_H;
+            if (VapeClickGui.isHovered(pillX, rowY, pillX + pillW, rowY + DROPDOWN_ROW_H,
+                    mouseX, mouseY)) {
+                value.setValue(modes[i]);
+                expandedMode = null;
+                gui.valueActiveProgress.put(value, 1.0f);
+                return true;
+            }
         }
+        return false;
     }
 }
