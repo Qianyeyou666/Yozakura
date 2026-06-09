@@ -20,6 +20,7 @@ import gq.vapulite.ui.UiToggle;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
 import org.lwjgl.input.Keyboard;
+import com.google.gson.JsonObject;
 import org.lwjgl.input.Mouse;
 
 import java.awt.Color;
@@ -89,10 +90,10 @@ public class VapeClickGui extends GuiScreen {
     float draggingColorY;
     float draggingColorW;
     float draggingColorH;
-    float listScroll;
-    float targetListScroll;
-    float settingsScroll;
-    float targetSettingsScroll;
+    static float listScroll;
+    static float targetListScroll;
+    static float settingsScroll;
+    static float targetSettingsScroll;
     float scrollbarAlpha;
     boolean draggingScrollbar;
     float scrollbarDragOffset;
@@ -146,10 +147,6 @@ public class VapeClickGui extends GuiScreen {
         super.initGui();
         ScaledResolution sr = new ScaledResolution(mc);
         updateLayout(sr);
-        listScroll = 0.0f;
-        targetListScroll = 0.0f;
-        settingsScroll = 0.0f;
-        targetSettingsScroll = 0.0f;
         scrollbarAlpha = 0.0f;
         openProgress = 0.0f;
         contentFade = 0.0f;
@@ -1018,6 +1015,54 @@ public class VapeClickGui extends GuiScreen {
         } catch (IOException ignored) {
             addToast("Config save failed");
         }
+    }
+
+    // ==================== GUI 状态持久化 ====================
+
+    /**
+     * 将GUI状态序列化为JsonObject，由FileManager写入config JSON的_gui段
+     */
+    public static JsonObject saveGuiState() {
+        JsonObject obj = new JsonObject();
+        obj.addProperty("tab", currentTab.ordinal());
+        obj.addProperty("module", selectedModule != null ? selectedModule.getName() : "");
+        obj.addProperty("detailTab", detailTabIndex);
+        obj.addProperty("listScroll", listScroll);
+        obj.addProperty("settingsScroll", settingsScroll);
+        return obj;
+    }
+
+    /**
+     * 从config JSON的_gui段恢复GUI状态（游戏启动时调用）
+     */
+    public static void loadGuiState(JsonObject obj) {
+        try {
+            int tabOrdinal = obj.get("tab").getAsInt();
+            GuiTab[] tabs = GuiTab.values();
+            if (tabOrdinal >= 0 && tabOrdinal < tabs.length) {
+                currentTab = tabs[tabOrdinal];
+            }
+        } catch (Exception ignored) {}
+        try {
+            String moduleName = obj.get("module").getAsString();
+            if (moduleName != null && !moduleName.isEmpty()) {
+                for (Module m : ModuleManager.getModules()) {
+                    if (m.getName().equals(moduleName)) {
+                        selectedModule = m;
+                        break;
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        try {
+            detailTabIndex = obj.get("detailTab").getAsInt();
+        } catch (Exception ignored) {}
+        try {
+            listScroll = obj.get("listScroll").getAsFloat();
+            targetListScroll = listScroll;
+            settingsScroll = obj.get("settingsScroll").getAsFloat();
+            targetSettingsScroll = settingsScroll;
+        } catch (Exception ignored) {}
     }
 
     void beginScissor(float x, float y, float w, float h) {
