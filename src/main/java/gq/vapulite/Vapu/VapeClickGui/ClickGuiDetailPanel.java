@@ -24,6 +24,7 @@ final class ClickGuiDetailPanel {
     private final Map<Numbers, Float> paletteHueByRed = new HashMap<Numbers, Float>();
     private final Map<Numbers, Integer> paletteColorByRed = new HashMap<Numbers, Integer>();
     private final Set<Mode> expandedModes = new HashSet<>(); // 所有展开下拉栏的Mode
+    private float currentIntroY; // 当前帧的introY，dropdown需要用它对齐detail面板
 
     ClickGuiDetailPanel(VapeClickGui gui) {
         this.gui = gui;
@@ -31,6 +32,7 @@ final class ClickGuiDetailPanel {
     }
 
     void render(int mouseX, int mouseY, float introY) {
+        this.currentIntroY = introY;
         float y = gui.contentY + introY;
         gui.settingsScroll = gui.animate(gui.settingsScroll, gui.targetSettingsScroll, 0.14f);
         panel.setBounds(gui.detailX, y, gui.detailW, gui.panelH)
@@ -552,7 +554,7 @@ final class ClickGuiDetailPanel {
     // ==================== Mode 下拉栏 ====================
 
     private float getModeValueY(Mode value) {
-        float y = gui.getDetailValuesY(gui.contentY) + gui.settingsScroll;
+        float y = gui.getDetailValuesY(gui.contentY + currentIntroY) + gui.settingsScroll;
         List<Value> values = gui.selectedModule.getValues();
         for (int i = 0; i < values.size(); i++) {
             if (gui.isColorContinuation(gui.selectedModule, i)) {
@@ -576,14 +578,18 @@ final class ClickGuiDetailPanel {
         float pillW = Math.min(112.0f, Math.max(72.0f, gui.getDetailValuesWidth() - labelW));
         float pillX = gui.getDetailValuesX() + gui.getDetailValuesWidth() - pillW;
         float valueY = getModeValueY(value);
-        float detailY = gui.getDetailValuesY(gui.contentY);
+        float detailY = gui.getDetailValuesY(gui.contentY + currentIntroY);
         float detailH = gui.getDetailValuesHeight();
         float dropdownY = valueY + 23.0f;
 
-        // Pill完全滚出detail区域 → 不渲染
-        if (valueY + 23.0f < detailY || valueY > detailY + detailH) return;
-
         float dropdownH = modes.length * DROPDOWN_ROW_H;
+
+        // pill+下拉栏全部滚出detail区域 → 不渲染；部分可见则用scissor裁剪
+        float pillBottom = valueY + 23.0f;
+        float dropdownBottom = dropdownY + dropdownH;
+        float fullBottom = Math.max(pillBottom, dropdownBottom);
+        float fullTop = Math.min(valueY, dropdownY);
+        if (fullBottom < detailY || fullTop > detailY + detailH) return;
 
         // 用scissor裁剪下拉栏，只显示detail框内的部分
         float clipX = gui.getDetailValuesX();
