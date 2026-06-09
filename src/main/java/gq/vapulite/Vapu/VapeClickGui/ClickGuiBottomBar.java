@@ -21,7 +21,7 @@ final class ClickGuiBottomBar {
                 gui.withAlpha(VapeClickGui.GLASS_BORDER, 48.0f * gui.openProgress));
         gui.drawSoftRect(gui.contentX + 10.0f, y + 5.0f, gui.contentX + 26.0f, y + 21.0f, 5.0f,
                 gui.withAlpha(new Color(81, 87, 103, 220).getRGB(), 220.0f * gui.openProgress));
-        gui.drawCenteredIcon(FontLoaders.ICON_PERSON, FontLoaders.I14, gui.contentX + 18.0f, y + 13.0f,
+        gui.drawCenteredIcon(FontLoaders.ICON_USER, FontLoaders.I14, gui.contentX + 18.0f, y + 13.0f,
                 gui.withAlpha(VapeClickGui.TEXT, 235.0f * gui.openProgress));
         gui.drawFont("Default", gui.contentX + 34.0f, y + 5.0f,
                 gui.withAlpha(VapeClickGui.TEXT, 235.0f * gui.openProgress));

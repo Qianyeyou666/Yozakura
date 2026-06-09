@@ -182,8 +182,8 @@ public class Notification {
     }
 
     private static void drawCenteredIcon(String icon, CFontRenderer font, float centerX, float centerY, int color) {
-        font.drawString(icon, centerX - font.getStringWidth(icon) / 2.0f,
-                centerY - font.getHeight() / 2.0f + 2.0f, color);
+        font.drawString(icon, centerX - font.getStringWidth(icon) / 2.0f + ClickGuiIcons.visualOffsetX(icon),
+                centerY - font.getHeight() / 2.0f + 2.0f + ClickGuiIcons.visualOffsetY(icon), color);
     }
 
     private static String trim(String text, CFontRenderer font, float maxWidth) {

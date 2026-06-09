@@ -222,20 +222,20 @@ final class ClickGuiModuleList {
     private boolean isStarHit(float rowX, float rowY, int mouseX, int mouseY) {
         float centerX = getStarCenterX(rowX);
         float centerY = rowY + 24.0f;
-        return VapeClickGui.isHovered(centerX - 9.0f, centerY - 9.0f, centerX + 9.0f, centerY + 9.0f, mouseX, mouseY);
+        return VapeClickGui.isHovered(centerX - 11.0f, centerY - 11.0f, centerX + 11.0f, centerY + 11.0f, mouseX, mouseY);
     }
 
     private void drawModuleIcon(Module module, float centerX, float centerY, boolean selected, float alpha) {
         int color = gui.withAlpha(selected || module.getState() ? new Color(226, 230, 246).getRGB() : new Color(166, 174, 190).getRGB(),
                 220.0f * alpha * gui.openProgress);
-        gui.drawCenteredIcon(ClickGuiIcons.forModule(module), FontLoaders.I18, centerX, centerY, color);
+        gui.drawCenteredIcon(ClickGuiIcons.forModule(module), FontLoaders.I20, centerX, centerY, color);
     }
 
     private void drawStarIcon(float centerX, float centerY, boolean favorite, float alpha) {
         int color = gui.withAlpha(favorite ? new Color(156, 147, 255).getRGB() : new Color(142, 149, 166).getRGB(),
                 (favorite ? 230.0f : 176.0f) * alpha * gui.openProgress);
         gui.drawCenteredIcon(favorite ? FontLoaders.ICON_STAR : FontLoaders.ICON_STAR_OUTLINE,
-                FontLoaders.I16, centerX, centerY, color);
+                FontLoaders.I18, centerX, centerY, color);
     }
 
     private void drawScrollbar(float drawContentY, float listHeight) {

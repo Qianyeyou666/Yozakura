@@ -10,6 +10,7 @@ import gq.vapulite.Vapu.utils.ColorUtils;
 import gq.vapulite.Vapu.utils.RenderUtil;
 import gq.vapulite.Vapu.value.Numbers;
 import gq.vapulite.Vapu.value.Option;
+import gq.vapulite.font.CFontRenderer;
 import gq.vapulite.font.FontLoaders;
 import gq.vapulite.render.ShaderRenderer;
 import net.minecraft.client.Minecraft;
@@ -149,8 +150,8 @@ public class HUD extends Module {
 
             int textW = FontLoaders.C18.getStringWidth(displayName);
             String icon = ClickGuiIcons.forModule(module);
-            float iconW = FontLoaders.I16.getStringWidth(icon);
-            float rowW = textW + iconW + 27.0f;
+            float iconSlotW = 22.0f;
+            float rowW = textW + iconSlotW + 17.0f;
             float rowH = 18.0f;
             float x = right - rowW - (1.0f - progress) * 10.0f;
             int accent = getCategoryAccent(module);
@@ -164,9 +165,9 @@ public class HUD extends Module {
                 RenderUtil.drawVerticalGradientRect(right - 3.0f, y + 3.0f, right - 1.4f, y + rowH - 3.0f,
                         withAlpha(accent, Math.round(205.0f * progress)),
                         withAlpha(ColorUtils.lighten(accent, 0.16f), Math.round(165.0f * progress)));
-                FontLoaders.I16.drawString(icon, x + 8.0f, y + 5.0f,
+                drawCenteredIcon(icon, FontLoaders.I16, x + iconSlotW / 2.0f + 2.0f, y + rowH / 2.0f,
                         withAlpha(accent, Math.round(214.0f * progress)));
-                FontLoaders.C18.drawString(displayName, x + iconW + 16.0f, y + 5.0f,
+                FontLoaders.C18.drawString(displayName, x + iconSlotW + 6.0f, y + 5.0f,
                         withAlpha(TEXT, Math.round(242.0f * progress)));
             } else {
                 FontLoaders.C18.drawStringWithShadow(displayName, right - textW, y + 4.0f,
@@ -195,6 +196,11 @@ public class HUD extends Module {
         RenderUtil.drawSoftShadow(x, y, x2, y2, round, withAlpha(0xFF000000, 44), 6, 3.2f);
         RenderUtil.drawFrostedGlassRect(x, y, x2, y2, round, 1.0f,
                 withAlpha(GLASS, fillAlpha), withAlpha(BORDER, borderAlpha));
+    }
+
+    private void drawCenteredIcon(String icon, CFontRenderer font, float centerX, float centerY, int color) {
+        font.drawString(icon, centerX - font.getStringWidth(icon) / 2.0f + ClickGuiIcons.visualOffsetX(icon),
+                centerY - font.getHeight() / 2.0f + 2.0f + ClickGuiIcons.visualOffsetY(icon), color);
     }
 
     private List<Module> getHudModules() {

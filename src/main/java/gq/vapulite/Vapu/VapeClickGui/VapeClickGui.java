@@ -259,9 +259,15 @@ public class VapeClickGui extends GuiScreen {
             }
             int textColor = tab == currentTab ? TEXT : new Color(202, 205, 213).getRGB();
             int color = withAlpha(textColor, 245.0f * openProgress);
-            String title = trim(tab.title, FontLoaders.F14, Math.max(18.0f, tabW - 25.0f));
-            FontLoaders.I14.drawString(tab.icon, x + 9.0f, y + 10.0f - hover * 0.4f, color);
-            drawFont(title, x + 23.0f, y + 10.0f - hover * 0.4f, color);
+            CFontRenderer navIconFont = FontLoaders.I16;
+            String title = trim(tab.title, FontLoaders.F14, Math.max(18.0f, tabW - 42.0f));
+            float iconW = navIconFont.getStringWidth(tab.icon);
+            float titleW = FontLoaders.F14.getStringWidth(title);
+            float gap = 10.0f;
+            float groupX = x + (tabW - iconW - gap - titleW) / 2.0f;
+            float textY = y + 10.0f - hover * 0.4f;
+            drawCenteredIcon(tab.icon, navIconFont, groupX + iconW / 2.0f, y + NAV_H / 2.0f - hover * 0.4f, color);
+            drawFont(title, groupX + iconW + gap, textY, color);
         }
     }
 
@@ -502,7 +508,7 @@ public class VapeClickGui extends GuiScreen {
     }
 
     float getModuleSwitchY(float cardY) {
-        return cardY + 10.0f;
+        return cardY + 14.0f;
     }
 
     float getDetailSwitchX() {
@@ -510,7 +516,7 @@ public class VapeClickGui extends GuiScreen {
     }
 
     float getDetailSwitchY(float panelY) {
-        return panelY + 20.0f;
+        return panelY + 22.0f;
     }
 
     float getOptionSwitchX(float rowX, float rowW) {
@@ -518,7 +524,7 @@ public class VapeClickGui extends GuiScreen {
     }
 
     float getOptionSwitchY(float rowY) {
-        return rowY + 6.0f;
+        return rowY + 7.0f;
     }
 
     boolean isSwitchHit(float switchX, float switchY, int mouseX, int mouseY) {
@@ -589,8 +595,8 @@ public class VapeClickGui extends GuiScreen {
 
     void drawCenteredIcon(String icon, CFontRenderer font, float centerX, float centerY, int color) {
         if (shouldDrawText(color)) {
-            font.drawString(icon, centerX - font.getStringWidth(icon) / 2.0f,
-                    centerY - font.getHeight() / 2.0f + 2.0f, color);
+            font.drawString(icon, centerX - font.getStringWidth(icon) / 2.0f + ClickGuiIcons.visualOffsetX(icon),
+                    centerY - font.getHeight() / 2.0f + 2.0f + ClickGuiIcons.visualOffsetY(icon), color);
         }
     }
 
@@ -865,35 +871,6 @@ public class VapeClickGui extends GuiScreen {
 
     void endScissor() {
         RenderState.popScissor();
-    }
-
-    enum GuiTab {
-        COMBAT("Combat", FontLoaders.ICON_BOMB, ModuleType.Combat),
-        MOVEMENT("Movement", FontLoaders.ICON_MOVEMENT, ModuleType.Movement),
-        VISUAL("Visual", FontLoaders.ICON_EYE, ModuleType.Render),
-        UTILITY("Utility", FontLoaders.ICON_SETTINGS, ModuleType.Config),
-        WORLD("World", FontLoaders.ICON_INFO, ModuleType.World),
-        MISC("Misc", FontLoaders.ICON_LIST, ModuleType.Other),
-        PLAYER("Profiles", FontLoaders.ICON_PERSON, ModuleType.Player);
-
-        private final String title;
-        private final String icon;
-        private final ModuleType[] types;
-
-        GuiTab(String title, String icon, ModuleType... types) {
-            this.title = title;
-            this.icon = icon;
-            this.types = types;
-        }
-
-        private boolean contains(ModuleType type) {
-            for (ModuleType moduleType : types) {
-                if (moduleType == type) {
-                    return true;
-                }
-            }
-            return false;
-        }
     }
 
     static class ScrollbarMetrics {

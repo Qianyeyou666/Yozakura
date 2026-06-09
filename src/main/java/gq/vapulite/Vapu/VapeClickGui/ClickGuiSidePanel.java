@@ -54,7 +54,7 @@ final class ClickGuiSidePanel {
                 gui.withAlpha(VapeClickGui.GLASS_BORDER, 50.0f * gui.openProgress));
         gui.drawSoftRect(gui.sideX + 10.0f, gui.navY + 6.0f, gui.sideX + 26.0f, gui.navY + 22.0f, 5.0f,
                 gui.withAlpha(new Color(81, 87, 103, 220).getRGB(), 220.0f * gui.openProgress));
-        gui.drawCenteredIcon(FontLoaders.ICON_PERSON, FontLoaders.I14, gui.sideX + 18.0f, gui.navY + 14.0f,
+        gui.drawCenteredIcon(FontLoaders.ICON_USER, FontLoaders.I14, gui.sideX + 18.0f, gui.navY + 14.0f,
                 gui.withAlpha(VapeClickGui.TEXT, 235.0f * gui.openProgress));
         gui.drawFont("VapuUser", gui.sideX + 34.0f, gui.navY + 6.0f,
                 gui.withAlpha(VapeClickGui.TEXT, 240.0f * gui.openProgress));
@@ -103,7 +103,7 @@ final class ClickGuiSidePanel {
                 gui.sideX + 23.0f, y + 23.0f, gui.withAlpha(VapeClickGui.ACCENT, 220.0f * gui.openProgress));
         gui.drawFont(gui.trim(gui.selectedModule.getName(), FontLoaders.F16, gui.sideW - 62.0f),
                 gui.sideX + 38.0f, y + 18.0f, gui.withAlpha(VapeClickGui.TEXT, 245.0f * gui.openProgress));
-        gui.drawCenteredIcon(FontLoaders.ICON_STAR_OUTLINE, FontLoaders.I16,
+        gui.drawCenteredIcon(FontLoaders.ICON_STAR_OUTLINE, FontLoaders.I18,
                 gui.sideX + gui.sideW - 24.0f, y + 22.0f,
                 gui.withAlpha(VapeClickGui.MUTED, 190.0f * gui.openProgress));
         gui.drawFont(gui.trim(gui.getDescription(gui.selectedModule), FontLoaders.F14, gui.sideW - 32.0f),
