@@ -89,9 +89,7 @@ final class ClickGuiModuleList {
                     return true;
                 }
                 if (mouseButton == 0) {
-                    gui.selectedModule = module;
-                    gui.settingsScroll = 0.0f;
-                    gui.targetSettingsScroll = 0.0f;
+                    VapeClickGui.selectModule(module);
                     gui.clickProgress.put(module, 1.0f);
                 }
                 gui.targetListScroll = gui.clamp(gui.targetListScroll,

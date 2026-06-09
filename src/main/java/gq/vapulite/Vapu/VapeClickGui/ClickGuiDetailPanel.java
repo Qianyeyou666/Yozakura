@@ -1,5 +1,6 @@
 package gq.vapulite.Vapu.VapeClickGui;
 
+import gq.vapulite.Manager.ModuleManager;
 import gq.vapulite.Vapu.modules.Module;
 import gq.vapulite.Vapu.utils.RenderUtil;
 import gq.vapulite.Vapu.value.Mode;
@@ -23,8 +24,13 @@ final class ClickGuiDetailPanel {
     private final UiPanel panel;
     private final Map<Numbers, Float> paletteHueByRed = new HashMap<Numbers, Float>();
     private final Map<Numbers, Integer> paletteColorByRed = new HashMap<Numbers, Integer>();
-    private final Set<Mode> expandedModes = new HashSet<>(); // 所有展开下拉栏的Mode
+    private static final Set<Mode> expandedModes = new HashSet<>(); // 所有展开下拉栏的Mode（跨开关保持）
+    private static final Map<Mode, Float> dropdownAnim = new HashMap<>(); // 下拉栏展开动画进度 0→1
     private float currentIntroY; // 当前帧的introY，dropdown需要用它对齐detail面板
+
+    boolean hasExpandedMode(Mode value) {
+        return expandedModes.contains(value);
+    }
 
     ClickGuiDetailPanel(VapeClickGui gui) {
         this.gui = gui;
@@ -33,6 +39,31 @@ final class ClickGuiDetailPanel {
 
     void render(int mouseX, int mouseY, float introY) {
         this.currentIntroY = introY;
+        // 游戏重启后恢复所有展开的mode下拉栏
+        String savedKeys = VapeClickGui.savedExpandedModeKeys;
+        if (!savedKeys.isEmpty()) {
+            VapeClickGui.savedExpandedModeKeys = "";
+            for (String entry : savedKeys.split(";")) {
+                String trimmed = entry.trim();
+                if (trimmed.isEmpty()) continue;
+                int sep = trimmed.indexOf(':');
+                if (sep <= 0) continue;
+                String moduleName = trimmed.substring(0, sep);
+                String valueName = trimmed.substring(sep + 1);
+                for (Module m : ModuleManager.getModules()) {
+                    if (m.getName().equals(moduleName)) {
+                        for (Value v : m.getValues()) {
+                            if (v instanceof Mode && v.getName().equals(valueName)) {
+                                expandedModes.add((Mode) v);
+                                dropdownAnim.put((Mode) v, 1f);
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        }
         float y = gui.contentY + introY;
         gui.settingsScroll = gui.animate(gui.settingsScroll, gui.targetSettingsScroll, 0.14f);
         panel.setBounds(gui.detailX, y, gui.detailW, gui.panelH)
@@ -61,10 +92,34 @@ final class ClickGuiDetailPanel {
 
         drawTabs(y);
         drawDetailValues(y, mouseX, mouseY);
-        // 只绘制属于当前选中module的下拉栏（切换module时旧的自动消失）
+
+        // 更新下拉栏动画并绘制（展开和收起都有动画）
         for (Mode mode : expandedModes) {
             if (gui.selectedModule != null && gui.selectedModule.getValues().contains(mode)) {
-                drawModeDropdown(mode, mouseX, mouseY);
+                float current = dropdownAnim.containsKey(mode) ? dropdownAnim.get(mode) : 0f;
+                current = gui.animate(current, 1f, 0.22f);
+                dropdownAnim.put(mode, current);
+            }
+        }
+        // 处理收起动画：不在expandedModes中的mode动画向0
+        for (Mode mode : new HashSet<>(dropdownAnim.keySet())) {
+            if (!expandedModes.contains(mode)) {
+                float current = dropdownAnim.get(mode);
+                current = gui.animate(current, 0f, 0.24f);
+                if (current < 0.005f) {
+                    dropdownAnim.remove(mode);
+                } else {
+                    dropdownAnim.put(mode, current);
+                }
+            }
+        }
+        // 绘制所有有动画进度的下拉栏
+        for (Mode mode : dropdownAnim.keySet()) {
+            if (gui.selectedModule != null && gui.selectedModule.getValues().contains(mode)) {
+                float progress = dropdownAnim.get(mode);
+                if (progress > 0.01f) {
+                    drawModeDropdown(mode, mouseX, mouseY, progress);
+                }
             }
         }
     }
@@ -570,7 +625,7 @@ final class ClickGuiDetailPanel {
         return y;
     }
 
-    private void drawModeDropdown(Mode value, int mouseX, int mouseY) {
+    private void drawModeDropdown(Mode value, int mouseX, int mouseY, float animProgress) {
         Object[] modes = value.getModes();
         if (modes.length == 0) return;
 
@@ -581,35 +636,36 @@ final class ClickGuiDetailPanel {
         float detailY = gui.getDetailValuesY(gui.contentY + currentIntroY);
         float detailH = gui.getDetailValuesHeight();
         float dropdownY = valueY + 23.0f;
+        float fullDropdownH = modes.length * DROPDOWN_ROW_H;
 
-        float dropdownH = modes.length * DROPDOWN_ROW_H;
-
-        // pill+下拉栏全部滚出detail区域 → 不渲染；部分可见则用scissor裁剪
+        // pill+下拉栏全部滚出detail区域 → 不渲染
         float pillBottom = valueY + 23.0f;
-        float dropdownBottom = dropdownY + dropdownH;
-        float fullBottom = Math.max(pillBottom, dropdownBottom);
+        float fullBottom = Math.max(pillBottom, dropdownY + fullDropdownH);
         float fullTop = Math.min(valueY, dropdownY);
         if (fullBottom < detailY || fullTop > detailY + detailH) return;
 
-        // 用scissor裁剪下拉栏，只显示detail框内的部分
+        // 用scissor裁剪：先限制到detail框，再用动画进度限制下拉栏高度
         float clipX = gui.getDetailValuesX();
         float clipW = gui.getDetailValuesWidth();
-        gui.beginScissor(clipX - 4.0f, detailY, clipW + 8.0f, detailH);
+        float clipTop = Math.max(detailY, dropdownY);
+        float clipH = Math.min(detailY + detailH, dropdownY + fullDropdownH * animProgress) - clipTop;
+        if (clipH <= 0) return;
+        gui.beginScissor(clipX - 4.0f, clipTop, clipW + 8.0f, clipH);
         try {
             int hoveredIndex = -1;
             for (int i = 0; i < modes.length; i++) {
-                if (VapeClickGui.isHovered(pillX, dropdownY + i * DROPDOWN_ROW_H,
-                        pillX + pillW, dropdownY + (i + 1) * DROPDOWN_ROW_H, mouseX, mouseY)) {
+                float rowY = dropdownY + i * DROPDOWN_ROW_H;
+                if (VapeClickGui.isHovered(pillX, rowY, pillX + pillW, rowY + DROPDOWN_ROW_H, mouseX, mouseY)) {
                     hoveredIndex = i;
                     break;
                 }
             }
 
-            RenderUtil.drawFrostedGlassRect(pillX, dropdownY, pillX + pillW, dropdownY + dropdownH,
+            RenderUtil.drawFrostedGlassRect(pillX, dropdownY, pillX + pillW, dropdownY + fullDropdownH,
                     5.0f, 0.9f,
                     gui.withAlpha(new Color(18, 22, 30, 240).getRGB(), 238.0f * gui.openProgress),
                     gui.withAlpha(VapeClickGui.GLASS_BORDER, 62.0f * gui.openProgress));
-            RenderUtil.drawSoftShadow(pillX, dropdownY, pillX + pillW, dropdownY + dropdownH,
+            RenderUtil.drawSoftShadow(pillX, dropdownY, pillX + pillW, dropdownY + fullDropdownH,
                     5.0f, gui.withAlpha(new Color(0, 0, 0, 200).getRGB(), 82.0f * gui.openProgress), 6, 3.0f);
 
             for (int i = 0; i < modes.length; i++) {
@@ -618,7 +674,8 @@ final class ClickGuiDetailPanel {
                 boolean hovered = i == hoveredIndex;
 
                 if (hovered || selected) {
-                    gui.drawSoftRect(pillX + 2.0f, rowY + 1.0f, pillX + pillW - 2.0f, rowY + DROPDOWN_ROW_H - 1.0f,
+                    gui.drawSoftRect(pillX + 2.0f, rowY + 1.0f, pillX + pillW - 2.0f,
+                            rowY + DROPDOWN_ROW_H - 1.0f,
                             4.0f, gui.withAlpha(selected ? new Color(88, 90, 178, 160).getRGB()
                                     : new Color(55, 58, 70, 140).getRGB(),
                             (selected ? 178.0f : 110.0f) * gui.openProgress));
@@ -639,9 +696,12 @@ final class ClickGuiDetailPanel {
         float pillW = Math.min(112.0f, Math.max(72.0f, gui.getDetailValuesWidth() - labelW));
         float pillX = gui.getDetailValuesX() + gui.getDetailValuesWidth() - pillW;
         float dropdownY = getModeValueY(value) + 23.0f;
+        float animProgress = dropdownAnim.containsKey(value) ? dropdownAnim.get(value) : 0f;
+        float visibleH = modes.length * DROPDOWN_ROW_H * animProgress;
 
         for (int i = 0; i < modes.length; i++) {
             float rowY = dropdownY + i * DROPDOWN_ROW_H;
+            if (rowY >= dropdownY + visibleH) break;
             if (VapeClickGui.isHovered(pillX, rowY, pillX + pillW, rowY + DROPDOWN_ROW_H,
                     mouseX, mouseY)) {
                 value.setValue(modes[i]);
