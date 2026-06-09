@@ -35,6 +35,9 @@ public final class ClickGuiIcons {
         if (name.contains("storage")) {
             return FontLoaders.ICON_FOLDER;
         }
+        if (name.contains("chams")) {
+            return FontLoaders.ICON_SPARK;
+        }
         if (name.contains("esp") || name.contains("render")) {
             return FontLoaders.ICON_EYE;
         }

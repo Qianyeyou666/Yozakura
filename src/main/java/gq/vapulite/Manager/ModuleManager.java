@@ -109,6 +109,7 @@ public class ModuleManager {
         Modules.add(new Reach());
         Modules.add(new HitBoxes());
         Modules.add(new StorageESP());
+        Modules.add(new Chams());
         Modules.add(new ESP());
     }
 }
