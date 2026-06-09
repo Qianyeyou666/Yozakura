@@ -1,0 +1,16 @@
+[
+{
+  "modid": "VapuLite",
+  "name": "VapuLite",
+  "description": "VapuLite Client",
+  "version": "${version}",
+  "mcversion": "${mcversion}",
+  "url": "",
+  "updateUrl": "",
+  "authorList": ["Vapu Client Community"],
+  "credits": "Vapu Client Team",
+  "logoFile": "",
+  "screenshots": [],
+  "dependencies": []
+}
+]
