@@ -212,6 +212,7 @@ public class TargetESP extends Module {
                 time * 56.0f, 0.72f);
         drawEnergySpikes(radius, height, alpha * 0.72f, time);
         drawOrbitingStars(orbitRadius * 1.04f, height, alpha, time);
+        drawCosmicChains(radius * 1.72f, height, alpha * 0.42f, time);
         drawScanBeam(radius * 1.15f, height, alpha * 0.36f, time);
         drawHealthArc(target, height + 0.16f, radius * 1.32f, 0.040f, alpha * 0.95f);
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
@@ -394,6 +395,87 @@ public class TargetESP extends Module {
         GL11.glVertex3d(cx + rx * size * 1.65D, y, cz + rz * size * 1.65D);
         GL11.glVertex3d(cx - tx * size * 1.65D, y, cz - tz * size * 1.65D);
         GL11.glVertex3d(cx + tx * size * 1.65D, y, cz + tz * size * 1.65D);
+        GL11.glEnd();
+    }
+
+    private void drawCosmicChains(float radius, float height, float alpha, float time) {
+        int links = 24;
+        GL11.glLineWidth(Math.max(1.1f, lineWidth.getValue().floatValue() * 0.58f));
+        for (int i = 0; i < links; i++) {
+            float t = i / (float) links;
+            double angle = time * 0.72D + t * Math.PI * 5.6D;
+            float y = 0.05f + t * (height + 0.05f);
+            float wave = 0.72f + 0.28f * (float) Math.sin(time * 2.8f + i * 0.67f);
+            int color = i % 2 == 0 ? 0xFFDDE8FF : rainbowColor(time * 0.055f, t * 0.32f + 0.58f);
+            drawChainLink(angle, radius, y, 0.105f, 0.050f, color, alpha * wave, i % 2 == 0);
+        }
+        for (int i = 0; i < links; i++) {
+            float t = i / (float) links;
+            double angle = -time * 0.58D + Math.PI + t * Math.PI * 5.6D;
+            float y = height + 0.05f - t * (height + 0.05f);
+            float wave = 0.64f + 0.36f * (float) Math.cos(time * 2.4f + i * 0.71f);
+            drawChainLink(angle, radius * 1.035f, y, 0.092f, 0.044f,
+                    0xFFB7C2D8, alpha * 0.68f * wave, i % 2 != 0);
+        }
+    }
+
+    private void drawChainLink(double angle, float radius, float y, float length, float width,
+                               int color, float alpha, boolean vertical) {
+        double cx = Math.cos(angle) * radius;
+        double cz = Math.sin(angle) * radius;
+        double tangentX = -Math.sin(angle);
+        double tangentZ = Math.cos(angle);
+        double radialX = Math.cos(angle);
+        double radialZ = Math.sin(angle);
+        double longX = vertical ? radialX : tangentX;
+        double longZ = vertical ? radialZ : tangentZ;
+        double wideX = vertical ? tangentX : radialX;
+        double wideZ = vertical ? tangentZ : radialZ;
+        float innerAlpha = MathHelper.clamp_float(alpha, 0.0f, 0.40f);
+        float glowAlpha = innerAlpha * 0.46f;
+
+        setColor(color, glowAlpha);
+        GL11.glBegin(GL11.GL_QUADS);
+        GL11.glTexCoord2f(0.0f, 0.0f);
+        GL11.glVertex3d(cx - longX * length * 1.28D - wideX * width * 1.35D, y - width * 0.9f,
+                cz - longZ * length * 1.28D - wideZ * width * 1.35D);
+        GL11.glTexCoord2f(1.0f, 0.0f);
+        GL11.glVertex3d(cx + longX * length * 1.28D - wideX * width * 1.35D, y - width * 0.9f,
+                cz + longZ * length * 1.28D - wideZ * width * 1.35D);
+        GL11.glTexCoord2f(1.0f, 1.0f);
+        GL11.glVertex3d(cx + longX * length * 1.28D + wideX * width * 1.35D, y + width * 0.9f,
+                cz + longZ * length * 1.28D + wideZ * width * 1.35D);
+        GL11.glTexCoord2f(0.0f, 1.0f);
+        GL11.glVertex3d(cx - longX * length * 1.28D + wideX * width * 1.35D, y + width * 0.9f,
+                cz - longZ * length * 1.28D + wideZ * width * 1.35D);
+        GL11.glEnd();
+
+        setColor(color, innerAlpha);
+        GL11.glBegin(GL11.GL_LINE_LOOP);
+        GL11.glTexCoord2f(0.0f, 0.0f);
+        GL11.glVertex3d(cx - longX * length - wideX * width, y - width * 0.55f,
+                cz - longZ * length - wideZ * width);
+        GL11.glTexCoord2f(1.0f, 0.0f);
+        GL11.glVertex3d(cx + longX * length - wideX * width, y - width * 0.55f,
+                cz + longZ * length - wideZ * width);
+        GL11.glTexCoord2f(1.0f, 1.0f);
+        GL11.glVertex3d(cx + longX * length + wideX * width, y + width * 0.55f,
+                cz + longZ * length + wideZ * width);
+        GL11.glTexCoord2f(0.0f, 1.0f);
+        GL11.glVertex3d(cx - longX * length + wideX * width, y + width * 0.55f,
+                cz - longZ * length + wideZ * width);
+        GL11.glEnd();
+
+        setColor(color, innerAlpha * 0.58f);
+        GL11.glBegin(GL11.GL_LINE_LOOP);
+        GL11.glVertex3d(cx - longX * length * 0.52D - wideX * width * 0.42D, y - width * 0.18f,
+                cz - longZ * length * 0.52D - wideZ * width * 0.42D);
+        GL11.glVertex3d(cx + longX * length * 0.52D - wideX * width * 0.42D, y - width * 0.18f,
+                cz + longZ * length * 0.52D - wideZ * width * 0.42D);
+        GL11.glVertex3d(cx + longX * length * 0.52D + wideX * width * 0.42D, y + width * 0.18f,
+                cz + longZ * length * 0.52D + wideZ * width * 0.42D);
+        GL11.glVertex3d(cx - longX * length * 0.52D + wideX * width * 0.42D, y + width * 0.18f,
+                cz - longZ * length * 0.52D + wideZ * width * 0.42D);
         GL11.glEnd();
     }
 
