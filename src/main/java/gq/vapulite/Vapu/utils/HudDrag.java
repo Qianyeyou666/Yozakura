@@ -63,9 +63,6 @@ public final class HudDrag {
             setNumber(yValue, y);
         }
 
-        float[] adjusted = updateScale(id, xValue, yValue, scaleValue, x, y, width, height, sr, hovered);
-        x = adjusted[0];
-        y = adjusted[1];
         return new float[]{x, y};
     }
 
@@ -122,44 +119,6 @@ public final class HudDrag {
         if (Math.abs(value.getValue() - rounded) > 0.04D) {
             value.setValue(rounded);
         }
-    }
-
-    private static float[] updateScale(String id, Numbers<Double> xValue, Numbers<Double> yValue,
-                                       Numbers<Double> scaleValue, float x, float y, float width, float height,
-                                       ScaledResolution sr, boolean hovered) {
-        if (scaleValue == null || (!hovered && !id.equals(selectedId))) {
-            return new float[]{x, y};
-        }
-
-        int wheel = Mouse.getDWheel();
-        if (wheel == 0) {
-            return new float[]{x, y};
-        }
-
-        selectedId = id;
-        double current = scaleValue.getValue() == null ? 1.0D : scaleValue.getValue();
-        double step = scaleValue.getIncrement() == null ? 0.05D : Math.max(0.01D, scaleValue.getIncrement().doubleValue());
-        double min = scaleValue.getMinimum() == null ? 0.5D : scaleValue.getMinimum().doubleValue();
-        double max = scaleValue.getMaximum() == null ? 2.0D : scaleValue.getMaximum().doubleValue();
-        int steps = Math.max(1, Math.min(6, Math.abs(wheel) / 120));
-        double next = current + (wheel > 0 ? step : -step) * steps;
-        next = Math.max(min, Math.min(max, next));
-        next = Math.round(next * 100.0D) / 100.0D;
-        if (Math.abs(next - current) < 0.0001D) {
-            return new float[]{x, y};
-        }
-
-        float ratio = current <= 0.0D ? 1.0f : (float) (next / current);
-        float newWidth = Math.max(1.0f, width * ratio);
-        float newHeight = Math.max(1.0f, height * ratio);
-        float centerX = x + width / 2.0f;
-        float centerY = y + height / 2.0f;
-        x = clamp(centerX - newWidth / 2.0f, 2.0f, Math.max(2.0f, sr.getScaledWidth() - newWidth - 2.0f));
-        y = clamp(centerY - newHeight / 2.0f, 2.0f, Math.max(2.0f, sr.getScaledHeight() - newHeight - 2.0f));
-        scaleValue.setValue(next);
-        setNumber(xValue, x);
-        setNumber(yValue, y);
-        return new float[]{x, y};
     }
 
     private static boolean isHovered(float mouseX, float mouseY, float x, float y, float width, float height) {
