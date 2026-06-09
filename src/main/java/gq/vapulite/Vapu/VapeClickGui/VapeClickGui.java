@@ -67,8 +67,8 @@ public class VapeClickGui extends GuiScreen {
     static final float CLOSE_END_PROGRESS = 0.22f;
     static final float CLOSING_TEXT_CUTOFF = 0.36f;
 
-    GuiTab currentTab = GuiTab.COMBAT;
-    Module selectedModule;
+    static GuiTab currentTab = GuiTab.COMBAT;
+    static Module selectedModule;
     Value draggingNumber;
     Module bindingModule;
     final Map<Module, Float> hoverProgress = new HashMap<Module, Float>();
@@ -103,7 +103,7 @@ public class VapeClickGui extends GuiScreen {
     float windowW;
     float panelH;
     boolean sidePanelVisible;
-    int detailTabIndex;
+    static int detailTabIndex;
     String searchQuery = "";
     boolean searchFocused;
     long searchCursorTime;
@@ -142,7 +142,6 @@ public class VapeClickGui extends GuiScreen {
         searchFocused = false;
         searchQuery = "";
         searchFocusProgress = 0.0f;
-        detailTabIndex = 0;
         toastText = null;
         closing = false;
         savedOnClose = false;
