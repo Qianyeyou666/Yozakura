@@ -10,13 +10,17 @@ import gq.vapulite.font.FontLoaders;
 import gq.vapulite.ui.UiPanel;
 
 import java.awt.Color;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 final class ClickGuiDetailPanel {
     private static final String[] DETAIL_TABS = new String[]{"General", "Targets", "Extra", "Rotation", "Visuals"};
     private static final float DROPDOWN_ROW_H = 18.0f;
     private final VapeClickGui gui;
     private final UiPanel panel;
+    private final Map<Numbers, Float> paletteHueByRed = new HashMap<Numbers, Float>();
+    private final Map<Numbers, Integer> paletteColorByRed = new HashMap<Numbers, Integer>();
     private Mode expandedMode; // 当前展开下拉栏的Mode，null表示没有展开
 
     ClickGuiDetailPanel(VapeClickGui gui) {
@@ -273,13 +277,10 @@ final class ClickGuiDetailPanel {
                 gui.withAlpha(VapeClickGui.GLASS_FILL_SOFT, 120.0f * alpha * gui.openProgress),
                 gui.withAlpha(rainbow ? VapeClickGui.ACCENT : VapeClickGui.GLASS_BORDER,
                         (rainbow ? 112.0f : hovered ? 78.0f : 52.0f) * alpha * gui.openProgress));
-        drawPaletteGradient(paletteX, paletteY, paletteW, paletteH, alpha);
-        RenderUtil.drawHorizontalGradientRect(paletteX, paletteY, paletteX + paletteW, paletteY + paletteH,
-                gui.withAlpha(new Color(255, 255, 255).getRGB(), 56.0f * alpha * gui.openProgress),
-                gui.withAlpha(new Color(255, 255, 255).getRGB(), 0.0f));
-        RenderUtil.drawGradientRect(paletteX, paletteY, paletteX + paletteW, paletteY + paletteH,
-                gui.withAlpha(new Color(255, 255, 255).getRGB(), 24.0f * alpha * gui.openProgress),
-                gui.withAlpha(new Color(0, 0, 0).getRGB(), 132.0f * alpha * gui.openProgress));
+        float colorInset = 1.0f;
+        RenderUtil.drawRoundedHueRect(paletteX + colorInset, paletteY + colorInset,
+                paletteX + paletteW - colorInset, paletteY + paletteH - colorInset, 5.0f,
+                0.94f * alpha * gui.openProgress);
 
         float[] marker = getColorMarker(red, green, blue, paletteX, paletteY, paletteW, paletteH);
         RenderUtil.drawCircleOutline(marker[0], marker[1], 4.0f + active, 1.2f,
@@ -293,20 +294,6 @@ final class ClickGuiDetailPanel {
         if (rainbow) {
             RenderUtil.drawCircle(previewX + preview - 6.5f, y + 15.5f, 0, 360, 3.0f,
                     gui.withAlpha(VapeClickGui.ACCENT, 230.0f * alpha * gui.openProgress));
-        }
-    }
-
-    private void drawPaletteGradient(float x, float y, float w, float h, float alpha) {
-        int segments = 18;
-        float segmentW = w / segments;
-        for (int i = 0; i < segments; i++) {
-            float left = x + i * segmentW;
-            float right = i == segments - 1 ? x + w : left + segmentW + 0.5f;
-            int start = Color.HSBtoRGB(i / (float) segments, 0.86f, 1.0f);
-            int end = Color.HSBtoRGB((i + 1) / (float) segments, 0.86f, 1.0f);
-            RenderUtil.drawGradientRect(left, y, right, y + h,
-                    gui.withAlpha(start, 238.0f * alpha * gui.openProgress),
-                    gui.withAlpha(end, 238.0f * alpha * gui.openProgress));
         }
     }
 
@@ -328,12 +315,23 @@ final class ClickGuiDetailPanel {
         setNumber(red, rgb >> 16 & 255);
         setNumber(green, rgb >> 8 & 255);
         setNumber(blue, rgb & 255);
+        paletteHueByRed.put(red, hue);
+        paletteColorByRed.put(red, rgb & 0xFFFFFF);
     }
 
     private float[] getColorMarker(Numbers red, Numbers green, Numbers blue, float x, float y, float w, float h) {
         float[] hsb = Color.RGBtoHSB(colorValue(red), colorValue(green), colorValue(blue), null);
-        float mx = x + hsb[0] * w;
+        float hue = hsb[0];
+        Integer storedColor = paletteColorByRed.get(red);
+        Float storedHue = paletteHueByRed.get(red);
+        if (storedColor != null && storedHue != null && storedColor.intValue() == (rgb(red, green, blue) & 0xFFFFFF)) {
+            hue = gui.clamp(storedHue.floatValue(), 0.0f, 1.0f);
+        }
+        float verticalMargin = 5.2f;
+        float mx = x + hue * w;
         float my = y + gui.clamp((1.0f - hsb[2]) / 0.58f, 0.0f, 1.0f) * h;
+        mx = gui.clamp(mx, x, x + w);
+        my = gui.clamp(my, y + verticalMargin, y + h - verticalMargin);
         return new float[]{mx, my};
     }
 

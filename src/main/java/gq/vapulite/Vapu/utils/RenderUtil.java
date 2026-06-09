@@ -410,6 +410,42 @@ public class RenderUtil {
         }
     }
 
+    public static void drawRoundedHueRect(float x, float y, float x2, float y2, float radius, float alpha) {
+        if (alpha <= 0.0f) {
+            return;
+        }
+        normalizeRect(Rect.tmp, x, y, x2, y2);
+        float width = Rect.tmp.width();
+        float height = Rect.tmp.height();
+        radius = RenderState.clampRadius(radius, width, height);
+        RenderState.begin2D();
+        try {
+            if (ShaderRenderer.drawRoundedHueRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
+                    radius, Math.max(0.0f, Math.min(1.0f, alpha)))) {
+                return;
+            }
+        } finally {
+            RenderState.end2D();
+        }
+
+        RenderState.pushScissor(Rect.tmp.left, Rect.tmp.top, width, height);
+        try {
+            int segments = 18;
+            float segmentW = width / segments;
+            for (int i = 0; i < segments; i++) {
+                float left = Rect.tmp.left + i * segmentW;
+                float right = i == segments - 1 ? Rect.tmp.right : left + segmentW + 0.5f;
+                int start = Color.HSBtoRGB(i / (float) segments, 0.86f, 1.0f);
+                int end = Color.HSBtoRGB((i + 1) / (float) segments, 0.86f, 0.42f);
+                drawGradientRect(left, Rect.tmp.top, right, Rect.tmp.bottom,
+                        applyAlpha(start, Math.round(255.0f * alpha)),
+                        applyAlpha(end, Math.round(255.0f * alpha)));
+            }
+        } finally {
+            RenderState.popScissor();
+        }
+    }
+
     public static void drawRoundedBorderedRect(float x, float y, float x2, float y2, float radius, float borderWidth, int fillColor, int borderColor) {
         normalizeRect(Rect.tmp, x, y, x2, y2);
         float width = Rect.tmp.width();

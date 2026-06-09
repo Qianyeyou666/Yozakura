@@ -20,6 +20,7 @@ public final class ShaderRenderer {
     private static Program gradientProgram;
     private static Program roundedProgram;
     private static Program roundedGradientProgram;
+    private static Program roundedHueProgram;
     private static Program roundedBorderProgram;
     private static Program roundedShadowProgram;
     private static Program frostedGlassProgram;
@@ -105,6 +106,24 @@ public final class ShaderRenderer {
             setColor(program, "color2", bottomLeft);
             setColor(program, "color3", topRight);
             setColor(program, "color4", bottomRight);
+            drawQuad(left, top, right, bottom, EDGE_PADDING);
+        } finally {
+            GL20.glUseProgram(0);
+        }
+        return true;
+    }
+
+    public static boolean drawRoundedHueRect(float left, float top, float right, float bottom, float radius,
+                                             float alpha) {
+        Program program = getRoundedHueProgram();
+        if (program == null || right <= left || bottom <= top || alpha <= 0.0f) {
+            return false;
+        }
+
+        program.use();
+        try {
+            setRoundedUniforms(program, right - left, bottom - top, radius);
+            program.set1f("alpha", Math.max(0.0f, Math.min(1.0f, alpha)));
             drawQuad(left, top, right, bottom, EDGE_PADDING);
         } finally {
             GL20.glUseProgram(0);
@@ -261,6 +280,13 @@ public final class ShaderRenderer {
             roundedGradientProgram = createProgram(ROUNDED_GRADIENT_FRAGMENT);
         }
         return roundedGradientProgram;
+    }
+
+    private static Program getRoundedHueProgram() {
+        if (roundedHueProgram == null) {
+            roundedHueProgram = createProgram(ROUNDED_HUE_FRAGMENT);
+        }
+        return roundedHueProgram;
     }
 
     private static Program getRoundedBorderProgram() {
@@ -504,6 +530,39 @@ public final class ShaderRenderer {
             "    vec4 result = mix(top, bottom, st.y);\n" +
             "    result.rgb += dither(st);\n" +
             "    gl_FragColor = vec4(result.rgb, result.a * alpha);\n" +
+            "}\n";
+
+    private static final String ROUNDED_HUE_FRAGMENT =
+            "#version 120\n" +
+            "uniform vec2 rectSize;\n" +
+            "uniform float radius;\n" +
+            "uniform float padding;\n" +
+            "uniform float softness;\n" +
+            "uniform float alpha;\n" +
+            "#define NOISE (0.45 / 255.0)\n" +
+            "float roundSDF(vec2 p, vec2 halfSize, float r) {\n" +
+            "    vec2 q = abs(p) - halfSize + vec2(r);\n" +
+            "    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;\n" +
+            "}\n" +
+            "float dither(vec2 coord) {\n" +
+            "    return mix(NOISE, -NOISE, fract(sin(dot(coord, vec2(12.9898, 78.233))) * 43758.5453));\n" +
+            "}\n" +
+            "vec3 hsv2rgb(vec3 c) {\n" +
+            "    vec3 p = abs(fract(c.xxx + vec3(0.0, 0.6666667, 0.3333333)) * 6.0 - 3.0);\n" +
+            "    return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);\n" +
+            "}\n" +
+            "void main() {\n" +
+            "    vec2 size = max(rectSize, vec2(0.001));\n" +
+            "    vec2 coord = gl_TexCoord[0].st * (size + vec2(padding * 2.0)) - vec2(padding);\n" +
+            "    vec2 st = clamp(coord / size, vec2(0.0), vec2(1.0));\n" +
+            "    vec2 halfSize = size * 0.5;\n" +
+            "    float r = min(radius, min(halfSize.x, halfSize.y));\n" +
+            "    float distance = roundSDF(coord - halfSize, halfSize, r);\n" +
+            "    float mask = 1.0 - smoothstep(0.0, softness, distance);\n" +
+            "    float brightness = mix(1.0, 0.42, st.y);\n" +
+            "    vec3 rgb = hsv2rgb(vec3(st.x, 0.86, brightness));\n" +
+            "    rgb += dither(st);\n" +
+            "    gl_FragColor = vec4(rgb, alpha * mask);\n" +
             "}\n";
 
     private static final String ROUNDED_BORDER_FRAGMENT =
