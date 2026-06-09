@@ -436,6 +436,32 @@ public class RenderUtil {
         }
     }
 
+    public static void drawFrostedGlassRect(float x, float y, float x2, float y2, float radius,
+                                            float borderWidth, int fillColor, int borderColor) {
+        normalizeRect(Rect.tmp, x, y, x2, y2);
+        float width = Rect.tmp.width();
+        float height = Rect.tmp.height();
+        radius = RenderState.clampRadius(radius, width, height);
+        borderWidth = Math.max(0.0f, Math.min(borderWidth, Math.min(width, height) / 2.0f));
+
+        RenderState.begin2D();
+        try {
+            if (ShaderRenderer.drawFrostedGlass(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
+                    radius, borderWidth, fillColor, borderColor)) {
+                return;
+            }
+        } finally {
+            RenderState.end2D();
+        }
+
+        drawRoundedBorderedRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
+                radius, borderWidth, fillColor, borderColor);
+        drawVerticalGradientRect(Rect.tmp.left + 1.0f, Rect.tmp.top + 1.0f,
+                Rect.tmp.right - 1.0f, Rect.tmp.bottom - 1.0f,
+                applyAlpha(0x00FFFFFF, Math.min(30, Math.max(0, getAlpha(fillColor) / 5))),
+                applyAlpha(0x00000000, 0));
+    }
+
     public static void drawGradientBorderedRect(float x, float y, float x2, float y2, float radius, float borderWidth,
                                                 int fillColor, int leftBorderColor, int rightBorderColor) {
         normalizeRect(Rect.tmp, x, y, x2, y2);

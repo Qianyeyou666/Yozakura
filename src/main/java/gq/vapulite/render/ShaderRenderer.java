@@ -1,9 +1,14 @@
 package gq.vapulite.render;
 
+import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL12;
+import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GLContext;
 
+import java.nio.ByteBuffer;
+import java.nio.IntBuffer;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -17,10 +22,20 @@ public final class ShaderRenderer {
     private static Program roundedGradientProgram;
     private static Program roundedBorderProgram;
     private static Program roundedShadowProgram;
+    private static Program frostedGlassProgram;
+    private static final IntBuffer VIEWPORT_BUFFER = BufferUtils.createIntBuffer(16);
+    private static int screenTexture;
+    private static int capturedWidth;
+    private static int capturedHeight;
+    private static boolean frostedGlassDirty = true;
     private static boolean disabled;
     private static boolean loggedFailure;
 
     private ShaderRenderer() {
+    }
+
+    public static void invalidateFrostedGlass() {
+        frostedGlassDirty = true;
     }
 
     public static boolean drawRect(float left, float top, float right, float bottom, int color) {
@@ -143,6 +158,75 @@ public final class ShaderRenderer {
         return true;
     }
 
+    public static boolean drawFrostedGlass(float left, float top, float right, float bottom, float radius,
+                                           float borderWidth, int fillColor, int borderColor) {
+        Program program = getFrostedGlassProgram();
+        if (program == null || right <= left || bottom <= top || !ensureFrostedGlassTexture()) {
+            return false;
+        }
+
+        float width = right - left;
+        float height = bottom - top;
+        float clampedBorder = Math.max(0.0f, Math.min(borderWidth, Math.min(width, height) / 2.0f));
+
+        program.use();
+        try {
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            GL11.glEnable(GL11.GL_TEXTURE_2D);
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, screenTexture);
+            setRoundedUniforms(program, width, height, radius);
+            program.set1f("borderWidth", clampedBorder);
+            program.set1f("grainStrength", 0.028f);
+            program.set1f("blurRadius", 4.6f);
+            program.set2f("screenSize", capturedWidth, capturedHeight);
+            program.set1i("screenTex", 0);
+            setColor(program, "fillColor", fillColor);
+            setColor(program, "borderColor", borderColor);
+            drawQuad(left, top, right, bottom, EDGE_PADDING);
+        } finally {
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+            GL20.glUseProgram(0);
+        }
+        return true;
+    }
+
+    private static boolean ensureFrostedGlassTexture() {
+        if (!supportsShaders()) {
+            return false;
+        }
+        VIEWPORT_BUFFER.clear();
+        GL11.glGetInteger(GL11.GL_VIEWPORT, VIEWPORT_BUFFER);
+        int viewportX = VIEWPORT_BUFFER.get(0);
+        int viewportY = VIEWPORT_BUFFER.get(1);
+        int viewportW = VIEWPORT_BUFFER.get(2);
+        int viewportH = VIEWPORT_BUFFER.get(3);
+        if (viewportW <= 0 || viewportH <= 0) {
+            return false;
+        }
+        if (screenTexture == 0) {
+            screenTexture = GL11.glGenTextures();
+            frostedGlassDirty = true;
+        }
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, screenTexture);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+        if (capturedWidth != viewportW || capturedHeight != viewportH) {
+            GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGB, viewportW, viewportH, 0,
+                    GL11.GL_RGB, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
+            capturedWidth = viewportW;
+            capturedHeight = viewportH;
+            frostedGlassDirty = true;
+        }
+        if (frostedGlassDirty) {
+            GL11.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, viewportX, viewportY, viewportW, viewportH);
+            frostedGlassDirty = false;
+        }
+        return true;
+    }
+
     private static void setRoundedUniforms(Program program, float width, float height, float radius) {
         float clampedRadius = Math.max(0.0f, Math.min(radius, Math.min(width, height) / 2.0f));
         program.set2f("rectSize", width, height);
@@ -191,6 +275,13 @@ public final class ShaderRenderer {
             roundedShadowProgram = createProgram(ROUNDED_SHADOW_FRAGMENT);
         }
         return roundedShadowProgram;
+    }
+
+    private static Program getFrostedGlassProgram() {
+        if (frostedGlassProgram == null) {
+            frostedGlassProgram = createProgram(FROSTED_GLASS_FRAGMENT);
+        }
+        return frostedGlassProgram;
     }
 
     private static Program createProgram(String fragmentSource) {
@@ -313,6 +404,10 @@ public final class ShaderRenderer {
 
         private void set1f(String name, float value) {
             GL20.glUniform1f(uniform(name), value);
+        }
+
+        private void set1i(String name, int value) {
+            GL20.glUniform1i(uniform(name), value);
         }
 
         private void set2f(String name, float first, float second) {
@@ -470,5 +565,68 @@ public final class ShaderRenderer {
             "    float falloff = 1.0 - smoothstep(0.0, shadow, distance);\n" +
             "    float alpha = color.a * outside * falloff * falloff;\n" +
             "    gl_FragColor = vec4(color.rgb, alpha);\n" +
+            "}\n";
+
+    private static final String FROSTED_GLASS_FRAGMENT =
+            "#version 120\n" +
+            "uniform vec2 rectSize;\n" +
+            "uniform vec4 fillColor;\n" +
+            "uniform vec4 borderColor;\n" +
+            "uniform sampler2D screenTex;\n" +
+            "uniform vec2 screenSize;\n" +
+            "uniform float radius;\n" +
+            "uniform float borderWidth;\n" +
+            "uniform float padding;\n" +
+            "uniform float softness;\n" +
+            "uniform float grainStrength;\n" +
+            "uniform float blurRadius;\n" +
+            "float roundSDF(vec2 p, vec2 halfSize, float r) {\n" +
+            "    vec2 q = abs(p) - halfSize + vec2(r);\n" +
+            "    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;\n" +
+            "}\n" +
+            "float noise(vec2 p) {\n" +
+            "    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);\n" +
+            "}\n" +
+            "vec4 blurSample(vec2 uv) {\n" +
+            "    vec2 texel = 1.0 / max(screenSize, vec2(1.0));\n" +
+            "    vec2 radiusVec = texel * blurRadius;\n" +
+            "    vec4 c = texture2D(screenTex, uv) * 0.160;\n" +
+            "    c += texture2D(screenTex, uv + radiusVec * vec2(-1.0, 0.0)) * 0.120;\n" +
+            "    c += texture2D(screenTex, uv + radiusVec * vec2(1.0, 0.0)) * 0.120;\n" +
+            "    c += texture2D(screenTex, uv + radiusVec * vec2(0.0, -1.0)) * 0.120;\n" +
+            "    c += texture2D(screenTex, uv + radiusVec * vec2(0.0, 1.0)) * 0.120;\n" +
+            "    c += texture2D(screenTex, uv + radiusVec * vec2(-0.72, -0.72)) * 0.090;\n" +
+            "    c += texture2D(screenTex, uv + radiusVec * vec2(0.72, -0.72)) * 0.090;\n" +
+            "    c += texture2D(screenTex, uv + radiusVec * vec2(-0.72, 0.72)) * 0.090;\n" +
+            "    c += texture2D(screenTex, uv + radiusVec * vec2(0.72, 0.72)) * 0.090;\n" +
+            "    return c;\n" +
+            "}\n" +
+            "void main() {\n" +
+            "    vec2 size = max(rectSize, vec2(0.001));\n" +
+            "    vec2 coord = gl_TexCoord[0].st * (size + vec2(padding * 2.0)) - vec2(padding);\n" +
+            "    vec2 st = clamp(coord / size, vec2(0.0), vec2(1.0));\n" +
+            "    vec2 halfSize = size * 0.5;\n" +
+            "    float outerRadius = min(radius, min(halfSize.x, halfSize.y));\n" +
+            "    float outerDistance = roundSDF(coord - halfSize, halfSize, outerRadius);\n" +
+            "    float outerAlpha = 1.0 - smoothstep(0.0, softness, outerDistance);\n" +
+            "    vec2 innerHalf = max(halfSize - vec2(borderWidth), vec2(0.0));\n" +
+            "    float innerRadius = max(outerRadius - borderWidth, 0.0);\n" +
+            "    float innerDistance = roundSDF(coord - halfSize, innerHalf, innerRadius);\n" +
+            "    float innerAlpha = 1.0 - smoothstep(0.0, softness, innerDistance);\n" +
+            "    float borderMask = clamp(outerAlpha - innerAlpha, 0.0, 1.0);\n" +
+            "    float grain = noise(gl_FragCoord.xy * 0.85) - 0.5;\n" +
+            "    float topGlow = (1.0 - st.y) * 0.035;\n" +
+            "    float sideGlow = (1.0 - st.x) * 0.012;\n" +
+            "    vec2 screenUv = clamp(gl_FragCoord.xy / max(screenSize, vec2(1.0)), vec2(0.001), vec2(0.999));\n" +
+            "    vec2 refractUv = screenUv + vec2(noise(gl_FragCoord.yx * 0.13) - 0.5, grain) / max(screenSize, vec2(1.0)) * 2.4;\n" +
+            "    vec3 blurred = blurSample(refractUv).rgb;\n" +
+            "    vec3 tint = fillColor.rgb + vec3(topGlow + sideGlow + grain * grainStrength);\n" +
+            "    vec3 glass = mix(blurred, tint, clamp(fillColor.a * 0.65 + 0.24, 0.0, 0.78));\n" +
+            "    vec3 edge = mix(glass, borderColor.rgb + vec3(0.06), clamp(borderColor.a * 3.2, 0.0, 1.0));\n" +
+            "    float fillAlpha = clamp(fillColor.a * 0.78 + 0.045, 0.0, 0.80) * innerAlpha;\n" +
+            "    float borderAlpha = borderColor.a * borderMask;\n" +
+            "    float totalAlpha = max(fillAlpha, borderAlpha);\n" +
+            "    vec3 rgb = mix(glass, edge, borderMask);\n" +
+            "    gl_FragColor = vec4(clamp(rgb, 0.0, 1.0), totalAlpha);\n" +
             "}\n";
 }

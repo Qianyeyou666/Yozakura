@@ -1,0 +1,116 @@
+{
+  "file": "C:\\Users\\qiany\\Downloads\\\u94bb\u77f3\u57ce\u767b\u9646\u5668V3.4.1.exe",
+  "sha256": "5f644897f4426b3a1701f237add815b35a73975b0111af08d8914be897e5c1de",
+  "sections": [
+    {
+      "name": ".text",
+      "va": "0x1000",
+      "vs": "0x64146",
+      "raw": "0x0",
+      "rawsz": "0x0",
+      "entropy": 0
+    },
+    {
+      "name": ".rdata",
+      "va": "0x66000",
+      "vs": "0x2ded64",
+      "raw": "0x0",
+      "rawsz": "0x0",
+      "entropy": 0
+    },
+    {
+      "name": ".data",
+      "va": "0x345000",
+      "vs": "0x25f8",
+      "raw": "0x0",
+      "rawsz": "0x0",
+      "entropy": 0
+    },
+    {
+      "name": ".pdata",
+      "va": "0x348000",
+      "vs": "0x35b8",
+      "raw": "0x0",
+      "rawsz": "0x0",
+      "entropy": 0
+    },
+    {
+      "name": ".dstub",
+      "va": "0x34c000",
+      "vs": "0x350",
+      "raw": "0x0",
+      "rawsz": "0x0",
+      "entropy": 0
+    },
+    {
+      "name": ".retplne",
+      "va": "0x34d000",
+      "vs": "0x48",
+      "raw": "0x0",
+      "rawsz": "0x0",
+      "entropy": 0
+    },
+    {
+      "name": ".stubk",
+      "va": "0x34e000",
+      "vs": "0x30",
+      "raw": "0x0",
+      "rawsz": "0x0",
+      "entropy": 0
+    },
+    {
+      "name": ".tls",
+      "va": "0x34f000",
+      "vs": "0x9",
+      "raw": "0x0",
+      "rawsz": "0x0",
+      "entropy": 0
+    },
+    {
+      "name": ".\\4L",
+      "va": "0x350000",
+      "vs": "0x6cf16e",
+      "raw": "0x0",
+      "rawsz": "0x0",
+      "entropy": 0
+    },
+    {
+      "name": ".iMv",
+      "va": "0xa20000",
+      "vs": "0x1f0",
+      "raw": "0x400",
+      "rawsz": "0x200",
+      "entropy": 1.7994542463247267
+    },
+    {
+      "name": ".Fb%",
+      "va": "0xa21000",
+      "vs": "0xd5837c",
+      "raw": "0x600",
+      "rawsz": "0xd58400",
+      "entropy": 7.794942951998239
+    },
+    {
+      "name": ".rsrc",
+      "va": "0x177a000",
+      "vs": "0x36293",
+      "raw": "0xd58a00",
+      "rawsz": "0x36400",
+      "entropy": 6.001569170543688
+    },
+    {
+      "name": ".reloc",
+      "va": "0x17b1000",
+      "vs": "0xac",
+      "raw": "0xd8ee00",
+      "rawsz": "0x200",
+      "entropy": 1.9526119013840837
+    }
+  ],
+  "embedded_pe_hits": [
+    [
+      "0x0",
+      "0x78"
+    ]
+  ]
+}

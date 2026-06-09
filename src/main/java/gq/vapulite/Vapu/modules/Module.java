@@ -82,9 +82,6 @@ public class Module {
         if (this.state == state && !NoToggle) {
             return;
         }
-        if (playSound) {
-            playToggleSound();
-        }
         if (state) {
             this.state = true;
             registerEvents();
@@ -107,12 +104,6 @@ public class Module {
 
         if (playSound && Client.MessageON && !NoToggle) {
             NotificationManager.show(this.getName(), state ? "Enabled" : "Disabled", this);
-        }
-    }
-
-    private void playToggleSound() {
-        if (mc.thePlayer != null) {
-            mc.thePlayer.playSound("random.click", 0.3f, 0.5f);
         }
     }
 

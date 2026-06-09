@@ -32,10 +32,10 @@ public final class UiTheme {
                 new Color(83, 86, 92).getRGB(),
                 new Color(112, 193, 220).getRGB(),
                 new Color(196, 78, 83).getRGB(),
-                new Color(13, 17, 23, 224).getRGB(),
-                new Color(88, 98, 122).getRGB(),
-                new Color(20, 24, 31, 230).getRGB(),
-                new Color(37, 43, 54, 190).getRGB());
+                new Color(7, 9, 13, 154).getRGB(),
+                new Color(154, 190, 214, 58).getRGB(),
+                new Color(7, 9, 13, 136).getRGB(),
+                new Color(23, 27, 35, 158).getRGB());
     }
 
     public int withAlpha(int color, float alpha) {

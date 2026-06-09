@@ -1,19 +1,21 @@
 package gq.vapulite.utils;
 
+import gq.vapulite.Vapu.VapeClickGui.ClickGuiIcons;
 import gq.vapulite.Vapu.modules.Module;
 import gq.vapulite.Vapu.utils.ColorUtils;
 import gq.vapulite.Vapu.utils.RenderUtil;
 import gq.vapulite.Vapu.utils.TimerUtil;
+import gq.vapulite.font.CFontRenderer;
 import gq.vapulite.font.FontLoaders;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.GlStateManager;
-import net.minecraft.client.renderer.Tessellator;
-import net.minecraft.client.renderer.WorldRenderer;
-import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
-
-import java.awt.*;
 
 public class Notification {
+    private static final int TEXT = 0xFFE8EAEC;
+    private static final int MUTED = 0xFFA4ADBB;
+    private static final int GLASS = 0xFF07090D;
+    private static final int GLASS_SOFT = 0xFF0B0E14;
+    private static final int BORDER = 0xFF8DBED8;
+
     public static Minecraft mc = Minecraft.getMinecraft();
 
     public boolean isClassicNotification;
@@ -26,7 +28,7 @@ public class Notification {
     Module module;
     private float animationX;
     private float animationY;
-    private float width;
+    private final float width;
     private final float height;
     private final long createdAt;
     private long lastFrameMS;
@@ -37,57 +39,74 @@ public class Notification {
 
     public Notification(String title, String message, Type type, long stayTime, Module module) {
         this.module = module;
-
         this.message = message == null ? "" : message;
         this.title = title == null ? "" : title;
-        isClassicNotification = true;
-        width = Math.max(Math.max(FontLoaders.C18.getStringWidth(this.title), FontLoaders.C14.getStringWidth(this.message)) + 46, 150);
-        this.height = 38.0f;
-        this.animationX = 1.0f;
         this.type = type == null ? Type.INFO : type;
         this.stayTime = stayTime;
         this.createdAt = System.currentTimeMillis();
         this.lastFrameMS = this.createdAt;
-
+        this.animationX = 1.0f;
+        this.height = this.message.length() == 0 ? 38.0f : 46.0f;
+        this.width = Math.max(174.0f, Math.min(278.0f,
+                Math.max(FontLoaders.C18.getStringWidth(getTitle()), FontLoaders.C14.getStringWidth(this.message)) + 58.0f));
+        this.isClassicNotification = false;
         this.timer = new TimerUtil();
         timer.reset();
     }
 
-    public void draw(float x, float offsetY) {
+    public void draw(float screenWidth, float offsetY) {
         long now = System.currentTimeMillis();
-        float delta = Math.max(1.0f, Math.min(50.0f, now - lastFrameMS));
-        lastFrameMS = now;
+        float factor = animationFactor(now);
         float target = isFinished() ? 1.0f : 0.0f;
-        float factor = 1.0f - (float) Math.pow(0.001D, delta / 260.0D);
-        this.animationX = lerp(this.animationX, target, factor);
+        animationX = lerp(animationX, target, factor);
 
-        if (animationY == 0) {
+        if (animationY == 0.0f) {
             animationY = offsetY;
         }
-
         animationY = lerp(animationY, offsetY, factor);
 
-        float x1 = x - width - 8.0f + this.animationX * (width + 12.0f);
-        float x2 = x1 + width;
-
+        float easedOut = ease(animationX);
+        float x1 = screenWidth - width - 9.0f + easedOut * (width + 16.0f);
         float y1 = animationY - height;
+        float x2 = x1 + width;
         float y2 = y1 + height;
+        float bodyAlpha = 1.0f - Math.min(1.0f, animationX * 0.85f);
         int accent = getAccentColor();
-        int background = ColorUtils.applyAlpha(0xFF10131A, 185);
-        int border = ColorUtils.applyAlpha(accent, 120);
         float progress = 1.0f - ColorUtils.clamp((now - createdAt) / (float) Math.max(1L, stayTime), 0.0f, 1.0f);
 
-        RenderUtil.drawSoftShadow(x1, y1, x2, y2, 6.0f, 0x90000000, 5, 3.0f);
-        RenderUtil.drawRoundedBorderedRect(x1, y1, x2, y2, 6.0f, 1.0f, background, border);
-        RenderUtil.drawRect(x1 + 4.0f, y1 + 6.0f, x1 + 7.0f, y2 - 6.0f, ColorUtils.applyAlpha(accent, 230));
-        FontLoaders.C18.drawString(getTitle(), x1 + 14.0f, y1 + 9.0f, 0xFFFFFFFF);
-        FontLoaders.C14.drawString(message, x1 + 14.0f, y1 + 23.0f, 0xFFC8D0DA);
-        RenderUtil.drawProgressBar(x1 + 10.0f, y2 - 4.0f, x2 - 10.0f, y2 - 2.0f, 1.5f, progress,
-                0x30000000, ColorUtils.applyAlpha(accent, 210));
+        RenderUtil.drawSoftShadow(x1, y1, x2, y2, 8.0f,
+                withAlpha(0xFF000000, Math.round(58.0f * bodyAlpha)), 7, 3.4f);
+        RenderUtil.drawFrostedGlassRect(x1, y1, x2, y2, 8.0f, 1.0f,
+                withAlpha(GLASS, Math.round(146.0f * bodyAlpha)),
+                withAlpha(BORDER, Math.round(56.0f * bodyAlpha)));
+        RenderUtil.drawHorizontalGradientRect(x1 + 10.0f, y1 + 4.0f, x2 - 10.0f, y1 + 5.1f,
+                withAlpha(accent, Math.round(120.0f * bodyAlpha)),
+                withAlpha(0xFF8B7CFF, Math.round(72.0f * bodyAlpha)));
+
+        float iconX = x1 + 11.0f;
+        float iconY = y1 + 10.0f;
+        RenderUtil.drawFrostedGlassRect(iconX, iconY, iconX + 24.0f, iconY + 24.0f, 7.0f, 0.8f,
+                withAlpha(GLASS_SOFT, Math.round(154.0f * bodyAlpha)),
+                withAlpha(accent, Math.round(76.0f * bodyAlpha)));
+        RenderUtil.drawSoftShadow(iconX, iconY, iconX + 24.0f, iconY + 24.0f, 7.0f,
+                withAlpha(accent, Math.round(28.0f * bodyAlpha)), 4, 1.8f);
+        drawCenteredIcon(getIcon(), FontLoaders.I18, iconX + 12.0f, iconY + 12.0f,
+                withAlpha(accent, Math.round(230.0f * bodyAlpha)));
+
+        FontLoaders.C18.drawString(trim(getTitle(), FontLoaders.C18, width - 52.0f), x1 + 43.0f, y1 + 11.0f,
+                withAlpha(TEXT, Math.round(245.0f * bodyAlpha)));
+        if (message.length() > 0) {
+            FontLoaders.C14.drawString(trim(message, FontLoaders.C14, width - 54.0f), x1 + 43.0f, y1 + 27.0f,
+                    withAlpha(MUTED, Math.round(216.0f * bodyAlpha)));
+        }
+
+        RenderUtil.drawProgressBar(x1 + 12.0f, y2 - 4.0f, x2 - 12.0f, y2 - 2.3f, 1.5f, progress,
+                withAlpha(0xFFFFFFFF, Math.round(18.0f * bodyAlpha)),
+                withAlpha(accent, Math.round(190.0f * bodyAlpha)));
     }
 
     public boolean shouldDelete() {
-        return isFinished() && this.animationX > 0.98f;
+        return isFinished() && animationX > 0.985f;
     }
 
     public float getHeight() {
@@ -108,60 +127,80 @@ public class Notification {
         return type.name();
     }
 
+    private String getIcon() {
+        if (module != null) {
+            return ClickGuiIcons.forModule(module);
+        }
+        switch (type) {
+            case SUCCESS:
+                return FontLoaders.ICON_CHECKMARK;
+            case ERROR:
+                return FontLoaders.ICON_XMARK;
+            case WARNING:
+                return FontLoaders.ICON_WARNING;
+            case MODULE:
+                return FontLoaders.ICON_SETTINGS;
+            case INFO:
+            default:
+                return FontLoaders.ICON_INFO;
+        }
+    }
+
     private int getAccentColor() {
-        switch (this.type) {
+        switch (type) {
             case MODULE:
             case INFO:
-                return 0xFF42A5F5;
+                return 0xFF70C1DC;
             case WARNING:
                 return 0xFFFFC857;
             case ERROR:
-                return 0xFFFF5C5C;
+                return 0xFFFF5C72;
             case SUCCESS:
-                return 0xFF5ED68A;
+                return 0xFF6FD39A;
             default:
-                return 0xFF42A5F5;
+                return 0xFF70C1DC;
         }
     }
 
-    private float lerp(float current, float target, float factor) {
+    private float animationFactor(long now) {
+        float delta = Math.max(1.0f, Math.min(50.0f, now - lastFrameMS));
+        lastFrameMS = now;
+        return 1.0f - (float) Math.pow(0.001D, delta / 300.0D);
+    }
+
+    private static float ease(float value) {
+        float clamped = ColorUtils.clamp(value, 0.0f, 1.0f);
+        return clamped * clamped * (3.0f - 2.0f * clamped);
+    }
+
+    private static float lerp(float current, float target, float factor) {
         return current + (target - current) * ColorUtils.clamp(factor, 0.0f, 1.0f);
     }
 
-    public void drawArrow(float left, float top, float right, float bottom, int color) {
-        float shiet;
-        if (left < right) {
-            shiet = left;
-            left = right;
-            right = shiet;
+    private static int withAlpha(int color, int alpha) {
+        return (color & 0x00FFFFFF) | (ColorUtils.clamp(alpha, 0, 255) << 24);
+    }
+
+    private static void drawCenteredIcon(String icon, CFontRenderer font, float centerX, float centerY, int color) {
+        font.drawString(icon, centerX - font.getStringWidth(icon) / 2.0f,
+                centerY - font.getHeight() / 2.0f + 2.0f, color);
+    }
+
+    private static String trim(String text, CFontRenderer font, float maxWidth) {
+        if (text == null) {
+            return "";
         }
-        if (top < bottom) {
-            shiet = top;
-            top = bottom;
-            bottom = shiet;
+        if (font.getStringWidth(text) <= maxWidth) {
+            return text;
         }
-        float a = (float) (color >> 24 & 255) / 255.0F;
-        float b = (float) (color >> 16 & 255) / 255.0F;
-        float c = (float) (color >> 8 & 255) / 255.0F;
-        float d = (float) (color & 255) / 255.0F;
-        WorldRenderer worldRenderer = Tessellator.getInstance().getWorldRenderer();
-        GlStateManager.enableBlend();
-        GlStateManager.disableTexture2D();
-        GlStateManager.tryBlendFuncSeparate(770, 771, 1, 1);
-        GlStateManager.color(b, c, d, a);
-        worldRenderer.begin(7, DefaultVertexFormats.POSITION);
-        worldRenderer.pos(left, bottom + 6f, 0.0D).endVertex();
-        worldRenderer.pos(right, bottom, 0.0D).endVertex();
-        worldRenderer.pos(right, top, 0.0D).endVertex();
-        worldRenderer.pos(left, top - 6f, 0.0D).endVertex();
-        Tessellator.getInstance().draw();
-        GlStateManager.enableTexture2D();
-        GlStateManager.disableBlend();
-        GlStateManager.color(1.0F, 1.0F, 1.0F, 2.0F);
+        String result = text;
+        while (result.length() > 1 && font.getStringWidth(result + "...") > maxWidth) {
+            result = result.substring(0, result.length() - 1);
+        }
+        return result + "...";
     }
 
     public enum Type {
         INFO, WARNING, ERROR, SUCCESS, MODULE
     }
-
 }

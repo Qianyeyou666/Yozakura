@@ -48,7 +48,7 @@ public class UiToggle extends UiComponent {
             return;
         }
         if (!explicitProgress) {
-            progress += ((enabled ? 1.0f : 0.0f) - progress) * 0.25f;
+            progress += ((enabled ? 1.0f : 0.0f) - progress) * 0.14f;
         }
         explicitProgress = false;
         int offTrack = new Color(37, 39, 42, 235).getRGB();

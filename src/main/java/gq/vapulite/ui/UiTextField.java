@@ -64,19 +64,34 @@ public class UiTextField extends UiComponent {
         if (!visible || alpha <= 0.0f) {
             return;
         }
-        int border = focused ? theme.accent : new Color(80, 84, 90).getRGB();
-        RenderUtil.drawRoundedBorderedRect(bounds.x, bounds.y, bounds.right(), bounds.bottom(), 7.0f, 0.8f,
-                theme.withAlpha(new Color(11, 15, 21, 218).getRGB(), 205.0f * alpha),
-                theme.withAlpha(border, (focused ? 125.0f : 38.0f) * alpha));
+        boolean hovered = isHovered(mouseX, mouseY);
+        float radius = Math.min(17.0f, bounds.height / 2.0f);
+        int border = focused || hovered ? theme.accent : new Color(52, 135, 164).getRGB();
+        float borderAlpha = focused ? 138.0f : hovered ? 96.0f : 72.0f;
+        RenderUtil.drawFrostedGlassRect(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, 1.15f,
+                theme.withAlpha(new Color(6, 8, 12, 156).getRGB(), 156.0f * alpha),
+                theme.withAlpha(border, borderAlpha * alpha));
+        RenderUtil.drawRoundedBorderedRect(bounds.x + 1.8f, bounds.y + 1.8f, bounds.right() - 1.8f,
+                bounds.bottom() - 1.8f, Math.max(0.0f, radius - 1.8f), 0.6f,
+                theme.withAlpha(new Color(255, 255, 255).getRGB(), 0.0f),
+                theme.withAlpha(new Color(47, 108, 131).getRGB(), 42.0f * alpha));
+        if (focused || hovered) {
+            RenderUtil.drawSoftShadow(bounds.x + 2.0f, bounds.y + 2.0f, bounds.right() - 2.0f, bounds.bottom() - 2.0f,
+                    Math.max(0.0f, radius - 2.0f), theme.withAlpha(theme.accent, (focused ? 30.0f : 18.0f) * alpha), 4, 2.2f);
+        }
         String shown = text.length() == 0 ? placeholder : text;
         int color = text.length() == 0 ? theme.muted : theme.text;
-        FontLoaders.F14.drawString(trim(shown, bounds.width - 48.0f), bounds.x + 10.0f, bounds.y + 8.0f,
-                theme.withAlpha(color, (text.length() == 0 ? 170.0f : 230.0f) * alpha));
-        FontLoaders.F14.drawCenteredString("Q", bounds.right() - 14.0f, bounds.y + 8.0f,
-                theme.withAlpha(theme.muted, 160.0f * alpha));
+        float textY = bounds.y + (bounds.height - FontLoaders.F14.getStringHeight(shown)) / 2.0f + 0.5f;
+        float textX = bounds.x + 24.0f;
+        float iconCenterX = bounds.right() - 24.0f;
+        FontLoaders.F14.drawString(trim(shown, bounds.width - 72.0f), textX, textY,
+                theme.withAlpha(color, (text.length() == 0 ? 168.0f : 232.0f) * alpha));
+        drawSearchIcon(iconCenterX, bounds.y + bounds.height / 2.0f,
+                theme.withAlpha(focused || hovered ? new Color(206, 228, 236).getRGB() : theme.muted,
+                        (focused ? 225.0f : hovered ? 198.0f : 176.0f) * alpha));
         if (focused && (System.currentTimeMillis() - cursorTime) / 360L % 2L == 0L) {
-            float cursorX = bounds.x + 10.0f + (text.length() == 0 ? 0.0f : FontLoaders.F14.getStringWidth(trim(text, bounds.width - 48.0f)) + 2.0f);
-            RenderUtil.drawRect(cursorX, bounds.y + 6.0f, cursorX + 0.8f, bounds.bottom() - 6.0f,
+            float cursorX = textX + (text.length() == 0 ? 0.0f : FontLoaders.F14.getStringWidth(trim(text, bounds.width - 72.0f)) + 2.0f);
+            RenderUtil.drawRect(cursorX, bounds.y + 10.0f, cursorX + 0.8f, bounds.bottom() - 10.0f,
                     theme.withAlpha(theme.text, 190.0f * alpha));
         }
     }
@@ -85,9 +100,6 @@ public class UiTextField extends UiComponent {
     public boolean mouseClicked(int mouseX, int mouseY, int button) {
         focused = isHovered(mouseX, mouseY);
         cursorTime = System.currentTimeMillis();
-        if (focused && button == 0 && text.length() > 0 && mouseX >= bounds.right() - 34.0f) {
-            text = "";
-        }
         return focused;
     }
 
@@ -131,5 +143,11 @@ public class UiTextField extends UiComponent {
             result = result.substring(0, result.length() - 1);
         }
         return result + "...";
+    }
+
+    private static void drawSearchIcon(float centerX, float centerY, int color) {
+        FontLoaders.I18.drawString(FontLoaders.ICON_SEARCH,
+                centerX - FontLoaders.I18.getStringWidth(FontLoaders.ICON_SEARCH) / 2.0f,
+                centerY - FontLoaders.I18.getHeight() / 2.0f + 2.0f, color);
     }
 }

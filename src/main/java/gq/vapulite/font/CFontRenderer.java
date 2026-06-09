@@ -26,9 +26,21 @@ extends CFont {
     protected DynamicTexture texBold;
     protected DynamicTexture texItalic;
     protected DynamicTexture texItalicBold;
+    private Font boldFont;
+    private Font italicFont;
+    private Font boldItalicFont;
 
     public CFontRenderer(Font font, boolean antiAlias, boolean fractionalMetrics) {
+        this(font, font.deriveFont(Font.BOLD), font.deriveFont(Font.ITALIC),
+                font.deriveFont(Font.BOLD | Font.ITALIC), antiAlias, fractionalMetrics);
+    }
+
+    public CFontRenderer(Font font, Font boldFont, Font italicFont, Font boldItalicFont,
+                         boolean antiAlias, boolean fractionalMetrics) {
         super(font, antiAlias, fractionalMetrics);
+        this.boldFont = boldFont == null ? font.deriveFont(Font.BOLD) : boldFont;
+        this.italicFont = italicFont == null ? font.deriveFont(Font.ITALIC) : italicFont;
+        this.boldItalicFont = boldItalicFont == null ? font.deriveFont(Font.BOLD | Font.ITALIC) : boldItalicFont;
         this.setupMinecraftColorcodes();
         this.setupBoldItalicIDs();
     }
@@ -218,6 +230,9 @@ extends CFont {
     @Override
     public void setFont(Font font) {
         super.setFont(font);
+        this.boldFont = font.deriveFont(Font.BOLD);
+        this.italicFont = font.deriveFont(Font.ITALIC);
+        this.boldItalicFont = font.deriveFont(Font.BOLD | Font.ITALIC);
         this.setupBoldItalicIDs();
     }
 
@@ -234,8 +249,9 @@ extends CFont {
     }
 
     private void setupBoldItalicIDs() {
-        this.texBold = this.setupTexture(this.font.deriveFont(1), this.antiAlias, this.fractionalMetrics, this.boldChars);
-        this.texItalic = this.setupTexture(this.font.deriveFont(2), this.antiAlias, this.fractionalMetrics, this.italicChars);
+        this.texBold = this.setupTexture(this.boldFont, this.antiAlias, this.fractionalMetrics, this.boldChars);
+        this.texItalic = this.setupTexture(this.italicFont, this.antiAlias, this.fractionalMetrics, this.italicChars);
+        this.texItalicBold = this.setupTexture(this.boldItalicFont, this.antiAlias, this.fractionalMetrics, this.boldItalicChars);
     }
 
     private void drawLine(double x, double y, double x1, double y1, float width) {
@@ -336,4 +352,3 @@ extends CFont {
         }
     }
 }
-

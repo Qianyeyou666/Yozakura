@@ -69,7 +69,7 @@ public class UiPanel extends UiComponent {
             RenderUtil.drawSoftShadow(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius,
                     theme.withAlpha(shadowColor, shadowAlpha * alpha), shadowLayers, shadowSpread);
         }
-        RenderUtil.drawRoundedBorderedRect(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, borderWidth,
+        RenderUtil.drawFrostedGlassRect(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, borderWidth,
                 theme.withAlpha(fillColor, ((fillColor >>> 24) & 255) * alpha),
                 theme.withAlpha(borderColor, ((borderColor >>> 24) & 255) * alpha));
     }
