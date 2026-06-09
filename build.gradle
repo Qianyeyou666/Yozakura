@@ -101,9 +101,29 @@ shadowJar {
 reobf { shadowJar { mappingType = "SEARGE" } }
 tasks.reobfShadowJar.mustRunAfter shadowJar
 
+task syncLegacyMainClasses(type: Sync) {
+    dependsOn classes
+    from sourceSets.main.output
+    into "${buildDir}/classes/main"
+}
+
+task syncRuntimeJar(type: Copy) {
+    dependsOn tasks.reobfShadowJar
+    outputs.upToDateWhen { false }
+    from { shadowJar.archivePath }
+    into "${buildDir}/libs"
+    rename { "${archivesBaseName}.jar" }
+}
+
+tasks.matching { it.name == "runClient" || it.name == "runServer" }.all {
+    dependsOn syncLegacyMainClasses
+}
+
 configurations {
     external
     compile.extendsFrom external
 }
 
 build.dependsOn shadowJar
+build.dependsOn syncLegacyMainClasses
+build.dependsOn syncRuntimeJar

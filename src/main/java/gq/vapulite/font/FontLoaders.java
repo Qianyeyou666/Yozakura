@@ -59,6 +59,7 @@ public abstract class FontLoaders {
     public static final String ICON_MORE = "Y";
 
     private static final Map<String, Font> FONT_DATA = new HashMap<String, Font>();
+    private static final Font SYSTEM_FALLBACK = new Font("Dialog", Font.PLAIN, 16);
     private static final Map<String, CFontRenderer> RENDERERS = new HashMap<String, CFontRenderer>();
 
     public static final CFontRenderer F14 = regular(14);
@@ -133,7 +134,8 @@ public abstract class FontLoaders {
                 derive(family, Font.ITALIC, clampedSize),
                 derive(family, Font.BOLD | Font.ITALIC, clampedSize),
                 true,
-                true);
+                true,
+                fallbacks(family, clampedSize));
         RENDERERS.put(key, renderer);
         return renderer;
     }
@@ -168,14 +170,22 @@ public abstract class FontLoaders {
         } catch (Exception exception) {
             exception.printStackTrace();
             System.out.println("Error loading font " + location);
-            Font fallback = new Font("default", Font.PLAIN, 16);
+            Font fallback = SYSTEM_FALLBACK;
             FONT_DATA.put(key, fallback);
             return fallback;
         }
     }
 
+    private static Font[] fallbacks(FontFamily family, int size) {
+        if (family == FontFamily.ICON) {
+            return new Font[]{derive(FontFamily.INTER, Font.PLAIN, size), derive(FontFamily.ALIBABA, Font.PLAIN, size), SYSTEM_FALLBACK};
+        }
+        return new Font[]{derive(FontFamily.ALIBABA, Font.PLAIN, size), SYSTEM_FALLBACK};
+    }
+
     private enum FontFamily {
         INTER(new ResourceLocation("font/Inter.ttf"), new ResourceLocation("font/Inter-Italic.ttf")),
+        ALIBABA(new ResourceLocation("font/AlibabaSans-Regular.otf"), null),
         ICON(new ResourceLocation("font/TenacityIcon.ttf"), null);
 
         private final ResourceLocation location;

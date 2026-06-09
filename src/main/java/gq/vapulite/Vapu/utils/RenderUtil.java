@@ -155,6 +155,16 @@ public class RenderUtil {
             start = end;
             end = temp;
         }
+        if (Math.abs(w - h) < 0.001f && end - start >= 359.5f) {
+            RenderState.begin2D();
+            try {
+                if (ShaderRenderer.drawCircle(x, y, w, color)) {
+                    return;
+                }
+            } finally {
+                RenderState.end2D();
+            }
+        }
         int segments = Math.max(12, Math.min(160, (int) Math.ceil((end - start) / 3.0f)));
         RenderState.begin2D();
         try {
@@ -175,6 +185,17 @@ public class RenderUtil {
     public static void drawCircle(float x, float y, int start, int end, float radius, int color) {
         if (radius <= 0.0f || getAlpha(color) <= 0) {
             return;
+        }
+        int sweep = Math.abs(end - start);
+        if (sweep >= 359) {
+            RenderState.begin2D();
+            try {
+                if (ShaderRenderer.drawCircle(x, y, radius, color)) {
+                    return;
+                }
+            } finally {
+                RenderState.end2D();
+            }
         }
         arcEllipse(x, y, start, end, radius, radius, color);
     }
@@ -436,11 +457,14 @@ public class RenderUtil {
                 float left = Rect.tmp.left + i * segmentW;
                 float right = i == segments - 1 ? Rect.tmp.right : left + segmentW + 0.5f;
                 int start = Color.HSBtoRGB(i / (float) segments, 0.86f, 1.0f);
-                int end = Color.HSBtoRGB((i + 1) / (float) segments, 0.86f, 0.42f);
-                drawGradientRect(left, Rect.tmp.top, right, Rect.tmp.bottom,
+                int end = Color.HSBtoRGB((i + 1) / (float) segments, 0.86f, 1.0f);
+                drawHorizontalGradientRect(left, Rect.tmp.top, right, Rect.tmp.bottom,
                         applyAlpha(start, Math.round(255.0f * alpha)),
                         applyAlpha(end, Math.round(255.0f * alpha)));
             }
+            drawVerticalGradientRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
+                    applyAlpha(0x00FFFFFF, 0),
+                    applyAlpha(0x000000, Math.round(148.0f * alpha)));
         } finally {
             RenderState.popScissor();
         }
@@ -513,6 +537,9 @@ public class RenderUtil {
         }
         RenderState.begin2D();
         try {
+            if (ShaderRenderer.drawLine(x, y, x2, y2, lineWidth, color)) {
+                return;
+            }
             GL11.glLineWidth(lineWidth);
             glColor(color);
             GL11.glBegin(GL11.GL_LINES);
@@ -536,6 +563,9 @@ public class RenderUtil {
         int segments = Math.max(12, Math.min(160, (int) Math.ceil((end - start) / 3.0f)));
         RenderState.begin2D();
         try {
+            if (ShaderRenderer.drawArc(x, y, radius, start, end, lineWidth, color)) {
+                return;
+            }
             GL11.glLineWidth(lineWidth);
             glColor(color);
             GL11.glBegin(GL11.GL_LINE_STRIP);
@@ -552,6 +582,30 @@ public class RenderUtil {
 
     public static void drawCircleOutline(float x, float y, float radius, float lineWidth, int color) {
         drawArcOutline(x, y, radius, 0.0f, 360.0f, lineWidth, color);
+    }
+
+    public static void drawCircleBadge(float centerX, float centerY, float radius, float ringWidth,
+                                       float progress, int fillColor, int trackColor, int progressColor) {
+        if (radius <= 0.0f || ringWidth <= 0.0f) {
+            return;
+        }
+        float clampedProgress = RenderState.clamp01(progress);
+        RenderState.begin2D();
+        try {
+            if (ShaderRenderer.drawCircleBadge(centerX, centerY, radius, ringWidth,
+                    clampedProgress, fillColor, trackColor, progressColor)) {
+                return;
+            }
+        } finally {
+            RenderState.end2D();
+        }
+
+        drawCircle(centerX, centerY, 0, 360, Math.max(0.0f, radius - ringWidth), fillColor);
+        drawCircleOutline(centerX, centerY, radius - ringWidth / 2.0f, ringWidth, trackColor);
+        if (clampedProgress > 0.0f) {
+            drawArcOutline(centerX, centerY, radius - ringWidth / 2.0f, -90.0f,
+                    -90.0f + 360.0f * clampedProgress, ringWidth, progressColor);
+        }
     }
 
     public static void drawProgressBar(float x, float y, float x2, float y2, float radius, float progress, int backgroundColor, int fillColor) {

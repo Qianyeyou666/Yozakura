@@ -20,6 +20,9 @@ import java.util.Set;
 final class ClickGuiDetailPanel {
     private static final String[] DETAIL_TABS = new String[]{"General", "Targets", "Extra", "Rotation", "Visuals"};
     private static final float DROPDOWN_ROW_H = 18.0f;
+    private static final float PALETTE_SATURATION = 0.86f;
+    private static final float PALETTE_MIN_BRIGHTNESS = 0.42f;
+    private static final float PALETTE_MARKER_RADIUS = 4.8f;
     private final VapeClickGui gui;
     private final UiPanel panel;
     private final Map<Numbers, Float> paletteHueByRed = new HashMap<Numbers, Float>();
@@ -296,7 +299,7 @@ final class ClickGuiDetailPanel {
                 mouseX, mouseY)) {
             return false;
         }
-        String key = module.getName() + ":rgb";
+        String key = module.getName() + ":" + red.getName() + ":" + green.getName() + ":" + blue.getName();
         long now = System.currentTimeMillis();
         boolean doubleClick = key.equals(gui.lastPaletteClickKey) && now - gui.lastPaletteClickMS <= 330L;
         gui.lastPaletteClickKey = key;
@@ -323,7 +326,7 @@ final class ClickGuiDetailPanel {
         float paletteW = bounds[2];
         float paletteH = bounds[3];
         float preview = 25.0f;
-        float previewX = x + w - preview;
+        float previewX = Math.min(x + w - preview, paletteX + paletteW + 12.0f);
         float active = gui.animateValueMap(gui.valueActiveProgress, red, gui.draggingColorRed == red ? 1.0f : 0.0f, 0.20f);
 
         gui.drawFont("Color", x, y + 8.0f,
@@ -338,10 +341,11 @@ final class ClickGuiDetailPanel {
                 gui.withAlpha(VapeClickGui.GLASS_FILL_SOFT, 120.0f * alpha * gui.openProgress),
                 gui.withAlpha(rainbow ? VapeClickGui.ACCENT : VapeClickGui.GLASS_BORDER,
                         (rainbow ? 95.0f : 52.0f) * alpha * gui.openProgress));
-        drawPaletteGradient(paletteX, paletteY, paletteW, paletteH, alpha);
-        RenderUtil.drawGradientRect(paletteX, paletteY, paletteX + paletteW, paletteY + paletteH,
-                gui.withAlpha(new Color(255, 255, 255, 52).getRGB(), 38.0f * alpha * gui.openProgress),
-                gui.withAlpha(new Color(0, 0, 0, 132).getRGB(), 98.0f * alpha * gui.openProgress));
+        RenderUtil.drawRoundedHueRect(paletteX, paletteY, paletteX + paletteW, paletteY + paletteH,
+                5.0f, alpha * gui.openProgress);
+        RenderUtil.drawRoundedBorderedRect(paletteX, paletteY, paletteX + paletteW, paletteY + paletteH,
+                5.0f, 0.8f, 0x00000000,
+                gui.withAlpha(new Color(255, 255, 255).getRGB(), 54.0f * alpha * gui.openProgress));
 
         float[] marker = getColorMarker(red, green, blue, paletteX, paletteY, paletteW, paletteH);
         RenderUtil.drawCircleOutline(marker[0], marker[1], 4.0f + active, 1.2f,
@@ -356,28 +360,23 @@ final class ClickGuiDetailPanel {
             RenderUtil.drawCircle(previewX + preview - 5.5f, y + 13.5f, 0, 360, 2.6f,
                     gui.withAlpha(VapeClickGui.ACCENT, 230.0f * alpha * gui.openProgress));
         }
-    }
 
-    private void drawPaletteGradient(float x, float y, float w, float h, float alpha) {
-        int segments = 18;
-        float segmentW = w / segments;
-        for (int i = 0; i < segments; i++) {
-            float left = x + i * segmentW;
-            float right = i == segments - 1 ? x + w : left + segmentW + 0.5f;
-            int start = Color.HSBtoRGB(i / (float) segments, 0.86f, 1.0f);
-            int end = Color.HSBtoRGB((i + 1) / (float) segments, 0.86f, 1.0f);
-            RenderUtil.drawGradientRect(left, y, right, y + h,
-                    gui.withAlpha(start, 238.0f * alpha * gui.openProgress),
-                    gui.withAlpha(end, 238.0f * alpha * gui.openProgress));
-        }
+        gui.drawFont("Double-click: RGB", paletteX, paletteY + paletteH + 6.0f,
+                gui.withAlpha(rainbow ? VapeClickGui.ACCENT : VapeClickGui.FAINT,
+                        160.0f * alpha * gui.openProgress));
     }
 
     private float[] getPaletteBounds(float x, float y, float w) {
         float labelW = gui.getDetailLabelWidth(w);
         float preview = 25.0f;
+        float gap = 12.0f;
+        float minPaletteW = 76.0f;
+        if (w - labelW - preview - gap < minPaletteW) {
+            labelW = Math.max(58.0f, w - preview - gap - minPaletteW);
+        }
         float paletteX = x + labelW;
         float paletteY = y + 9.0f;
-        float paletteW = Math.max(70.0f, w - labelW - preview - 12.0f);
+        float paletteW = Math.max(48.0f, w - labelW - preview - gap);
         return new float[]{paletteX, paletteY, paletteW, 25.0f};
     }
 
@@ -385,17 +384,27 @@ final class ClickGuiDetailPanel {
                                      int mouseX, int mouseY, float x, float y, float w, float h) {
         float hue = gui.clamp((mouseX - x) / Math.max(1.0f, w), 0.0f, 1.0f);
         float vertical = gui.clamp((mouseY - y) / Math.max(1.0f, h), 0.0f, 1.0f);
-        float brightness = 1.0f - vertical * 0.58f;
-        int rgb = Color.HSBtoRGB(hue, 0.86f, brightness);
+        float brightness = 1.0f - vertical * (1.0f - PALETTE_MIN_BRIGHTNESS);
+        int rgb = Color.HSBtoRGB(hue, PALETTE_SATURATION, brightness);
         setNumber(red, rgb >> 16 & 255);
         setNumber(green, rgb >> 8 & 255);
         setNumber(blue, rgb & 255);
+        paletteHueByRed.put(red, hue);
+        paletteColorByRed.put(red, rgb & 0xFFFFFF);
     }
 
     private float[] getColorMarker(Numbers red, Numbers green, Numbers blue, float x, float y, float w, float h) {
+        int currentColor = rgb(red, green, blue) & 0xFFFFFF;
         float[] hsb = Color.RGBtoHSB(colorValue(red), colorValue(green), colorValue(blue), null);
-        float mx = x + hsb[0] * w;
-        float my = y + gui.clamp((1.0f - hsb[2]) / 0.58f, 0.0f, 1.0f) * h;
+        Float storedHue = paletteHueByRed.get(red);
+        Integer storedColor = paletteColorByRed.get(red);
+        float hue = storedHue != null && storedColor != null && storedColor == currentColor
+                ? gui.clamp(storedHue, 0.0f, 1.0f) : hsb[0];
+        float innerRadius = Math.min(PALETTE_MARKER_RADIUS, Math.min(w, h) * 0.5f);
+        float mx = gui.clamp(x + hue * w, x + innerRadius, x + w - innerRadius);
+        float brightnessRange = Math.max(0.0001f, 1.0f - PALETTE_MIN_BRIGHTNESS);
+        float my = gui.clamp(y + gui.clamp((1.0f - hsb[2]) / brightnessRange, 0.0f, 1.0f) * h,
+                y + innerRadius, y + h - innerRadius);
         return new float[]{mx, my};
     }
 

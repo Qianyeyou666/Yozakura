@@ -158,7 +158,7 @@ public class TargetESP extends Module {
         int secondary = current == EspMode.COSMIC ? rainbowColor(time * 0.08f, 0.38f) : healthColor(target);
 
         GL11.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_CURRENT_BIT | GL11.GL_COLOR_BUFFER_BIT
-                | GL11.GL_DEPTH_BUFFER_BIT | GL11.GL_LINE_BIT | GL11.GL_TEXTURE_BIT);
+                | GL11.GL_DEPTH_BUFFER_BIT | GL11.GL_LINE_BIT);
         GL11.glPushMatrix();
         GL11.glTranslated(x, y, z);
         GL11.glDisable(GL11.GL_TEXTURE_2D);

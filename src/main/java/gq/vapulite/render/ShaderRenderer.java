@@ -1,5 +1,6 @@
 package gq.vapulite.render;
 
+import net.minecraft.client.renderer.GlStateManager;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
@@ -23,6 +24,10 @@ public final class ShaderRenderer {
     private static Program roundedHueProgram;
     private static Program roundedBorderProgram;
     private static Program roundedShadowProgram;
+    private static Program circleProgram;
+    private static Program arcProgram;
+    private static Program lineProgram;
+    private static Program circleBadgeProgram;
     private static Program frostedGlassProgram;
     private static final IntBuffer VIEWPORT_BUFFER = BufferUtils.createIntBuffer(16);
     private static int screenTexture;
@@ -187,6 +192,7 @@ public final class ShaderRenderer {
         float width = right - left;
         float height = bottom - top;
         float clampedBorder = Math.max(0.0f, Math.min(borderWidth, Math.min(width, height) / 2.0f));
+        TextureState textureState = saveTexture0State();
 
         program.use();
         try {
@@ -203,7 +209,128 @@ public final class ShaderRenderer {
             setColor(program, "borderColor", borderColor);
             drawQuad(left, top, right, bottom, EDGE_PADDING);
         } finally {
-            GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+            GL20.glUseProgram(0);
+            restoreTexture0State(textureState);
+        }
+        return true;
+    }
+
+    public static boolean drawCircle(float centerX, float centerY, float radius, int color) {
+        Program program = getCircleProgram();
+        if (program == null || radius <= 0.0f) {
+            return false;
+        }
+
+        float clampedRadius = Math.max(0.5f, radius);
+        float padding = Math.max(1.5f, EDGE_SOFTNESS + 0.75f);
+
+        program.use();
+        try {
+            program.set1f("circleRadius", clampedRadius);
+            program.set1f("padding", padding);
+            program.set1f("softness", EDGE_SOFTNESS);
+            setColor(program, "color", color);
+            drawQuad(centerX - clampedRadius, centerY - clampedRadius,
+                    centerX + clampedRadius, centerY + clampedRadius, padding);
+        } finally {
+            GL20.glUseProgram(0);
+        }
+        return true;
+    }
+
+    public static boolean drawArc(float centerX, float centerY, float radius, float start, float end,
+                                  float lineWidth, int color) {
+        Program program = getArcProgram();
+        if (program == null || radius <= 0.0f || lineWidth <= 0.0f) {
+            return false;
+        }
+
+        if (end < start) {
+            float temp = start;
+            start = end;
+            end = temp;
+        }
+
+        float clampedRadius = Math.max(0.5f, radius);
+        float clampedLine = Math.max(0.5f, Math.min(lineWidth, clampedRadius * 2.0f));
+        float sweep = Math.max(0.0f, Math.min(360.0f, end - start));
+        float padding = Math.max(1.5f, clampedLine + EDGE_SOFTNESS + 0.75f);
+
+        program.use();
+        try {
+            program.set1f("arcRadius", clampedRadius);
+            program.set1f("lineWidth", clampedLine);
+            program.set1f("startAngle", (float) Math.toRadians(start));
+            program.set1f("sweepAngle", (float) Math.toRadians(sweep));
+            program.set1f("padding", padding);
+            program.set1f("softness", EDGE_SOFTNESS);
+            setColor(program, "color", color);
+            drawQuad(centerX - clampedRadius, centerY - clampedRadius,
+                    centerX + clampedRadius, centerY + clampedRadius, padding);
+        } finally {
+            GL20.glUseProgram(0);
+        }
+        return true;
+    }
+
+    public static boolean drawLine(float x, float y, float x2, float y2, float lineWidth, int color) {
+        Program program = getLineProgram();
+        if (program == null || lineWidth <= 0.0f) {
+            return false;
+        }
+
+        float minX = Math.min(x, x2);
+        float minY = Math.min(y, y2);
+        float maxX = Math.max(x, x2);
+        float maxY = Math.max(y, y2);
+        float pad = Math.max(1.5f, lineWidth * 0.5f + EDGE_SOFTNESS + 0.75f);
+        float left = minX - pad;
+        float top = minY - pad;
+        float right = maxX + pad;
+        float bottom = maxY + pad;
+
+        program.use();
+        try {
+            program.set2f("rectSize", right - left, bottom - top);
+            program.set2f("startPoint", x - left, y - top);
+            program.set2f("endPoint", x2 - left, y2 - top);
+            program.set1f("lineWidth", Math.max(0.5f, lineWidth));
+            program.set1f("softness", EDGE_SOFTNESS);
+            setColor(program, "color", color);
+            drawQuad(left, top, right, bottom, 0.0f);
+        } finally {
+            GL20.glUseProgram(0);
+        }
+        return true;
+    }
+
+    public static boolean drawCircleBadge(float centerX, float centerY, float radius, float ringWidth,
+                                          float progress, int fillColor, int trackColor, int progressColor) {
+        Program program = getCircleBadgeProgram();
+        if (program == null || radius <= 0.0f || ringWidth <= 0.0f) {
+            return false;
+        }
+
+        float clampedRadius = Math.max(0.5f, radius);
+        float clampedRing = Math.max(0.5f, Math.min(ringWidth, clampedRadius));
+        float padding = Math.max(1.5f, clampedRing + 0.75f);
+        float left = centerX - clampedRadius;
+        float top = centerY - clampedRadius;
+        float right = centerX + clampedRadius;
+        float bottom = centerY + clampedRadius;
+
+        program.use();
+        try {
+            program.set1f("badgeRadius", clampedRadius);
+            program.set1f("ringWidth", clampedRing);
+            program.set1f("progress", Math.max(0.0f, Math.min(1.0f, progress)));
+            program.set1f("padding", padding);
+            program.set1f("softness", EDGE_SOFTNESS);
+            setColor(program, "fillColor", fillColor);
+            setColor(program, "trackColor", trackColor);
+            setColor(program, "progressColor", progressColor);
+            drawQuad(left, top, right, bottom, padding);
+        } finally {
             GL20.glUseProgram(0);
         }
         return true;
@@ -213,37 +340,42 @@ public final class ShaderRenderer {
         if (!supportsShaders()) {
             return false;
         }
-        VIEWPORT_BUFFER.clear();
-        GL11.glGetInteger(GL11.GL_VIEWPORT, VIEWPORT_BUFFER);
-        int viewportX = VIEWPORT_BUFFER.get(0);
-        int viewportY = VIEWPORT_BUFFER.get(1);
-        int viewportW = VIEWPORT_BUFFER.get(2);
-        int viewportH = VIEWPORT_BUFFER.get(3);
-        if (viewportW <= 0 || viewportH <= 0) {
-            return false;
+        TextureState textureState = saveTexture0State();
+        try {
+            VIEWPORT_BUFFER.clear();
+            GL11.glGetInteger(GL11.GL_VIEWPORT, VIEWPORT_BUFFER);
+            int viewportX = VIEWPORT_BUFFER.get(0);
+            int viewportY = VIEWPORT_BUFFER.get(1);
+            int viewportW = VIEWPORT_BUFFER.get(2);
+            int viewportH = VIEWPORT_BUFFER.get(3);
+            if (viewportW <= 0 || viewportH <= 0) {
+                return false;
+            }
+            if (screenTexture == 0) {
+                screenTexture = GL11.glGenTextures();
+                frostedGlassDirty = true;
+            }
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, screenTexture);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+            if (capturedWidth != viewportW || capturedHeight != viewportH) {
+                GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGB, viewportW, viewportH, 0,
+                        GL11.GL_RGB, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
+                capturedWidth = viewportW;
+                capturedHeight = viewportH;
+                frostedGlassDirty = true;
+            }
+            if (frostedGlassDirty) {
+                GL11.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, viewportX, viewportY, viewportW, viewportH);
+                frostedGlassDirty = false;
+            }
+            return true;
+        } finally {
+            restoreTexture0State(textureState);
         }
-        if (screenTexture == 0) {
-            screenTexture = GL11.glGenTextures();
-            frostedGlassDirty = true;
-        }
-        GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, screenTexture);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
-        if (capturedWidth != viewportW || capturedHeight != viewportH) {
-            GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGB, viewportW, viewportH, 0,
-                    GL11.GL_RGB, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
-            capturedWidth = viewportW;
-            capturedHeight = viewportH;
-            frostedGlassDirty = true;
-        }
-        if (frostedGlassDirty) {
-            GL11.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, viewportX, viewportY, viewportW, viewportH);
-            frostedGlassDirty = false;
-        }
-        return true;
     }
 
     private static void setRoundedUniforms(Program program, float width, float height, float radius) {
@@ -301,6 +433,34 @@ public final class ShaderRenderer {
             roundedShadowProgram = createProgram(ROUNDED_SHADOW_FRAGMENT);
         }
         return roundedShadowProgram;
+    }
+
+    private static Program getCircleProgram() {
+        if (circleProgram == null) {
+            circleProgram = createProgram(CIRCLE_FRAGMENT);
+        }
+        return circleProgram;
+    }
+
+    private static Program getArcProgram() {
+        if (arcProgram == null) {
+            arcProgram = createProgram(ARC_FRAGMENT);
+        }
+        return arcProgram;
+    }
+
+    private static Program getLineProgram() {
+        if (lineProgram == null) {
+            lineProgram = createProgram(LINE_FRAGMENT);
+        }
+        return lineProgram;
+    }
+
+    private static Program getCircleBadgeProgram() {
+        if (circleBadgeProgram == null) {
+            circleBadgeProgram = createProgram(CIRCLE_BADGE_FRAGMENT);
+        }
+        return circleBadgeProgram;
     }
 
     private static Program getFrostedGlassProgram() {
@@ -388,6 +548,40 @@ public final class ShaderRenderer {
                 ((color >> 24) & 255) / 255.0f);
     }
 
+    private static TextureState saveTexture0State() {
+        int activeTexture = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
+        setActiveTexture(GL13.GL_TEXTURE0);
+        int texture = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+        return new TextureState(activeTexture, texture);
+    }
+
+    private static void restoreTexture0State(TextureState state) {
+        if (state == null) {
+            return;
+        }
+        setActiveTexture(GL13.GL_TEXTURE0);
+        bindTexture(state.texture);
+        setActiveTexture(state.activeTexture);
+    }
+
+    private static void setActiveTexture(int textureUnit) {
+        try {
+            GlStateManager.setActiveTexture(textureUnit);
+        } catch (Throwable ignored) {
+            GL13.glActiveTexture(textureUnit);
+        }
+        GL13.glActiveTexture(textureUnit);
+    }
+
+    private static void bindTexture(int texture) {
+        try {
+            GlStateManager.bindTexture(texture);
+        } catch (Throwable ignored) {
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, texture);
+        }
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, texture);
+    }
+
     private static void drawQuad(float left, float top, float right, float bottom, float padding) {
         float drawLeft = left - padding;
         float drawTop = top - padding;
@@ -442,6 +636,16 @@ public final class ShaderRenderer {
 
         private void set4f(String name, float first, float second, float third, float fourth) {
             GL20.glUniform4f(uniform(name), first, second, third, fourth);
+        }
+    }
+
+    private static final class TextureState {
+        private final int activeTexture;
+        private final int texture;
+
+        private TextureState(int activeTexture, int texture) {
+            this.activeTexture = activeTexture;
+            this.texture = texture;
         }
     }
 
@@ -624,6 +828,104 @@ public final class ShaderRenderer {
             "    float falloff = 1.0 - smoothstep(0.0, shadow, distance);\n" +
             "    float alpha = color.a * outside * falloff * falloff;\n" +
             "    gl_FragColor = vec4(color.rgb, alpha);\n" +
+            "}\n";
+
+    private static final String CIRCLE_FRAGMENT =
+            "#version 120\n" +
+            "uniform vec4 color;\n" +
+            "uniform float circleRadius;\n" +
+            "uniform float padding;\n" +
+            "uniform float softness;\n" +
+            "void main() {\n" +
+            "    float radius = max(circleRadius, 0.001);\n" +
+            "    vec2 size = vec2(radius * 2.0);\n" +
+            "    vec2 coord = gl_TexCoord[0].st * (size + vec2(padding * 2.0)) - vec2(padding);\n" +
+            "    float dist = length(coord - vec2(radius));\n" +
+            "    float alpha = 1.0 - smoothstep(radius - softness, radius, dist);\n" +
+            "    gl_FragColor = vec4(color.rgb, color.a * alpha);\n" +
+            "}\n";
+
+    private static final String ARC_FRAGMENT =
+            "#version 120\n" +
+            "uniform vec4 color;\n" +
+            "uniform float arcRadius;\n" +
+            "uniform float lineWidth;\n" +
+            "uniform float startAngle;\n" +
+            "uniform float sweepAngle;\n" +
+            "uniform float padding;\n" +
+            "uniform float softness;\n" +
+            "const float PI2 = 6.28318530718;\n" +
+            "void main() {\n" +
+            "    float radius = max(arcRadius, 0.001);\n" +
+            "    float width = max(lineWidth, 0.001);\n" +
+            "    vec2 size = vec2(radius * 2.0);\n" +
+            "    vec2 coord = gl_TexCoord[0].st * (size + vec2(padding * 2.0)) - vec2(padding);\n" +
+            "    vec2 delta = coord - vec2(radius);\n" +
+            "    float dist = length(delta);\n" +
+            "    float ring = 1.0 - smoothstep(width * 0.5, width * 0.5 + softness, abs(dist - radius));\n" +
+            "    float sweep = clamp(sweepAngle, 0.0, PI2);\n" +
+            "    float angle = mod(atan(delta.y, delta.x) - startAngle + PI2, PI2);\n" +
+            "    float cap = max(softness / max(radius, 1.0), 0.001);\n" +
+            "    float angleMask = 1.0;\n" +
+            "    if (sweep < PI2 - 0.001) {\n" +
+            "        angleMask = smoothstep(0.0, cap, angle) * (1.0 - smoothstep(max(0.0, sweep - cap), sweep, angle));\n" +
+            "    }\n" +
+            "    gl_FragColor = vec4(color.rgb, color.a * ring * angleMask);\n" +
+            "}\n";
+
+    private static final String LINE_FRAGMENT =
+            "#version 120\n" +
+            "uniform vec2 rectSize;\n" +
+            "uniform vec2 startPoint;\n" +
+            "uniform vec2 endPoint;\n" +
+            "uniform vec4 color;\n" +
+            "uniform float lineWidth;\n" +
+            "uniform float softness;\n" +
+            "void main() {\n" +
+            "    vec2 point = gl_TexCoord[0].st * max(rectSize, vec2(0.001));\n" +
+            "    vec2 line = endPoint - startPoint;\n" +
+            "    float len2 = max(dot(line, line), 0.0001);\n" +
+            "    float t = clamp(dot(point - startPoint, line) / len2, 0.0, 1.0);\n" +
+            "    vec2 nearest = startPoint + line * t;\n" +
+            "    float dist = length(point - nearest);\n" +
+            "    float alpha = 1.0 - smoothstep(lineWidth * 0.5, lineWidth * 0.5 + softness, dist);\n" +
+            "    gl_FragColor = vec4(color.rgb, color.a * alpha);\n" +
+            "}\n";
+
+    private static final String CIRCLE_BADGE_FRAGMENT =
+            "#version 120\n" +
+            "uniform vec4 fillColor;\n" +
+            "uniform vec4 trackColor;\n" +
+            "uniform vec4 progressColor;\n" +
+            "uniform float badgeRadius;\n" +
+            "uniform float ringWidth;\n" +
+            "uniform float progress;\n" +
+            "uniform float padding;\n" +
+            "uniform float softness;\n" +
+            "void main() {\n" +
+            "    float radius = max(badgeRadius, 0.001);\n" +
+            "    float ring = clamp(ringWidth, 0.001, radius);\n" +
+            "    vec2 size = vec2(radius * 2.0);\n" +
+            "    vec2 coord = gl_TexCoord[0].st * (size + vec2(padding * 2.0)) - vec2(padding);\n" +
+            "    vec2 center = vec2(radius);\n" +
+            "    vec2 delta = coord - center;\n" +
+            "    float dist = length(delta);\n" +
+            "    float innerRadius = max(radius - ring, 0.0);\n" +
+            "    float fillMask = 1.0 - smoothstep(innerRadius - softness, innerRadius, dist);\n" +
+            "    float outerMask = 1.0 - smoothstep(radius - softness, radius, dist);\n" +
+            "    float innerCut = 1.0 - smoothstep(innerRadius - softness, innerRadius, dist);\n" +
+            "    float ringMask = clamp(outerMask - innerCut, 0.0, 1.0);\n" +
+            "    float angle = mod(atan(delta.y, delta.x) + 1.57079632679, 6.28318530718) / 6.28318530718;\n" +
+            "    float progressMask = step(angle, clamp(progress, 0.0, 1.0));\n" +
+            "    vec4 ringColor = mix(trackColor, progressColor, progressMask);\n" +
+            "    float fillAlpha = fillColor.a * fillMask;\n" +
+            "    float ringAlpha = ringColor.a * ringMask;\n" +
+            "    float alpha = max(fillAlpha, ringAlpha);\n" +
+            "    vec3 rgb = vec3(0.0);\n" +
+            "    if (alpha > 0.0) {\n" +
+            "        rgb = (fillColor.rgb * fillAlpha + ringColor.rgb * ringAlpha) / max(fillAlpha + ringAlpha, 0.0001);\n" +
+            "    }\n" +
+            "    gl_FragColor = vec4(rgb, alpha);\n" +
             "}\n";
 
     private static final String FROSTED_GLASS_FRAGMENT =
