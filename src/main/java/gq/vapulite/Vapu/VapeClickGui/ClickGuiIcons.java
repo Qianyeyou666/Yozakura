@@ -82,6 +82,12 @@ public final class ClickGuiIcons {
         if (name.contains("scaffold")) {
             return FontLoaders.ICON_CUBE;
         }
+        if (name.contains("bridge")) {
+            return FontLoaders.ICON_CUBE;
+        }
+        if (name.contains("clutch")) {
+            return FontLoaders.ICON_SHIELD;
+        }
 
         if (name.contains("antibot")) {
             return FontLoaders.ICON_BUG;
@@ -94,6 +100,15 @@ public final class ClickGuiIcons {
         }
         if (name.contains("backtrack")) {
             return FontLoaders.ICON_CLOCK;
+        }
+        if (name.contains("fakelag")) {
+            return FontLoaders.ICON_SHUFFLE;
+        }
+        if (name.contains("knockback")) {
+            return FontLoaders.ICON_SHIELD;
+        }
+        if (name.contains("nojump")) {
+            return FontLoaders.ICON_ARROW_DOWN;
         }
         if (name.contains("wtap")) {
             return FontLoaders.ICON_RUN;

@@ -21,16 +21,16 @@ public class NotificationManager {
             notifications.removeIf(Notification::shouldDelete);
     }
 
-    public static void show(String title, String message, Notification.Type type) {
+    public static void show(String title, String message, int type) {
         push(new Notification(title, message, type, 2500L));
     }
 
-    public static void show(String title, String message, Notification.Type type, long stayTime) {
+    public static void show(String title, String message, int type, long stayTime) {
         push(new Notification(title, message, type, stayTime));
     }
 
     public static void show(String title, String message, Module module) {
-        push(new Notification(title, message, Notification.Type.MODULE, 2500L, module));
+        push(new Notification(title, message, Notification.MODULE, 2500L, module));
     }
 
     private static void push(Notification notification) {

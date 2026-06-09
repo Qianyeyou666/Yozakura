@@ -11,7 +11,6 @@ import gq.vapulite.command.ChatBypassCommand;
 //import gq.vapulite.command.Report;
 import gq.vapulite.command.WaterMark;
 import gq.vapulite.font.FontLoaders;
-import gq.vapulite.utils.Notification;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.play.client.C03PacketPlayer;
 import net.minecraftforge.client.ClientCommandHandler;

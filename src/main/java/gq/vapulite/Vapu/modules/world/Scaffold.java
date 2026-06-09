@@ -4,7 +4,6 @@ import gq.vapulite.Vapu.ModuleType;
 import gq.vapulite.Vapu.modules.Module;
 import gq.vapulite.Vapu.utils.RotationUtil;
 import gq.vapulite.Vapu.value.Mode;
-import gq.vapulite.Vapu.value.Numbers;
 import gq.vapulite.Vapu.value.Option;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockAir;
@@ -27,30 +26,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Scaffold extends Module {
-    public enum AimMode {
-        OFF,
-        SMOOTH,
-        LOCK
+    public enum ScaffoldMode {
+        SAFE,
+        SMART,
+        FAST
     }
 
-    private final Mode<AimMode> aimMode = new Mode<AimMode>("Aim", "Aim", AimMode.values(), AimMode.SMOOTH);
-    private final Numbers<Double> aimSpeed = new Numbers<Double>("Aim Speed", "AimSpeed", 28.0, 5.0, 90.0, 1.0);
-    private final Numbers<Double> aimFov = new Numbers<Double>("Aim FOV", "AimFOV", 110.0, 25.0, 180.0, 5.0);
-    private final Numbers<Double> aimLockTicks = new Numbers<Double>("Aim Lock", "AimLock", 5.0, 0.0, 12.0, 1.0);
-    private final Numbers<Double> switchMargin = new Numbers<Double>("Switch Margin", "SwitchMargin", 18.0, 4.0, 45.0, 1.0);
-    private final Numbers<Double> prediction = new Numbers<Double>("Prediction", "Prediction", 0.65, 0.0, 1.5, 0.05);
-    private final Numbers<Double> edgeDistance = new Numbers<Double>("Edge Guard", "EdgeGuard", 0.22, 0.05, 0.45, 0.01);
+    private final Mode<ScaffoldMode> mode =
+            new Mode<ScaffoldMode>("Mode", "Mode", ScaffoldMode.values(), ScaffoldMode.SMART);
     private final Option<Boolean> rightClickOnly = new Option<Boolean>("Right Click Only", "RightClickOnly", true);
-    private final Option<Boolean> smartAim = new Option<Boolean>("Smart Aim", "SmartAim", true);
-    private final Option<Boolean> assistAim = new Option<Boolean>("Assist Aim", "AssistAim", true);
-    private final Option<Boolean> aimRightOnly = new Option<Boolean>("Aim Right Only", "AimRightOnly", true);
-    private final Option<Boolean> syncHead = new Option<Boolean>("Sync Head", "SyncHead", true);
-    private final Option<Boolean> edgeSneak = new Option<Boolean>("Edge Sneak", "EdgeSneak", true);
-    private final Option<Boolean> motionGuard = new Option<Boolean>("Motion Guard", "MotionGuard", true);
     private final Option<Boolean> autoSwap = new Option<Boolean>("Auto Swap", "AutoSwap", true);
-    private final Option<Boolean> fullBlocks = new Option<Boolean>("Full Blocks", "FullBlocks", true);
     private final Option<Boolean> keepY = new Option<Boolean>("Keep Y", "KeepY", false);
-    private final Option<Boolean> towerSafety = new Option<Boolean>("Tower Safety", "TowerSafety", true);
 
     private int scaffoldY;
     private boolean holdingSneak;
@@ -59,12 +45,11 @@ public class Scaffold extends Module {
     private boolean hasSmoothedRotation;
     private float smoothedYaw;
     private float smoothedPitch;
+    private boolean towering;
 
     public Scaffold() {
         super("Scaffold", Keyboard.KEY_NONE, ModuleType.World, "Safe bridge assist that still requires manual right click");
-        this.addValues(aimMode, aimSpeed, aimFov, aimLockTicks, switchMargin, prediction, edgeDistance, rightClickOnly,
-                smartAim, assistAim, aimRightOnly, syncHead, edgeSneak, motionGuard, autoSwap, fullBlocks, keepY,
-                towerSafety);
+        this.addValues(mode, rightClickOnly, autoSwap, keepY);
         Chinese = "安全搭路";
     }
 
@@ -76,6 +61,7 @@ public class Scaffold extends Module {
         lastTarget = null;
         targetTicks = 0;
         hasSmoothedRotation = false;
+        towering = false;
         releaseSneak();
     }
 
@@ -84,6 +70,7 @@ public class Scaffold extends Module {
         lastTarget = null;
         targetTicks = 0;
         hasSmoothedRotation = false;
+        towering = false;
         releaseSneak();
     }
 
@@ -94,13 +81,16 @@ public class Scaffold extends Module {
         }
         if (!isInGame() || mc.currentScreen != null) {
             resetAimState();
+            towering = false;
             releaseSneak();
             return;
         }
 
         boolean useHeld = mc.gameSettings.keyBindUseItem.isKeyDown();
+        towering = isTowering(useHeld);
         if (Boolean.TRUE.equals(rightClickOnly.getValue()) && !useHeld) {
             resetAimState();
+            towering = false;
             releaseSneak();
             return;
         }
@@ -115,17 +105,18 @@ public class Scaffold extends Module {
 
         PlaceTarget target = findPlaceTarget();
         boolean unsafeEdge = isNearUnsafeEdge();
-        boolean shouldSneak = Boolean.TRUE.equals(edgeSneak.getValue()) && unsafeEdge && mc.thePlayer.onGround;
-        setSneak(shouldSneak);
+        setSneak(shouldSneak(unsafeEdge));
 
-        if (Boolean.TRUE.equals(motionGuard.getValue()) && unsafeEdge) {
-            mc.thePlayer.motionX *= 0.32D;
-            mc.thePlayer.motionZ *= 0.32D;
+        if (unsafeEdge) {
+            double scale = getEdgeMotionScale();
+            mc.thePlayer.motionX *= scale;
+            mc.thePlayer.motionZ *= scale;
         }
 
-        if (Boolean.TRUE.equals(towerSafety.getValue()) && useHeld && mc.gameSettings.keyBindJump.isKeyDown()) {
-            mc.thePlayer.motionX *= 0.55D;
-            mc.thePlayer.motionZ *= 0.55D;
+        if (useHeld && mc.gameSettings.keyBindJump.isKeyDown()) {
+            double scale = getTowerMotionScale();
+            mc.thePlayer.motionX *= scale;
+            mc.thePlayer.motionZ *= scale;
         }
 
         if (target != null && shouldAssistAim(useHeld)) {
@@ -141,11 +132,12 @@ public class Scaffold extends Module {
         hasSmoothedRotation = false;
     }
 
+    private boolean isTowering(boolean useHeld) {
+        return useHeld && mc.gameSettings.keyBindJump.isKeyDown() && !mc.gameSettings.keyBindSneak.isKeyDown();
+    }
+
     private boolean shouldAssistAim(boolean useHeld) {
-        if (!Boolean.TRUE.equals(assistAim.getValue()) || aimMode.getValue() == AimMode.OFF) {
-            return false;
-        }
-        return !Boolean.TRUE.equals(aimRightOnly.getValue()) || useHeld;
+        return !Boolean.TRUE.equals(rightClickOnly.getValue()) || useHeld;
     }
 
     private boolean isHoldingPlaceableBlock() {
@@ -183,25 +175,11 @@ public class Scaffold extends Module {
         if (block instanceof BlockFalling) {
             return false;
         }
-        return !Boolean.TRUE.equals(fullBlocks.getValue()) || block.isFullBlock();
+        return block.isFullBlock();
     }
 
     private PlaceTarget findPlaceTarget() {
         List<BlockPos> candidates = getCandidatePositions();
-        if (!Boolean.TRUE.equals(smartAim.getValue())) {
-            for (BlockPos candidate : candidates) {
-                if (!isReplaceable(candidate)) {
-                    continue;
-                }
-                PlaceTarget target = findFirstSupport(candidate);
-                if (target != null) {
-                    rememberTarget(target);
-                    return target;
-                }
-            }
-            rememberTarget(null);
-            return null;
-        }
 
         Vec3 predicted = getPredictedPlayerPosition();
         PlaceTarget best = null;
@@ -231,15 +209,26 @@ public class Scaffold extends Module {
     private List<BlockPos> getCandidatePositions() {
         ArrayList<BlockPos> positions = new ArrayList<BlockPos>();
         int y = Boolean.TRUE.equals(keepY.getValue()) ? scaffoldY : MathHelper.floor_double(mc.thePlayer.posY - 1.0D);
-        double motionScale = Math.max(0.35D, edgeDistance.getValue() * 2.4D + prediction.getValue() * 0.25D);
+        if (towering) {
+            int towerY = MathHelper.floor_double(mc.thePlayer.posY - 0.10D);
+            addCandidateLayer(positions, towerY, true);
+        }
+        addCandidateLayer(positions, y, true);
+        return positions;
+    }
+
+    private void addCandidateLayer(List<BlockPos> positions, int y, boolean includeMotion) {
+        double motionScale = getMotionPredictionScale();
         addUnique(positions, new BlockPos(mc.thePlayer.posX, y, mc.thePlayer.posZ));
-        addUnique(positions, new BlockPos(mc.thePlayer.posX + mc.thePlayer.motionX * motionScale, y,
-                mc.thePlayer.posZ + mc.thePlayer.motionZ * motionScale));
-        addUnique(positions, new BlockPos(mc.thePlayer.posX + mc.thePlayer.motionX * (motionScale + 0.45D), y,
-                mc.thePlayer.posZ + mc.thePlayer.motionZ * (motionScale + 0.45D)));
+        if (includeMotion) {
+            addUnique(positions, new BlockPos(mc.thePlayer.posX + mc.thePlayer.motionX * motionScale, y,
+                    mc.thePlayer.posZ + mc.thePlayer.motionZ * motionScale));
+            addUnique(positions, new BlockPos(mc.thePlayer.posX + mc.thePlayer.motionX * (motionScale + 0.45D), y,
+                    mc.thePlayer.posZ + mc.thePlayer.motionZ * (motionScale + 0.45D)));
+        }
 
         Vec3 move = getMovementDirection();
-        if (move != null) {
+        if (includeMotion && move != null) {
             addUnique(positions, new BlockPos(mc.thePlayer.posX + move.xCoord * 0.45D, y,
                     mc.thePlayer.posZ + move.zCoord * 0.45D));
             addUnique(positions, new BlockPos(mc.thePlayer.posX + move.xCoord * 0.85D, y,
@@ -250,23 +239,12 @@ public class Scaffold extends Module {
         for (EnumFacing facing : EnumFacing.HORIZONTALS) {
             addUnique(positions, center.offset(facing));
         }
-        return positions;
     }
 
     private void addUnique(List<BlockPos> positions, BlockPos pos) {
         if (!positions.contains(pos)) {
             positions.add(pos);
         }
-    }
-
-    private PlaceTarget findFirstSupport(BlockPos target) {
-        for (EnumFacing side : getPlaceSides()) {
-            BlockPos support = target.offset(side.getOpposite());
-            if (isSolidSupport(support)) {
-                return new PlaceTarget(target, support, side, getHitVec(support, side, getPredictedPlayerPosition()), 0.0D);
-            }
-        }
-        return null;
     }
 
     private PlaceTarget findBestSupport(BlockPos target, Vec3 predicted, int priority) {
@@ -302,10 +280,10 @@ public class Scaffold extends Module {
         if (best == null) {
             return true;
         }
-        if (targetTicks < aimLockTicks.getValue().intValue()) {
+        if (targetTicks < getAimLockTicks()) {
             return true;
         }
-        return locked.score <= best.score + switchMargin.getValue();
+        return locked.score <= best.score + getSwitchMargin();
     }
 
     private EnumFacing[] getPlaceSides() {
@@ -320,7 +298,7 @@ public class Scaffold extends Module {
     }
 
     private Vec3 getPredictedPlayerPosition() {
-        double factor = prediction.getValue();
+        double factor = getPredictionFactor();
         return new Vec3(mc.thePlayer.posX + mc.thePlayer.motionX * factor,
                 mc.thePlayer.posY,
                 mc.thePlayer.posZ + mc.thePlayer.motionZ * factor);
@@ -378,9 +356,9 @@ public class Scaffold extends Module {
         float yawDiff = Math.abs(MathHelper.wrapAngleTo180_float(rotations[0] - mc.thePlayer.rotationYaw));
         float pitchDiff = Math.abs(MathHelper.wrapAngleTo180_float(rotations[1] - mc.thePlayer.rotationPitch));
         double angleScore = yawDiff + pitchDiff * 0.62D;
-        double fovPenalty = angleScore > aimFov.getValue() ? (angleScore - aimFov.getValue()) * 3.0D : 0.0D;
+        double fovPenalty = angleScore > getAimFov() ? (angleScore - getAimFov()) * 3.0D : 0.0D;
         double distanceScore = horizontalDistance(predicted, target.target) * 11.0D;
-        double sidePenalty = target.side == EnumFacing.UP ? 0.0D : 8.5D;
+        double sidePenalty = target.side == EnumFacing.UP ? 0.0D : (towering ? 16.0D : 8.5D);
         double stabilityBonus = isSameTarget(lastTarget, target) ? -18.0D : 0.0D;
         double crosshairBonus = isCrosshairNear(target) ? -10.0D : 0.0D;
         return priority * 2.2D + angleScore * 0.78D + fovPenalty + distanceScore + sidePenalty + stabilityBonus + crosshairBonus;
@@ -407,6 +385,125 @@ public class Scaffold extends Module {
                 && first.side == second.side;
     }
 
+    private ScaffoldMode currentMode() {
+        return mode.getValue() == null ? ScaffoldMode.SMART : mode.getValue();
+    }
+
+    private double getHorizontalSpeed() {
+        if (mc.thePlayer == null) {
+            return 0.0D;
+        }
+        return Math.sqrt(mc.thePlayer.motionX * mc.thePlayer.motionX + mc.thePlayer.motionZ * mc.thePlayer.motionZ);
+    }
+
+    private double getPredictionFactor() {
+        double speed = getHorizontalSpeed();
+        double prediction = towering ? 0.28D + speed * 0.85D : 0.52D + speed * 1.9D;
+        if (currentMode() == ScaffoldMode.SAFE) {
+            prediction *= 0.82D;
+        } else if (currentMode() == ScaffoldMode.FAST) {
+            prediction *= 1.25D;
+        }
+        if (!mc.thePlayer.onGround) {
+            prediction += Math.min(0.45D, Math.abs(mc.thePlayer.motionY) * 0.75D);
+        }
+        return clamp(prediction, 0.35D, 1.65D);
+    }
+
+    private double getMotionPredictionScale() {
+        double scale = getEdgeGuardDistance() * 2.4D + getPredictionFactor() * 0.25D;
+        if (currentMode() == ScaffoldMode.FAST) {
+            scale += 0.22D;
+        }
+        return clamp(scale, 0.35D, 1.25D);
+    }
+
+    private double getEdgeGuardDistance() {
+        if (currentMode() == ScaffoldMode.SAFE) {
+            return 0.30D;
+        }
+        if (currentMode() == ScaffoldMode.FAST) {
+            return 0.18D;
+        }
+        if (towering) {
+            return 0.20D;
+        }
+        return 0.23D;
+    }
+
+    private double getEdgeMotionScale() {
+        if (currentMode() == ScaffoldMode.SAFE) {
+            return 0.28D;
+        }
+        if (currentMode() == ScaffoldMode.FAST) {
+            return 0.52D;
+        }
+        return 0.36D;
+    }
+
+    private double getTowerMotionScale() {
+        if (currentMode() == ScaffoldMode.SAFE) {
+            return 0.48D;
+        }
+        if (currentMode() == ScaffoldMode.FAST) {
+            return 0.68D;
+        }
+        return 0.56D;
+    }
+
+    private boolean shouldSneak(boolean unsafeEdge) {
+        if (!unsafeEdge || !mc.thePlayer.onGround) {
+            return false;
+        }
+        return currentMode() != ScaffoldMode.FAST || getHorizontalSpeed() > 0.08D;
+    }
+
+    private double getAimFov() {
+        double fov = 132.0D + getHorizontalSpeed() * 85.0D;
+        if (currentMode() == ScaffoldMode.SAFE) {
+            fov = 105.0D + getHorizontalSpeed() * 55.0D;
+        } else if (currentMode() == ScaffoldMode.FAST) {
+            fov = 180.0D;
+        }
+        return clamp(fov, 92.0D, 180.0D);
+    }
+
+    private int getAimLockTicks() {
+        if (currentMode() == ScaffoldMode.SAFE) {
+            return 6;
+        }
+        if (currentMode() == ScaffoldMode.FAST) {
+            return 2;
+        }
+        return 4;
+    }
+
+    private double getSwitchMargin() {
+        if (currentMode() == ScaffoldMode.SAFE) {
+            return 22.0D;
+        }
+        if (currentMode() == ScaffoldMode.FAST) {
+            return 30.0D;
+        }
+        return 18.0D;
+    }
+
+    private float getBaseAimSpeed() {
+        float speed = (float) (24.0D + getHorizontalSpeed() * 85.0D);
+        if (currentMode() == ScaffoldMode.SAFE) {
+            speed *= 0.72F;
+        } else if (currentMode() == ScaffoldMode.FAST) {
+            speed = 90.0F;
+        }
+        if (towering) {
+            speed = Math.max(speed, 56.0F);
+        }
+        if (!mc.thePlayer.onGround) {
+            speed *= 1.12F;
+        }
+        return MathHelper.clamp_float(speed, 8.0F, 90.0F);
+    }
+
     private void rememberTarget(PlaceTarget target) {
         if (target == null) {
             lastTarget = null;
@@ -426,7 +523,7 @@ public class Scaffold extends Module {
             return false;
         }
         AxisAlignedBB box = mc.thePlayer.getEntityBoundingBox();
-        double guard = edgeDistance.getValue();
+        double guard = getEdgeGuardDistance();
         double xOffset = clamp(mc.thePlayer.motionX * 2.0D, -guard, guard);
         double zOffset = clamp(mc.thePlayer.motionZ * 2.0D, -guard, guard);
         double y = box.minY - 0.05D;
@@ -457,7 +554,7 @@ public class Scaffold extends Module {
 
     private void aimAt(PlaceTarget target) {
         float[] rotations = rotationsTo(target);
-        if (aimMode.getValue() == AimMode.LOCK) {
+        if (currentMode() == ScaffoldMode.FAST) {
             mc.thePlayer.rotationYaw = rotations[0];
             mc.thePlayer.rotationPitch = rotations[1];
             smoothedYaw = rotations[0];
@@ -476,15 +573,15 @@ public class Scaffold extends Module {
         float speed = getAdaptiveAimSpeed(yawDiff, pitchDiff);
         float targetBlend = getTargetBlendSpeed(speed, yawDiff, pitchDiff);
         smoothedYaw = updateRotation(smoothedYaw, rotations[0], targetBlend);
-        smoothedPitch = updateRotation(smoothedPitch, rotations[1], Math.max(2.5F, targetBlend * 0.72F));
+        smoothedPitch = updateRotation(smoothedPitch, rotations[1], getPitchBlendSpeed(targetBlend));
         mc.thePlayer.rotationYaw = updateRotation(mc.thePlayer.rotationYaw, smoothedYaw, speed);
-        mc.thePlayer.rotationPitch = updateRotation(mc.thePlayer.rotationPitch, smoothedPitch, Math.max(3.0F, speed * 0.78F));
+        mc.thePlayer.rotationPitch = updateRotation(mc.thePlayer.rotationPitch, smoothedPitch, getPitchAimSpeed(speed));
         mc.thePlayer.rotationPitch = MathHelper.clamp_float(mc.thePlayer.rotationPitch, -90.0F, 90.0F);
         syncPlayerHead(mc.thePlayer.rotationYaw);
     }
 
     private float getAdaptiveAimSpeed(float yawDiff, float pitchDiff) {
-        float base = aimSpeed.getValue().floatValue();
+        float base = getBaseAimSpeed();
         float error = MathHelper.sqrt_float(yawDiff * yawDiff + pitchDiff * pitchDiff);
         float scale = 0.42F + Math.min(1.0F, error / 70.0F) * 0.85F;
         if (targetTicks > 2 && error < 35.0F) {
@@ -508,10 +605,21 @@ public class Scaffold extends Module {
         return MathHelper.clamp_float(blend, 2.5F, 42.0F);
     }
 
-    private void syncPlayerHead(float yaw) {
-        if (!Boolean.TRUE.equals(syncHead.getValue())) {
-            return;
+    private float getPitchBlendSpeed(float targetBlend) {
+        if (towering) {
+            return MathHelper.clamp_float(Math.max(8.0F, targetBlend * 1.05F), 6.0F, 58.0F);
         }
+        return Math.max(2.5F, targetBlend * 0.72F);
+    }
+
+    private float getPitchAimSpeed(float speed) {
+        if (towering) {
+            return MathHelper.clamp_float(Math.max(16.0F, speed * 1.08F), 10.0F, 90.0F);
+        }
+        return Math.max(3.0F, speed * 0.78F);
+    }
+
+    private void syncPlayerHead(float yaw) {
         RotationUtil.syncHead(mc, yaw);
     }
 
@@ -524,11 +632,15 @@ public class Scaffold extends Module {
         float yaw = (float) (Math.atan2(z, x) * 180.0D / Math.PI) - 90.0F;
         float pitch = (float) (-(Math.atan2(y, distance) * 180.0D / Math.PI));
         float minPitch = target.side == EnumFacing.UP ? 57.0F : 42.0F;
-        return new float[]{yaw, MathHelper.clamp_float(pitch, minPitch, 88.0F)};
+        float maxPitch = 88.0F;
+        if (towering) {
+            minPitch = target.side == EnumFacing.UP ? 76.0F : 58.0F;
+            maxPitch = 89.2F;
+        }
+        return new float[]{yaw, MathHelper.clamp_float(pitch, minPitch, maxPitch)};
     }
 
     private float updateRotation(float current, float target, float speed) {
-        float difference = MathHelper.wrapAngleTo180_float(target - current);
         return RotationUtil.limitAngleChange(current, target, speed);
     }
 

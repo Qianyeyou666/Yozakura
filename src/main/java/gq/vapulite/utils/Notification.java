@@ -10,6 +10,12 @@ import gq.vapulite.font.FontLoaders;
 import net.minecraft.client.Minecraft;
 
 public class Notification {
+    public static final int INFO = 0;
+    public static final int WARNING = 1;
+    public static final int ERROR = 2;
+    public static final int SUCCESS = 3;
+    public static final int MODULE = 4;
+
     private static final int TEXT = 0xFFE8EAEC;
     private static final int MUTED = 0xFFA4ADBB;
     private static final int GLASS = 0xFF07090D;
@@ -23,7 +29,7 @@ public class Notification {
     public String title;
     public String icon;
     public TimerUtil timer;
-    public Type type;
+    public int type;
     public long stayTime;
     Module module;
     private float animationX;
@@ -33,15 +39,15 @@ public class Notification {
     private final long createdAt;
     private long lastFrameMS;
 
-    public Notification(String title, String message, Type type, long stayTime) {
+    public Notification(String title, String message, int type, long stayTime) {
         this(title, message, type, stayTime, null);
     }
 
-    public Notification(String title, String message, Type type, long stayTime, Module module) {
+    public Notification(String title, String message, int type, long stayTime, Module module) {
         this.module = module;
         this.message = message == null ? "" : message;
         this.title = title == null ? "" : title;
-        this.type = type == null ? Type.INFO : type;
+        this.type = normalizeType(type);
         this.stayTime = stayTime;
         this.createdAt = System.currentTimeMillis();
         this.lastFrameMS = this.createdAt;
@@ -124,7 +130,7 @@ public class Notification {
         if (module != null) {
             return module.getName();
         }
-        return type.name();
+        return getTypeName();
     }
 
     private String getIcon() {
@@ -200,7 +206,26 @@ public class Notification {
         return result + "...";
     }
 
-    public enum Type {
-        INFO, WARNING, ERROR, SUCCESS, MODULE
+    private String getTypeName() {
+        switch (type) {
+            case WARNING:
+                return "WARNING";
+            case ERROR:
+                return "ERROR";
+            case SUCCESS:
+                return "SUCCESS";
+            case MODULE:
+                return "MODULE";
+            case INFO:
+            default:
+                return "INFO";
+        }
+    }
+
+    private static int normalizeType(int type) {
+        if (type < INFO || type > MODULE) {
+            return INFO;
+        }
+        return type;
     }
 }

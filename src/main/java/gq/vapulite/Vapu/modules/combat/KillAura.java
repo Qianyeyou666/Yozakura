@@ -146,7 +146,7 @@ public class KillAura extends Module {
         if (entity.hurtTime > hurtTime.getValue().intValue()) {
             return;
         }
-        if (!HitSelect.shouldAttack(entity, multiAttack)) {
+        if (!HitSelect.shouldAttack(entity, multiAttack) || !KnockbackDelay.shouldAttack(entity)) {
             return;
         }
         Criticals.tryCritical();

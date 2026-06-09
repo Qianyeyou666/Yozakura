@@ -55,7 +55,7 @@ public class AutoClicker extends Module {
         }
 
         Entity entity = mc.objectMouseOver == null ? null : mc.objectMouseOver.entityHit;
-        if (entity != null && !HitSelect.shouldAttack(entity)) {
+        if (entity != null && (!HitSelect.shouldAttack(entity) || !KnockbackDelay.shouldAttack(entity))) {
             return;
         }
 

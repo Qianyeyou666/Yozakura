@@ -75,6 +75,7 @@ public class ModuleManager {
         Modules.add(new AntiBot());
         Modules.add(new Speed());
         Modules.add(new Sprint());
+        Modules.add(new NoJumpDelay());
         Modules.add(new ClickGUI());
         Modules.add(new IGN());
         Modules.add(new StateMessage());
@@ -88,6 +89,8 @@ public class ModuleManager {
         Modules.add(new AutoClicker());
         Modules.add(new FastPlace());
         Modules.add(new Scaffold());
+        Modules.add(new Clutch());
+        Modules.add(new BridgeAssist());
         Modules.add(new LoadConfig());
         Modules.add(new SaveConfig());
         Modules.add(new Aimbot());
@@ -95,6 +98,8 @@ public class ModuleManager {
         Modules.add(new Criticals());
         Modules.add(new WTap());
         Modules.add(new BlockHit());
+        Modules.add(new FakeLag());
+        Modules.add(new KnockbackDelay());
         Modules.add(new HitSelect());
         Modules.add(new Velocity());
         Modules.add(new Uninject());
