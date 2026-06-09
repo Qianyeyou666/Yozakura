@@ -170,10 +170,17 @@ public class TargetHUD extends Module {
             float barY = y + height - 10.0f;
             float barW = textW;
             int healthColor = healthColor(healthAnimation);
+            float progress = clamp01(healthAnimation);
+            float fillW = Math.max(0.0f, barW * progress);
             RenderUtil.drawRoundedRect(barX, barY, barX + barW, barY + 3.2f, 1.6f,
                     withAlpha(0xFF1E2630, Math.round(160.0f * alpha)));
-            RenderUtil.drawProgressBar(barX, barY, barX + barW, barY + 3.2f, 1.6f, healthAnimation,
-                    0x00000000, withAlpha(healthColor, Math.round(225.0f * alpha)));
+            if (fillW > 0.4f) {
+                RenderUtil.drawRoundedRect(barX, barY, barX + fillW, barY + 3.2f,
+                        Math.min(1.6f, fillW / 2.0f), withAlpha(healthColor, Math.round(225.0f * alpha)));
+                RenderUtil.drawHorizontalGradientRect(barX, barY, barX + fillW, barY + 3.2f,
+                        withAlpha(healthColor, Math.round(245.0f * alpha)),
+                        withAlpha(ColorUtils.lighten(healthColor, 0.16f), Math.round(210.0f * alpha)));
+            }
         } finally {
             GlStateManager.popMatrix();
         }

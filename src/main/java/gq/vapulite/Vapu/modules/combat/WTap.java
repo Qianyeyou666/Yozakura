@@ -2,6 +2,7 @@ package gq.vapulite.Vapu.modules.combat;
 
 import gq.vapulite.Vapu.ModuleType;
 import gq.vapulite.Vapu.modules.Module;
+import gq.vapulite.Vapu.utils.SprintUtil;
 import gq.vapulite.Vapu.value.Mode;
 import gq.vapulite.Vapu.value.Numbers;
 import gq.vapulite.Vapu.value.Option;
@@ -107,7 +108,7 @@ public class WTap extends Module {
         if (mode.getValue() == WTapMode.NORMAL) {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindForward.getKeyCode(), false);
         } else {
-            mc.thePlayer.setSprinting(false);
+            SprintUtil.setSprinting(false);
         }
     }
 
@@ -120,7 +121,7 @@ public class WTap extends Module {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindForward.getKeyCode(), true);
         }
         if (mode.getValue() == WTapMode.SILENT && isForwardHeld()) {
-            mc.thePlayer.setSprinting(true);
+            SprintUtil.setSprinting(true);
         }
     }
 
