@@ -67,6 +67,7 @@ public class VapeClickGui extends GuiScreen {
     static final float SWITCH_HIT_PAD = 5.0f;
     static final float CLOSE_END_PROGRESS = 0.22f;
     static final float CLOSING_TEXT_CUTOFF = 0.36f;
+    static final int FPS_GRAPH_SAMPLES = 44;
 
     static GuiTab currentTab = GuiTab.COMBAT;
     static Module selectedModule;
@@ -125,6 +126,11 @@ public class VapeClickGui extends GuiScreen {
     long fpsSampleStarted;
     int fpsSampleFrames;
     int liveFps;
+    final float[] fpsGraphSamples = new float[FPS_GRAPH_SAMPLES];
+    int fpsGraphCursor;
+    int fpsGraphSize;
+    long fpsGraphLastSample;
+    float fpsGraphSmoothed;
     float frameScale = 1.0f;
     final UiTheme uiTheme = UiTheme.vape();
     final UiToggle reusableToggle = new UiToggle().setTheme(uiTheme);
@@ -164,6 +170,10 @@ public class VapeClickGui extends GuiScreen {
         fpsSampleStarted = lastFrameNanos;
         fpsSampleFrames = 0;
         liveFps = 0;
+        fpsGraphCursor = 0;
+        fpsGraphSize = 0;
+        fpsGraphLastSample = 0L;
+        fpsGraphSmoothed = 0.0f;
         frameScale = 1.0f;
     }
 
@@ -330,7 +340,23 @@ public class VapeClickGui extends GuiScreen {
     }
 
     String getLiveFpsText() {
+        if (fpsGraphSmoothed > 0.0f) {
+            return String.valueOf(Math.max(1, Math.round(fpsGraphSmoothed)));
+        }
         return liveFps <= 0 ? "--" : String.valueOf(liveFps);
+    }
+
+    int getFpsGraphSize() {
+        return fpsGraphSize;
+    }
+
+    float getFpsGraphSample(int index) {
+        if (fpsGraphSize <= 0) {
+            return fpsGraphSmoothed > 0.0f ? fpsGraphSmoothed : liveFps;
+        }
+        int clamped = Math.max(0, Math.min(fpsGraphSize - 1, index));
+        int start = fpsGraphSize == fpsGraphSamples.length ? fpsGraphCursor : 0;
+        return fpsGraphSamples[(start + clamped) % fpsGraphSamples.length];
     }
 
     int getEnabledModules() {
@@ -947,12 +973,31 @@ public class VapeClickGui extends GuiScreen {
         }
         float measuredScale = clamp(elapsed / 16666666.0f, 0.55f, 1.75f);
         frameScale += (measuredScale - frameScale) * 0.18f;
+        updateFpsGraph(now, 1000000000.0f / elapsed);
         fpsSampleFrames++;
         long sampleElapsed = now - fpsSampleStarted;
         if (sampleElapsed >= 250000000L) {
             liveFps = Math.max(1, Math.round(fpsSampleFrames * 1000000000.0f / sampleElapsed));
             fpsSampleFrames = 0;
             fpsSampleStarted = now;
+        }
+    }
+
+    private void updateFpsGraph(long now, float instantFps) {
+        float fps = clamp(instantFps, 1.0f, 999.0f);
+        if (fpsGraphSmoothed <= 0.0f) {
+            fpsGraphSmoothed = fps;
+        } else {
+            fpsGraphSmoothed += (fps - fpsGraphSmoothed) * 0.22f;
+        }
+        if (fpsGraphLastSample != 0L && now - fpsGraphLastSample < 90000000L) {
+            return;
+        }
+        fpsGraphLastSample = now;
+        fpsGraphSamples[fpsGraphCursor] = fpsGraphSmoothed;
+        fpsGraphCursor = (fpsGraphCursor + 1) % fpsGraphSamples.length;
+        if (fpsGraphSize < fpsGraphSamples.length) {
+            fpsGraphSize++;
         }
     }
 

@@ -75,15 +75,58 @@ final class ClickGuiSidePanel {
         drawStat("Ping", gui.getPingText(), gui.sideX + 68.0f, y + 12.0f, new Color(118, 213, 144).getRGB());
         drawStat("Modules", gui.getEnabledModules() + "/" + ModuleManager.getModules().size(), gui.sideX + 122.0f, y + 12.0f,
                 VapeClickGui.ACCENT);
-        float graphY = y + 48.0f;
-        for (int i = 0; i < 10; i++) {
-            float px = gui.sideX + 12.0f + i * 14.0f;
-            float spike = (i % 3 == 1 ? 6.0f : i % 4 == 0 ? 3.0f : 1.5f);
-            RenderUtil.drawLine(px, graphY, px + 8.0f, graphY - spike, 0.7f,
-                    gui.withAlpha(VapeClickGui.ACCENT, 120.0f * gui.openProgress));
-            RenderUtil.drawLine(px + 8.0f, graphY - spike, px + 14.0f, graphY - 1.5f, 0.7f,
-                    gui.withAlpha(VapeClickGui.ACCENT, 90.0f * gui.openProgress));
+        drawFpsGraph(y);
+    }
+
+    private void drawFpsGraph(float y) {
+        float graphX = gui.sideX + 12.0f;
+        float graphTop = y + 43.0f;
+        float graphW = gui.sideW - 24.0f;
+        float graphH = 14.0f;
+        float graphBottom = graphTop + graphH;
+        int count = gui.getFpsGraphSize();
+
+        RenderUtil.drawLine(graphX, graphBottom, graphX + graphW, graphBottom, 0.55f,
+                gui.withAlpha(new Color(105, 128, 148).getRGB(), 32.0f * gui.openProgress));
+        if (count < 2) {
+            float yMid = graphBottom - graphH * 0.48f;
+            RenderUtil.drawLine(graphX, yMid, graphX + graphW, yMid, 0.7f,
+                    gui.withAlpha(VapeClickGui.ACCENT, 70.0f * gui.openProgress));
+            return;
         }
+
+        float min = Float.MAX_VALUE;
+        float max = 0.0f;
+        for (int i = 0; i < count; i++) {
+            float sample = gui.getFpsGraphSample(i);
+            min = Math.min(min, sample);
+            max = Math.max(max, sample);
+        }
+        if (max - min < 24.0f) {
+            float center = (min + max) * 0.5f;
+            min = Math.max(0.0f, center - 12.0f);
+            max = center + 12.0f;
+        }
+
+        float step = graphW / Math.max(1.0f, count - 1.0f);
+        float previousX = graphX;
+        float previousY = graphBottom - normalizedFps(gui.getFpsGraphSample(0), min, max) * graphH;
+        for (int i = 1; i < count; i++) {
+            float px = graphX + step * i;
+            float py = graphBottom - normalizedFps(gui.getFpsGraphSample(i), min, max) * graphH;
+            RenderUtil.drawLine(previousX, previousY, px, py, 2.0f,
+                    gui.withAlpha(VapeClickGui.ACCENT, 28.0f * gui.openProgress));
+            RenderUtil.drawLine(previousX, previousY, px, py, 0.85f,
+                    gui.withAlpha(new Color(116, 198, 229).getRGB(), 145.0f * gui.openProgress));
+            previousX = px;
+            previousY = py;
+        }
+        RenderUtil.drawCircle(previousX, previousY, 0, 360, 1.7f,
+                gui.withAlpha(new Color(148, 224, 255).getRGB(), 190.0f * gui.openProgress));
+    }
+
+    private float normalizedFps(float fps, float min, float max) {
+        return gui.clamp((fps - min) / Math.max(1.0f, max - min), 0.0f, 1.0f);
     }
 
     private void drawModuleSummary(float y) {
