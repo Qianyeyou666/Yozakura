@@ -10,7 +10,7 @@ import gq.vapulite.font.FontLoaders;
 import gq.vapulite.ui.UiPanel;
 
 import java.awt.Color;
-import java.util.Arrays;
+import java.util.List;
 
 final class ClickGuiDetailPanel {
     private static final String[] DETAIL_TABS = new String[]{"General", "Targets", "Extra", "Rotation", "Visuals"};
@@ -118,11 +118,30 @@ final class ClickGuiDetailPanel {
         value.setValue(result);
     }
 
+    void updateColorValue(int mouseX, int mouseY) {
+        if (gui.draggingColorRed == null || gui.draggingColorGreen == null || gui.draggingColorBlue == null) {
+            return;
+        }
+        setColorFromPalette(gui.draggingColorRed, gui.draggingColorGreen, gui.draggingColorBlue,
+                mouseX, mouseY, gui.draggingColorX, gui.draggingColorY, gui.draggingColorW, gui.draggingColorH);
+    }
+
     private boolean handleInlineValueClick(Module module, float x, float valueY, float width,
                                            int mouseX, int mouseY, int mouseButton) {
-        for (Value value : module.getValues()) {
-            float valueH = gui.getValueHeight(value);
+        List<Value> values = module.getValues();
+        for (int i = 0; i < values.size(); i++) {
+            if (gui.isColorContinuation(module, i)) {
+                continue;
+            }
+            Value value = values.get(i);
+            float valueH = gui.getValueHeight(module, i);
             if (VapeClickGui.isHovered(x, valueY, x + width, valueY + valueH, mouseX, mouseY)) {
+                if (gui.isColorStart(module, i) && mouseButton == 0) {
+                    Numbers red = (Numbers) values.get(i);
+                    Numbers green = (Numbers) values.get(i + 1);
+                    Numbers blue = (Numbers) values.get(i + 2);
+                    return handlePaletteClick(module, red, green, blue, x, valueY, width, mouseX, mouseY);
+                }
                 if (value instanceof Option && mouseButton == 0) {
                     value.setValue(!Boolean.TRUE.equals(value.getValue()));
                     gui.valueActiveProgress.put(value, 1.0f);
@@ -198,6 +217,179 @@ final class ClickGuiDetailPanel {
         return true;
     }
 
+    private boolean handlePaletteClick(Module module, Numbers red, Numbers green, Numbers blue,
+                                       float x, float y, float w, int mouseX, int mouseY) {
+        float[] bounds = getPaletteBounds(x, y, w);
+        if (!VapeClickGui.isHovered(bounds[0], bounds[1], bounds[0] + bounds[2], bounds[1] + bounds[3],
+                mouseX, mouseY)) {
+            return false;
+        }
+        String key = module.getName() + ":rgb";
+        long now = System.currentTimeMillis();
+        boolean doubleClick = key.equals(gui.lastPaletteClickKey) && now - gui.lastPaletteClickMS <= 330L;
+        gui.lastPaletteClickKey = key;
+        gui.lastPaletteClickMS = now;
+        gui.valueActiveProgress.put(red, 1.0f);
+        if (doubleClick) {
+            setRainbowMode(module, true);
+            gui.clearDraggingColor();
+            return true;
+        }
+        setRainbowMode(module, false);
+        gui.beginDraggingColor(red, green, blue, bounds[0], bounds[1], bounds[2], bounds[3]);
+        setColorFromPalette(red, green, blue, mouseX, mouseY, bounds[0], bounds[1], bounds[2], bounds[3]);
+        return true;
+    }
+
+    private void drawColorPalette(Module module, Numbers red, Numbers green, Numbers blue,
+                                  float x, float y, float w, float alpha, int mouseX, int mouseY) {
+        int color = rgb(red, green, blue);
+        boolean rainbow = isRainbowMode(module);
+        float[] bounds = getPaletteBounds(x, y, w);
+        float paletteX = bounds[0];
+        float paletteY = bounds[1];
+        float paletteW = bounds[2];
+        float paletteH = bounds[3];
+        float preview = 25.0f;
+        float previewX = x + w - preview;
+        float active = gui.animateValueMap(gui.valueActiveProgress, red, gui.draggingColorRed == red ? 1.0f : 0.0f, 0.20f);
+
+        gui.drawFont("Color", x, y + 8.0f,
+                gui.withAlpha(VapeClickGui.TEXT, 245.0f * alpha * gui.openProgress));
+        gui.drawFont(rainbow ? "RGB Rainbow" : toHex(color), x, y + 25.0f,
+                gui.withAlpha(rainbow ? VapeClickGui.ACCENT : VapeClickGui.MUTED, 205.0f * alpha * gui.openProgress));
+
+        RenderUtil.drawSoftShadow(paletteX, paletteY, paletteX + paletteW, paletteY + paletteH, 5.0f,
+                gui.withAlpha(color, (36.0f + active * 64.0f) * alpha * gui.openProgress), 5, 3.0f);
+        RenderUtil.drawFrostedGlassRect(paletteX - 1.0f, paletteY - 1.0f, paletteX + paletteW + 1.0f,
+                paletteY + paletteH + 1.0f, 6.0f, 0.8f,
+                gui.withAlpha(VapeClickGui.GLASS_FILL_SOFT, 120.0f * alpha * gui.openProgress),
+                gui.withAlpha(rainbow ? VapeClickGui.ACCENT : VapeClickGui.GLASS_BORDER,
+                        (rainbow ? 95.0f : 52.0f) * alpha * gui.openProgress));
+        drawPaletteGradient(paletteX, paletteY, paletteW, paletteH, alpha);
+        RenderUtil.drawGradientRect(paletteX, paletteY, paletteX + paletteW, paletteY + paletteH,
+                gui.withAlpha(new Color(255, 255, 255, 52).getRGB(), 38.0f * alpha * gui.openProgress),
+                gui.withAlpha(new Color(0, 0, 0, 132).getRGB(), 98.0f * alpha * gui.openProgress));
+
+        float[] marker = getColorMarker(red, green, blue, paletteX, paletteY, paletteW, paletteH);
+        RenderUtil.drawCircleOutline(marker[0], marker[1], 4.0f + active, 1.2f,
+                gui.withAlpha(new Color(255, 255, 255).getRGB(), 235.0f * alpha * gui.openProgress));
+        RenderUtil.drawCircle(marker[0], marker[1], 0, 360, 2.1f,
+                gui.withAlpha(color, 240.0f * alpha * gui.openProgress));
+
+        RenderUtil.drawFrostedGlassRect(previewX, y + 9.0f, previewX + preview, y + 34.0f, 7.0f, 0.8f,
+                gui.withAlpha(color, 230.0f * alpha * gui.openProgress),
+                gui.withAlpha(new Color(255, 255, 255).getRGB(), 70.0f * alpha * gui.openProgress));
+        if (rainbow) {
+            RenderUtil.drawCircle(previewX + preview - 5.5f, y + 13.5f, 0, 360, 2.6f,
+                    gui.withAlpha(VapeClickGui.ACCENT, 230.0f * alpha * gui.openProgress));
+        }
+    }
+
+    private void drawPaletteGradient(float x, float y, float w, float h, float alpha) {
+        int segments = 18;
+        float segmentW = w / segments;
+        for (int i = 0; i < segments; i++) {
+            float left = x + i * segmentW;
+            float right = i == segments - 1 ? x + w : left + segmentW + 0.5f;
+            int start = Color.HSBtoRGB(i / (float) segments, 0.86f, 1.0f);
+            int end = Color.HSBtoRGB((i + 1) / (float) segments, 0.86f, 1.0f);
+            RenderUtil.drawGradientRect(left, y, right, y + h,
+                    gui.withAlpha(start, 238.0f * alpha * gui.openProgress),
+                    gui.withAlpha(end, 238.0f * alpha * gui.openProgress));
+        }
+    }
+
+    private float[] getPaletteBounds(float x, float y, float w) {
+        float labelW = gui.getDetailLabelWidth(w);
+        float preview = 25.0f;
+        float paletteX = x + labelW;
+        float paletteY = y + 9.0f;
+        float paletteW = Math.max(70.0f, w - labelW - preview - 12.0f);
+        return new float[]{paletteX, paletteY, paletteW, 25.0f};
+    }
+
+    private void setColorFromPalette(Numbers red, Numbers green, Numbers blue,
+                                     int mouseX, int mouseY, float x, float y, float w, float h) {
+        float hue = gui.clamp((mouseX - x) / Math.max(1.0f, w), 0.0f, 1.0f);
+        float vertical = gui.clamp((mouseY - y) / Math.max(1.0f, h), 0.0f, 1.0f);
+        float brightness = 1.0f - vertical * 0.58f;
+        int rgb = Color.HSBtoRGB(hue, 0.86f, brightness);
+        setNumber(red, rgb >> 16 & 255);
+        setNumber(green, rgb >> 8 & 255);
+        setNumber(blue, rgb & 255);
+    }
+
+    private float[] getColorMarker(Numbers red, Numbers green, Numbers blue, float x, float y, float w, float h) {
+        float[] hsb = Color.RGBtoHSB(colorValue(red), colorValue(green), colorValue(blue), null);
+        float mx = x + hsb[0] * w;
+        float my = y + gui.clamp((1.0f - hsb[2]) / 0.58f, 0.0f, 1.0f) * h;
+        return new float[]{mx, my};
+    }
+
+    private void setRainbowMode(Module module, boolean enabled) {
+        for (Value value : module.getValues()) {
+            String name = gui.normalizeValueName(value);
+            if (value instanceof Option && name.contains("rainbow")) {
+                value.setValue(enabled);
+            }
+            if (value instanceof Mode && (name.equals("color") || name.contains("color"))) {
+                Mode mode = (Mode) value;
+                Object match = findMode(mode, enabled ? "RAINBOW" : "STATIC");
+                if (match != null) {
+                    mode.setValue(match);
+                }
+            }
+        }
+    }
+
+    private boolean isRainbowMode(Module module) {
+        for (Value value : module.getValues()) {
+            String name = gui.normalizeValueName(value);
+            if (value instanceof Option && name.contains("rainbow") && Boolean.TRUE.equals(value.getValue())) {
+                return true;
+            }
+            if (value instanceof Mode && (name.equals("color") || name.contains("color"))) {
+                Object current = value.getValue();
+                if (current instanceof Enum && "RAINBOW".equalsIgnoreCase(((Enum) current).name())) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private Object findMode(Mode mode, String wanted) {
+        Object[] modes = mode.getModes();
+        for (Object entry : modes) {
+            if (entry instanceof Enum && wanted.equalsIgnoreCase(((Enum) entry).name())) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    private int rgb(Numbers red, Numbers green, Numbers blue) {
+        return 0xFF000000 | colorValue(red) << 16 | colorValue(green) << 8 | colorValue(blue);
+    }
+
+    private int colorValue(Numbers value) {
+        Object raw = value.getValue();
+        return Math.max(0, Math.min(255, raw instanceof Number ? ((Number) raw).intValue() : 0));
+    }
+
+    private void setNumber(Numbers value, int color) {
+        value.setValue((double) Math.max(0, Math.min(255, color)));
+    }
+
+    private String toHex(int color) {
+        String hex = Integer.toHexString(color & 0xFFFFFF).toUpperCase();
+        while (hex.length() < 6) {
+            hex = "0" + hex;
+        }
+        return "#" + hex;
+    }
+
     private void drawDetailValues(float panelY, int mouseX, int mouseY) {
         float x = gui.getDetailValuesX();
         float y = gui.getDetailValuesY(panelY);
@@ -218,18 +410,27 @@ final class ClickGuiDetailPanel {
         try {
             float valueY = y + gui.settingsScroll;
             int index = 0;
-            for (Value value : module.getValues()) {
+            List<Value> values = module.getValues();
+            for (int i = 0; i < values.size(); i++) {
+                if (gui.isColorContinuation(module, i)) {
+                    continue;
+                }
+                Value value = values.get(i);
+                float valueH = gui.getValueHeight(module, i);
                 float rowAlpha = Math.max(0.0f, Math.min(1.0f, 1.0f - index * 0.015f));
-                if (valueY + VapeClickGui.VALUE_ROW_H >= y - 2.0f && valueY <= y + h + 2.0f) {
+                if (valueY + valueH >= y - 2.0f && valueY <= y + h + 2.0f) {
                     float active = gui.animateValueMap(gui.valueActiveProgress, value,
                             gui.draggingNumber == value ? 1.0f : 0.0f, 0.18f);
                     if (active > 0.02f) {
                         gui.drawSoftRect(x - 6.0f, valueY + 1.0f, x + w + 2.0f,
-                                valueY + VapeClickGui.VALUE_ROW_H - 2.0f, 6.0f,
+                                valueY + valueH - 2.0f, 6.0f,
                                 gui.withAlpha(new Color(36, 41, 55, 160).getRGB(),
                                         120.0f * active * gui.openProgress));
                     }
-                    if (value instanceof Option) {
+                    if (gui.isColorStart(module, i)) {
+                        drawColorPalette(module, (Numbers) values.get(i), (Numbers) values.get(i + 1),
+                                (Numbers) values.get(i + 2), x, valueY, w, rowAlpha, mouseX, mouseY);
+                    } else if (value instanceof Option) {
                         drawOption((Option) value, x, valueY, w, rowAlpha);
                     } else if (value instanceof Numbers) {
                         drawNumber((Numbers) value, x, valueY, w, rowAlpha);
@@ -237,7 +438,7 @@ final class ClickGuiDetailPanel {
                         drawMode((Mode) value, x, valueY, w, rowAlpha);
                     }
                 }
-                valueY += gui.getValueHeight(value);
+                valueY += valueH;
                 index++;
             }
         } finally {
@@ -330,9 +531,14 @@ final class ClickGuiDetailPanel {
      */
     private float getModeValueY(Mode value) {
         float y = gui.getDetailValuesY(gui.contentY) + gui.settingsScroll;
-        for (Value v : gui.selectedModule.getValues()) {
+        List<Value> values = gui.selectedModule.getValues();
+        for (int i = 0; i < values.size(); i++) {
+            if (gui.isColorContinuation(gui.selectedModule, i)) {
+                continue;
+            }
+            Value v = values.get(i);
             if (v == value) return y;
-            y += gui.getValueHeight(v);
+            y += gui.getValueHeight(gui.selectedModule, i);
         }
         return y;
     }

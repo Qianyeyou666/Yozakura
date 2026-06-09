@@ -61,6 +61,7 @@ public class VapeClickGui extends GuiScreen {
     static final float SIDE_W = 170.0f;
     static final float DETAIL_HEADER_H = 98.0f;
     static final float VALUE_ROW_H = 26.0f;
+    static final float COLOR_ROW_H = 56.0f;
     static final float SWITCH_W = 28.0f;
     static final float SWITCH_H = 14.0f;
     static final float SWITCH_HIT_PAD = 5.0f;
@@ -70,6 +71,9 @@ public class VapeClickGui extends GuiScreen {
     static GuiTab currentTab = GuiTab.COMBAT;
     static Module selectedModule;
     Value draggingNumber;
+    Numbers draggingColorRed;
+    Numbers draggingColorGreen;
+    Numbers draggingColorBlue;
     Module bindingModule;
     final Map<Module, Float> hoverProgress = new HashMap<Module, Float>();
     final Map<Module, Float> clickProgress = new HashMap<Module, Float>();
@@ -80,6 +84,10 @@ public class VapeClickGui extends GuiScreen {
     final Set<Module> favoriteModules = new HashSet<Module>();
     float draggingNumberX;
     float draggingNumberW;
+    float draggingColorX;
+    float draggingColorY;
+    float draggingColorW;
+    float draggingColorH;
     float listScroll;
     float targetListScroll;
     float settingsScroll;
@@ -111,6 +119,8 @@ public class VapeClickGui extends GuiScreen {
     long toastStarted;
     boolean closing;
     boolean savedOnClose;
+    long lastPaletteClickMS;
+    String lastPaletteClickKey;
     long lastFrameNanos;
     long fpsSampleStarted;
     int fpsSampleFrames;
@@ -147,6 +157,9 @@ public class VapeClickGui extends GuiScreen {
         savedOnClose = false;
         draggingScrollbar = false;
         draggingNumber = null;
+        clearDraggingColor();
+        lastPaletteClickMS = 0L;
+        lastPaletteClickKey = null;
         lastFrameNanos = System.nanoTime();
         fpsSampleStarted = lastFrameNanos;
         fpsSampleFrames = 0;
@@ -171,6 +184,11 @@ public class VapeClickGui extends GuiScreen {
         if (!closing) {
             moduleList.updateScrollbarDrag(mouseY);
             updateScroll(mouseX, mouseY);
+        }
+        if (!closing && draggingColorRed != null && Mouse.isButtonDown(0)) {
+            detailPanel.updateColorValue(mouseX, mouseY);
+        } else if (!Mouse.isButtonDown(0)) {
+            clearDraggingColor();
         }
         if (!closing && draggingNumber instanceof Numbers && Mouse.isButtonDown(0)) {
             detailPanel.updateNumberValue((Numbers) draggingNumber, mouseX, draggingNumberX, draggingNumberW);
@@ -345,7 +363,11 @@ public class VapeClickGui extends GuiScreen {
         if (module == null || module.getValues().isEmpty()) {
             return 0.0f;
         }
-        return module.getValues().size() * VALUE_ROW_H + 4.0f;
+        float height = 4.0f;
+        for (int i = 0; i < module.getValues().size(); i++) {
+            height += getValueHeight(module, i);
+        }
+        return height;
     }
 
     String getValueText(Value value) {
@@ -428,6 +450,7 @@ public class VapeClickGui extends GuiScreen {
     @Override
     protected void mouseReleased(int mouseX, int mouseY, int state) {
         draggingNumber = null;
+        clearDraggingColor();
         draggingScrollbar = false;
         super.mouseReleased(mouseX, mouseY, state);
     }
@@ -481,6 +504,59 @@ public class VapeClickGui extends GuiScreen {
 
     float getValueHeight(Value value) {
         return VALUE_ROW_H;
+    }
+
+    float getValueHeight(Module module, int index) {
+        if (isColorStart(module, index)) {
+            return COLOR_ROW_H;
+        }
+        if (isColorContinuation(module, index)) {
+            return 0.0f;
+        }
+        return VALUE_ROW_H;
+    }
+
+    boolean isColorStart(Module module, int index) {
+        if (module == null || index < 0 || index + 2 >= module.getValues().size()) {
+            return false;
+        }
+        List<Value> values = module.getValues();
+        return isNumberNamed(values.get(index), "red")
+                && isNumberNamed(values.get(index + 1), "green")
+                && isNumberNamed(values.get(index + 2), "blue");
+    }
+
+    boolean isColorContinuation(Module module, int index) {
+        return isColorStart(module, index - 1) || isColorStart(module, index - 2);
+    }
+
+    private boolean isNumberNamed(Value value, String name) {
+        return value instanceof Numbers && normalizeValueName(value).equals(name);
+    }
+
+    String normalizeValueName(Value value) {
+        String raw = value == null ? "" : value.getName();
+        if (raw == null || raw.length() == 0) {
+            raw = value == null ? "" : value.getDisplayName();
+        }
+        return raw == null ? "" : raw.replace(" ", "").replace("_", "").replace("-", "").toLowerCase(Locale.ROOT);
+    }
+
+    void beginDraggingColor(Numbers red, Numbers green, Numbers blue, float x, float y, float w, float h) {
+        draggingColorRed = red;
+        draggingColorGreen = green;
+        draggingColorBlue = blue;
+        draggingColorX = x;
+        draggingColorY = y;
+        draggingColorW = w;
+        draggingColorH = h;
+        draggingNumber = null;
+    }
+
+    void clearDraggingColor() {
+        draggingColorRed = null;
+        draggingColorGreen = null;
+        draggingColorBlue = null;
     }
 
     void ensureSelectedModule() {
