@@ -5,6 +5,8 @@ import gq.vapulite.eventapi.events.EventStoppable;
 import gq.vapulite.eventapi.events.callables.EventCancellable;
 import gq.vapulite.eventapi.types.Priority;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -118,13 +120,15 @@ public final class EventManager {
 	 */
 	private static void register(Method method, Object object) {
 		Class<? extends Event> indexClass = (Class<? extends Event>) method.getParameterTypes()[0];
-		// New MethodData from the Method we are registering.
-		final MethodData data = new MethodData(object, method, method.getAnnotation(EventTarget.class).value());
-
-		// Set's the method to accessible so that we can also invoke it if it's
-		// protected or private.
-		if (!data.getTarget().isAccessible()) {
-			data.getTarget().setAccessible(true);
+		final MethodData data;
+		try {
+			if (!method.isAccessible()) {
+				method.setAccessible(true);
+			}
+			data = new MethodData(object, method, method.getAnnotation(EventTarget.class).value());
+		} catch (IllegalAccessException e) {
+			e.printStackTrace();
+			return;
 		}
 
 		if (REGISTRY_MAP.containsKey(indexClass)) {
@@ -273,7 +277,7 @@ public final class EventManager {
 	 */
 	private static void invoke(MethodData data, Event argument) {
 		try {
-			data.getTarget().invoke(data.getSource(), argument);
+			data.invoke(argument);
 		} catch (Throwable e) {
 
 		}
@@ -290,6 +294,8 @@ public final class EventManager {
 
 		private final Method target;
 
+		private final MethodHandle invoker;
+
 		private final byte priority;
 
 		/**
@@ -301,9 +307,10 @@ public final class EventManager {
 		 * @param priority The priority of this Method. Used by the registry to sort the
 		 *                 data on.
 		 */
-		public MethodData(Object source, Method target, byte priority) {
+		public MethodData(Object source, Method target, byte priority) throws IllegalAccessException {
 			this.source = source;
 			this.target = target;
+			this.invoker = MethodHandles.lookup().unreflect(target).bindTo(source);
 			this.priority = priority;
 		}
 
@@ -325,6 +332,10 @@ public final class EventManager {
 			return target;
 		}
 
+		public void invoke(Event event) throws Throwable {
+			invoker.invoke(event);
+		}
+
 		/**
 		 * Gets the priority value of the targeted Method.
 		 *
@@ -332,6 +343,25 @@ public final class EventManager {
 		 */
 		public byte getPriority() {
 			return priority;
+		}
+
+		@Override
+		public boolean equals(Object object) {
+			if (this == object) {
+				return true;
+			}
+			if (!(object instanceof MethodData)) {
+				return false;
+			}
+			MethodData data = (MethodData) object;
+			return source.equals(data.source) && target.equals(data.target);
+		}
+
+		@Override
+		public int hashCode() {
+			int result = source.hashCode();
+			result = 31 * result + target.hashCode();
+			return result;
 		}
 
 	}
