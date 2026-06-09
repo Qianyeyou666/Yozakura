@@ -1,141 +1,160 @@
 package gq.vapulite.Vapu.modules.combat;
 
-import gq.vapulite.Vapu.Client;
 import gq.vapulite.Vapu.ModuleType;
-import gq.vapulite.Vapu.Value;
 import gq.vapulite.Vapu.modules.Module;
 import gq.vapulite.Vapu.utils.TimerUtil;
+import gq.vapulite.Vapu.value.Mode;
 import gq.vapulite.Vapu.value.Numbers;
 import gq.vapulite.Vapu.value.Option;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.settings.KeyBinding;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
-import net.minecraft.entity.item.EntityArmorStand;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.ItemSword;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.input.Keyboard;
-import net.minecraft.entity.Entity;
-import net.minecraft.network.play.client.C02PacketUseEntity;
 
-import java.util.Comparator;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
-
-import static net.minecraft.realms.RealmsMth.sqrt;
-import static net.minecraft.realms.RealmsMth.wrapDegrees;
 
 public class KillAura extends Module {
+    public enum AttackMode {
+        SINGLE,
+        SWITCH,
+        MULTI
+    }
+
     private final TimerUtil timer = new TimerUtil();
     public static EntityLivingBase target;
-    private Numbers<Double> rangeValue = new Numbers<Double>("Range", "Range",4.2, 1.0, 6.0,1.0);
-    private Numbers<Double> cps = new Numbers<Double>("Cps", "Cps",10.0, 1.0, 20.0,1.0);
-    private Option<Boolean> autoblock = new Option<Boolean>("AutoBlock","AutoBlock", true);
+
+    private final Numbers<Double> rangeValue = new Numbers<Double>("Range", "Range", 4.2, 1.0, 6.0, 0.1);
+    private final Numbers<Double> minCps = new Numbers<Double>("Min CPS", "MinCPS", 8.0, 1.0, 20.0, 1.0);
+    private final Numbers<Double> cps = new Numbers<Double>("Max CPS", "Cps", 12.0, 1.0, 20.0, 1.0);
+    private final Numbers<Double> fov = new Numbers<Double>("FOV", "FOV", 180.0, 10.0, 180.0, 5.0);
+    private final Numbers<Double> yawSpeed = new Numbers<Double>("Yaw Speed", "YawSpeed", 32.0, 1.0, 90.0, 1.0);
+    private final Numbers<Double> pitchSpeed = new Numbers<Double>("Pitch Speed", "PitchSpeed", 24.0, 1.0, 90.0, 1.0);
+    private final Numbers<Double> hurtTime = new Numbers<Double>("Hurt Time", "HurtTime", 10.0, 0.0, 10.0, 1.0);
+    private final Mode<AttackMode> mode = new Mode<AttackMode>("Mode", "Mode", AttackMode.values(), AttackMode.SINGLE);
+    private final Mode<CombatUtil.TargetPriority> priority =
+            new Mode<CombatUtil.TargetPriority>("Priority", "Priority", CombatUtil.TargetPriority.values(), CombatUtil.TargetPriority.DISTANCE);
+    private final Option<Boolean> autoblock = new Option<Boolean>("AutoBlock", "AutoBlock", true);
+    private final Option<Boolean> weaponOnly = new Option<Boolean>("Only Weapon", "OnlyWeapon", false);
+    private final Option<Boolean> players = new Option<Boolean>("Players", "Players", true);
+    private final Option<Boolean> mobs = new Option<Boolean>("Mobs", "Mobs", true);
+    private final Option<Boolean> animals = new Option<Boolean>("Animals", "Animals", true);
+    private final Option<Boolean> throughWalls = new Option<Boolean>("Through Walls", "ThroughWalls", false);
+    private final Option<Boolean> rotate = new Option<Boolean>("Rotate", "Rotate", true);
+    private final Option<Boolean> onlyYaw = new Option<Boolean>("Only Yaw", "OnlyYaw", false);
+
+    private int switchIndex;
+    private int delayMs;
+
     public KillAura() {
-        super("KillAura", Keyboard.KEY_NONE, ModuleType.Combat,"Auto Attack the entity near you");
-        //TODO Target
-        this.addValues(this.rangeValue,this.autoblock,this.cps);
-        Chinese="杀戮光环";
+        super("KillAura", Keyboard.KEY_NONE, ModuleType.Combat, "Auto attack nearby targets");
+        this.addValues(rangeValue, minCps, cps, fov, yawSpeed, pitchSpeed, hurtTime, mode, priority, autoblock,
+                weaponOnly, players, mobs, animals, throughWalls, rotate, onlyYaw);
+        Chinese = "杀戮光环";
+    }
+
+    @Override
+    public void enable() {
+        target = null;
+        switchIndex = 0;
+        delayMs = CombatUtil.nextDelay(minCps.getValue(), cps.getValue());
+    }
+
+    @Override
+    public void disable() {
+        target = null;
     }
 
     @SubscribeEvent
-    public void onTick(TickEvent event) {
-        if (!isInGame()) {
+    public void onTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) {
+            return;
+        }
+        if (!isInGame() || CombatUtil.shouldPauseForScreen()) {
             target = null;
             return;
         }
-        int maxCps = Math.max(2, this.cps.getValue().intValue());
-        if (timer.delay(1000 / ThreadLocalRandom.current().nextInt(1, maxCps))) {
-            this.updateTarget();
-            assistFaceEntity(target, (float) 20.0, (float) 20.0);
-            Object[] objects = mc.theWorld.loadedEntityList.stream().filter(entity -> entity instanceof EntityLivingBase && entity != mc.thePlayer && ((EntityLivingBase) entity).getHealth() > 0F && entity.getDistanceToEntity(mc.thePlayer) <= rangeValue.getValue()).sorted(Comparator.comparingDouble(entity -> entity.getDistanceToEntity(mc.thePlayer))).toArray();
-            if (objects.length > 0)
-                target = (EntityLivingBase) objects[0];
-            if(target == null || AntiBot.isServerBot(target))
-                return;
-            if(target.getHealth()==0)
-                return;
-//            if(target == mc.objectMouseOver.entityHit)
-//                return;
-            mc.thePlayer.swingItem();
-            mc.getNetHandler().addToSendQueue(new C02PacketUseEntity(target, C02PacketUseEntity.Action.ATTACK));
-            if ((Boolean) this.autoblock.getValue() && mc.thePlayer.getCurrentEquippedItem() != null){
-                mc.thePlayer.getHeldItem().useItemRightClick(mc.theWorld, mc.thePlayer);
-            }
+        if (Boolean.TRUE.equals(weaponOnly.getValue()) && !CombatUtil.isHoldingWeapon()) {
             target = null;
-            timer.reset();
+            return;
         }
+
+        List<EntityLivingBase> targets = CombatUtil.collectTargets(rangeValue.getValue(), fov.getValue(),
+                players.getValue(), mobs.getValue(), animals.getValue(), throughWalls.getValue());
+        CombatUtil.sortTargets(targets, priority.getValue());
+        if (targets.isEmpty()) {
+            target = null;
+            return;
+        }
+
+        if (mode.getValue() == AttackMode.SWITCH) {
+            if (switchIndex >= targets.size()) {
+                switchIndex = 0;
+            }
+            target = targets.get(switchIndex);
+        } else {
+            target = targets.get(0);
+        }
+
+        if (Boolean.TRUE.equals(rotate.getValue()) && target != null) {
+            CombatUtil.faceEntity(target, yawSpeed.getValue().floatValue(), pitchSpeed.getValue().floatValue(),
+                    Boolean.TRUE.equals(onlyYaw.getValue()), 0.0f);
+        }
+
+        if (!timer.delay(delayMs)) {
+            return;
+        }
+
+        if (mode.getValue() == AttackMode.MULTI) {
+            for (EntityLivingBase entity : targets) {
+                attack(entity, true);
+            }
+        } else {
+            attack(target, false);
+            if (mode.getValue() == AttackMode.SWITCH) {
+                switchIndex++;
+            }
+        }
+        delayMs = CombatUtil.nextDelay(minCps.getValue(), cps.getValue());
+        timer.reset();
+    }
+
+    private void attack(EntityLivingBase entity, boolean multiAttack) {
+        if (entity == null || entity.isDead || entity.getHealth() <= 0.0f) {
+            return;
+        }
+        if (entity.hurtTime > hurtTime.getValue().intValue()) {
+            return;
+        }
+        if (!HitSelect.shouldAttack(entity, multiAttack)) {
+            return;
+        }
+        Criticals.tryCritical();
+        mc.thePlayer.swingItem();
+        mc.playerController.attackEntity(mc.thePlayer, entity);
+        HitSelect.onAttack(entity);
+        BlockHit.onAttack(entity);
+        WTap.onAttack(entity);
+        if (Boolean.TRUE.equals(autoblock.getValue())) {
+            blockWithSword();
+        }
+    }
+
+    private void blockWithSword() {
+        ItemStack stack = mc.thePlayer.getCurrentEquippedItem();
+        if (stack == null || !(stack.getItem() instanceof ItemSword)) {
+            return;
+        }
+        mc.playerController.sendUseItem(mc.thePlayer, mc.theWorld, stack);
     }
 
     public static void assistFaceEntity(Entity entity, float yaw, float pitch) {
-        double yDifference;
-        if (entity == null) {
-            return;
-        }
-        double diffX = entity.posX - mc.thePlayer.posX;
-        double diffZ = entity.posZ - mc.thePlayer.posZ;
-        if (entity instanceof EntityLivingBase) {
-            EntityLivingBase entityLivingBase = (EntityLivingBase) entity;
-            yDifference = entityLivingBase.posY + (double) entityLivingBase.getEyeHeight() - (mc.thePlayer.posY + (double) mc.thePlayer.getEyeHeight());
-        } else {
-            yDifference = (entity.getEntityBoundingBox().minY + entity.getEntityBoundingBox().maxY) / 2.0 - (mc.thePlayer.posY + (double) mc.thePlayer.getEyeHeight());
-        }
-        double dist = sqrt(diffX * diffX + diffZ * diffZ);
-        float rotationYaw = (float) (Math.atan2(diffZ, diffX) * 180.0 / Math.PI) - 90.0f;
-        float rotationPitch = (float) (-(Math.atan2(yDifference, dist) * 180.0 / Math.PI));
-        if (yaw > 0.0f) {
-            mc.thePlayer.rotationYaw = updateRotation(mc.thePlayer.rotationYaw, rotationYaw, yaw / 4.0f);
-        }
-        if (pitch > 0.0f) {
-            mc.thePlayer.rotationPitch = updateRotation(mc.thePlayer.rotationPitch, rotationPitch, pitch / 4.0f);
-        }
+        CombatUtil.faceEntity(entity, yaw, pitch, pitch <= 0.0f, 0.0f);
     }
 
-    public static float updateRotation(float p_70663_1_, float p_70663_2_, float p_70663_3_) {
-        float var4 = wrapDegrees(p_70663_2_ - p_70663_1_);
-        if (var4 > p_70663_3_) {
-            var4 = p_70663_3_;
-        }
-        if (var4 < -p_70663_3_) {
-            var4 = -p_70663_3_;
-        }
-        return p_70663_1_ + var4;
-    }
-
-    void updateTarget() {
-        List<Entity> entities = getEntityList();
-        if (entities == null) {
-            return;
-        }
-        for (Entity object : entities) {
-            EntityLivingBase entity;
-            if (!(object instanceof EntityLivingBase) || !this.check(entity = (EntityLivingBase) object)) continue;
-            this.target = entity;
-        }
-    }
-
-    public static List<Entity> getEntityList() {
-        if(mc.theWorld != null){return mc.theWorld.getLoadedEntityList();} else {return null;}
-    }
-
-    public boolean check(EntityLivingBase entity) {
-        if (entity instanceof EntityArmorStand) {
-            return false;
-        }
-        if (entity == mc.thePlayer) {
-            return false;
-        }
-        if (entity.isDead) {
-            return false;
-        }
-        if (entity.getHealth() == 0 ) {
-            return false;
-        }
-        if(AntiBot.isServerBot(entity)){
-            return false;
-        }
-        if(entity.getDistanceToEntity(mc.thePlayer) > 4.2F){
-            return false;
-        }
-        return mc.thePlayer.canEntityBeSeen(entity);
+    public static float updateRotation(float current, float targetYaw, float maxTurn) {
+        return CombatUtil.updateRotation(current, targetYaw, maxTurn);
     }
 }

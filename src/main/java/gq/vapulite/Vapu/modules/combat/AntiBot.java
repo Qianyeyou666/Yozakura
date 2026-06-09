@@ -4,6 +4,7 @@ import gq.vapulite.Vapu.ModuleType;
 import gq.vapulite.Vapu.modules.Module;
 import gq.vapulite.Manager.ModuleManager;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.player.EntityPlayer;
 import org.lwjgl.input.Keyboard;
 
 import java.util.Objects;
@@ -15,10 +16,13 @@ public class AntiBot extends Module {
         }
 
         public static boolean isServerBot(Entity entity) {
+            if (entity == null || !(entity instanceof EntityPlayer)) {
+                return false;
+            }
             if (Objects.requireNonNull(ModuleManager.getModule("AntiBot")).state) {
-                return !entity.getDisplayName().getFormattedText().startsWith("\u00a7") || entity.isInvisible() || entity.getDisplayName().getFormattedText().toLowerCase().contains("npc");
+                String name = entity.getDisplayName() == null ? "" : entity.getDisplayName().getFormattedText().toLowerCase();
+                return entity.isInvisible() || name.contains("npc") || name.contains("[npc]");
             }
             return false;
         }
     }
-

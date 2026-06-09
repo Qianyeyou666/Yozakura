@@ -14,125 +14,164 @@ import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.BlockPos;
 import net.minecraft.util.MovingObjectPosition;
 import net.minecraft.util.Vec3;
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
-import org.lwjgl.input.Keyboard;
 import net.minecraftforge.client.event.MouseEvent;
+import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
+import org.lwjgl.input.Keyboard;
 
 import java.util.List;
-import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class Reach extends Module {
-    public Random rand;
-    private Option<Boolean> RandomReach = new Option<Boolean>("RandomReach","RandomReach", true);
-    private Option<Boolean> weaponOnly = new Option<Boolean>("WeaponOnly","weaponOnly", false);
-    private Option<Boolean> movingOnly = new Option<Boolean>("MovingOnly","movingOnly", false);
-    private Option<Boolean> sprintOnly = new Option<Boolean>("SprintOnly","sprintOnly", false);
-    private Option<Boolean> hitThroughBlocks = new Option<Boolean>("HitThroughBlocks","sprintOnly", false);
-    private Numbers<Double> MinReach = new Numbers<Double>("Reach", "Reach",3.5, 3.0, 6.0,1.0);
+    private final Option<Boolean> randomReach = new Option<Boolean>("Random Reach", "RandomReach", true);
+    private final Option<Boolean> weaponOnly = new Option<Boolean>("Weapon Only", "weaponOnly", false);
+    private final Option<Boolean> movingOnly = new Option<Boolean>("Moving Only", "movingOnly", false);
+    private final Option<Boolean> sprintOnly = new Option<Boolean>("Sprint Only", "sprintOnly", false);
+    private final Option<Boolean> hitThroughBlocks = new Option<Boolean>("Through Blocks", "hitThroughBlocks", false);
+    private final Option<Boolean> players = new Option<Boolean>("Players", "Players", true);
+    private final Option<Boolean> mobs = new Option<Boolean>("Mobs", "Mobs", true);
+    private final Option<Boolean> animals = new Option<Boolean>("Animals", "Animals", true);
+    private final Numbers<Double> minReach = new Numbers<Double>("Min Reach", "Reach", 3.2, 3.0, 6.0, 0.1);
+    private final Numbers<Double> maxReach = new Numbers<Double>("Max Reach", "MaxReach", 3.6, 3.0, 6.0, 0.1);
+    private final Numbers<Double> expand = new Numbers<Double>("Expand", "Expand", 0.08, 0.0, 1.0, 0.01);
+    private MovingObjectPosition lastReachHit;
+
     public Reach() {
-            super("Reach", Keyboard.KEY_NONE, ModuleType.Combat,"Make you can attack far target");
-            this.addValues(this.weaponOnly,this.movingOnly,this.sprintOnly,this.hitThroughBlocks,this.MinReach);
-            Chinese="长臂猿";
-        }
+        super("Reach", Keyboard.KEY_NONE, ModuleType.Combat, "Extend attack ray distance");
+        this.addValues(weaponOnly, movingOnly, sprintOnly, hitThroughBlocks, players, mobs, animals,
+                randomReach, minReach, maxReach, expand);
+        Chinese = "长臂猿";
+    }
+
     @SubscribeEvent
-    public void onMove(final MouseEvent ev) {
-        if (true) {
-            if (this.weaponOnly.getValue()) {
-                if (Reach.mc.thePlayer.getCurrentEquippedItem() == null) {
-                    return;
-                }
-                if (!(Reach.mc.thePlayer.getCurrentEquippedItem().getItem() instanceof ItemSword) && !(Reach.mc.thePlayer.getCurrentEquippedItem().getItem() instanceof ItemAxe)) {
-                    return;
-                }
-            }
-            if (this.movingOnly.getValue() && Reach.mc.thePlayer.moveForward == 0.0 && Reach.mc.thePlayer.moveStrafing == 0.0) {
-                return;
-            }
-            if (this.sprintOnly.getValue() && !Reach.mc.thePlayer.isSprinting()) {
-                return;
-            }
-            if (!this.hitThroughBlocks.getValue() && Reach.mc.objectMouseOver != null) {
-                final BlockPos zzzzz = Reach.mc.objectMouseOver.getBlockPos();
-                if (zzzzz != null && Reach.mc.theWorld.getBlockState(zzzzz).getBlock() != Blocks.air) {
-                    return;
-                }
-            }
-            if(false){
-                double zzzzzD2 = 3.0 + this.rand.nextDouble() * (this.MinReach.getValue() - 3.0);
-                final Object[] zzzzzN = Reaching(zzzzzD2, 0.0, 0.0f);
-                if (zzzzzN == null) {
-                    return;
-                }
-                mc.objectMouseOver = new MovingObjectPosition((Entity)zzzzzN[0], (Vec3)zzzzzN[1]);
-                mc.pointedEntity = (Entity)zzzzzN[0];
-            } else {
-                double Reach = this.MinReach.getValue();
-                final Object[] zzzzzN = Reaching(Reach, 0.0, 0.0f);
-                if (zzzzzN == null) {
-                    return;
-                }
-                mc.objectMouseOver = new MovingObjectPosition((Entity)zzzzzN[0], (Vec3)zzzzzN[1]);
-                mc.pointedEntity = (Entity)zzzzzN[0];
-            }
+    public void onTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END || !isInGame()) {
+            lastReachHit = null;
+            return;
         }
+        if (!mc.gameSettings.keyBindAttack.isKeyDown()) {
+            return;
+        }
+        applyReach(1.0f);
     }
 
-    public static Object[] Reaching(final double zzzzzD, final double zzzzzE, final float zzzzzPT) {
-        final Entity zzzzz2 = Reach.mc.getRenderViewEntity();
-        Entity entity = null;
-        if (zzzzz2 == null || Reach.mc.theWorld == null) {
+    @SubscribeEvent
+    public void onMouse(MouseEvent event) {
+        if (event.button != 0 || !event.buttonstate || !isInGame()) {
+            return;
+        }
+        if (lastReachHit != null) {
+            mc.objectMouseOver = lastReachHit;
+            mc.pointedEntity = lastReachHit.entityHit;
+            return;
+        }
+        applyReach(1.0f);
+    }
+
+    private void applyReach(float partialTicks) {
+        if (!canReach()) {
+            return;
+        }
+        MovingObjectPosition hit = rayTraceEntity(getReachDistance(), expand.getValue(), partialTicks);
+        if (hit == null || hit.entityHit == null) {
+            lastReachHit = null;
+            return;
+        }
+        lastReachHit = hit;
+        mc.objectMouseOver = hit;
+        mc.pointedEntity = hit.entityHit;
+    }
+
+    private boolean canReach() {
+        if (Boolean.TRUE.equals(weaponOnly.getValue()) && !isHoldingCombatTool()) {
+            return false;
+        }
+        if (Boolean.TRUE.equals(movingOnly.getValue()) && mc.thePlayer.moveForward == 0.0f && mc.thePlayer.moveStrafing == 0.0f) {
+            return false;
+        }
+        if (Boolean.TRUE.equals(sprintOnly.getValue()) && !mc.thePlayer.isSprinting()) {
+            return false;
+        }
+        if (!Boolean.TRUE.equals(hitThroughBlocks.getValue()) && mc.objectMouseOver != null) {
+            BlockPos pos = mc.objectMouseOver.getBlockPos();
+            if (pos != null && mc.theWorld.getBlockState(pos).getBlock() != Blocks.air) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean isHoldingCombatTool() {
+        if (mc.thePlayer.getCurrentEquippedItem() == null) {
+            return false;
+        }
+        return mc.thePlayer.getCurrentEquippedItem().getItem() instanceof ItemSword
+                || mc.thePlayer.getCurrentEquippedItem().getItem() instanceof ItemAxe;
+    }
+
+    private double getReachDistance() {
+        if (!Boolean.TRUE.equals(randomReach.getValue())) {
+            return maxReach.getValue();
+        }
+        double min = Math.min(minReach.getValue(), maxReach.getValue());
+        double max = Math.max(minReach.getValue(), maxReach.getValue());
+        return min + ThreadLocalRandom.current().nextDouble() * (max - min + 0.001D);
+    }
+
+    private MovingObjectPosition rayTraceEntity(double distance, double hitboxExpand, float partialTicks) {
+        Entity view = mc.getRenderViewEntity();
+        if (view == null || mc.theWorld == null) {
             return null;
         }
-        Reach.mc.mcProfiler.startSection("pick");
-        final Vec3 zzzzz3 = zzzzz2.getPositionEyes(0.0f);
-        final Vec3 zzzzz4 = zzzzz2.getLook(0.0f);
-        final Vec3 zzzzz5 = zzzzz3.addVector(zzzzz4.xCoord * zzzzzD, zzzzz4.yCoord * zzzzzD, zzzzz4.zCoord * zzzzzD);
-        Vec3 zzzzz6 = null;
-        final float zzzzz7 = 1.0f;
-        final List zzzzz8 = Reach.mc.theWorld.getEntitiesWithinAABBExcludingEntity(zzzzz2, zzzzz2.getEntityBoundingBox().addCoord(zzzzz4.xCoord * zzzzzD, zzzzz4.yCoord * zzzzzD, zzzzz4.zCoord * zzzzzD).expand(1.0, 1.0, 1.0));
-        double zzzzz9 = zzzzzD;
-        for (int zzzzz10 = 0; zzzzz10 < zzzzz8.size(); ++zzzzz10) {
-            final Entity zzzzz11 = (Entity) zzzzz8.get(zzzzz10);
-            if (zzzzz11.canBeCollidedWith()) {
-                final float zzzzz12 = zzzzz11.getCollisionBorderSize();
-                AxisAlignedBB zzzzz13 = zzzzz11.getEntityBoundingBox().expand((double)zzzzz12, (double)zzzzz12, (double)zzzzz12);
-                zzzzz13 = zzzzz13.expand(zzzzzE, zzzzzE, zzzzzE);
-                final MovingObjectPosition zzzzz14 = zzzzz13.calculateIntercept(zzzzz3, zzzzz5);
-                if (zzzzz13.isVecInside(zzzzz3)) {
-                    if (0.0 < zzzzz9 || zzzzz9 == 0.0) {
-                        entity = zzzzz11;
-                        zzzzz6 = ((zzzzz14 == null) ? zzzzz3 : zzzzz14.hitVec);
-                        zzzzz9 = 0.0;
-                    }
+        Vec3 eyes = view.getPositionEyes(partialTicks);
+        Vec3 look = view.getLook(partialTicks);
+        Vec3 end = eyes.addVector(look.xCoord * distance, look.yCoord * distance, look.zCoord * distance);
+        Entity pointed = null;
+        Vec3 hitVec = null;
+        double bestDistance = distance;
+        List<Entity> entities = mc.theWorld.getEntitiesWithinAABBExcludingEntity(view,
+                view.getEntityBoundingBox().addCoord(look.xCoord * distance, look.yCoord * distance, look.zCoord * distance)
+                        .expand(1.0D, 1.0D, 1.0D));
+
+        for (Entity entity : entities) {
+            if (!canHitEntity(entity, distance)) {
+                continue;
+            }
+            double border = entity.getCollisionBorderSize() + hitboxExpand;
+            AxisAlignedBB box = entity.getEntityBoundingBox().expand(border, border, border);
+            MovingObjectPosition intercept = box.calculateIntercept(eyes, end);
+            if (box.isVecInside(eyes)) {
+                if (bestDistance >= 0.0D) {
+                    pointed = entity;
+                    hitVec = intercept == null ? eyes : intercept.hitVec;
+                    bestDistance = 0.0D;
                 }
-                else if (zzzzz14 != null) {
-                    final double zzzzz15 = zzzzz3.distanceTo(zzzzz14.hitVec);
-                    if (zzzzz15 < zzzzz9 || zzzzz9 == 0.0) {
-                        final boolean canRiderInteract = false;
-                        if (zzzzz11 == zzzzz2.ridingEntity) {
-                            if (zzzzz9 == 0.0) {
-                                entity = zzzzz11;
-                                zzzzz6 = zzzzz14.hitVec;
-                            }
-                        }
-                        else {
-                            entity = zzzzz11;
-                            zzzzz6 = zzzzz14.hitVec;
-                            zzzzz9 = zzzzz15;
-                        }
+            } else if (intercept != null) {
+                double currentDistance = eyes.distanceTo(intercept.hitVec);
+                if (currentDistance < bestDistance || bestDistance == 0.0D) {
+                    if (entity == view.ridingEntity && !entity.canRiderInteract()) {
+                        continue;
                     }
+                    pointed = entity;
+                    hitVec = intercept.hitVec;
+                    bestDistance = currentDistance;
                 }
             }
         }
-        if (zzzzz9 < zzzzzD && !(entity instanceof EntityLivingBase) && !(entity instanceof EntityItemFrame)) {
-            entity = null;
-        }
-        Reach.mc.mcProfiler.endSection();
-        if (entity == null || zzzzz6 == null) {
+        if (pointed == null || hitVec == null) {
             return null;
         }
-        return new Object[] { entity, zzzzz6 };
+        return new MovingObjectPosition(pointed, hitVec);
     }
 
+    private boolean canHitEntity(Entity entity, double distance) {
+        if (!entity.canBeCollidedWith()) {
+            return false;
+        }
+        if (entity instanceof EntityLivingBase) {
+            return CombatUtil.isValidTarget((EntityLivingBase) entity, distance, 180.0D, players.getValue(),
+                    mobs.getValue(), animals.getValue(), hitThroughBlocks.getValue());
+        }
+        return entity instanceof EntityItemFrame;
     }
-
+}

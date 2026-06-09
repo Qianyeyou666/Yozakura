@@ -2,14 +2,17 @@ package gq.vapulite.Vapu.modules.combat;
 
 import gq.vapulite.Vapu.ModuleType;
 import gq.vapulite.Vapu.modules.Module;
-import gq.vapulite.Vapu.utils.TimerUtil;
+import gq.vapulite.Vapu.value.Numbers;
+import gq.vapulite.Vapu.value.Option;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.item.EntityItemFrame;
+import net.minecraft.item.ItemAxe;
+import net.minecraft.item.ItemSword;
+import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.MovingObjectPosition;
 import net.minecraft.util.Vec3;
 import net.minecraftforge.client.event.MouseEvent;
-import net.minecraft.util.AxisAlignedBB;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.input.Keyboard;
@@ -17,90 +20,103 @@ import org.lwjgl.input.Keyboard;
 import java.util.List;
 
 public class HitBoxes extends Module {
-    private Entity pointedEntity;
-    private MovingObjectPosition moving;
-    private final TimerUtil timer = new TimerUtil();
-    
+    private final Numbers<Double> expand = new Numbers<Double>("Expand", "Expand", 0.18, 0.0, 1.0, 0.01);
+    private final Numbers<Double> range = new Numbers<Double>("Range", "Range", 3.2, 3.0, 6.0, 0.1);
+    private final Option<Boolean> weaponOnly = new Option<Boolean>("Weapon Only", "WeaponOnly", false);
+    private final Option<Boolean> players = new Option<Boolean>("Players", "Players", true);
+    private final Option<Boolean> mobs = new Option<Boolean>("Mobs", "Mobs", true);
+    private final Option<Boolean> animals = new Option<Boolean>("Animals", "Animals", true);
+    private final Option<Boolean> throughWalls = new Option<Boolean>("Through Walls", "ThroughWalls", false);
+    private MovingObjectPosition expandedHit;
+
     public HitBoxes() {
-        super("HitBoxes", Keyboard.KEY_NONE, ModuleType.Combat);
-        Chinese="变胖";
-    }
-    @SubscribeEvent
-    public void m(final MouseEvent e) {
-        if (!isInGame()) {
-            return;
-        }
-        if (e.button == 0 && e.buttonstate && this.moving != null) {
-            mc.objectMouseOver = this.moving;
-        }
+        super("HitBoxes", Keyboard.KEY_NONE, ModuleType.Combat, "Expand entity hit detection");
+        this.addValues(expand, range, weaponOnly, players, mobs, animals, throughWalls);
+        Chinese = "变胖";
     }
 
     @SubscribeEvent
-    public void onTick(final TickEvent.ClientTickEvent e) {
-        if (!isInGame()) {
-            this.pointedEntity = null;
-            this.moving = null;
+    public void onTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END || !isInGame()) {
+            expandedHit = null;
             return;
         }
-        this.getMouseOver(1.0f);
-    }
-
-    private void getMouseOver(final float partialTicks) {
-        if (mc.getRenderViewEntity() != null && mc.theWorld != null) {
-            mc.pointedEntity = null;
-            final double d0 = 3.0;
-            this.moving = mc.getRenderViewEntity().rayTrace(d0, partialTicks);
-            double d2 = d0;
-            final Vec3 vec3 = mc.getRenderViewEntity().getPositionEyes(partialTicks);
-            if (this.moving != null) {
-                d2 = this.moving.hitVec.distanceTo(vec3);
-            }
-            final Vec3 vec4 = mc.getRenderViewEntity().getLook(partialTicks);
-            final Vec3 vec5 = vec3.addVector(vec4.xCoord * d0, vec4.yCoord * d0, vec4.zCoord * d0);
-            this.pointedEntity = null;
-            Vec3 vec6 = null;
-            final float f1 = 1.0f;
-            final List list = mc.theWorld.getEntitiesWithinAABBExcludingEntity(mc.getRenderViewEntity(), mc.getRenderViewEntity().getEntityBoundingBox().addCoord(vec4.xCoord * d0, vec4.yCoord * d0, vec4.zCoord * d0).expand((double)f1, (double)f1, (double)f1));
-            double d3 = d2;
-            for (int i = 0; i < list.size(); ++i) {
-                final Entity entity = (Entity) list.get(i);
-                if (entity.canBeCollidedWith()) {
-                    final float f2 = (float)(0.12999999523162842 * 1.2000000476837158);
-                    final AxisAlignedBB axisalignedbb = entity.getEntityBoundingBox().expand((double)f2, (double)f2, (double)f2);
-                    final MovingObjectPosition movingobjectposition = axisalignedbb.calculateIntercept(vec3, vec5);
-                    if (axisalignedbb.isVecInside(vec3)) {
-                        if (0.0 < d3 || d3 == 0.0) {
-                            this.pointedEntity = entity;
-                            vec6 = ((movingobjectposition == null) ? vec3 : movingobjectposition.hitVec);
-                            d3 = 0.0;
-                        }
-                    }
-                    else if (movingobjectposition != null) {
-                        final double d4 = vec3.distanceTo(movingobjectposition.hitVec);
-                        if (d4 < d3 || d3 == 0.0) {
-                            if (entity == mc.getRenderViewEntity().ridingEntity && !entity.canRiderInteract()) {
-                                if (d3 == 0.0) {
-                                    this.pointedEntity = entity;
-                                    vec6 = movingobjectposition.hitVec;
-                                }
-                            }
-                            else {
-                                this.pointedEntity = entity;
-                                vec6 = movingobjectposition.hitVec;
-                                d3 = d4;
-                            }
-                        }
-                    }
-                }
-            }
-            if (this.pointedEntity != null && (d3 < d2 || this.moving == null)) {
-                this.moving = new MovingObjectPosition(this.pointedEntity, vec6);
-                if (this.pointedEntity instanceof EntityLivingBase || this.pointedEntity instanceof EntityItemFrame) {
-                    mc.pointedEntity = this.pointedEntity;
-                }
-            }
+        expandedHit = getExpandedMouseOver(1.0f);
+        if (expandedHit != null && expandedHit.entityHit != null && mc.objectMouseOver != null
+                && mc.objectMouseOver.entityHit == null) {
+            mc.objectMouseOver = expandedHit;
+            mc.pointedEntity = expandedHit.entityHit;
         }
     }
 
+    @SubscribeEvent
+    public void onMouse(MouseEvent event) {
+        if (event.button == 0 && event.buttonstate && expandedHit != null) {
+            mc.objectMouseOver = expandedHit;
+            mc.pointedEntity = expandedHit.entityHit;
+        }
+    }
 
+    private MovingObjectPosition getExpandedMouseOver(float partialTicks) {
+        if (Boolean.TRUE.equals(weaponOnly.getValue()) && !isHoldingCombatTool()) {
+            return null;
+        }
+        Entity view = mc.getRenderViewEntity();
+        if (view == null || mc.theWorld == null) {
+            return null;
+        }
+        double reach = range.getValue();
+        Vec3 eyes = view.getPositionEyes(partialTicks);
+        Vec3 look = view.getLook(partialTicks);
+        Vec3 end = eyes.addVector(look.xCoord * reach, look.yCoord * reach, look.zCoord * reach);
+        Entity pointed = null;
+        Vec3 hitVec = null;
+        double bestDistance = reach;
+        List<Entity> entities = mc.theWorld.getEntitiesWithinAABBExcludingEntity(view,
+                view.getEntityBoundingBox().addCoord(look.xCoord * reach, look.yCoord * reach, look.zCoord * reach)
+                        .expand(1.0D, 1.0D, 1.0D));
+
+        for (Entity entity : entities) {
+            if (!canHit(entity, reach)) {
+                continue;
+            }
+            double amount = entity.getCollisionBorderSize() + expand.getValue();
+            AxisAlignedBB box = entity.getEntityBoundingBox().expand(amount, amount, amount);
+            MovingObjectPosition intercept = box.calculateIntercept(eyes, end);
+            if (box.isVecInside(eyes)) {
+                if (bestDistance >= 0.0D) {
+                    pointed = entity;
+                    hitVec = intercept == null ? eyes : intercept.hitVec;
+                    bestDistance = 0.0D;
+                }
+            } else if (intercept != null) {
+                double distance = eyes.distanceTo(intercept.hitVec);
+                if (distance < bestDistance || bestDistance == 0.0D) {
+                    pointed = entity;
+                    hitVec = intercept.hitVec;
+                    bestDistance = distance;
+                }
+            }
+        }
+        return pointed == null || hitVec == null ? null : new MovingObjectPosition(pointed, hitVec);
+    }
+
+    private boolean canHit(Entity entity, double maxRange) {
+        if (!entity.canBeCollidedWith()) {
+            return false;
+        }
+        if (entity instanceof EntityLivingBase) {
+            return CombatUtil.isValidTarget((EntityLivingBase) entity, maxRange, 180.0D, players.getValue(),
+                    mobs.getValue(), animals.getValue(), throughWalls.getValue());
+        }
+        return entity instanceof EntityItemFrame;
+    }
+
+    private boolean isHoldingCombatTool() {
+        if (mc.thePlayer.getCurrentEquippedItem() == null) {
+            return false;
+        }
+        return mc.thePlayer.getCurrentEquippedItem().getItem() instanceof ItemSword
+                || mc.thePlayer.getCurrentEquippedItem().getItem() instanceof ItemAxe;
+    }
 }

@@ -3,6 +3,10 @@
  */
 package gq.vapulite.Vapu.value;
 
+import gq.vapulite.Vapu.Client;
+
+import java.util.Objects;
+
 public abstract class Value<V> {
     private String displayName;
     private String name;
@@ -30,7 +34,10 @@ public abstract class Value<V> {
     }
 
     public void setValue(V value) {
+        if (Objects.equals(this.value, value)) {
+            return;
+        }
         this.value = value;
+        Client.markConfigDirty();
     }
 }
-

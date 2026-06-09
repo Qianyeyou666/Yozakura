@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import gq.vapulite.Vapu.Client;
 import gq.vapulite.Vapu.modules.Module;
 import gq.vapulite.Vapu.utils.Helper;
@@ -12,101 +13,212 @@ import gq.vapulite.Vapu.value.Numbers;
 import gq.vapulite.Vapu.value.Option;
 import gq.vapulite.Vapu.value.Value;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 
 public class FileManager {
+    private static final long AUTO_SAVE_DELAY_MS = 1500L;
 
     private final File dir = new File(System.getenv("APPDATA"), Client.name);
     private final File modules = new File(dir, Client.config + ".json");
+    private final File backup = new File(dir, Client.config + ".json.bak");
     private final Gson gson = new Gson();
+
+    private boolean loading;
+    private boolean autoSaveSuspended;
+    private boolean dirty;
+    private long lastDirtyMS;
+    private String lastSavedSnapshot = "";
 
     public FileManager() {
         dir.mkdirs();
     }
 
-    public void saveModules() throws IOException {
-        if(!modules.exists())
-            modules.createNewFile();
+    public synchronized void saveModules() throws IOException {
+        String snapshot = createSnapshot();
+        writeSnapshot(snapshot);
+        lastSavedSnapshot = snapshot;
+        dirty = false;
+    }
 
+    public synchronized void saveModulesQuietly() {
+        try {
+            saveModules();
+        } catch (Exception exception) {
+            exception.printStackTrace();
+        }
+    }
+
+    public synchronized void saveIfDirtyQuietly() {
+        if (!dirty || loading || autoSaveSuspended) {
+            return;
+        }
+        saveModulesQuietly();
+    }
+
+    public synchronized void loadModules() throws IOException {
+        loadModules(false);
+    }
+
+    public synchronized void loadModules(boolean quiet) throws IOException {
+        loading = true;
+        try {
+            if (!modules.exists()) {
+                captureCurrentSnapshot();
+                if (!quiet) {
+                    Helper.sendMessage("No Configs Found!");
+                }
+                return;
+            }
+
+            JsonElement jsonElement = readJson(modules);
+            if ((jsonElement == null || jsonElement instanceof JsonNull || !jsonElement.isJsonObject()) && backup.exists()) {
+                jsonElement = readJson(backup);
+            }
+            if (jsonElement == null || jsonElement instanceof JsonNull || !jsonElement.isJsonObject()) {
+                captureCurrentSnapshot();
+                return;
+            }
+
+            JsonObject jsonObject = (JsonObject) jsonElement;
+            for (final Module module : ModuleManager.getModules()) {
+                if (!jsonObject.has(module.name)) {
+                    continue;
+                }
+
+                final JsonElement moduleElement = jsonObject.get(module.getName());
+                if (moduleElement == null || moduleElement instanceof JsonNull || !moduleElement.isJsonObject()) {
+                    continue;
+                }
+
+                final JsonObject moduleJson = (JsonObject) moduleElement;
+
+                if (moduleJson.has("key")) {
+                    module.setKey(moduleJson.get("key").getAsInt());
+                }
+
+                for (final Value value : module.getValues()) {
+                    if (!moduleJson.has(value.getName())) {
+                        continue;
+                    }
+
+                    try {
+                        if (value instanceof Option) {
+                            value.setValue(moduleJson.get(value.getName()).getAsBoolean());
+                        } else if (value instanceof Mode) {
+                            ((Mode) value).setMode(moduleJson.get(value.getName()).getAsString());
+                        } else if (value instanceof Numbers) {
+                            value.setValue(moduleJson.get(value.getName()).getAsDouble());
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
+
+                if (!module.NoToggle && moduleJson.has("state")) {
+                    module.setState(moduleJson.get("state").getAsBoolean(), false);
+                }
+            }
+        } finally {
+            loading = false;
+            captureCurrentSnapshot();
+        }
+    }
+
+    public synchronized void markDirty() {
+        if (loading || autoSaveSuspended) {
+            return;
+        }
+        dirty = true;
+        lastDirtyMS = System.currentTimeMillis();
+    }
+
+    public synchronized void autoSaveTick() {
+        if (!dirty || loading || autoSaveSuspended) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (now - lastDirtyMS < AUTO_SAVE_DELAY_MS) {
+            return;
+        }
+        try {
+            String snapshot = createSnapshot();
+            if (!snapshot.equals(lastSavedSnapshot)) {
+                writeSnapshot(snapshot);
+                lastSavedSnapshot = snapshot;
+            }
+            dirty = false;
+        } catch (Exception exception) {
+            exception.printStackTrace();
+            lastDirtyMS = now;
+        }
+    }
+
+    public synchronized void setAutoSaveSuspended(boolean suspended) {
+        this.autoSaveSuspended = suspended;
+    }
+
+    public synchronized boolean isLoading() {
+        return loading;
+    }
+
+    private void captureCurrentSnapshot() {
+        lastSavedSnapshot = createSnapshot();
+        dirty = false;
+    }
+
+    private String createSnapshot() {
         final JsonObject jsonObject = new JsonObject();
 
-        for(final Module module : ModuleManager.getModules()) {
+        for (final Module module : ModuleManager.getModules()) {
             final JsonObject moduleJson = new JsonObject();
 
             moduleJson.addProperty("state", module.getState());
             moduleJson.addProperty("key", module.getKey());
 
-            for(final Value value : module.getValues()) {
-                if(value instanceof Numbers)
+            for (final Value value : module.getValues()) {
+                if (value instanceof Numbers) {
                     moduleJson.addProperty(value.getName(), (Number) value.getValue());
-                else if(value instanceof Mode)
+                } else if (value instanceof Mode) {
                     moduleJson.addProperty(value.getName(), ((Mode) value).getModeAsString());
-                else if(value instanceof Option)
+                } else if (value instanceof Option) {
                     moduleJson.addProperty(value.getName(), (Boolean) value.getValue());
+                }
             }
 
             jsonObject.add(module.name, moduleJson);
         }
 
-        try (final PrintWriter printWriter = new PrintWriter(modules)) {
-            printWriter.println(gson.toJson(jsonObject));
-            printWriter.flush();
+        return gson.toJson(jsonObject);
+    }
+
+    private JsonElement readJson(File file) throws IOException {
+        BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8));
+        try {
+            return new JsonParser().parse(reader);
+        } finally {
+            reader.close();
         }
     }
 
-    public void loadModules() throws IOException {
-        if(!modules.exists()) {
-            Helper.sendMessage("No Configs Found!");
-            return;
+    private void writeSnapshot(String snapshot) throws IOException {
+        dir.mkdirs();
+        File temp = new File(dir, modules.getName() + ".tmp");
+        Files.write(temp.toPath(), snapshot.getBytes(StandardCharsets.UTF_8));
+        if (modules.exists()) {
+            Files.copy(modules.toPath(), backup.toPath(), StandardCopyOption.REPLACE_EXISTING);
         }
-
-        final JsonElement jsonElement;
-        try (final BufferedReader bufferedReader = new BufferedReader(new FileReader(modules))) {
-            jsonElement = gson.fromJson(bufferedReader, JsonElement.class);
-        }
-
-        if(jsonElement == null || jsonElement instanceof JsonNull || !jsonElement.isJsonObject())
-            return;
-
-        final JsonObject jsonObject = (JsonObject) jsonElement;
-
-        for(final Module module : ModuleManager.getModules()) {
-            if(!jsonObject.has(module.name))
-                continue;
-
-            final JsonElement moduleElement = jsonObject.get(module.getName());
-
-            if(moduleElement instanceof JsonNull)
-                continue;
-
-            final JsonObject moduleJson = (JsonObject) moduleElement;
-
-            Boolean savedState = moduleJson.has("state") ? moduleJson.get("state").getAsBoolean() : null;
-            if(moduleJson.has("key"))
-                module.setKey(moduleJson.get("key").getAsInt());
-
-            for(final Value value : module.getValues()) {
-                if(!moduleJson.has(value.getName()))
-                    continue;
-
-                if(value instanceof Option)
-                    value.setValue(moduleJson.get(value.getName()).getAsBoolean());
-                else if(value instanceof Mode)
-                    ((Mode) value).setMode(moduleJson.get(value.getName()).getAsString());
-                else if(value instanceof Numbers)
-                    value.setValue(moduleJson.get(value.getName()).getAsDouble());
-//                else if(value.getObject() instanceof Long)
-//                    value.setObject(moduleJson.get(value.getValueName()).getAsLong());
-//                else if(value.getObject() instanceof Byte)
-//                    value.setObject(moduleJson.get(value.getValueName()).getAsByte());
-//                else if(value.getObject() instanceof Boolean)
-//                    value.setObject(moduleJson.get(value.getValueName()).getAsBoolean());
-//                else if(value.getObject() instanceof String)
-//                    value.setObject(moduleJson.get(value.getValueName()).getAsString());
-            }
-
-            if(savedState != null)
-                module.setState(savedState.booleanValue(), false);
+        try {
+            Files.move(temp.toPath(), modules.toPath(), StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException ignored) {
+            Files.move(temp.toPath(), modules.toPath(), StandardCopyOption.REPLACE_EXISTING);
         }
     }
 }

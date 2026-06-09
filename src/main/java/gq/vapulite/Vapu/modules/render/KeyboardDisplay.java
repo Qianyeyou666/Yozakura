@@ -3,6 +3,7 @@ package gq.vapulite.Vapu.modules.render;
 import gq.vapulite.Vapu.ModuleType;
 import gq.vapulite.Vapu.modules.Module;
 import gq.vapulite.Vapu.utils.ColorUtils;
+import gq.vapulite.Vapu.utils.HudDrag;
 import gq.vapulite.Vapu.utils.RenderUtil;
 import gq.vapulite.Vapu.value.Numbers;
 import gq.vapulite.Vapu.value.Option;
@@ -37,6 +38,7 @@ public class KeyboardDisplay extends Module {
     private final Numbers<Double> alpha = new Numbers<Double>("Alpha", "Alpha", 135.0, 40.0, 230.0, 5.0);
     private final Numbers<Double> xPosition = new Numbers<Double>("X", "X", 6.0, 0.0, 600.0, 1.0);
     private final Numbers<Double> bottomMargin = new Numbers<Double>("Bottom", "Bottom", 58.0, 0.0, 400.0, 1.0);
+    private final Numbers<Double> yPosition = new Numbers<Double>("Y", "Y", -1.0, -1.0, 1200.0, 1.0);
 
     private final Map<String, Float> animations = new HashMap<String, Float>();
     private final List<Long> leftClicks = new ArrayList<Long>();
@@ -47,7 +49,8 @@ public class KeyboardDisplay extends Module {
     public KeyboardDisplay() {
         super("KeyboardDisplay", Keyboard.KEY_NONE, ModuleType.Render, "Show movement keys and mouse CPS on HUD");
         Chinese = "键盘显示";
-        this.addValues(showMovement, showSpace, showMouse, showCps, vertical, scale, alpha, xPosition, bottomMargin);
+        this.addValues(showMovement, showSpace, showMouse, showCps, vertical, scale, alpha, xPosition, yPosition,
+                bottomMargin);
     }
 
     @SubscribeEvent
@@ -70,14 +73,20 @@ public class KeyboardDisplay extends Module {
         }
 
         ScaledResolution sr = new ScaledResolution(mc);
-        float drawX = Math.min(xPosition.getValue().floatValue(), Math.max(0.0f, sr.getScaledWidth() - layout.width));
-        float drawY = sr.getScaledHeight() - layout.height - bottomMargin.getValue().floatValue();
-        drawY = Math.max(4.0f, Math.min(drawY, sr.getScaledHeight() - layout.height - 4.0f));
+        float defaultX = Math.min(xPosition.getValue().floatValue(), Math.max(0.0f, sr.getScaledWidth() - layout.width));
+        float defaultY = sr.getScaledHeight() - layout.height - bottomMargin.getValue().floatValue();
+        defaultY = Math.max(4.0f, Math.min(defaultY, sr.getScaledHeight() - layout.height - 4.0f));
+        float[] pos = HudDrag.update("keyboard_display", xPosition, yPosition, defaultX, defaultY,
+                layout.width, layout.height, sr);
+        float drawX = pos[0];
+        float drawY = pos[1];
 
         int index = 0;
         for (KeyBox key : layout.keys) {
             drawKey(drawX + key.x, drawY + key.y, key.width, key.height, key.id, index++);
         }
+        HudDrag.drawHint("keyboard_display", drawX, drawY, layout.width, layout.height,
+                Math.max(2.0f, 5.0f * scale.getValue().floatValue()));
     }
 
     @Override

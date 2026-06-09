@@ -105,6 +105,9 @@ public class Module {
         if (playSound && Client.MessageON && !NoToggle) {
             NotificationManager.show(this.getName(), state ? "Enabled" : "Disabled", this);
         }
+        if (!NoToggle) {
+            Client.markConfigDirty();
+        }
     }
 
     private void registerEvents() {
@@ -160,7 +163,11 @@ public class Module {
     }
 
     public void setKey(int key) {
+        if (this.key == key) {
+            return;
+        }
         this.key = key;
+        Client.markConfigDirty();
     }
 
     public ModuleType getCategory() {

@@ -7,6 +7,7 @@ import gq.vapulite.Vapu.ModuleType;
 import gq.vapulite.Vapu.VapeClickGui.ClickGuiIcons;
 import gq.vapulite.Vapu.modules.Module;
 import gq.vapulite.Vapu.utils.ColorUtils;
+import gq.vapulite.Vapu.utils.HudDrag;
 import gq.vapulite.Vapu.utils.RenderUtil;
 import gq.vapulite.Vapu.value.Numbers;
 import gq.vapulite.Vapu.value.Option;
@@ -17,11 +18,18 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.network.NetworkPlayerInfo;
+import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.RenderHelper;
+import net.minecraft.client.resources.I18n;
+import net.minecraft.item.ItemStack;
+import net.minecraft.potion.Potion;
+import net.minecraft.potion.PotionEffect;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.lwjgl.input.Keyboard;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -41,8 +49,18 @@ public class HUD extends Module {
     private final Option<Boolean> backgrounds = new Option<Boolean>("Backgrounds", "Backgrounds", true);
     private final Option<Boolean> keybinds = new Option<Boolean>("Keybinds", "Keybinds", false);
     private final Option<Boolean> notifications = new Option<Boolean>("Notifications", "Notifications", true);
+    private final Option<Boolean> potionEffects = new Option<Boolean>("PotionEffects", "PotionEffects", true);
+    private final Option<Boolean> inventoryDisplay = new Option<Boolean>("Inventory", "Inventory", true);
     private final Numbers<Double> alpha = new Numbers<Double>("Alpha", "Alpha", 128.0, 45.0, 180.0, 5.0);
     private final Numbers<Double> radius = new Numbers<Double>("Radius", "Radius", 8.0, 3.0, 14.0, 1.0);
+    private final Numbers<Double> watermarkX = new Numbers<Double>("Watermark X", "WatermarkX", 6.0, -1.0, 2000.0, 1.0);
+    private final Numbers<Double> watermarkY = new Numbers<Double>("Watermark Y", "WatermarkY", 6.0, -1.0, 1200.0, 1.0);
+    private final Numbers<Double> moduleListX = new Numbers<Double>("ModuleList X", "ModuleListX", -1.0, -1.0, 2000.0, 1.0);
+    private final Numbers<Double> moduleListY = new Numbers<Double>("ModuleList Y", "ModuleListY", 6.0, -1.0, 1200.0, 1.0);
+    private final Numbers<Double> potionX = new Numbers<Double>("Potion X", "PotionX", -1.0, -1.0, 2000.0, 1.0);
+    private final Numbers<Double> potionY = new Numbers<Double>("Potion Y", "PotionY", -1.0, -1.0, 1200.0, 1.0);
+    private final Numbers<Double> inventoryX = new Numbers<Double>("Inventory X", "InventoryX", -1.0, -1.0, 2000.0, 1.0);
+    private final Numbers<Double> inventoryY = new Numbers<Double>("Inventory Y", "InventoryY", -1.0, -1.0, 1200.0, 1.0);
 
     private final Map<Module, Float> moduleAnimations = new HashMap<Module, Float>();
     private long lastFrameMS = System.currentTimeMillis();
@@ -50,7 +68,9 @@ public class HUD extends Module {
     public HUD() {
         super("HUD", Keyboard.KEY_H, ModuleType.Render, "Show " + Client.name + " HUD Screen");
         Chinese = "HUD界面";
-        this.addValues(watermark, arrayList, backgrounds, keybinds, notifications, alpha, radius);
+        this.addValues(watermark, arrayList, backgrounds, keybinds, notifications, potionEffects, inventoryDisplay,
+                alpha, radius, watermarkX, watermarkY, moduleListX, moduleListY, potionX, potionY, inventoryX,
+                inventoryY);
     }
 
     @SubscribeEvent
@@ -71,7 +91,13 @@ public class HUD extends Module {
             drawWatermark();
         }
         if (Boolean.TRUE.equals(arrayList.getValue())) {
-            drawModuleList(width, factor);
+            drawModuleList(width, height, factor);
+        }
+        if (Boolean.TRUE.equals(potionEffects.getValue())) {
+            drawPotionEffects();
+        }
+        if (Boolean.TRUE.equals(inventoryDisplay.getValue())) {
+            drawInventory(width, height);
         }
         if (Boolean.TRUE.equals(notifications.getValue())) {
             NotificationManager.doRender(width, height);
@@ -95,8 +121,6 @@ public class HUD extends Module {
         int enabled = getEnabledCount();
         String modules = enabled + "/" + ModuleManager.getModules().size() + " modules";
 
-        float x = 6.0f;
-        float y = 6.0f;
         float round = getRadius();
         float iconSize = 25.0f;
         float titleWidth = FontLoaders.C20.getStringWidth(title);
@@ -104,6 +128,10 @@ public class HUD extends Module {
         float modulesWidth = FontLoaders.C14.getStringWidth(modules) + 18.0f;
         float boxW = Math.max(164.0f, Math.max(titleWidth + iconSize + 46.0f, metaWidth + modulesWidth + 42.0f));
         float boxH = 43.0f;
+        ScaledResolution sr = new ScaledResolution(mc);
+        float[] pos = HudDrag.update("hud_watermark", watermarkX, watermarkY, 6.0f, 6.0f, boxW, boxH, sr);
+        float x = pos[0];
+        float y = pos[1];
 
         if (Boolean.TRUE.equals(backgrounds.getValue())) {
             drawGlass(x, y, x + boxW, y + boxH, round, getGlassAlpha(), 54);
@@ -121,9 +149,10 @@ public class HUD extends Module {
                 x + 43.0f, y + 27.0f, MUTED);
         FontLoaders.C18.drawString("V", x + 19.0f, y + 17.0f, withAlpha(TEXT, 238));
         drawStatusChip(modules, x + boxW - modulesWidth - 9.0f, y + 24.0f, modulesWidth, ACCENT_ALT);
+        HudDrag.drawHint("hud_watermark", x, y, boxW, boxH, round);
     }
 
-    private void drawModuleList(int screenWidth, float factor) {
+    private void drawModuleList(int screenWidth, int screenHeight, float factor) {
         List<Module> modules = getHudModules();
         moduleAnimations.keySet().retainAll(modules);
         modules.sort(new Comparator<Module>() {
@@ -134,15 +163,37 @@ public class HUD extends Module {
             }
         });
 
-        float y = 6.0f;
-        float right = screenWidth - 6.0f;
+        float listW = 88.0f;
+        int visibleRows = 0;
+        for (Module module : modules) {
+            String displayName = getModuleListName(module);
+            int textW = FontLoaders.C18.getStringWidth(displayName);
+            listW = Math.max(listW, textW + 39.0f);
+            visibleRows++;
+            if (visibleRows > 22) {
+                break;
+            }
+        }
+        if (modules.isEmpty() && !HudDrag.isEditMode()) {
+            return;
+        }
+        float rowH = 18.0f;
+        float listH = modules.isEmpty() ? 20.0f : Math.min(23, Math.max(1, visibleRows)) * (rowH + 3.0f) - 3.0f;
+        ScaledResolution sr = new ScaledResolution(mc);
+        float[] pos = HudDrag.update("hud_module_list", moduleListX, moduleListY,
+                screenWidth - listW - 6.0f, 6.0f, listW, listH, sr);
+        float y = pos[1];
+        float right = pos[0] + listW;
         float round = getRadius();
         int index = 0;
+        if (modules.isEmpty()) {
+            drawGlass(pos[0], y, pos[0] + listW, y + listH, round, getGlassAlpha(), 42);
+            FontLoaders.C14.drawString("Module List", pos[0] + 10.0f, y + 7.0f, withAlpha(MUTED, 220));
+            HudDrag.drawHint("hud_module_list", pos[0], y, listW, listH, round);
+            return;
+        }
         for (Module module : modules) {
-            String displayName = getDisplayName(module);
-            if (Boolean.TRUE.equals(keybinds.getValue()) && module.getKey() != Keyboard.KEY_NONE) {
-                displayName += "  " + Keyboard.getKeyName(module.getKey());
-            }
+            String displayName = getModuleListName(module);
             float progress = animateModule(module, factor);
             if (progress <= 0.01f) {
                 continue;
@@ -152,7 +203,6 @@ public class HUD extends Module {
             String icon = ClickGuiIcons.forModule(module);
             float iconSlotW = 22.0f;
             float rowW = textW + iconSlotW + 17.0f;
-            float rowH = 18.0f;
             float x = right - rowW - (1.0f - progress) * 10.0f;
             int accent = getCategoryAccent(module);
             int rowAlpha = Math.round(getGlassAlpha() * progress);
@@ -180,6 +230,143 @@ public class HUD extends Module {
                 break;
             }
         }
+        HudDrag.drawHint("hud_module_list", pos[0], pos[1], listW, listH, round);
+    }
+
+    private void drawPotionEffects() {
+        Collection<PotionEffect> activeEffects = mc.thePlayer.getActivePotionEffects();
+        if ((activeEffects == null || activeEffects.isEmpty()) && !HudDrag.isEditMode()) {
+            return;
+        }
+
+        ArrayList<PotionEffect> effects = activeEffects == null
+                ? new ArrayList<PotionEffect>()
+                : new ArrayList<PotionEffect>(activeEffects);
+        effects.sort(new Comparator<PotionEffect>() {
+            @Override
+            public int compare(PotionEffect first, PotionEffect second) {
+                return second.getDuration() - first.getDuration();
+            }
+        });
+
+        float rowH = 23.0f;
+        int maxRows = Math.min(6, Math.max(1, effects.size()));
+        float width = 166.0f;
+        float height = 23.0f + maxRows * rowH + 7.0f;
+        ScaledResolution sr = new ScaledResolution(mc);
+        float[] pos = HudDrag.update("hud_potions", potionX, potionY, 6.0f,
+                Boolean.TRUE.equals(watermark.getValue()) ? 54.0f : 6.0f, width, height, sr);
+        float x = pos[0];
+        float y = pos[1];
+
+        drawGlass(x, y, x + width, y + height, getRadius(), getGlassAlpha(), 48);
+        RenderUtil.drawHorizontalGradientRect(x + 9.0f, y + 4.0f, x + width - 9.0f, y + 5.1f,
+                withAlpha(ACCENT, 120), withAlpha(ACCENT_ALT, 86));
+        FontLoaders.C16.drawString("Effects", x + 12.0f, y + 10.0f, withAlpha(TEXT, 236));
+        drawStatusChip(String.valueOf(effects.size()), x + width - 38.0f, y + 8.0f, 28.0f, ACCENT);
+
+        if (effects.isEmpty()) {
+            FontLoaders.C14.drawString("No effects", x + 12.0f, y + 31.0f, withAlpha(MUTED, 210));
+            HudDrag.drawHint("hud_potions", x, y, width, height, getRadius());
+            return;
+        }
+
+        for (int i = 0; i < Math.min(6, effects.size()); i++) {
+            PotionEffect effect = effects.get(i);
+            Potion potion = Potion.potionTypes[effect.getPotionID()];
+            if (potion == null) {
+                continue;
+            }
+            float rowY = y + 25.0f + i * rowH;
+            int accent = withAlpha(0xFF000000 | potion.getLiquidColor(), 210);
+            String name = trim(I18n.format(potion.getName()) + amplifierSuffix(effect.getAmplifier()),
+                    FontLoaders.C14, 88.0f);
+            String duration = Potion.getDurationString(effect);
+
+            RenderUtil.drawFrostedGlassRect(x + 8.0f, rowY, x + 25.0f, rowY + 17.0f, 5.0f, 0.7f,
+                    withAlpha(GLASS_SOFT, getSoftAlpha()), withAlpha(accent, 68));
+            RenderUtil.drawCircle(x + 16.5f, rowY + 8.5f, 0, 360, 3.2f, withAlpha(accent, 210));
+            FontLoaders.C14.drawString(name, x + 31.0f, rowY + 2.0f, withAlpha(TEXT, 226));
+            FontLoaders.C12.drawString(duration, x + 31.0f, rowY + 12.0f, withAlpha(MUTED, 210));
+        }
+        HudDrag.drawHint("hud_potions", x, y, width, height, getRadius());
+    }
+
+    private void drawInventory(int screenWidth, int screenHeight) {
+        float slot = 16.0f;
+        float stride = 18.0f;
+        float width = 178.0f;
+        float height = 88.0f;
+        ScaledResolution sr = new ScaledResolution(mc);
+        float[] pos = HudDrag.update("hud_inventory", inventoryX, inventoryY,
+                screenWidth / 2.0f - width / 2.0f, Math.max(58.0f, screenHeight - 114.0f),
+                width, height, sr);
+        float x = pos[0];
+        float y = pos[1];
+
+        drawGlass(x, y, x + width, y + height, getRadius(), getGlassAlpha(), 48);
+        RenderUtil.drawHorizontalGradientRect(x + 9.0f, y + 4.0f, x + width - 9.0f, y + 5.1f,
+                withAlpha(ACCENT_ALT, 105), withAlpha(ACCENT, 105));
+        FontLoaders.C16.drawString("Inventory", x + 10.0f, y + 10.0f, withAlpha(TEXT, 236));
+
+        int filled = countInventoryItems();
+        String count = filled + "/27";
+        drawStatusChip(count, x + width - FontLoaders.C14.getStringWidth(count) - 27.0f, y + 8.0f,
+                FontLoaders.C14.getStringWidth(count) + 18.0f, ACCENT_ALT);
+
+        float startX = x + 8.0f;
+        float startY = y + 28.0f;
+        for (int row = 0; row < 3; row++) {
+            for (int col = 0; col < 9; col++) {
+                int index = 9 + row * 9 + col;
+                float slotX = startX + col * stride;
+                float slotY = startY + row * stride;
+                RenderUtil.drawRoundedRect(slotX - 1.0f, slotY - 1.0f, slotX + slot + 1.0f, slotY + slot + 1.0f,
+                        4.0f, withAlpha(GLASS_SOFT, getSoftAlpha()));
+                RenderUtil.drawRoundedBorderedRect(slotX - 1.0f, slotY - 1.0f, slotX + slot + 1.0f,
+                        slotY + slot + 1.0f, 4.0f, 0.7f, 0x00000000,
+                        withAlpha(BORDER, 36));
+                drawItemStack(mc.thePlayer.inventory.mainInventory[index], slotX, slotY);
+            }
+        }
+        HudDrag.drawHint("hud_inventory", x, y, width, height, getRadius());
+    }
+
+    private void drawItemStack(ItemStack stack, float x, float y) {
+        if (stack == null) {
+            return;
+        }
+        GlStateManager.pushMatrix();
+        try {
+            RenderHelper.enableGUIStandardItemLighting();
+            GlStateManager.enableRescaleNormal();
+            GlStateManager.enableDepth();
+            mc.getRenderItem().renderItemAndEffectIntoGUI(stack, Math.round(x), Math.round(y));
+            mc.getRenderItem().renderItemOverlayIntoGUI(mc.fontRendererObj, stack, Math.round(x), Math.round(y), null);
+            GlStateManager.disableDepth();
+            GlStateManager.disableRescaleNormal();
+            RenderHelper.disableStandardItemLighting();
+        } finally {
+            GlStateManager.popMatrix();
+            GlStateManager.enableBlend();
+            GlStateManager.enableAlpha();
+            GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+        }
+    }
+
+    private int countInventoryItems() {
+        int count = 0;
+        for (int i = 9; i < 36; i++) {
+            if (mc.thePlayer.inventory.mainInventory[i] != null) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private String amplifierSuffix(int amplifier) {
+        String[] levels = new String[]{"", " II", " III", " IV", " V", " VI", " VII", " VIII", " IX", " X"};
+        return amplifier >= 0 && amplifier < levels.length ? levels[amplifier] : " " + (amplifier + 1);
     }
 
     private void drawStatusChip(String text, float x, float y, float w, int accent) {
@@ -212,6 +399,14 @@ public class HUD extends Module {
             }
         }
         return modules;
+    }
+
+    private String getModuleListName(Module module) {
+        String displayName = getDisplayName(module);
+        if (Boolean.TRUE.equals(keybinds.getValue()) && module.getKey() != Keyboard.KEY_NONE) {
+            displayName += "  " + Keyboard.getKeyName(module.getKey());
+        }
+        return displayName;
     }
 
     private float animateModule(Module module, float factor) {

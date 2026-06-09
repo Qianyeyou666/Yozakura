@@ -19,6 +19,7 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.InputEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.common.network.FMLNetworkEvent;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.Display;
@@ -55,6 +56,7 @@ public class Client {
     public static boolean CHINESE = false;
     public static Client instance;
     public static boolean state = false;
+    private static boolean shutdownHookRegistered;
     public static Random rand=new Random();
     public final FileManager fileManager = new FileManager();
     public static ModuleManager moduleManager = new ModuleManager();
@@ -76,6 +78,8 @@ public class Client {
         FMLCommonHandler.instance().bus().register(this);
         instance = this;
         CommandInit();
+        loadConfigOnStartup();
+        registerShutdownHook();
 //        FontLoaders.C20.drawStringWithShadow(Client.name,114514,114514, -1);
 //        FontLoaders.F14.drawStringWithShadow(Client.name,114514,114514, -1);
 //        FontLoaders.Logo.drawStringWithShadow(Client.name,114514,114514, -1);
@@ -124,20 +128,62 @@ public class Client {
         Client.instance.fileManager.loadModules();
     }
 
+    public static void markConfigDirty() {
+        if (Client.instance != null && Client.instance.fileManager != null) {
+            Client.instance.fileManager.markDirty();
+        }
+    }
+
+    @SubscribeEvent
+    public void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase == TickEvent.Phase.END) {
+            fileManager.autoSaveTick();
+        }
+    }
+
     @SubscribeEvent
     public void onDisconnect(FMLNetworkEvent.ClientDisconnectionFromServerEvent event) {
+        fileManager.saveIfDirtyQuietly();
+        fileManager.setAutoSaveSuspended(true);
         ModuleManager.disableAll(false);
+        fileManager.setAutoSaveSuspended(false);
         faList.clear();
     }
 
     public static void unInject() {
         state = false;
-        ModuleManager.disableAll(false);
         if (instance != null) {
+            instance.fileManager.saveIfDirtyQuietly();
+            instance.fileManager.setAutoSaveSuspended(true);
+            ModuleManager.disableAll(false);
+            instance.fileManager.setAutoSaveSuspended(false);
             MinecraftForge.EVENT_BUS.unregister(instance);
             FMLCommonHandler.instance().bus().unregister(instance);
             instance=null;
         }
+    }
+
+    private void loadConfigOnStartup() {
+        try {
+            fileManager.loadModules(true);
+        } catch (Exception exception) {
+            exception.printStackTrace();
+        }
+    }
+
+    private void registerShutdownHook() {
+        if (shutdownHookRegistered) {
+            return;
+        }
+        shutdownHookRegistered = true;
+        Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
+            @Override
+            public void run() {
+                if (Client.instance != null) {
+                    Client.instance.fileManager.saveIfDirtyQuietly();
+                }
+            }
+        }, "VapuLite Config Save"));
     }
 
 }

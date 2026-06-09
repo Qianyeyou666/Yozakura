@@ -17,7 +17,10 @@ public final class ClickGuiIcons {
         if (name.contains("clickgui")) {
             return FontLoaders.ICON_SETTINGS;
         }
-        if (name.contains("keyboard") || name.contains("hud") || name.contains("targethud")) {
+        if (name.contains("targethud")) {
+            return FontLoaders.ICON_HEARTBEAT;
+        }
+        if (name.contains("keyboard") || name.contains("hud")) {
             return FontLoaders.ICON_LIST;
         }
         if (name.contains("state") || name.contains("message")) {
@@ -70,6 +73,9 @@ public final class ClickGuiIcons {
         if (name.contains("fastplace")) {
             return FontLoaders.ICON_CUBE;
         }
+        if (name.contains("scaffold")) {
+            return FontLoaders.ICON_CUBE;
+        }
 
         if (name.contains("antibot")) {
             return FontLoaders.ICON_BUG;
@@ -77,17 +83,31 @@ public final class ClickGuiIcons {
         if (name.contains("autoblock")) {
             return FontLoaders.ICON_SHIELD;
         }
+        if (name.contains("blockhit")) {
+            return FontLoaders.ICON_SHIELD;
+        }
+        if (name.contains("backtrack")) {
+            return FontLoaders.ICON_CLOCK;
+        }
+        if (name.contains("wtap")) {
+            return FontLoaders.ICON_RUN;
+        }
+        if (name.contains("hitselect")) {
+            return FontLoaders.ICON_FOCUS;
+        }
         if (name.contains("hitbox")) {
             return FontLoaders.ICON_FOCUS;
         }
         if (name.contains("velocity")) {
             return FontLoaders.ICON_SHUFFLE;
         }
+        if (name.contains("crit")) {
+            return FontLoaders.ICON_SPARK;
+        }
         if (name.contains("aim") || name.contains("bow")) {
             return FontLoaders.ICON_CROSSHAIR;
         }
-        if (name.contains("aura") || name.contains("clicker") || name.contains("reach")
-                || name.contains("crit")) {
+        if (name.contains("aura") || name.contains("clicker") || name.contains("reach")) {
             return FontLoaders.ICON_SWORDS;
         }
         if (name.contains("speed") || name.contains("sprint") || name.contains("fly") || name.contains("step")

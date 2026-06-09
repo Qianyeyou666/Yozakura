@@ -4,6 +4,7 @@ import gq.vapulite.Manager.ModuleManager;
 import gq.vapulite.Vapu.Client;
 import gq.vapulite.Vapu.ModuleType;
 import gq.vapulite.Vapu.modules.Module;
+import gq.vapulite.Vapu.modules.render.ClickGUI;
 import gq.vapulite.Vapu.utils.RenderUtil;
 import gq.vapulite.Vapu.value.Mode;
 import gq.vapulite.Vapu.value.Numbers;
@@ -99,6 +100,7 @@ public class VapeClickGui extends GuiScreen {
     float detailW;
     float sideX;
     float sideW;
+    float windowW;
     float panelH;
     boolean sidePanelVisible;
     int detailTabIndex;
@@ -114,6 +116,9 @@ public class VapeClickGui extends GuiScreen {
     int fpsSampleFrames;
     int liveFps;
     float frameScale = 1.0f;
+    boolean draggingWindow;
+    float windowDragOffsetX;
+    float windowDragOffsetY;
     final UiTheme uiTheme = UiTheme.vape();
     final UiToggle reusableToggle = new UiToggle().setTheme(uiTheme);
     final UiTextField searchField = new UiTextField().setTheme(uiTheme).placeholder("Search modules...").maxLength(32);
@@ -168,6 +173,7 @@ public class VapeClickGui extends GuiScreen {
         drawBackdrop(sr);
         ShaderRenderer.invalidateFrostedGlass();
         if (!closing) {
+            updateWindowDrag(sr, mouseX, mouseY);
             moduleList.updateScrollbarDrag(mouseY);
             updateScroll(mouseX, mouseY);
         }
@@ -202,14 +208,53 @@ public class VapeClickGui extends GuiScreen {
             detailW = Math.max(DETAIL_MIN_W, available - CARD_W - GAP - (sidePanelVisible ? sideW + GAP : 0.0f));
             totalW = CARD_W + GAP + detailW + (sidePanelVisible ? GAP + sideW : 0.0f);
         }
+        windowW = totalW;
         contentX = Math.max(10.0f, screenW / 2.0f - totalW / 2.0f);
+        if (ClickGUI.windowX.getValue() >= 0.0D) {
+            contentX = clamp(ClickGUI.windowX.getValue().floatValue(), 10.0f, Math.max(10.0f, screenW - totalW - 10.0f));
+        }
+        navY = 12.0f;
+        if (ClickGUI.windowY.getValue() >= 0.0D) {
+            navY = clamp(ClickGUI.windowY.getValue().floatValue(), 6.0f, Math.max(6.0f, screenH - 260.0f));
+        }
         detailX = contentX + CARD_W + GAP;
         sideX = detailX + detailW + GAP;
         navX = detailX;
-        navY = 12.0f;
         navW = detailW;
         contentY = navY + NAV_H + 12.0f;
         panelH = Math.max(220.0f, screenH - contentY - 48.0f);
+    }
+
+    void updateWindowDrag(ScaledResolution sr, int mouseX, int mouseY) {
+        boolean leftDown = Mouse.isButtonDown(0);
+        if (!leftDown) {
+            draggingWindow = false;
+            return;
+        }
+        float dragLeft = contentX;
+        float dragTop = navY;
+        float dragRight = Math.min(detailX - 6.0f, contentX + CARD_W);
+        float dragBottom = navY + NAV_H + 26.0f;
+        if (!draggingWindow && draggingNumber == null && !draggingScrollbar
+                && isHovered(dragLeft, dragTop, dragRight, dragBottom, mouseX, mouseY)) {
+            draggingWindow = true;
+            windowDragOffsetX = mouseX - contentX;
+            windowDragOffsetY = mouseY - navY;
+        }
+        if (!draggingWindow) {
+            return;
+        }
+        float nextX = clamp(mouseX - windowDragOffsetX, 10.0f,
+                Math.max(10.0f, sr.getScaledWidth() - windowW - 10.0f));
+        float nextY = clamp(mouseY - windowDragOffsetY, 6.0f,
+                Math.max(6.0f, sr.getScaledHeight() - 260.0f));
+        if (Math.abs(ClickGUI.windowX.getValue() - nextX) > 0.4D) {
+            ClickGUI.windowX.setValue((double) Math.round(nextX));
+        }
+        if (Math.abs(ClickGUI.windowY.getValue() - nextY) > 0.4D) {
+            ClickGUI.windowY.setValue((double) Math.round(nextY));
+        }
+        updateLayout(sr);
     }
 
     void drawBackdrop(ScaledResolution sr) {
