@@ -171,7 +171,6 @@ public class HUD extends Module {
         beginScaled(x, y, uiScale);
         try {
             if (Boolean.TRUE.equals(backgrounds.getValue())) {
-                drawGlowIfEnabled(x, y, x + boxW, y + boxH, round, ACCENT);
                 drawGlass(x, y, x + boxW, y + boxH, round, getGlassAlpha(), 54);
                 RenderUtil.drawHorizontalGradientRect(x + 9.0f, y + 4.0f, x + boxW - 9.0f, y + 5.2f,
                         withAlpha(ACCENT, 120), withAlpha(ACCENT_ALT, 92));
@@ -212,7 +211,6 @@ public class HUD extends Module {
         beginScaled(x, y, uiScale);
         try {
             if (Boolean.TRUE.equals(backgrounds.getValue())) {
-                drawGlowIfEnabled(x, y, x + boxW, y + boxH, 7.0f, VAPE_PRIMARY);
                 drawVapeCard(x, y, x + boxW, y + boxH, 7.0f, 170);
                 RenderUtil.drawHorizontalGradientRect(x + 1.0f, y + 1.0f, x + boxW - 1.0f, y + 18.0f,
                         withAlpha(0xFFFFFFFF, 16), withAlpha(0xFF000000, 0));
@@ -256,7 +254,6 @@ public class HUD extends Module {
         beginScaled(x, y, uiScale);
         try {
             if (Boolean.TRUE.equals(backgrounds.getValue())) {
-                drawGlowIfEnabled(x, y, x + width, y + height, 6.0f, VAPE_TERTIARY);
                 drawVapeCard(x, y, x + width, y + height, 6.0f, 158);
                 RenderUtil.drawRoundedRect(x, y, x + 2.0f, y + height, 1.0f,
                         withAlpha(VAPE_TERTIARY, 188));
@@ -319,7 +316,6 @@ public class HUD extends Module {
 
         beginScaled(x, y, uiScale);
         try {
-            drawGlowIfEnabled(x, y, x + width, y + height, getRadius(), ACCENT_ALT);
             drawGlass(x, y, x + width, y + height, getRadius(), getGlassAlpha(), 48);
             RenderUtil.drawHorizontalGradientRect(x + 9.0f, y + 4.0f, x + width - 9.0f, y + 5.1f,
                     withAlpha(ACCENT_ALT, 105), withAlpha(ACCENT, 105));
@@ -368,7 +364,6 @@ public class HUD extends Module {
         try {
             int filled = countInventoryItems();
             if (Boolean.TRUE.equals(backgrounds.getValue())) {
-                drawGlowIfEnabled(x, y, x + width, y + height, 6.0f, VAPE_SECONDARY);
                 drawVapeCard(x, y, x + width, y + height, 6.0f, 158);
                 RenderUtil.drawRoundedRect(x, y, x + 2.0f, y + height, 1.0f,
                         withAlpha(VAPE_SECONDARY, 190));
@@ -447,7 +442,6 @@ public class HUD extends Module {
         if (modules.isEmpty()) {
             beginScaled(pos[0], y, uiScale);
             try {
-                drawGlowIfEnabled(pos[0], y, pos[0] + listW, y + listH, round, ACCENT);
                 drawGlass(pos[0], y, pos[0] + listW, y + listH, round, getGlassAlpha(), 42);
                 FontLoaders.C14.drawString("Module List", pos[0] + 10.0f, y + 7.0f, withAlpha(MUTED, 220));
             } finally {
@@ -473,7 +467,6 @@ public class HUD extends Module {
                 int accent = getCategoryAccent(module);
                 int rowAlpha = Math.round(getGlassAlpha() * progress);
 
-                drawGlowIfEnabled(x, y, right, y + rowH, round, accent);
 
                 if (Boolean.TRUE.equals(backgrounds.getValue())) {
                     RenderUtil.drawSoftShadow(x, y, right, y + rowH, round,
@@ -571,7 +564,6 @@ public class HUD extends Module {
                     float rowTop = drawY;
                     float rowBottom = drawY + rowH;
                     int rowAlpha = Math.round((index == 0 ? 44.0f : 26.0f) * progress);
-                    drawGlowIfEnabled(x + 4.0f, rowTop, x + listW - 4.0f, rowBottom, 4.0f, getCategoryAccent(module));
                     if (Boolean.TRUE.equals(backgrounds.getValue())) {
                         RenderUtil.drawRect(x + 4.0f, rowTop, x + listW - 4.0f, rowBottom,
                                 withAlpha(VAPE_SURFACE_VARIANT, rowAlpha));
@@ -639,7 +631,6 @@ public class HUD extends Module {
 
         beginScaled(x, y, uiScale);
         try {
-            drawGlowIfEnabled(x, y, x + width, y + height, getRadius(), ACCENT);
             drawGlass(x, y, x + width, y + height, getRadius(), getGlassAlpha(), 48);
             RenderUtil.drawHorizontalGradientRect(x + 9.0f, y + 4.0f, x + width - 9.0f, y + 5.1f,
                     withAlpha(ACCENT, 120), withAlpha(ACCENT_ALT, 86));
@@ -1083,7 +1074,7 @@ public class HUD extends Module {
             return 0xFF70C1DC;
         }
         if (module.getCategory() == ModuleType.Render) {
-            return 0xFF9DE7FF;
+            return 0xFFFF8DA8;
         }
         if (module.getCategory() == ModuleType.Player) {
             return 0xFF6FD39A;
