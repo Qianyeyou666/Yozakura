@@ -91,6 +91,10 @@ public class Notification {
             return;
         }
 
+        if (HUD.isGlowEnabled()) {
+            GuiRenderUtils.drawGlowAround(x1, y1, x2, y2, 8.0f,
+                    withAlpha(accent, Math.round(220.0f * bodyAlpha)), 1.0f);
+        }
         RenderUtil.drawSoftShadow(x1, y1, x2, y2, 8.0f,
                 withAlpha(0xFF000000, Math.round(58.0f * bodyAlpha)), 7, 3.4f);
         RenderUtil.drawFrostedGlassRect(x1, y1, x2, y2, 8.0f, 1.0f,
@@ -124,6 +128,10 @@ public class Notification {
 
     private void drawVape(float x1, float y1, float x2, float y2, float bodyAlpha, int accent, float progress) {
         float radius = 7.0f;
+        if (HUD.isGlowEnabled()) {
+            GuiRenderUtils.drawGlowAround(x1, y1, x2, y2, radius,
+                    withAlpha(accent, Math.round(220.0f * bodyAlpha)), 1.0f);
+        }
         RenderUtil.drawSoftShadow(x1, y1, x2, y2, radius,
                 withAlpha(0xFF000000, Math.round(58.0f * bodyAlpha)), 6, 2.2f);
         RenderUtil.drawRoundedBorderedRect(x1, y1, x2, y2, radius, 0.8f,

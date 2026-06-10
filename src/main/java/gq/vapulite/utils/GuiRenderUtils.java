@@ -503,6 +503,38 @@ public class GuiRenderUtils {
         disableRender2D();
     }
 
+    /**
+     * Draws a soft glow behind a rounded-rect area using multi-layer alpha falloff.
+     * @param x        left edge of the glow source rect
+     * @param y        top edge of the glow source rect
+     * @param x2       right edge of the glow source rect
+     * @param y2       bottom edge of the glow source rect
+     * @param radius   corner radius of the glow source rect
+     * @param glowColor ARGB glow colour (alpha channel controls overall intensity)
+     * @param intensity 0.0 = invisible, 1.0 = full spread — clamped to [0.1, 1.0]
+     */
+    public static void drawGlowAround(float x, float y, float x2, float y2, float radius, int glowColor, float intensity) {
+        if (intensity <= 0.0f) return;
+        int baseAlpha = (glowColor >>> 24);
+        if (baseAlpha <= 0) return;
+
+        float clampedIntensity = Math.min(1.0f, Math.max(0.1f, intensity));
+        int layers = 8;
+        float spread = 7.0f * clampedIntensity;
+
+        for (int i = layers; i >= 1; i--) {
+            float progress = i / (float) layers;
+            float offset = spread * (1.0f - progress);
+            int alpha = Math.round(baseAlpha * progress * progress * 0.6f);
+            if (alpha <= 1) continue;
+            gq.vapulite.Vapu.utils.RenderUtil.drawRoundedRect(
+                    x - offset, y - offset,
+                    x2 + offset, y2 + offset,
+                    radius + offset,
+                    (glowColor & 0x00FFFFFF) | (alpha << 24));
+        }
+    }
+
     public static int darker(int hexColor, int factor) {
         float alpha = (float) (hexColor >> 24 & 255);
         float red = Math.max((float) (hexColor >> 16 & 255) - (float) (hexColor >> 16 & 255) / (100.0F / (float) factor), 0.0F);

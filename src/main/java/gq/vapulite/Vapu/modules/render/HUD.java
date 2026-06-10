@@ -16,6 +16,7 @@ import gq.vapulite.Vapu.value.Value;
 import gq.vapulite.font.CFontRenderer;
 import gq.vapulite.font.FontLoaders;
 import gq.vapulite.render.ShaderRenderer;
+import gq.vapulite.utils.GuiRenderUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.client.gui.ScaledResolution;
@@ -68,6 +69,7 @@ public class HUD extends Module {
     private final Option<Boolean> notifications = new Option<Boolean>("Notifications", "Notifications", true);
     private final Option<Boolean> potionEffects = new Option<Boolean>("PotionEffects", "PotionEffects", true);
     private final Option<Boolean> inventoryDisplay = new Option<Boolean>("Inventory", "Inventory", true);
+    private final Option<Boolean> glow = new Option<Boolean>("Glow", "Glow", false);
     private final Mode<HudStyle> hudStyle = new Mode<HudStyle>("HUD Style", "HUDStyle", HudStyle.values(), HudStyle.VAPULITE);
     private final Numbers<Double> alpha = new Numbers<Double>("Alpha", "Alpha", 128.0, 45.0, 180.0, 5.0);
     private final Numbers<Double> radius = new Numbers<Double>("Radius", "Radius", 8.0, 3.0, 14.0, 1.0);
@@ -93,7 +95,7 @@ public class HUD extends Module {
         instance = this;
         activeStyle = getSelectedStyle();
         this.addValues(hudStyle, watermark, arrayList, backgrounds, keybinds, parameters, notifications,
-                potionEffects, inventoryDisplay, alpha, radius, watermarkX, watermarkY, watermarkScale,
+                potionEffects, inventoryDisplay, glow, alpha, radius, watermarkX, watermarkY, watermarkScale,
                 moduleListX, moduleListY, moduleListScale, potionX, potionY, potionScale, inventoryX, inventoryY,
                 inventoryScale);
     }
@@ -169,6 +171,7 @@ public class HUD extends Module {
         beginScaled(x, y, uiScale);
         try {
             if (Boolean.TRUE.equals(backgrounds.getValue())) {
+                drawGlowIfEnabled(x, y, x + boxW, y + boxH, round, ACCENT);
                 drawGlass(x, y, x + boxW, y + boxH, round, getGlassAlpha(), 54);
                 RenderUtil.drawHorizontalGradientRect(x + 9.0f, y + 4.0f, x + boxW - 9.0f, y + 5.2f,
                         withAlpha(ACCENT, 120), withAlpha(ACCENT_ALT, 92));
@@ -209,6 +212,7 @@ public class HUD extends Module {
         beginScaled(x, y, uiScale);
         try {
             if (Boolean.TRUE.equals(backgrounds.getValue())) {
+                drawGlowIfEnabled(x, y, x + boxW, y + boxH, 7.0f, VAPE_PRIMARY);
                 drawVapeCard(x, y, x + boxW, y + boxH, 7.0f, 170);
                 RenderUtil.drawHorizontalGradientRect(x + 1.0f, y + 1.0f, x + boxW - 1.0f, y + 18.0f,
                         withAlpha(0xFFFFFFFF, 16), withAlpha(0xFF000000, 0));
@@ -252,6 +256,7 @@ public class HUD extends Module {
         beginScaled(x, y, uiScale);
         try {
             if (Boolean.TRUE.equals(backgrounds.getValue())) {
+                drawGlowIfEnabled(x, y, x + width, y + height, 6.0f, VAPE_TERTIARY);
                 drawVapeCard(x, y, x + width, y + height, 6.0f, 158);
                 RenderUtil.drawRoundedRect(x, y, x + 2.0f, y + height, 1.0f,
                         withAlpha(VAPE_TERTIARY, 188));
@@ -314,6 +319,7 @@ public class HUD extends Module {
 
         beginScaled(x, y, uiScale);
         try {
+            drawGlowIfEnabled(x, y, x + width, y + height, getRadius(), ACCENT_ALT);
             drawGlass(x, y, x + width, y + height, getRadius(), getGlassAlpha(), 48);
             RenderUtil.drawHorizontalGradientRect(x + 9.0f, y + 4.0f, x + width - 9.0f, y + 5.1f,
                     withAlpha(ACCENT_ALT, 105), withAlpha(ACCENT, 105));
@@ -362,6 +368,7 @@ public class HUD extends Module {
         try {
             int filled = countInventoryItems();
             if (Boolean.TRUE.equals(backgrounds.getValue())) {
+                drawGlowIfEnabled(x, y, x + width, y + height, 6.0f, VAPE_SECONDARY);
                 drawVapeCard(x, y, x + width, y + height, 6.0f, 158);
                 RenderUtil.drawRoundedRect(x, y, x + 2.0f, y + height, 1.0f,
                         withAlpha(VAPE_SECONDARY, 190));
@@ -440,6 +447,7 @@ public class HUD extends Module {
         if (modules.isEmpty()) {
             beginScaled(pos[0], y, uiScale);
             try {
+                drawGlowIfEnabled(pos[0], y, pos[0] + listW, y + listH, round, ACCENT);
                 drawGlass(pos[0], y, pos[0] + listW, y + listH, round, getGlassAlpha(), 42);
                 FontLoaders.C14.drawString("Module List", pos[0] + 10.0f, y + 7.0f, withAlpha(MUTED, 220));
             } finally {
@@ -464,6 +472,8 @@ public class HUD extends Module {
                 float x = right - rowW - (1.0f - progress) * 10.0f;
                 int accent = getCategoryAccent(module);
                 int rowAlpha = Math.round(getGlassAlpha() * progress);
+
+                drawGlowIfEnabled(x, y, right, y + rowH, round, accent);
 
                 if (Boolean.TRUE.equals(backgrounds.getValue())) {
                     RenderUtil.drawSoftShadow(x, y, right, y + rowH, round,
@@ -536,6 +546,7 @@ public class HUD extends Module {
         beginScaled(x, y, uiScale);
         try {
             if (Boolean.TRUE.equals(backgrounds.getValue())) {
+                drawGlowIfEnabled(x, y, x + listW, y + listH, 6.0f, VAPE_PRIMARY);
                 drawVapeCard(x, y, x + listW, y + listH, 6.0f, 150);
                 float lineX = rightSide ? x + listW - lineW : x;
                 RenderUtil.drawVerticalGradientRect(lineX, y + 5.0f, lineX + lineW, y + listH - 5.0f,
@@ -628,6 +639,7 @@ public class HUD extends Module {
 
         beginScaled(x, y, uiScale);
         try {
+            drawGlowIfEnabled(x, y, x + width, y + height, getRadius(), ACCENT);
             drawGlass(x, y, x + width, y + height, getRadius(), getGlassAlpha(), 48);
             RenderUtil.drawHorizontalGradientRect(x + 9.0f, y + 4.0f, x + width - 9.0f, y + 5.1f,
                     withAlpha(ACCENT, 120), withAlpha(ACCENT_ALT, 86));
@@ -721,6 +733,12 @@ public class HUD extends Module {
                 withAlpha(VAPE_SURFACE, alpha), withAlpha(0xFFFFFFFF, 24));
         RenderUtil.drawHorizontalGradientRect(x + 1.0f, y + 1.0f, x2 - 1.0f,
                 Math.min(y2 - 1.0f, y + 18.0f), withAlpha(0xFFFFFFFF, 14), withAlpha(0xFF000000, 0));
+    }
+
+    private void drawGlowIfEnabled(float x, float y, float x2, float y2, float radius, int glowColor) {
+        if (Boolean.TRUE.equals(glow.getValue()) && Boolean.TRUE.equals(backgrounds.getValue())) {
+            GuiRenderUtils.drawGlowAround(x, y, x2, y2, radius, glowColor, 1.0f);
+        }
     }
 
     private void drawCenteredIcon(String icon, CFontRenderer font, float centerX, float centerY, int color) {
@@ -1033,6 +1051,13 @@ public class HUD extends Module {
 
     public static boolean useVapeSimpleStyle() {
         return getActiveStyle() == HudStyle.VAPE;
+    }
+
+    public static boolean isGlowEnabled() {
+        if (instance != null && instance.glow != null) {
+            return Boolean.TRUE.equals(instance.glow.getValue());
+        }
+        return false;
     }
 
     private void beginScaled(float x, float y, float scale) {
