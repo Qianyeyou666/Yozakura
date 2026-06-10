@@ -1,7 +1,6 @@
 package gq.vapulite.Vapu;
 
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.FontRenderer;
+import gq.vapulite.font.FontLoaders;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.WorldRenderer;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
@@ -278,20 +277,14 @@ public class Render {
 	}
 	
 	public static void drawString(int x, int y, int colour, String formatString, Object...args) {
-		Minecraft mc = Minecraft.getMinecraft();
-		//mc.renderEngine.resetBoundTexture();
-		FontRenderer fr = mc.fontRendererObj;
 		String s = String.format(formatString, args);
-		fr.drawStringWithShadow(s, x, y, colour);
+		FontLoaders.C14.drawString(s, x, y, colour);
 	}
 	
 	public static void drawCentredString(int x, int y, int colour, String formatString, Object...args) {
-		Minecraft mc = Minecraft.getMinecraft();
-		//mc.renderEngine.resetBoundTexture();
-		FontRenderer fr = mc.fontRendererObj;
 		String s = String.format(formatString, args);
-		int w = fr.getStringWidth(s);
-		fr.drawStringWithShadow(s, x - (w / 2), y, colour);
+		int w = FontLoaders.C14.getStringWidth(s);
+		FontLoaders.C14.drawString(s, x - (w / 2), y, colour);
 	}
 	
 	public static void setCircularStencil(double x, double y, double r) {

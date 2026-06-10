@@ -2,6 +2,7 @@ package gq.vapulite.utils;
 
 import gq.vapulite.Vapu.VapeClickGui.ClickGuiIcons;
 import gq.vapulite.Vapu.modules.Module;
+import gq.vapulite.Vapu.modules.render.HUD;
 import gq.vapulite.Vapu.utils.ColorUtils;
 import gq.vapulite.Vapu.utils.RenderUtil;
 import gq.vapulite.Vapu.utils.TimerUtil;
@@ -21,6 +22,11 @@ public class Notification {
     private static final int GLASS = 0xFF07090D;
     private static final int GLASS_SOFT = 0xFF0B0E14;
     private static final int BORDER = 0xFF8DBED8;
+    private static final int VAPE_PRIMARY = 0xFF7C9DFF;
+    private static final int VAPE_SECONDARY = 0xFF838CEF;
+    private static final int VAPE_SURFACE = 0xFF171A20;
+    private static final int VAPE_SURFACE_VARIANT = 0xFF1E222B;
+    private static final int VAPE_ON_VARIANT = 0xFFAAB2C5;
 
     public static Minecraft mc = Minecraft.getMinecraft();
 
@@ -52,9 +58,9 @@ public class Notification {
         this.createdAt = System.currentTimeMillis();
         this.lastFrameMS = this.createdAt;
         this.animationX = 1.0f;
-        this.height = this.message.length() == 0 ? 38.0f : 46.0f;
-        this.width = Math.max(174.0f, Math.min(278.0f,
-                Math.max(FontLoaders.C18.getStringWidth(getTitle()), FontLoaders.C14.getStringWidth(this.message)) + 58.0f));
+        this.height = this.message.length() == 0 ? 44.0f : 52.0f;
+        this.width = Math.max(226.0f, Math.min(292.0f,
+                Math.max(FontLoaders.C18.getStringWidth(getTitle()), FontLoaders.C14.getStringWidth(this.message)) + 74.0f));
         this.isClassicNotification = false;
         this.timer = new TimerUtil();
         timer.reset();
@@ -79,6 +85,11 @@ public class Notification {
         float bodyAlpha = 1.0f - Math.min(1.0f, animationX * 0.85f);
         int accent = getAccentColor();
         float progress = 1.0f - ColorUtils.clamp((now - createdAt) / (float) Math.max(1L, stayTime), 0.0f, 1.0f);
+
+        if (HUD.useVapeSimpleStyle()) {
+            drawVape(x1, y1, x2, y2, bodyAlpha, accent, progress);
+            return;
+        }
 
         RenderUtil.drawSoftShadow(x1, y1, x2, y2, 8.0f,
                 withAlpha(0xFF000000, Math.round(58.0f * bodyAlpha)), 7, 3.4f);
@@ -109,6 +120,38 @@ public class Notification {
         RenderUtil.drawProgressBar(x1 + 12.0f, y2 - 4.0f, x2 - 12.0f, y2 - 2.3f, 1.5f, progress,
                 withAlpha(0xFFFFFFFF, Math.round(18.0f * bodyAlpha)),
                 withAlpha(accent, Math.round(190.0f * bodyAlpha)));
+    }
+
+    private void drawVape(float x1, float y1, float x2, float y2, float bodyAlpha, int accent, float progress) {
+        float radius = 7.0f;
+        RenderUtil.drawSoftShadow(x1, y1, x2, y2, radius,
+                withAlpha(0xFF000000, Math.round(58.0f * bodyAlpha)), 6, 2.2f);
+        RenderUtil.drawRoundedBorderedRect(x1, y1, x2, y2, radius, 0.8f,
+                withAlpha(VAPE_SURFACE, Math.round(164.0f * bodyAlpha)),
+                withAlpha(0xFFFFFFFF, Math.round(24.0f * bodyAlpha)));
+        RenderUtil.drawHorizontalGradientRect(x1 + 1.0f, y1 + 1.0f, x2 - 1.0f, y1 + 18.0f,
+                withAlpha(0xFFFFFFFF, Math.round(15.0f * bodyAlpha)), withAlpha(0xFF000000, 0));
+        RenderUtil.drawRoundedRect(x2 - 3.0f, y1 + 7.0f, x2 - 1.0f, y2 - 7.0f, 1.0f,
+                withAlpha(accent, Math.round(205.0f * bodyAlpha)));
+
+        float iconCenterX = x1 + 25.0f;
+        float iconCenterY = y1 + (y2 - y1) / 2.0f;
+        RenderUtil.drawCircle(iconCenterX, iconCenterY, 0, 360, 15.0f,
+                withAlpha(accent, Math.round(218.0f * bodyAlpha)));
+        RenderUtil.drawCircle(iconCenterX, iconCenterY, 0, 360, 12.0f,
+                withAlpha(VAPE_SURFACE_VARIANT, Math.round(40.0f * bodyAlpha)));
+        drawCenteredIcon(getIcon(), FontLoaders.I18, iconCenterX, iconCenterY,
+                withAlpha(0xFFFFFFFF, Math.round(238.0f * bodyAlpha)));
+
+        FontLoaders.C16.drawString(trim(getTitle(), FontLoaders.C16, width - 64.0f),
+                x1 + 51.0f, y1 + 11.0f, withAlpha(0xFFFFFFFF, Math.round(246.0f * bodyAlpha)));
+        if (message.length() > 0) {
+            FontLoaders.C12.drawString(trim(message, FontLoaders.C12, width - 68.0f),
+                    x1 + 51.0f, y1 + 29.0f, withAlpha(VAPE_ON_VARIANT, Math.round(220.0f * bodyAlpha)));
+        }
+        RenderUtil.drawProgressBar(x1 + 51.0f, y2 - 5.0f, x2 - 12.0f, y2 - 3.2f, 0.9f, progress,
+                withAlpha(0xFFFFFFFF, Math.round(16.0f * bodyAlpha)),
+                withAlpha(accent, Math.round(150.0f * bodyAlpha)));
     }
 
     public boolean shouldDelete() {
@@ -156,15 +199,15 @@ public class Notification {
         switch (type) {
             case MODULE:
             case INFO:
-                return 0xFF70C1DC;
+                return VAPE_SECONDARY;
             case WARNING:
                 return 0xFFFFC857;
             case ERROR:
                 return 0xFFFF5C72;
             case SUCCESS:
-                return 0xFF6FD39A;
+                return VAPE_PRIMARY;
             default:
-                return 0xFF70C1DC;
+                return VAPE_SECONDARY;
         }
     }
 

@@ -13,7 +13,8 @@ public final class RenderState {
             | GL11.GL_COLOR_BUFFER_BIT
             | GL11.GL_DEPTH_BUFFER_BIT
             | GL11.GL_LINE_BIT
-            | GL11.GL_SCISSOR_BIT;
+            | GL11.GL_SCISSOR_BIT
+            | GL11.GL_TEXTURE_BIT;
     private static final Stack<int[]> SCISSORS = new Stack<int[]>();
 
     private RenderState() {

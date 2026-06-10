@@ -16,6 +16,12 @@ import java.util.Map;
 public final class ShaderRenderer {
     private static final float EDGE_SOFTNESS = 0.75f;
     private static final float EDGE_PADDING = 1.0f;
+    private static final int SHADER_ATTRIB_MASK = GL11.GL_ENABLE_BIT
+            | GL11.GL_COLOR_BUFFER_BIT
+            | GL11.GL_CURRENT_BIT
+            | GL11.GL_DEPTH_BUFFER_BIT
+            | GL11.GL_TEXTURE_BIT
+            | GL11.GL_LINE_BIT;
 
     private static Program solidProgram;
     private static Program gradientProgram;
@@ -50,12 +56,12 @@ public final class ShaderRenderer {
             return false;
         }
 
-        program.use();
+        ShaderState shaderState = beginProgram(program);
         try {
             setColor(program, "color", color);
             drawQuad(left, top, right, bottom, 0.0f);
         } finally {
-            GL20.glUseProgram(0);
+            endProgram(shaderState);
         }
         return true;
     }
@@ -67,7 +73,7 @@ public final class ShaderRenderer {
             return false;
         }
 
-        program.use();
+        ShaderState shaderState = beginProgram(program);
         try {
             setColor(program, "color1", topLeft);
             setColor(program, "color2", bottomLeft);
@@ -75,7 +81,7 @@ public final class ShaderRenderer {
             setColor(program, "color4", bottomRight);
             drawQuad(left, top, right, bottom, 0.0f);
         } finally {
-            GL20.glUseProgram(0);
+            endProgram(shaderState);
         }
         return true;
     }
@@ -86,13 +92,13 @@ public final class ShaderRenderer {
             return false;
         }
 
-        program.use();
+        ShaderState shaderState = beginProgram(program);
         try {
             setRoundedUniforms(program, right - left, bottom - top, radius);
             setColor(program, "color", color);
             drawQuad(left, top, right, bottom, EDGE_PADDING);
         } finally {
-            GL20.glUseProgram(0);
+            endProgram(shaderState);
         }
         return true;
     }
@@ -104,7 +110,7 @@ public final class ShaderRenderer {
             return false;
         }
 
-        program.use();
+        ShaderState shaderState = beginProgram(program);
         try {
             setRoundedUniforms(program, right - left, bottom - top, radius);
             setColor(program, "color1", topLeft);
@@ -113,7 +119,7 @@ public final class ShaderRenderer {
             setColor(program, "color4", bottomRight);
             drawQuad(left, top, right, bottom, EDGE_PADDING);
         } finally {
-            GL20.glUseProgram(0);
+            endProgram(shaderState);
         }
         return true;
     }
@@ -125,13 +131,13 @@ public final class ShaderRenderer {
             return false;
         }
 
-        program.use();
+        ShaderState shaderState = beginProgram(program);
         try {
             setRoundedUniforms(program, right - left, bottom - top, radius);
             program.set1f("alpha", Math.max(0.0f, Math.min(1.0f, alpha)));
             drawQuad(left, top, right, bottom, EDGE_PADDING);
         } finally {
-            GL20.glUseProgram(0);
+            endProgram(shaderState);
         }
         return true;
     }
@@ -147,7 +153,7 @@ public final class ShaderRenderer {
         float height = bottom - top;
         float clampedBorder = Math.max(0.0f, Math.min(borderWidth, Math.min(width, height) / 2.0f));
 
-        program.use();
+        ShaderState shaderState = beginProgram(program);
         try {
             setRoundedUniforms(program, width, height, radius);
             program.set1f("borderWidth", clampedBorder);
@@ -155,7 +161,7 @@ public final class ShaderRenderer {
             setColor(program, "borderColor", borderColor);
             drawQuad(left, top, right, bottom, EDGE_PADDING);
         } finally {
-            GL20.glUseProgram(0);
+            endProgram(shaderState);
         }
         return true;
     }
@@ -170,14 +176,14 @@ public final class ShaderRenderer {
         float width = right - left;
         float height = bottom - top;
 
-        program.use();
+        ShaderState shaderState = beginProgram(program);
         try {
             setRoundedUniforms(program, width, height, radius);
             program.set1f("shadowSize", spread);
             setColor(program, "color", color);
             drawQuad(left, top, right, bottom, spread + EDGE_PADDING);
         } finally {
-            GL20.glUseProgram(0);
+            endProgram(shaderState);
         }
         return true;
     }
@@ -192,9 +198,7 @@ public final class ShaderRenderer {
         float width = right - left;
         float height = bottom - top;
         float clampedBorder = Math.max(0.0f, Math.min(borderWidth, Math.min(width, height) / 2.0f));
-        TextureState textureState = saveTexture0State();
-
-        program.use();
+        ShaderState shaderState = beginProgram(program);
         try {
             GL13.glActiveTexture(GL13.GL_TEXTURE0);
             GL11.glEnable(GL11.GL_TEXTURE_2D);
@@ -209,8 +213,7 @@ public final class ShaderRenderer {
             setColor(program, "borderColor", borderColor);
             drawQuad(left, top, right, bottom, EDGE_PADDING);
         } finally {
-            GL20.glUseProgram(0);
-            restoreTexture0State(textureState);
+            endProgram(shaderState);
         }
         return true;
     }
@@ -224,7 +227,7 @@ public final class ShaderRenderer {
         float clampedRadius = Math.max(0.5f, radius);
         float padding = Math.max(1.5f, EDGE_SOFTNESS + 0.75f);
 
-        program.use();
+        ShaderState shaderState = beginProgram(program);
         try {
             program.set1f("circleRadius", clampedRadius);
             program.set1f("padding", padding);
@@ -233,7 +236,7 @@ public final class ShaderRenderer {
             drawQuad(centerX - clampedRadius, centerY - clampedRadius,
                     centerX + clampedRadius, centerY + clampedRadius, padding);
         } finally {
-            GL20.glUseProgram(0);
+            endProgram(shaderState);
         }
         return true;
     }
@@ -256,7 +259,7 @@ public final class ShaderRenderer {
         float sweep = Math.max(0.0f, Math.min(360.0f, end - start));
         float padding = Math.max(1.5f, clampedLine + EDGE_SOFTNESS + 0.75f);
 
-        program.use();
+        ShaderState shaderState = beginProgram(program);
         try {
             program.set1f("arcRadius", clampedRadius);
             program.set1f("lineWidth", clampedLine);
@@ -268,7 +271,7 @@ public final class ShaderRenderer {
             drawQuad(centerX - clampedRadius, centerY - clampedRadius,
                     centerX + clampedRadius, centerY + clampedRadius, padding);
         } finally {
-            GL20.glUseProgram(0);
+            endProgram(shaderState);
         }
         return true;
     }
@@ -289,7 +292,7 @@ public final class ShaderRenderer {
         float right = maxX + pad;
         float bottom = maxY + pad;
 
-        program.use();
+        ShaderState shaderState = beginProgram(program);
         try {
             program.set2f("rectSize", right - left, bottom - top);
             program.set2f("startPoint", x - left, y - top);
@@ -299,7 +302,7 @@ public final class ShaderRenderer {
             setColor(program, "color", color);
             drawQuad(left, top, right, bottom, 0.0f);
         } finally {
-            GL20.glUseProgram(0);
+            endProgram(shaderState);
         }
         return true;
     }
@@ -319,7 +322,7 @@ public final class ShaderRenderer {
         float right = centerX + clampedRadius;
         float bottom = centerY + clampedRadius;
 
-        program.use();
+        ShaderState shaderState = beginProgram(program);
         try {
             program.set1f("badgeRadius", clampedRadius);
             program.set1f("ringWidth", clampedRing);
@@ -331,7 +334,7 @@ public final class ShaderRenderer {
             setColor(program, "progressColor", progressColor);
             drawQuad(left, top, right, bottom, padding);
         } finally {
-            GL20.glUseProgram(0);
+            endProgram(shaderState);
         }
         return true;
     }
@@ -548,6 +551,35 @@ public final class ShaderRenderer {
                 ((color >> 24) & 255) / 255.0f);
     }
 
+    private static ShaderState beginProgram(Program program) {
+        int previousProgram = 0;
+        try {
+            previousProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+        } catch (Throwable ignored) {
+            previousProgram = 0;
+        }
+        TextureState textureState = saveTexture0State();
+        GL11.glPushAttrib(SHADER_ATTRIB_MASK);
+        program.use();
+        GlStateManager.enableAlpha();
+        GlStateManager.enableBlend();
+        GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0);
+        GlStateManager.disableDepth();
+        GL11.glDepthMask(false);
+        return new ShaderState(previousProgram, textureState);
+    }
+
+    private static void endProgram(ShaderState state) {
+        if (state == null) {
+            GL20.glUseProgram(0);
+            return;
+        }
+        GL20.glUseProgram(state.previousProgram);
+        GL11.glPopAttrib();
+        restoreTexture0State(state.textureState);
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+    }
+
     private static TextureState saveTexture0State() {
         int activeTexture = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
         setActiveTexture(GL13.GL_TEXTURE0);
@@ -646,6 +678,16 @@ public final class ShaderRenderer {
         private TextureState(int activeTexture, int texture) {
             this.activeTexture = activeTexture;
             this.texture = texture;
+        }
+    }
+
+    private static final class ShaderState {
+        private final int previousProgram;
+        private final TextureState textureState;
+
+        private ShaderState(int previousProgram, TextureState textureState) {
+            this.previousProgram = previousProgram;
+            this.textureState = textureState;
         }
     }
 

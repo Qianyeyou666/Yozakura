@@ -62,6 +62,9 @@ public class VapeClickGui extends GuiScreen {
     static final float SIDE_W = 170.0f;
     static final float DETAIL_HEADER_H = 98.0f;
     static final float VALUE_ROW_H = 26.0f;
+    static final float NUMBER_ROW_H = 40.0f;
+    static final float RANGE_ROW_H = 44.0f;
+    static final float MODE_ROW_H = 30.0f;
     static final float COLOR_ROW_H = 64.0f;
     static final float SWITCH_W = 28.0f;
     static final float SWITCH_H = 14.0f;
@@ -102,6 +105,11 @@ public class VapeClickGui extends GuiScreen {
     final Set<Module> favoriteModules = new HashSet<Module>();
     float draggingNumberX;
     float draggingNumberW;
+    boolean draggingNumberCustomRange;
+    double draggingNumberMin;
+    double draggingNumberMax;
+    Numbers draggingNumberPair;
+    boolean draggingNumberLowerBound;
     float draggingColorX;
     float draggingColorY;
     float draggingColorW;
@@ -177,6 +185,8 @@ public class VapeClickGui extends GuiScreen {
         savedOnClose = false;
         draggingScrollbar = false;
         draggingNumber = null;
+        draggingNumberCustomRange = false;
+        draggingNumberPair = null;
         clearDraggingColor();
         lastPaletteClickMS = 0L;
         lastPaletteClickKey = null;
@@ -218,6 +228,8 @@ public class VapeClickGui extends GuiScreen {
             detailPanel.updateNumberValue((Numbers) draggingNumber, mouseX, draggingNumberX, draggingNumberW);
         } else {
             draggingNumber = null;
+            draggingNumberCustomRange = false;
+            draggingNumberPair = null;
         }
 
         float introY = (1.0f - easeOut(openProgress)) * (closing ? 18.0f : -10.0f);
@@ -405,7 +417,9 @@ public class VapeClickGui extends GuiScreen {
         }
         float height = 4.0f;
         for (int i = 0; i < module.getValues().size(); i++) {
-            height += getValueHeight(module, i);
+            if (isDetailValueVisible(module, i)) {
+                height += getValueHeight(module, i);
+            }
         }
         return height;
     }
@@ -418,7 +432,7 @@ public class VapeClickGui extends GuiScreen {
             return formatNumber(((Number) value.getValue()).doubleValue());
         }
         if (value instanceof Mode) {
-            return ((Mode) value).getModeAsString();
+            return formatModeLabel(((Mode) value).getModeAsString());
         }
         return String.valueOf(value.getValue());
     }
@@ -490,6 +504,8 @@ public class VapeClickGui extends GuiScreen {
     @Override
     protected void mouseReleased(int mouseX, int mouseY, int state) {
         draggingNumber = null;
+        draggingNumberCustomRange = false;
+        draggingNumberPair = null;
         clearDraggingColor();
         draggingScrollbar = false;
         super.mouseReleased(mouseX, mouseY, state);
@@ -543,6 +559,12 @@ public class VapeClickGui extends GuiScreen {
     }
 
     float getValueHeight(Value value) {
+        if (value instanceof Numbers) {
+            return NUMBER_ROW_H;
+        }
+        if (value instanceof Mode) {
+            return MODE_ROW_H;
+        }
         return VALUE_ROW_H;
     }
 
@@ -551,13 +573,19 @@ public class VapeClickGui extends GuiScreen {
                 && isHiddenPaletteValue(module, module.getValues().get(index))) {
             return 0.0f;
         }
+        if (isRangeStart(module, index)) {
+            return RANGE_ROW_H;
+        }
+        if (isRangeContinuation(module, index)) {
+            return 0.0f;
+        }
         if (isColorStart(module, index)) {
             return COLOR_ROW_H;
         }
         if (isColorContinuation(module, index)) {
             return 0.0f;
         }
-        return VALUE_ROW_H;
+        return getValueHeight(module.getValues().get(index));
     }
 
     boolean isColorStart(Module module, int index) {
@@ -574,6 +602,29 @@ public class VapeClickGui extends GuiScreen {
         return isColorStart(module, index - 1) || isColorStart(module, index - 2);
     }
 
+    boolean isRangeStart(Module module, int index) {
+        if (module == null || index < 0 || index + 1 >= module.getValues().size()) {
+            return false;
+        }
+        Value first = module.getValues().get(index);
+        Value second = module.getValues().get(index + 1);
+        if (!(first instanceof Numbers) || !(second instanceof Numbers)) {
+            return false;
+        }
+        String firstBase = rangeBase(first, "min");
+        String secondBase = rangeBase(second, "max");
+        return firstBase.length() > 0 && firstBase.equals(secondBase);
+    }
+
+    boolean isRangeContinuation(Module module, int index) {
+        return isRangeStart(module, index - 1);
+    }
+
+    String getRangeDisplayName(Value value) {
+        String base = rangeDisplayBase(value, "min");
+        return base.length() == 0 ? getDisplayName(value) : base;
+    }
+
     boolean isHiddenPaletteValue(Module module, Value value) {
         if (module == null || value == null || !(value instanceof Option)) {
             return false;
@@ -588,12 +639,124 @@ public class VapeClickGui extends GuiScreen {
             return 0;
         }
         int count = 0;
-        for (Value value : module.getValues()) {
-            if (!isHiddenPaletteValue(module, value)) {
+        for (int i = 0; i < module.getValues().size(); i++) {
+            if (isDetailValueVisible(module, i)) {
                 count++;
             }
         }
         return count;
+    }
+
+    boolean isDetailValueVisible(Module module, int index) {
+        if (module == null || index < 0 || index >= module.getValues().size()) {
+            return false;
+        }
+        Value value = module.getValues().get(index);
+        if (isHiddenPaletteValue(module, value) || isColorContinuation(module, index)
+                || isRangeContinuation(module, index)) {
+            return false;
+        }
+        return getDetailValueTab(module, index) == detailTabIndex;
+    }
+
+    int getDetailValueTab(Module module, int index) {
+        if (module == null || index < 0 || index >= module.getValues().size()) {
+            return 0;
+        }
+        if (isColorStart(module, index)) {
+            return 4;
+        }
+
+        Value value = module.getValues().get(index);
+        String raw = normalizeValueText(value);
+        String name = normalizeValueName(value);
+
+        if (containsAny(raw, "yaw", "pitch", "rotate", "rotation", "aim", "aimpoint",
+                "prediction", "freezone", "reaction", "lock", "randomize")) {
+            return 3;
+        }
+        if (containsAny(raw, "player", "mob", "animal", "invisible", "target", "priority",
+                "throughwall", "wallcheck", "range", "reach", "fov", "hurt", "hitbox", "expand")) {
+            return 1;
+        }
+        if (containsAny(raw, "render", "visual", "shader", "trail", "color", "alpha", "radius",
+                "height", "line", "pulse", "background", "watermark", "arraylist", "notification",
+                "potion", "inventory", "scale", "xposition", "yposition", "xoffset", "yoffset",
+                "bottom", "red", "green", "blue")) {
+            return 4;
+        }
+        if (name.equals("x") || name.equals("y")) {
+            return 4;
+        }
+        if (containsAny(raw, "weapon", "sword", "mouse", "moving", "sprint", "rightclick",
+                "auto", "swap", "restore", "block", "sneak", "ground", "scope", "release",
+                "break", "require", "only", "hold", "key")) {
+            return 2;
+        }
+        return 0;
+    }
+
+    private boolean containsAny(String text, String... needles) {
+        for (String needle : needles) {
+            if (text.contains(needle)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String normalizeValueText(Value value) {
+        String display = value == null || value.getDisplayName() == null ? "" : value.getDisplayName();
+        String name = value == null || value.getName() == null ? "" : value.getName();
+        return (display + " " + name).replace(" ", "").replace("_", "").replace("-", "").toLowerCase(Locale.ROOT);
+    }
+
+    String getDisplayName(Value value) {
+        String display = value == null ? "" : value.getDisplayName();
+        if (display == null || display.trim().length() == 0) {
+            display = value == null ? "" : value.getName();
+        }
+        return display == null ? "" : display;
+    }
+
+    String formatModeLabel(String raw) {
+        if (raw == null || raw.length() == 0) {
+            return "";
+        }
+        String text = raw.replace('_', ' ').replace('-', ' ').toLowerCase(Locale.ROOT);
+        StringBuilder builder = new StringBuilder(text.length());
+        boolean upper = true;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (Character.isWhitespace(c)) {
+                builder.append(' ');
+                upper = true;
+            } else {
+                builder.append(upper ? Character.toUpperCase(c) : c);
+                upper = false;
+            }
+        }
+        return builder.toString();
+    }
+
+    private String rangeBase(Value value, String prefix) {
+        return rangeDisplayBase(value, prefix)
+                .replace(" ", "")
+                .replace("_", "")
+                .replace("-", "")
+                .toLowerCase(Locale.ROOT);
+    }
+
+    private String rangeDisplayBase(Value value, String prefix) {
+        String raw = getDisplayName(value).trim();
+        String lower = raw.toLowerCase(Locale.ROOT);
+        if (lower.startsWith(prefix + " ")) {
+            return raw.substring(prefix.length()).trim();
+        }
+        if (lower.startsWith(prefix) && raw.length() > prefix.length()) {
+            return raw.substring(prefix.length()).trim();
+        }
+        return "";
     }
 
     private boolean isNumberNamed(Value value, String name) {
@@ -617,6 +780,8 @@ public class VapeClickGui extends GuiScreen {
         draggingColorW = w;
         draggingColorH = h;
         draggingNumber = null;
+        draggingNumberCustomRange = false;
+        draggingNumberPair = null;
     }
 
     void clearDraggingColor() {
@@ -846,6 +1011,8 @@ public class VapeClickGui extends GuiScreen {
         searchCursorTime = System.currentTimeMillis();
         selectModule(null);
         draggingNumber = null;
+        draggingNumberCustomRange = false;
+        draggingNumberPair = null;
         listScroll = 0.0f;
         targetListScroll = 0.0f;
         contentFade = 0.0f;
@@ -854,6 +1021,8 @@ public class VapeClickGui extends GuiScreen {
     void startBinding(Module module) {
         bindingModule = module;
         draggingNumber = null;
+        draggingNumberCustomRange = false;
+        draggingNumberPair = null;
         searchFocused = false;
         addToast("Binding " + module.getName());
     }
@@ -1017,6 +1186,8 @@ public class VapeClickGui extends GuiScreen {
         saveConfigOnClose();
         closing = true;
         draggingNumber = null;
+        draggingNumberCustomRange = false;
+        draggingNumberPair = null;
     }
 
     void saveConfigOnClose() {

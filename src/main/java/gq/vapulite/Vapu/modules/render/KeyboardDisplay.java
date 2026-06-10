@@ -165,6 +165,11 @@ public class KeyboardDisplay extends Module {
         int border = ColorUtils.applyAlpha(ColorUtils.interpolate(0xFF5D6675, accent, animation), Math.min(210, 85 + Math.round(animation * 120.0f)));
         float round = Math.max(2.0f, 5.0f * scale.getValue().floatValue());
 
+        if (HUD.useVapeSimpleStyle()) {
+            drawVapeKey(x, y, width, height, id, animation, accent);
+            return;
+        }
+
         if (animation > 0.05f) {
             RenderUtil.drawSoftShadow(x, y, x + width, y + height, round, ColorUtils.applyAlpha(accent, Math.round(90.0f * animation)), 5, 3.0f);
         }
@@ -184,6 +189,42 @@ public class KeyboardDisplay extends Module {
         } else {
             FontLoaders.C18.drawString(label, x + (width - FontLoaders.C18.getStringWidth(label)) / 2.0f,
                     y + (height - FontLoaders.C18.getHeight()) / 2.0f + 3.0f, textColor);
+        }
+    }
+
+    private void drawVapeKey(float x, float y, float width, float height, String id, float animation, int accent) {
+        int baseAlpha = alpha.getValue().intValue();
+        int fillAlpha = Math.min(220, baseAlpha + Math.round(animation * 42.0f));
+        if (animation > 0.04f) {
+            RenderUtil.drawSoftShadow(x, y, x + width, y + height, 2.0f,
+                    ColorUtils.applyAlpha(accent, Math.round(44.0f * animation)), 4, 1.8f);
+        }
+        RenderUtil.drawRect(x, y, x + width, y + height, ColorUtils.applyAlpha(0xFF050505, fillAlpha));
+        RenderUtil.drawHorizontalGradientRect(x + 1.0f, y + 1.0f, x + width - 1.0f, y + Math.max(3.0f, height * 0.35f),
+                ColorUtils.applyAlpha(0xFFFFFFFF, 14 + Math.round(animation * 12.0f)),
+                ColorUtils.applyAlpha(0xFF000000, 0));
+        RenderUtil.drawBorderedRect(x, y, x + width, y + height, 0.7f,
+                ColorUtils.applyAlpha(ColorUtils.interpolate(0xFF343434, accent, animation), 84 + Math.round(animation * 70.0f)));
+        RenderUtil.drawRect(x, y + height - 2.0f, x + width, y + height,
+                ColorUtils.applyAlpha(ColorUtils.interpolate(0xFF6F7680, accent, animation),
+                        Math.min(235, 92 + Math.round(animation * 132.0f))));
+        if (animation > 0.02f) {
+            RenderUtil.drawRect(x + 2.0f, y + height - 4.5f, x + 2.0f + (width - 4.0f) * animation,
+                    y + height - 3.3f, ColorUtils.applyAlpha(accent, 185));
+        }
+
+        String label = getLabel(id);
+        int textColor = ColorUtils.interpolate(0xFFD4D4D4, 0xFFFFFFFF, animation);
+        if ((LMB.equals(id) || RMB.equals(id)) && Boolean.TRUE.equals(showCps.getValue())) {
+            int cps = LMB.equals(id) ? leftClicks.size() : rightClicks.size();
+            String cpsText = cps + " CPS";
+            FontLoaders.C16.drawString(label, x + (width - FontLoaders.C16.getStringWidth(label)) / 2.0f,
+                    y + 5.5f, textColor);
+            FontLoaders.C12.drawString(cpsText, x + (width - FontLoaders.C12.getStringWidth(cpsText)) / 2.0f,
+                    y + 16.5f, 0xFFD4D4D4);
+        } else {
+            FontLoaders.C16.drawString(label, x + (width - FontLoaders.C16.getStringWidth(label)) / 2.0f,
+                    y + (height - FontLoaders.C16.getHeight()) / 2.0f + 3.0f, textColor);
         }
     }
 

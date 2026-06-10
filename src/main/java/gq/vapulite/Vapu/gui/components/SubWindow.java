@@ -4,6 +4,7 @@ import java.util.ArrayList;
 
 import gq.vapulite.Vapu.utils.Misc;
 import gq.vapulite.Vapu.utils.RenderUtil;
+import gq.vapulite.font.FontLoaders;
 import org.lwjgl.input.Mouse;
 
 import net.minecraft.client.gui.ScaledResolution;
@@ -66,7 +67,7 @@ public class SubWindow extends Component {
 			this.y = (getY_double() + deltaY) / sr.getScaledHeight_double();
 		}
 		RenderUtil.drawRoundedRect(this.getX(), this.getY(), this.getX() + this.getWidth(), this.getY() + this.getHeight(), 0xCC000000);
-		mc.fontRendererObj.drawString(title, this.getX() + 2, this.getY() + 2, 0xFFFFFFFF);
+		FontLoaders.C14.drawString(title, this.getX() + 2, this.getY() + 2, 0xFFFFFFFF);
 		if(hidden)
 			return;
 		GlStateManager.pushMatrix();
@@ -79,7 +80,7 @@ public class SubWindow extends Component {
 	}
 	
 	public int getWidth() {
-		int width = mc.fontRendererObj.getStringWidth(title);
+		int width = FontLoaders.C14.getStringWidth(title);
 		for (Component component : components) {
 			width = Math.max(width, component.getWidth());
 		}

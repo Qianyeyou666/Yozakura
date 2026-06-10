@@ -80,6 +80,10 @@ public abstract class FontLoaders {
     public static final CFontRenderer C22 = regular(22);
     public static final CFontRenderer C30 = regular(30);
 
+    public static final CFontRenderer TB12 = tenacityBold(12);
+    public static final CFontRenderer TB14 = tenacityBold(14);
+    public static final CFontRenderer TB16 = tenacityBold(16);
+
     public static final CFontRenderer Logo = icon(40);
     public static final CFontRenderer I14 = icon(14);
     public static final CFontRenderer I16 = icon(16);
@@ -107,6 +111,10 @@ public abstract class FontLoaders {
 
     public static CFontRenderer icon(int size) {
         return renderer(FontFamily.ICON, size);
+    }
+
+    public static CFontRenderer tenacityBold(int size) {
+        return renderer(FontFamily.TENACITY_BOLD, size);
     }
 
     public static Font getFont(int size) {
@@ -186,6 +194,7 @@ public abstract class FontLoaders {
     private enum FontFamily {
         INTER(new ResourceLocation("font/Inter.ttf"), new ResourceLocation("font/Inter-Italic.ttf")),
         ALIBABA(new ResourceLocation("font/AlibabaSans-Regular.otf"), null),
+        TENACITY_BOLD(new ResourceLocation("font/tenacity-bold.ttf"), null),
         ICON(new ResourceLocation("font/TenacityIcon.ttf"), null);
 
         private final ResourceLocation location;

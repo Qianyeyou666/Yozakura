@@ -2,15 +2,26 @@ package gq.vapulite.font;
 
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.texture.DynamicTexture;
+import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 
 import java.awt.Font;
+import java.nio.FloatBuffer;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class CFontRenderer extends CFont {
     private static final String FORMAT_CODES = "0123456789abcdefklmnor";
+    private static final int FONT_ATTRIB_MASK = GL11.GL_ENABLE_BIT
+            | GL11.GL_COLOR_BUFFER_BIT
+            | GL11.GL_CURRENT_BIT
+            | GL11.GL_DEPTH_BUFFER_BIT
+            | GL11.GL_LINE_BIT
+            | GL11.GL_TEXTURE_BIT;
+    private static final FloatBuffer MODELVIEW = BufferUtils.createFloatBuffer(16);
 
     protected CharData[] boldChars = new CharData[256];
     protected CharData[] italicChars = new CharData[256];
@@ -22,6 +33,7 @@ public class CFontRenderer extends CFont {
     private Font boldFont;
     private Font italicFont;
     private Font boldItalicFont;
+    private final Map<Integer, CFontRenderer> scaledRenderers = new HashMap<Integer, CFontRenderer>();
 
     public CFontRenderer(Font font, boolean antiAlias, boolean fractionalMetrics) {
         this(font, font.deriveFont(Font.BOLD), font.deriveFont(Font.ITALIC),
@@ -39,7 +51,7 @@ public class CFontRenderer extends CFont {
     }
 
     public float drawStringWithShadow(String text, double x, double y, int color) {
-        float shadowWidth = drawString(text, x + 0.5, y + 0.5, color, true);
+        float shadowWidth = drawString(text, x + 1.0, y + 1.0, shadowColor(color), false);
         return Math.max(shadowWidth, drawString(text, x, y, color, false));
     }
 
@@ -60,10 +72,21 @@ public class CFontRenderer extends CFont {
     }
 
     public float drawString(String text, double x, double y, int color, boolean shadow) {
+        return drawStringInternal(text, x, y, color, shadow, true);
+    }
+
+    private float drawStringInternal(String text, double x, double y, int color, boolean shadow,
+                                     boolean allowScaleCompensation) {
         if (text == null || text.length() == 0) {
             return 0.0f;
         }
-        x -= 1.0;
+        if (allowScaleCompensation) {
+            ParentScale parentScale = getParentScale();
+            if (parentScale.scaled) {
+                return drawScaleCompensatedString(text, x, y, color, shadow, parentScale);
+            }
+        }
+
         if (color == 553648127) {
             color = 16777215;
         }
@@ -82,20 +105,27 @@ public class CFontRenderer extends CFont {
         boolean italic = false;
         boolean strikethrough = false;
         boolean underline = false;
-        x *= 2.0;
+        x = (x - 1.0) * 2.0;
         y = (y - 3.0) * 2.0;
 
         int previousActiveTexture = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
-        GL11.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_COLOR_BUFFER_BIT | GL11.GL_CURRENT_BIT | GL11.GL_LINE_BIT);
+        setActiveTexture(GL13.GL_TEXTURE0);
+        int previousTexture = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+        GL11.glPushAttrib(FONT_ATTRIB_MASK);
         GL11.glPushMatrix();
         try {
-            setActiveTexture(GL13.GL_TEXTURE0);
             GlStateManager.scale(0.5, 0.5, 0.5);
             GlStateManager.enableAlpha();
             GlStateManager.enableBlend();
             GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0);
             GlStateManager.enableTexture2D();
+            GlStateManager.disableDepth();
+            GL11.glDepthMask(false);
             GL11.glEnable(GL11.GL_TEXTURE_2D);
+            GL11.glDisable(GL11.GL_LINE_SMOOTH);
+            GL11.glDisable(GL11.GL_POLYGON_SMOOTH);
+            GL11.glDisable(GL13.GL_MULTISAMPLE);
+            GL11.glTexEnvi(GL11.GL_TEXTURE_ENV, GL11.GL_TEXTURE_ENV_MODE, GL11.GL_MODULATE);
             applyGlColor(color, alpha);
             bindFontTexture(currentTexture);
 
@@ -187,10 +217,70 @@ public class CFontRenderer extends CFont {
         } finally {
             GL11.glPopMatrix();
             GL11.glPopAttrib();
+            setActiveTexture(GL13.GL_TEXTURE0);
+            GlStateManager.bindTexture(previousTexture);
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, previousTexture);
             GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
             setActiveTexture(previousActiveTexture);
         }
         return (float) x / 2.0f;
+    }
+
+    private float drawScaleCompensatedString(String text, double x, double y, int color, boolean shadow,
+                                             ParentScale parentScale) {
+        int scaledSize = Math.max(1, Math.min(96, Math.round(font.getSize2D() * parentScale.scale)));
+        CFontRenderer renderer = getScaledRenderer(scaledSize);
+
+        GL11.glPushMatrix();
+        try {
+            GL11.glTranslated(x, y, 0.0);
+            GL11.glScaled(1.0 / parentScale.scale, 1.0 / parentScale.scale, 1.0);
+            GL11.glTranslated(-x, -y, 0.0);
+            renderer.drawStringInternal(text, x, y, color, shadow, false);
+        } finally {
+            GL11.glPopMatrix();
+        }
+        return (float) (x + getStringWidth(text));
+    }
+
+    private CFontRenderer getScaledRenderer(int size) {
+        int currentSize = Math.max(1, Math.round(font.getSize2D()));
+        if (size == currentSize) {
+            return this;
+        }
+        CFontRenderer cached = scaledRenderers.get(size);
+        if (cached != null) {
+            return cached;
+        }
+        CFontRenderer renderer = new CFontRenderer(
+                font.deriveFont(font.getStyle(), (float) size),
+                boldFont.deriveFont(Font.BOLD, (float) size),
+                italicFont.deriveFont(Font.ITALIC, (float) size),
+                boldItalicFont.deriveFont(Font.BOLD | Font.ITALIC, (float) size),
+                antiAlias,
+                fractionalMetrics);
+        scaledRenderers.put(size, renderer);
+        return renderer;
+    }
+
+    private ParentScale getParentScale() {
+        MODELVIEW.clear();
+        GL11.glGetFloat(GL11.GL_MODELVIEW_MATRIX, MODELVIEW);
+        float m00 = MODELVIEW.get(0);
+        float m01 = MODELVIEW.get(1);
+        float m10 = MODELVIEW.get(4);
+        float m11 = MODELVIEW.get(5);
+        float scaleX = (float) Math.sqrt(m00 * m00 + m01 * m01);
+        float scaleY = (float) Math.sqrt(m10 * m10 + m11 * m11);
+        if (scaleX <= 0.01f || scaleY <= 0.01f) {
+            return ParentScale.IDENTITY;
+        }
+
+        float dot = m00 * m10 + m01 * m11;
+        float scale = (scaleX + scaleY) * 0.5f;
+        boolean simpleScale = Math.abs(dot) < 0.001f && Math.abs(scaleX - scaleY) < 0.015f;
+        boolean scaled = simpleScale && Math.abs(scale - 1.0f) > 0.035f && scale > 0.25f && scale < 4.0f;
+        return scaled ? new ParentScale(true, scale) : ParentScale.IDENTITY;
     }
 
     @Override
@@ -237,18 +327,21 @@ public class CFontRenderer extends CFont {
         this.boldFont = font.deriveFont(Font.BOLD);
         this.italicFont = font.deriveFont(Font.ITALIC);
         this.boldItalicFont = font.deriveFont(Font.BOLD | Font.ITALIC);
+        scaledRenderers.clear();
         setupBoldItalicIDs();
     }
 
     @Override
     public void setAntiAlias(boolean antiAlias) {
         super.setAntiAlias(antiAlias);
+        scaledRenderers.clear();
         setupBoldItalicIDs();
     }
 
     @Override
     public void setFractionalMetrics(boolean fractionalMetrics) {
         super.setFractionalMetrics(fractionalMetrics);
+        scaledRenderers.clear();
         setupBoldItalicIDs();
     }
 
@@ -276,6 +369,28 @@ public class CFontRenderer extends CFont {
         int textureId = texture.getGlTextureId();
         GlStateManager.bindTexture(textureId);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
+        applyFontTextureParameters();
+    }
+
+    private int shadowColor(int color) {
+        if ((color & 0xFC000000) == 0) {
+            color |= 0xFF000000;
+        }
+        int alpha = color >>> 24 & 255;
+        int shadowAlpha = Math.max(42, Math.min(120, Math.round(alpha * 0.44f)));
+        return shadowAlpha << 24;
+    }
+
+    private static final class ParentScale {
+        private static final ParentScale IDENTITY = new ParentScale(false, 1.0f);
+
+        private final boolean scaled;
+        private final float scale;
+
+        private ParentScale(boolean scaled, float scale) {
+            this.scaled = scaled;
+            this.scale = scale;
+        }
     }
 
     private void setActiveTexture(int textureUnit) {

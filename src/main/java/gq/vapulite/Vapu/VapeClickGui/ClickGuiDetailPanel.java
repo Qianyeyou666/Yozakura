@@ -98,7 +98,7 @@ final class ClickGuiDetailPanel {
 
         // 更新下拉栏动画并绘制（展开和收起都有动画）
         for (Mode mode : expandedModes) {
-            if (gui.selectedModule != null && gui.selectedModule.getValues().contains(mode)) {
+            if (gui.selectedModule != null && gui.selectedModule.getValues().contains(mode) && isModeVisible(mode)) {
                 float current = dropdownAnim.containsKey(mode) ? dropdownAnim.get(mode) : 0f;
                 current = gui.animate(current, 1f, 0.22f);
                 dropdownAnim.put(mode, current);
@@ -118,7 +118,7 @@ final class ClickGuiDetailPanel {
         }
         // 绘制所有有动画进度的下拉栏
         for (Mode mode : dropdownAnim.keySet()) {
-            if (gui.selectedModule != null && gui.selectedModule.getValues().contains(mode)) {
+            if (gui.selectedModule != null && gui.selectedModule.getValues().contains(mode) && isModeVisible(mode)) {
                 float progress = dropdownAnim.get(mode);
                 if (progress > 0.01f) {
                     drawModeDropdown(mode, mouseX, mouseY, progress);
@@ -135,6 +135,7 @@ final class ClickGuiDetailPanel {
         if (!expandedModes.isEmpty() && mouseButton == 0) {
             for (Mode mode : expandedModes) {
                 if (gui.selectedModule != null && gui.selectedModule.getValues().contains(mode)
+                        && isModeVisible(mode)
                         && handleDropdownClick(mode, mouseX, mouseY)) {
                     return true;
                 }
@@ -173,8 +174,8 @@ final class ClickGuiDetailPanel {
     }
 
     void updateNumberValue(Numbers value, int mouseX, float x, float w) {
-        double min = value.getMinimum().doubleValue();
-        double max = value.getMaximum().doubleValue();
+        double min = gui.draggingNumberCustomRange ? gui.draggingNumberMin : value.getMinimum().doubleValue();
+        double max = gui.draggingNumberCustomRange ? gui.draggingNumberMax : value.getMaximum().doubleValue();
         double inc = value.getIncrement().doubleValue();
         if (inc <= 0.0D) {
             inc = 0.1D;
@@ -183,7 +184,17 @@ final class ClickGuiDetailPanel {
         double result = min + (max - min) * pct;
         result = Math.round(result / inc) * inc;
         result = Math.max(min, Math.min(max, result));
+        if (gui.draggingNumberCustomRange && gui.draggingNumberPair != null
+                && gui.draggingNumberPair.getValue() instanceof Number) {
+            double pair = ((Number) gui.draggingNumberPair.getValue()).doubleValue();
+            result = gui.draggingNumberLowerBound ? Math.min(result, pair) : Math.max(result, pair);
+        }
         value.setValue(result);
+    }
+
+    private float pct(Numbers value, double min, double max) {
+        double current = ((Number) value.getValue()).doubleValue();
+        return (float) gui.clamp((current - min) / Math.max(0.0001D, max - min), 0.0D, 1.0D);
     }
 
     void updateColorValue(int mouseX, int mouseY) {
@@ -198,13 +209,10 @@ final class ClickGuiDetailPanel {
                                            int mouseX, int mouseY, int mouseButton) {
         List<Value> values = module.getValues();
         for (int i = 0; i < values.size(); i++) {
-            if (gui.isColorContinuation(module, i)) {
+            if (!gui.isDetailValueVisible(module, i)) {
                 continue;
             }
             Value value = values.get(i);
-            if (gui.isHiddenPaletteValue(module, value)) {
-                continue;
-            }
             float valueH = gui.getValueHeight(module, i);
             if (VapeClickGui.isHovered(x, valueY, x + width, valueY + valueH, mouseX, mouseY)) {
                 if (gui.isColorStart(module, i) && mouseButton == 0) {
@@ -212,6 +220,30 @@ final class ClickGuiDetailPanel {
                     Numbers green = (Numbers) values.get(i + 1);
                     Numbers blue = (Numbers) values.get(i + 2);
                     return handlePaletteClick(module, red, green, blue, x, valueY, width, mouseX, mouseY);
+                }
+                if (gui.isRangeStart(module, i) && mouseButton == 0) {
+                    Numbers min = (Numbers) values.get(i);
+                    Numbers max = (Numbers) values.get(i + 1);
+                    float barX = gui.getSliderBarX(x, width);
+                    float barW = gui.getSliderBarWidth(width);
+                    double sliderMin = Math.min(min.getMinimum().doubleValue(), max.getMinimum().doubleValue());
+                    double sliderMax = Math.max(min.getMaximum().doubleValue(), max.getMaximum().doubleValue());
+                    float minPct = pct(min, sliderMin, sliderMax);
+                    float maxPct = pct(max, sliderMin, sliderMax);
+                    Numbers target = Math.abs(mouseX - (barX + barW * minPct))
+                            <= Math.abs(mouseX - (barX + barW * maxPct)) ? min : max;
+                    gui.draggingNumber = target;
+                    gui.draggingNumberX = barX;
+                    gui.draggingNumberW = barW;
+                    gui.draggingNumberCustomRange = true;
+                    gui.draggingNumberMin = sliderMin;
+                    gui.draggingNumberMax = sliderMax;
+                    gui.draggingNumberPair = target == min ? max : min;
+                    gui.draggingNumberLowerBound = target == min;
+                    updateNumberValue(target, mouseX, barX, barW);
+                    gui.valueActiveProgress.put(min, 1.0f);
+                    gui.valueActiveProgress.put(max, 1.0f);
+                    return true;
                 }
                 if (value instanceof Option && mouseButton == 0) {
                     value.setValue(!Boolean.TRUE.equals(value.getValue()));
@@ -232,6 +264,8 @@ final class ClickGuiDetailPanel {
                     gui.draggingNumber = value;
                     gui.draggingNumberX = gui.getSliderBarX(x, width);
                     gui.draggingNumberW = gui.getSliderBarWidth(width);
+                    gui.draggingNumberCustomRange = false;
+                    gui.draggingNumberPair = null;
                     updateNumberValue((Numbers) value, mouseX, gui.draggingNumberX, gui.draggingNumberW);
                     return true;
                 }
@@ -278,16 +312,22 @@ final class ClickGuiDetailPanel {
 
     private boolean handleTabClick(int mouseX, int mouseY) {
         float tabX = gui.detailX + 6.0f;
-        float tabY = gui.contentY + 58.0f;
+        float tabY = gui.contentY + currentIntroY + 58.0f;
         float tabW = gui.detailW - 12.0f;
         float tabH = 31.0f;
         if (!VapeClickGui.isHovered(tabX, tabY, tabX + tabW, tabY + tabH, mouseX, mouseY)) {
             return false;
         }
         int index = (int) ((mouseX - tabX) / (tabW / DETAIL_TABS.length));
-        gui.detailTabIndex = Math.max(0, Math.min(DETAIL_TABS.length - 1, index));
-        if (gui.detailTabIndex == 2 && gui.selectedModule != null) {
-            gui.startBinding(gui.selectedModule);
+        int next = Math.max(0, Math.min(DETAIL_TABS.length - 1, index));
+        if (gui.detailTabIndex != next) {
+            gui.detailTabIndex = next;
+            gui.settingsScroll = 0.0f;
+            gui.targetSettingsScroll = 0.0f;
+            gui.draggingNumber = null;
+            gui.draggingNumberCustomRange = false;
+            gui.draggingNumberPair = null;
+            gui.clearDraggingColor();
         }
         return true;
     }
@@ -477,13 +517,12 @@ final class ClickGuiDetailPanel {
         float w = gui.getDetailValuesWidth();
         float h = gui.getDetailValuesHeight();
         Module module = gui.selectedModule;
-        if (module.getValues().isEmpty()) {
-            gui.drawFont("No settings available", x, y + 8.0f,
+        float contentHeight = gui.getSettingsContentHeight(module);
+        if (contentHeight <= 4.0f) {
+            gui.drawFont("No settings in this section", x, y + 8.0f,
                     gui.withAlpha(VapeClickGui.MUTED, 210.0f * gui.openProgress));
             return;
         }
-
-        float contentHeight = gui.getSettingsContentHeight(module);
         gui.targetSettingsScroll = gui.clamp(gui.targetSettingsScroll, -Math.max(0.0f, contentHeight - h), 0.0f);
         gui.settingsScroll = gui.clamp(gui.settingsScroll, -Math.max(0.0f, contentHeight - h), 0.0f);
 
@@ -493,13 +532,10 @@ final class ClickGuiDetailPanel {
             int index = 0;
             List<Value> values = module.getValues();
             for (int i = 0; i < values.size(); i++) {
-                if (gui.isColorContinuation(module, i)) {
+                if (!gui.isDetailValueVisible(module, i)) {
                     continue;
                 }
                 Value value = values.get(i);
-                if (gui.isHiddenPaletteValue(module, value)) {
-                    continue;
-                }
                 float valueH = gui.getValueHeight(module, i);
                 float rowAlpha = Math.max(0.0f, Math.min(1.0f, 1.0f - index * 0.015f));
                 if (valueY + valueH >= y - 2.0f && valueY <= y + h + 2.0f) {
@@ -514,6 +550,9 @@ final class ClickGuiDetailPanel {
                     if (gui.isColorStart(module, i)) {
                         drawColorPalette(module, (Numbers) values.get(i), (Numbers) values.get(i + 1),
                                 (Numbers) values.get(i + 2), x, valueY, w, rowAlpha, mouseX, mouseY);
+                    } else if (gui.isRangeStart(module, i)) {
+                        drawRangeNumber((Numbers) values.get(i), (Numbers) values.get(i + 1),
+                                x, valueY, w, rowAlpha);
                     } else if (value instanceof Option) {
                         drawOption((Option) value, x, valueY, w, rowAlpha);
                     } else if (value instanceof Numbers) {
@@ -533,7 +572,7 @@ final class ClickGuiDetailPanel {
 
     private void drawOption(Option value, float x, float y, float w, float alpha) {
         boolean enabled = Boolean.TRUE.equals(value.getValue());
-        gui.drawFont(gui.trim(value.getName(), FontLoaders.F14, w - 68.0f), x, y + 8.0f,
+        gui.drawFont(gui.trim(gui.getDisplayName(value), FontLoaders.F14, w - 68.0f), x, y + 8.0f,
                 gui.withAlpha(enabled ? VapeClickGui.TEXT : VapeClickGui.MUTED, 255.0f * alpha * gui.openProgress));
         gui.drawSwitch(gui.getOptionSwitchX(x, w), gui.getOptionSwitchY(y), enabled, alpha, value);
     }
@@ -552,7 +591,7 @@ final class ClickGuiDetailPanel {
         float barY = y + 15.0f;
         float pillW = gui.getDetailValuePillWidth();
         float pillX = x + w - pillW;
-        gui.drawFont(gui.trim(value.getName(), FontLoaders.F14, labelW - 8.0f), x, y + 8.0f,
+        gui.drawFont(gui.trim(gui.getDisplayName(value), FontLoaders.F14, labelW - 8.0f), x, y + 8.0f,
                 gui.withAlpha(VapeClickGui.TEXT, 245.0f * alpha * gui.openProgress));
         RenderUtil.drawRoundedRect(barX, barY, barX + barW, barY + 2.0f, 2.0f,
                 gui.withAlpha(new Color(61, 67, 82, 180).getRGB(), 178.0f * alpha * gui.openProgress));
@@ -568,12 +607,61 @@ final class ClickGuiDetailPanel {
         drawValuePill(gui.formatNumber(current), pillX, y + 3.0f, pillW, alpha);
     }
 
+    private void drawRangeNumber(Numbers minValue, Numbers maxValue, float x, float y, float w, float alpha) {
+        double sliderMin = Math.min(minValue.getMinimum().doubleValue(), maxValue.getMinimum().doubleValue());
+        double sliderMax = Math.max(minValue.getMaximum().doubleValue(), maxValue.getMaximum().doubleValue());
+        double first = ((Number) minValue.getValue()).doubleValue();
+        double second = ((Number) maxValue.getValue()).doubleValue();
+        float firstPct = pct(minValue, sliderMin, sliderMax);
+        float secondPct = pct(maxValue, sliderMin, sliderMax);
+        minValue.animX = gui.animate(minValue.animX, firstPct, 0.18f);
+        maxValue.animX = gui.animate(maxValue.animX, secondPct, 0.18f);
+        float lowPct = Math.min(minValue.animX, maxValue.animX);
+        float highPct = Math.max(minValue.animX, maxValue.animX);
+        float activeMin = gui.animateValueMap(gui.valueActiveProgress, minValue,
+                gui.draggingNumber == minValue ? 1.0f : 0.0f, 0.24f);
+        float activeMax = gui.animateValueMap(gui.valueActiveProgress, maxValue,
+                gui.draggingNumber == maxValue ? 1.0f : 0.0f, 0.24f);
+        float active = Math.max(activeMin, activeMax);
+        float labelW = gui.getDetailLabelWidth(w);
+        float barX = gui.getSliderBarX(x, w);
+        float barW = gui.getSliderBarWidth(w);
+        float barY = y + 28.0f;
+        float pillW = 76.0f;
+        float pillX = x + w - pillW;
+        String rangeText = gui.formatNumber(Math.min(first, second)) + " - " + gui.formatNumber(Math.max(first, second));
+
+        gui.drawFont(gui.trim(gui.getRangeDisplayName(minValue), FontLoaders.F14, labelW - 8.0f),
+                x, y + 8.0f, gui.withAlpha(VapeClickGui.TEXT, 245.0f * alpha * gui.openProgress));
+        drawValuePill(rangeText, pillX, y + 3.0f, pillW, alpha);
+        RenderUtil.drawRoundedRect(barX, barY, barX + barW, barY + 2.2f, 2.0f,
+                gui.withAlpha(new Color(61, 67, 82, 180).getRGB(), 178.0f * alpha * gui.openProgress));
+        RenderUtil.drawRoundedRect(barX + barW * lowPct, barY, barX + barW * highPct, barY + 2.2f, 2.0f,
+                gui.withAlpha(new Color(132, 117, 255).getRGB(), 230.0f * alpha * gui.openProgress));
+        drawRangeKnob(barX + barW * minValue.animX, barY, 3.1f + activeMin * 1.0f, activeMin, alpha);
+        drawRangeKnob(barX + barW * maxValue.animX, barY, 3.1f + activeMax * 1.0f, activeMax, alpha);
+        if (active > 0.02f) {
+            RenderUtil.drawSoftShadow(barX + barW * lowPct, barY - 2.0f, barX + barW * highPct, barY + 4.0f,
+                    3.0f, gui.withAlpha(new Color(132, 117, 255).getRGB(), 62.0f * active * alpha * gui.openProgress),
+                    4, 2.0f);
+        }
+    }
+
+    private void drawRangeKnob(float centerX, float barY, float knob, float active, float alpha) {
+        RenderUtil.drawSoftShadow(centerX - knob, barY - 3.0f, centerX + knob, barY + 5.0f, 4.0f,
+                gui.withAlpha(new Color(132, 117, 255).getRGB(), 82.0f * (0.35f + active) * alpha * gui.openProgress),
+                4, 2.0f);
+        RenderUtil.drawRoundedRect(centerX - knob, barY - knob + 1.0f,
+                centerX + knob, barY + knob + 1.0f, knob,
+                gui.withAlpha(new Color(145, 128, 255).getRGB(), 255.0f * alpha * gui.openProgress));
+    }
+
     private void drawMode(Mode value, float x, float y, float w, float alpha) {
         float labelW = gui.getDetailLabelWidth(w);
         float pillW = Math.min(112.0f, Math.max(72.0f, w - labelW));
         float pillX = x + w - pillW;
         boolean expanded = expandedModes.contains(value);
-        gui.drawFont(gui.trim(value.getName(), FontLoaders.F14, labelW - 8.0f), x, y + 8.0f,
+        gui.drawFont(gui.trim(gui.getDisplayName(value), FontLoaders.F14, labelW - 8.0f), x, y + 8.0f,
                 gui.withAlpha(VapeClickGui.TEXT, 245.0f * alpha * gui.openProgress));
         float borderAlpha = expanded ? 110.0f : 48.0f;
         int fillColor = expanded
@@ -582,7 +670,8 @@ final class ClickGuiDetailPanel {
         RenderUtil.drawFrostedGlassRect(pillX, y + 3.0f, pillX + pillW, y + 23.0f, 5.0f, 0.8f,
                 fillColor,
                 gui.withAlpha(VapeClickGui.GLASS_BORDER, borderAlpha * alpha * gui.openProgress));
-        gui.drawFont(gui.trim(value.getModeAsString(), FontLoaders.F14, pillW - 28.0f), pillX + 12.0f, y + 9.0f,
+        gui.drawFont(gui.trim(gui.formatModeLabel(value.getModeAsString()), FontLoaders.F14, pillW - 28.0f),
+                pillX + 12.0f, y + 9.0f,
                 gui.withAlpha(expanded ? VapeClickGui.ACCENT : VapeClickGui.TEXT,
                         (expanded ? 240.0f : 230.0f) * alpha * gui.openProgress));
         gui.drawFont(expanded ? "^" : "v", pillX + pillW - 15.0f, y + 8.0f,
@@ -621,13 +710,10 @@ final class ClickGuiDetailPanel {
         float y = gui.getDetailValuesY(gui.contentY + currentIntroY) + gui.settingsScroll;
         List<Value> values = gui.selectedModule.getValues();
         for (int i = 0; i < values.size(); i++) {
-            if (gui.isColorContinuation(gui.selectedModule, i)) {
+            if (!gui.isDetailValueVisible(gui.selectedModule, i)) {
                 continue;
             }
             Value v = values.get(i);
-            if (gui.isHiddenPaletteValue(gui.selectedModule, v)) {
-                continue;
-            }
             if (v == value) return y;
             y += gui.getValueHeight(gui.selectedModule, i);
         }
@@ -689,7 +775,7 @@ final class ClickGuiDetailPanel {
                                     : new Color(55, 58, 70, 140).getRGB(),
                             (selected ? 178.0f : 110.0f) * gui.openProgress));
                 }
-                gui.drawFont(gui.trim(modes[i].toString(), FontLoaders.F14, pillW - 20.0f),
+                gui.drawFont(gui.trim(gui.formatModeLabel(modes[i].toString()), FontLoaders.F14, pillW - 20.0f),
                         pillX + 10.0f, rowY + 4.0f,
                         gui.withAlpha(selected ? VapeClickGui.ACCENT : VapeClickGui.TEXT,
                                 (selected ? 240.0f : 210.0f) * gui.openProgress));
@@ -700,6 +786,9 @@ final class ClickGuiDetailPanel {
     }
 
     private boolean handleDropdownClick(Mode value, int mouseX, int mouseY) {
+        if (!isModeVisible(value)) {
+            return false;
+        }
         Object[] modes = value.getModes();
         float labelW = gui.getDetailLabelWidth(gui.getDetailValuesWidth());
         float pillW = Math.min(112.0f, Math.max(72.0f, gui.getDetailValuesWidth() - labelW));
@@ -717,6 +806,19 @@ final class ClickGuiDetailPanel {
                 expandedModes.remove(value);
                 gui.valueActiveProgress.put(value, 1.0f);
                 return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isModeVisible(Mode mode) {
+        if (gui.selectedModule == null || mode == null) {
+            return false;
+        }
+        List<Value> values = gui.selectedModule.getValues();
+        for (int i = 0; i < values.size(); i++) {
+            if (values.get(i) == mode) {
+                return gui.isDetailValueVisible(gui.selectedModule, i);
             }
         }
         return false;

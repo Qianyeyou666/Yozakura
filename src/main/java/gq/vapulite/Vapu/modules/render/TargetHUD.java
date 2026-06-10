@@ -36,6 +36,11 @@ public class TargetHUD extends Module {
     private static final int ABSORB = 0xFFFFD166;
     private static final int BAR_RED = 0xFFFF222C;
     private static final int BAR_YELLOW = 0xFFFFC83D;
+    private static final int VAPE_PRIMARY = 0xFF7C9DFF;
+    private static final int VAPE_SECONDARY = 0xFF838CEF;
+    private static final int VAPE_SURFACE = 0xFF171A20;
+    private static final int VAPE_SURFACE_VARIANT = 0xFF1E222B;
+    private static final int VAPE_ON_VARIANT = 0xFFAAB2C5;
 
     private final Numbers<Double> xPosition = new Numbers<Double>("X", "X", -1.0, -1.0, 2000.0, 1.0);
     private final Numbers<Double> yPosition = new Numbers<Double>("Y", "Y", -1.0, -1.0, 1200.0, 1.0);
@@ -207,6 +212,11 @@ public class TargetHUD extends Module {
 
     private void drawHud(ScaledResolution sr, EntityLivingBase target, float alpha) {
         alpha = clamp01(alpha);
+        if (HUD.useVapeSimpleStyle()) {
+            drawVapeHud(sr, target, alpha);
+            return;
+        }
+
         float width = 172.0f;
         float height = 64.0f;
         float uiScale = Math.max(0.1f, scale.getValue().floatValue());
@@ -216,11 +226,13 @@ public class TargetHUD extends Module {
                 width * uiScale, height * uiScale, sr);
         float x = pos[0];
         float y = pos[1] + (HudDrag.isEditMode() ? 0.0f : (1.0f - alpha) * 7.0f);
-        float avatar = Boolean.TRUE.equals(showAvatar.getValue()) ? 40.0f : 0.0f;
-        float avatarX = x + 7.0f;
-        float avatarY = y + 8.0f;
-        float textX = x + (avatar > 0.0f ? 53.0f : 10.0f);
-        float right = x + width - 9.0f;
+        float scaledW = width * uiScale;
+        float scaledH = height * uiScale;
+        float avatar = Boolean.TRUE.equals(showAvatar.getValue()) ? 40.0f * uiScale : 0.0f;
+        float avatarX = x + 7.0f * uiScale;
+        float avatarY = y + 8.0f * uiScale;
+        float textX = x + (avatar > 0.0f ? 53.0f : 10.0f) * uiScale;
+        float right = x + scaledW - 9.0f * uiScale;
         float textW = right - textX;
         float hurt = clamp01(hurtPulse);
         float pulse = clamp01(switchPulse);
@@ -228,98 +240,199 @@ public class TargetHUD extends Module {
         int borderAlpha = Math.round((42.0f + pulse * 34.0f + hurt * 42.0f) * alpha);
         int accent = hurt > 0.04f ? ColorUtils.interpolate(ACCENT, HEALTH_LOW, hurt) : ACCENT;
 
-        GlStateManager.pushMatrix();
-        try {
-            GlStateManager.translate(x, y, 0.0f);
-            GlStateManager.scale(uiScale, uiScale, 1.0f);
-            GlStateManager.translate(-x, -y, 0.0f);
-
-            RenderUtil.drawSoftShadow(x, y, x + width, y + height, 5.0f,
-                    withAlpha(0xFF000000, Math.round((86.0f + hurt * 38.0f) * alpha)), 8, 3.2f);
-            if (hurt > 0.03f) {
-                RenderUtil.drawSoftShadow(x - 1.0f, y - 1.0f, x + width + 1.0f, y + height + 1.0f,
-                        8.0f, withAlpha(HEALTH_LOW, Math.round(70.0f * hurt * alpha)), 5, 3.0f);
-            }
-            RenderUtil.drawFrostedGlassRect(x, y, x + width, y + height, 5.0f, 0.75f,
-                    withAlpha(0xFF050608, fillAlpha), withAlpha(0xFF1D2027, borderAlpha));
-            RenderUtil.drawHorizontalGradientRect(x + 1.0f, y + 1.0f, x + width - 1.0f, y + 16.0f,
-                    withAlpha(0xFFFFFFFF, Math.round(18.0f * alpha)),
-                    withAlpha(0xFF11151C, Math.round(8.0f * alpha)));
-
-            if (avatar > 0.0f) {
-                drawAvatar(target, avatarX, avatarY, avatar, alpha, accent);
-                resetTextRenderState();
-            }
-
-            drawHeader(target, textX, y + 7.0f, textW, alpha);
-            drawStatBadges(target, textX, y + 24.0f, alpha);
-            drawOutcomeText(target, textX, y + 43.0f, textW, alpha);
-            drawHealthBar(target, x + 8.0f, y + height - 6.0f, width - 16.0f, 3.2f, alpha);
-        } finally {
-            GlStateManager.popMatrix();
+        RenderUtil.drawSoftShadow(x, y, x + scaledW, y + scaledH, 5.0f * uiScale,
+                withAlpha(0xFF000000, Math.round((86.0f + hurt * 38.0f) * alpha)), 8, 3.2f * uiScale);
+        if (hurt > 0.03f) {
+            RenderUtil.drawSoftShadow(x - uiScale, y - uiScale, x + scaledW + uiScale, y + scaledH + uiScale,
+                    8.0f * uiScale, withAlpha(HEALTH_LOW, Math.round(70.0f * hurt * alpha)), 5, 3.0f * uiScale);
         }
+        RenderUtil.drawFrostedGlassRect(x, y, x + scaledW, y + scaledH, 5.0f * uiScale, 0.75f * uiScale,
+                withAlpha(0xFF050608, fillAlpha), withAlpha(0xFF1D2027, borderAlpha));
+        RenderUtil.drawHorizontalGradientRect(x + uiScale, y + uiScale, x + scaledW - uiScale,
+                y + 16.0f * uiScale, withAlpha(0xFFFFFFFF, Math.round(18.0f * alpha)),
+                withAlpha(0xFF11151C, Math.round(8.0f * alpha)));
+
+        if (avatar > 0.0f) {
+            drawAvatar(target, avatarX, avatarY, avatar, uiScale, alpha, accent);
+            resetTextRenderState();
+        }
+
+        drawHeader(target, textX, y + 7.0f * uiScale, textW, uiScale, alpha);
+        drawStatBadges(target, textX, y + 24.0f * uiScale, uiScale, alpha);
+        drawOutcomeText(target, textX, y + 43.0f * uiScale, textW, uiScale, alpha);
+        drawHealthBar(target, x + 8.0f * uiScale, y + scaledH - 6.0f * uiScale,
+                scaledW - 16.0f * uiScale, 3.2f * uiScale, alpha);
         HudDrag.drawHint("target_hud", x, y, width * uiScale, height * uiScale, 8.0f * uiScale);
     }
 
-    private void drawHeader(EntityLivingBase target, float x, float y, float width, float alpha) {
+    private void drawVapeHud(ScaledResolution sr, EntityLivingBase target, float alpha) {
+        float width = 252.0f;
+        float height = 72.0f;
+        float uiScale = Math.max(0.1f, scale.getValue().floatValue());
+        float defaultX = sr.getScaledWidth() / 2.0f + xOffset.getValue().floatValue();
+        float defaultY = sr.getScaledHeight() / 2.0f + yOffset.getValue().floatValue();
+        float[] pos = HudDrag.update("target_hud", xPosition, yPosition, scale, defaultX, defaultY,
+                width * uiScale, height * uiScale, sr);
+        float x = pos[0];
+        float y = pos[1] + (HudDrag.isEditMode() ? 0.0f : (1.0f - alpha) * 5.0f);
+        float scaledW = width * uiScale;
+        float scaledH = height * uiScale;
+        boolean avatarEnabled = Boolean.TRUE.equals(showAvatar.getValue());
+        float avatarSize = avatarEnabled ? 46.0f * uiScale : 0.0f;
+        float avatarX = x + 12.0f * uiScale;
+        float avatarY = y + 13.0f * uiScale;
+        float textX = x + (avatarEnabled ? 76.0f : 16.0f) * uiScale;
+        float right = x + scaledW - 16.0f * uiScale;
+        float hurt = clamp01(hurtPulse);
+        int accent = hurt > 0.05f ? ColorUtils.interpolate(VAPE_PRIMARY, HEALTH_LOW, hurt) : VAPE_PRIMARY;
+        int heartColor = hurt > 0.05f ? HEALTH_LOW : 0xFFFF6170;
+        if (hurt > 0.05f) {
+            heartColor = ColorUtils.interpolate(heartColor, 0xFFFFA1AA, hurt);
+        }
+
+        RenderUtil.drawSoftShadow(x, y, x + scaledW, y + scaledH, 7.0f * uiScale,
+                withAlpha(0xFF000000, Math.round(72.0f * alpha)), 7, 2.6f * uiScale);
+        RenderUtil.drawRoundedBorderedRect(x, y, x + scaledW, y + scaledH, 7.0f * uiScale, 0.8f * uiScale,
+                withAlpha(VAPE_SURFACE, Math.round(168.0f * alpha)),
+                withAlpha(0xFFFFFFFF, Math.round(28.0f * alpha)));
+        RenderUtil.drawHorizontalGradientRect(x + uiScale, y + uiScale, x + scaledW - uiScale,
+                y + 20.0f * uiScale, withAlpha(0xFFFFFFFF, Math.round(16.0f * alpha)),
+                withAlpha(0xFF000000, 0));
+
+        if (avatarEnabled) {
+            RenderUtil.drawRoundedBorderedRect(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize,
+                    8.0f * uiScale, 0.8f * uiScale,
+                    withAlpha(VAPE_SURFACE_VARIANT, Math.round(218.0f * alpha)),
+                    withAlpha(accent, Math.round(70.0f * alpha)));
+            RenderUtil.drawCircle(avatarX + avatarSize / 2.0f, avatarY + avatarSize / 2.0f, 0, 360,
+                    avatarSize / 2.0f - 4.0f * uiScale, withAlpha(accent, Math.round(30.0f * alpha)));
+            if (target != null) {
+                drawEntityPreview(target, avatarX + avatarSize / 2.0f, avatarY + avatarSize - 3.0f * uiScale,
+                        avatarSize, alpha);
+            } else {
+                String icon = targetIcon(null);
+                CFontRenderer iconFont = scaledIconFont(24, uiScale);
+                iconFont.drawString(icon, avatarX + avatarSize / 2.0f - iconFont.getStringWidth(icon) / 2.0f,
+                        avatarY + avatarSize / 2.0f - iconFont.getHeight() / 2.0f + 2.0f * uiScale,
+                        withAlpha(accent, Math.round(230.0f * alpha)));
+            }
+            resetTextRenderState();
+        }
+
+        CFontRenderer nameFont = scaledFont(20, uiScale);
+        CFontRenderer smallFont = scaledFont(12, uiScale);
+        CFontRenderer iconFont = scaledIconFont(13, uiScale);
+        String name = target == null ? "Target HUD" : target.getName();
+        String healthText = target == null ? "--" : String.valueOf(Math.round(Math.max(0.0f, target.getHealth())));
+        float heartW = iconFont.getStringWidth(FontLoaders.ICON_HEARTBEAT);
+        float healthTextW = smallFont.getStringWidth(healthText);
+
+        nameFont.drawString(trim(name, nameFont, right - textX - healthTextW - heartW - 18.0f * uiScale), textX,
+                y + 14.0f * uiScale,
+                withAlpha(0xFFFFFFFF, Math.round(246.0f * alpha)));
+        smallFont.drawString(healthText, right - healthTextW - heartW - 6.0f * uiScale,
+                y + 18.0f * uiScale, withAlpha(0xFFFFFFFF, Math.round(240.0f * alpha)));
+        iconFont.drawString(FontLoaders.ICON_HEARTBEAT, right - heartW, y + 17.0f * uiScale,
+                withAlpha(heartColor, Math.round(245.0f * alpha)));
+
+        int armor = target == null ? 0 : target.getTotalArmorValue();
+        float armorX = textX;
+        for (int i = 0; i < 5; i++) {
+            int iconAlpha = Math.round((i * 4 < armor ? 188.0f : 68.0f) * alpha);
+            iconFont.drawString(FontLoaders.ICON_SHIELD, armorX + i * 12.0f * uiScale,
+                    y + 35.0f * uiScale, withAlpha(VAPE_ON_VARIANT, iconAlpha));
+        }
+        if (target != null && Boolean.TRUE.equals(showDistance.getValue())) {
+            String distance = buildDistance(target);
+            smallFont.drawString(distance, right - smallFont.getStringWidth(distance), y + 35.0f * uiScale,
+                    withAlpha(VAPE_ON_VARIANT, Math.round(190.0f * alpha)));
+        }
+
+        float barX = textX;
+        float barY = y + scaledH - 16.0f * uiScale;
+        float barW = right - textX;
+        RenderUtil.drawProgressBar(barX, barY, barX + barW, barY + 5.0f * uiScale, 2.4f * uiScale,
+                1.0f, withAlpha(0xFFFFFFFF, Math.round(18.0f * alpha)),
+                withAlpha(0xFFFFFFFF, Math.round(18.0f * alpha)));
+        float delayed = clamp01(Math.max(healthAnimation, damageAnimation));
+        if (delayed > healthAnimation + 0.002f) {
+            RenderUtil.drawProgressBar(barX, barY, barX + barW * delayed, barY + 5.0f * uiScale,
+                    2.4f * uiScale, 1.0f, 0x00000000, withAlpha(0xFFFF5A36, Math.round(90.0f * alpha)));
+        }
+        RenderUtil.drawHorizontalGradientRect(barX, barY, barX + barW * clamp01(healthAnimation), barY + 5.0f * uiScale,
+                withAlpha(VAPE_PRIMARY, Math.round(235.0f * alpha)),
+                withAlpha(accent, Math.round(230.0f * alpha)));
+        if (target != null && absorptionAnimation > 0.001f) {
+            float healthW = barW * clamp01(healthAnimation);
+            float absorbW = Math.min(barW - healthW, barW * clamp01(absorptionAnimation));
+            if (absorbW > 0.5f) {
+                RenderUtil.drawRect(barX + healthW, barY, barX + healthW + absorbW,
+                        barY + 5.0f * uiScale, withAlpha(ABSORB, Math.round(205.0f * alpha)));
+            }
+        }
+        HudDrag.drawHint("target_hud", x, y, width * uiScale, height * uiScale, 7.0f * uiScale);
+    }
+
+    private void drawHeader(EntityLivingBase target, float x, float y, float width, float uiScale, float alpha) {
+        CFontRenderer nameFont = scaledFont(18, uiScale);
+        CFontRenderer distanceFont = scaledFont(12, uiScale);
         String name = target == null ? "Target HUD" : target.getName();
         String distance = Boolean.TRUE.equals(showDistance.getValue()) ? buildDistance(target) : "";
-        float distanceW = FontLoaders.C12.getStringWidth(distance);
-        FontLoaders.C18.drawString(trim(name, FontLoaders.C18, width - distanceW - 8.0f), x, y,
+        float distanceW = distanceFont.getStringWidth(distance);
+        nameFont.drawString(trim(name, nameFont, width - distanceW - 8.0f * uiScale), x, y,
                 withAlpha(TEXT, Math.round(252.0f * alpha)));
         if (distance.length() > 0) {
-            FontLoaders.C12.drawString(distance, x + width - distanceW, y + 2.0f,
+            distanceFont.drawString(distance, x + width - distanceW, y + 2.0f * uiScale,
                     withAlpha(MUTED, Math.round(218.0f * alpha)));
         }
     }
 
-    private void drawStatBadges(EntityLivingBase target, float x, float y, float alpha) {
+    private void drawStatBadges(EntityLivingBase target, float x, float y, float uiScale, float alpha) {
         int armorValue = target == null ? 0 : target.getTotalArmorValue();
         float targetHealth = target == null ? 0.0f : Math.max(0.0f, target.getHealth());
         float targetMaxHealth = target == null ? 20.0f : Math.max(1.0f, target.getMaxHealth());
         String armor = String.valueOf(armorValue);
         String health = String.valueOf(Math.round(targetHealth));
         String percent = Math.round(clamp01(healthAnimation) * 100.0f) + "%";
-        drawBadge(armor, x + 8.5f, y + 8.5f, 8.2f, 0xFFFFD34D,
-                clamp01(armorValue / 20.0f), alpha);
-        drawBadge(health, x + 29.5f, y + 8.5f, 8.2f, 0xFFFF4A50,
-                clamp01(targetHealth / targetMaxHealth), alpha);
-        drawBadge(percent, x + 55.0f, y + 8.5f, 10.0f, 0xFFE9EDF4,
-                clamp01(healthAnimation), alpha);
+        drawBadge(armor, x + 8.5f * uiScale, y + 8.5f * uiScale, 8.2f * uiScale,
+                0xFFFFD34D, clamp01(armorValue / 20.0f), uiScale, alpha);
+        drawBadge(health, x + 29.5f * uiScale, y + 8.5f * uiScale, 8.2f * uiScale,
+                0xFFFF4A50, clamp01(targetHealth / targetMaxHealth), uiScale, alpha);
+        drawBadge(percent, x + 55.0f * uiScale, y + 8.5f * uiScale, 10.0f * uiScale,
+                0xFFE9EDF4, clamp01(healthAnimation), uiScale, alpha);
     }
 
     private void drawBadge(String text, float centerX, float centerY, float radius, int accent,
-                           float progress, float alpha) {
-        RenderUtil.drawCircleBadge(centerX, centerY, radius, 1.35f, progress,
+                           float progress, float uiScale, float alpha) {
+        RenderUtil.drawCircleBadge(centerX, centerY, radius, 1.35f * uiScale, progress,
                 withAlpha(0xFF07080B, Math.round(188.0f * alpha)),
                 withAlpha(0xFF29313A, Math.round(112.0f * alpha)),
                 withAlpha(accent, Math.round(232.0f * alpha)));
-        drawBadgeText(text, centerX, centerY, radius - 2.4f, accent, alpha);
+        drawBadgeText(text, centerX, centerY, radius - 2.4f * uiScale, uiScale, accent, alpha);
     }
 
-    private void drawBadgeText(String text, float centerX, float centerY, float maxWidth, int accent, float alpha) {
+    private void drawBadgeText(String text, float centerX, float centerY, float maxWidth, float uiScale,
+                               int accent, float alpha) {
         if (text == null || text.length() == 0) {
             return;
         }
         resetTextRenderState();
-        float textWidth = Math.max(1.0f, FontLoaders.C12.getStringWidth(text));
-        float textScale = Math.min(1.0f, maxWidth * 2.0f / textWidth);
-        GlStateManager.pushMatrix();
-        try {
-            GlStateManager.translate(centerX, centerY, 0.0f);
-            GlStateManager.scale(textScale, textScale, 1.0f);
-            FontLoaders.C12.drawString(text, -FontLoaders.C12.getStringWidth(text) / 2.0f,
-                    -FontLoaders.C12.getHeight() / 2.0f + 2.0f,
-                    withAlpha(accent, Math.round(242.0f * alpha)));
-        } finally {
-            GlStateManager.popMatrix();
-            resetTextRenderState();
+        CFontRenderer font = scaledFont(12, uiScale);
+        float textWidth = Math.max(1.0f, font.getStringWidth(text));
+        if (textWidth > maxWidth * 2.0f) {
+            float shrink = (maxWidth * 2.0f) / textWidth;
+            font = scaledFont(Math.max(8, Math.round(12.0f * uiScale * shrink)), 1.0f);
         }
+        font.drawString(text, centerX - font.getStringWidth(text) / 2.0f,
+                centerY - font.getHeight() / 2.0f + 2.0f * uiScale,
+                withAlpha(accent, Math.round(242.0f * alpha)));
+        resetTextRenderState();
     }
 
-    private void drawOutcomeText(EntityLivingBase target, float x, float y, float width, float alpha) {
+    private void drawOutcomeText(EntityLivingBase target, float x, float y, float width, float uiScale, float alpha) {
+        CFontRenderer font = scaledFont(18, uiScale);
         String outcome = target == null ? "Waiting" : fightOutcome(target);
-        FontLoaders.C18.drawString(trim(outcome, FontLoaders.C18, width), x, y,
+        font.drawString(trim(outcome, font, width), x, y,
                 withAlpha(TEXT, Math.round(238.0f * alpha)));
     }
 
@@ -348,12 +461,14 @@ public class TargetHUD extends Module {
         }
     }
 
-    private void drawAvatar(EntityLivingBase target, float x, float y, float size, float alpha, int accent) {
-        RenderUtil.drawSoftShadow(x, y, x + size, y + size, 5.0f,
-                withAlpha(0xFF000000, Math.round(62.0f * alpha)), 5, 2.2f);
-        RenderUtil.drawFrostedGlassRect(x, y, x + size, y + size, 4.0f, 0.9f,
+    private void drawAvatar(EntityLivingBase target, float x, float y, float size, float uiScale,
+                            float alpha, int accent) {
+        RenderUtil.drawSoftShadow(x, y, x + size, y + size, 5.0f * uiScale,
+                withAlpha(0xFF000000, Math.round(62.0f * alpha)), 5, 2.2f * uiScale);
+        RenderUtil.drawFrostedGlassRect(x, y, x + size, y + size, 4.0f * uiScale, 0.9f * uiScale,
                 withAlpha(GLASS_SOFT, Math.round(146.0f * alpha)), withAlpha(accent, Math.round(72.0f * alpha)));
-        RenderUtil.drawHorizontalGradientRect(x + 2.0f, y + size - 3.0f, x + size - 2.0f, y + size - 2.0f,
+        RenderUtil.drawHorizontalGradientRect(x + 2.0f * uiScale, y + size - 3.0f * uiScale,
+                x + size - 2.0f * uiScale, y + size - 2.0f * uiScale,
                 withAlpha(accent, Math.round(160.0f * alpha)),
                 withAlpha(ACCENT_ALT, Math.round(100.0f * alpha)));
 
@@ -369,8 +484,9 @@ public class TargetHUD extends Module {
         RenderUtil.drawCircle(centerX, centerY, 0, 360, size / 2.0f - 8.0f,
                 withAlpha(0xFF06090D, Math.round(104.0f * alpha)));
         String icon = targetIcon(target);
-        FontLoaders.I26.drawString(icon, centerX - FontLoaders.I26.getStringWidth(icon) / 2.0f,
-                centerY - FontLoaders.I26.getHeight() / 2.0f + 2.0f,
+        CFontRenderer iconFont = scaledIconFont(26, uiScale);
+        iconFont.drawString(icon, centerX - iconFont.getStringWidth(icon) / 2.0f,
+                centerY - iconFont.getHeight() / 2.0f + 2.0f * uiScale,
                 withAlpha(accent, Math.round(230.0f * alpha)));
     }
 
@@ -489,6 +605,14 @@ public class TargetHUD extends Module {
         }
         String trimmed = result + "...";
         return font.getStringWidth(trimmed) <= maxWidth ? trimmed : "...";
+    }
+
+    private CFontRenderer scaledFont(int baseSize, float uiScale) {
+        return FontLoaders.regular(Math.max(8, Math.round(baseSize * uiScale)));
+    }
+
+    private CFontRenderer scaledIconFont(int baseSize, float uiScale) {
+        return FontLoaders.icon(Math.max(8, Math.round(baseSize * uiScale)));
     }
 
     private int withAlpha(int color, int alpha) {
