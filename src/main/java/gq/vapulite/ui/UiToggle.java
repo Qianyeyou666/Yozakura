@@ -51,9 +51,7 @@ public class UiToggle extends UiComponent {
             progress += ((enabled ? 1.0f : 0.0f) - progress) * 0.14f;
         }
         explicitProgress = false;
-        int offTrack = new Color(37, 39, 42, 235).getRGB();
-        int onTrack = new Color(82, 79, 190, 225).getRGB();
-        int track = blend(offTrack, onTrack, progress);
+        int track = blend(theme.toggleOff, theme.toggleOn, progress);
         if (progress > 0.04f) {
             RenderUtil.drawSoftShadow(bounds.x, bounds.y, bounds.right(), bounds.bottom(), bounds.height / 2.0f,
                     theme.withAlpha(theme.accent, 45.0f * progress * alpha), 4, 2.2f);
@@ -62,7 +60,7 @@ public class UiToggle extends UiComponent {
                 theme.withAlpha(track, ((track >>> 24) & 255) * alpha));
         float knobSize = Math.max(4.0f, bounds.height - 4.0f);
         float knobX = bounds.x + 2.0f + (bounds.width - knobSize - 4.0f) * progress;
-        int knob = blend(new Color(112, 118, 123).getRGB(), new Color(226, 241, 246).getRGB(), progress);
+        int knob = blend(theme.toggleKnobOff, theme.toggleKnobOn, progress);
         RenderUtil.drawRoundedRect(knobX, bounds.y + 2.0f, knobX + knobSize, bounds.y + bounds.height - 2.0f,
                 knobSize / 2.0f, theme.withAlpha(knob, 245.0f * alpha));
     }

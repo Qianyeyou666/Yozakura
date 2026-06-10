@@ -45,7 +45,7 @@ public class UiSelect extends UiComponent {
         float pillW = bounds.width - labelW;
         RenderUtil.drawRoundedBorderedRect(pillX, bounds.y + 4.0f, pillX + pillW, bounds.y + 22.0f, 7.0f, 0.8f,
                 theme.withAlpha(theme.control, 230.0f * alpha),
-                theme.withAlpha(new Color(78, 85, 105).getRGB(), 42.0f * alpha));
+                theme.withAlpha(theme.selectBorder, 42.0f * alpha));
         FontLoaders.F14.drawString(trim(value, pillW - 26.0f), pillX + 12.0f, bounds.y + 10.0f,
                 theme.withAlpha(theme.text, 245.0f * alpha));
         FontLoaders.F14.drawString("v", pillX + pillW - 13.0f, bounds.y + 9.0f,

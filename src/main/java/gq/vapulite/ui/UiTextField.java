@@ -66,15 +66,15 @@ public class UiTextField extends UiComponent {
         }
         boolean hovered = isHovered(mouseX, mouseY);
         float radius = Math.min(17.0f, bounds.height / 2.0f);
-        int border = focused || hovered ? theme.accent : new Color(52, 135, 164).getRGB();
+        int border = focused || hovered ? theme.accent : theme.fieldBorder;
         float borderAlpha = focused ? 138.0f : hovered ? 96.0f : 72.0f;
         RenderUtil.drawFrostedGlassRect(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, 1.15f,
-                theme.withAlpha(new Color(6, 8, 12, 156).getRGB(), 156.0f * alpha),
+                theme.withAlpha(theme.fieldFill, 156.0f * alpha),
                 theme.withAlpha(border, borderAlpha * alpha));
         RenderUtil.drawRoundedBorderedRect(bounds.x + 1.8f, bounds.y + 1.8f, bounds.right() - 1.8f,
                 bounds.bottom() - 1.8f, Math.max(0.0f, radius - 1.8f), 0.6f,
                 theme.withAlpha(new Color(255, 255, 255).getRGB(), 0.0f),
-                theme.withAlpha(new Color(47, 108, 131).getRGB(), 42.0f * alpha));
+                theme.withAlpha(theme.fieldInnerBorder, 42.0f * alpha));
         if (focused || hovered) {
             RenderUtil.drawSoftShadow(bounds.x + 2.0f, bounds.y + 2.0f, bounds.right() - 2.0f, bounds.bottom() - 2.0f,
                     Math.max(0.0f, radius - 2.0f), theme.withAlpha(theme.accent, (focused ? 30.0f : 18.0f) * alpha), 4, 2.2f);

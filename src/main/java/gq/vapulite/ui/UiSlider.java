@@ -55,7 +55,7 @@ public class UiSlider extends UiComponent {
                     3.0f, theme.withAlpha(theme.accent, 90.0f * active * alpha), 4, 2.5f);
         }
         RenderUtil.drawRoundedRect(barX, bounds.y + 15.0f, barX + barW, bounds.y + 17.0f, 2.0f,
-                theme.withAlpha(new Color(58, 61, 72, 220).getRGB(), 220.0f * alpha));
+                theme.withAlpha(theme.sliderTrack, 220.0f * alpha));
         RenderUtil.drawProgressBar(barX, bounds.y + 15.0f, barX + barW, bounds.y + 17.0f, 2.0f, value,
                 0x00000000, theme.withAlpha(theme.accent, (220.0f + active * 35.0f) * alpha));
         float knobHalf = 2.2f + active * 1.1f;

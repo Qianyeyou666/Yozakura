@@ -17,16 +17,17 @@ public class Notification {
     public static final int SUCCESS = 3;
     public static final int MODULE = 4;
 
-    private static final int TEXT = 0xFFE8EAEC;
-    private static final int MUTED = 0xFFA4ADBB;
-    private static final int GLASS = 0xFF07090D;
-    private static final int GLASS_SOFT = 0xFF0B0E14;
-    private static final int BORDER = 0xFF8DBED8;
-    private static final int VAPE_PRIMARY = 0xFF7C9DFF;
-    private static final int VAPE_SECONDARY = 0xFF838CEF;
-    private static final int VAPE_SURFACE = 0xFF171A20;
-    private static final int VAPE_SURFACE_VARIANT = 0xFF1E222B;
-    private static final int VAPE_ON_VARIANT = 0xFFAAB2C5;
+    private static int TEXT() { return HUD.isLightTheme() ? 0xFF1C1E22 : 0xFFE8EAEC; }
+    private static int MUTED() { return HUD.isLightTheme() ? 0xFF606468 : 0xFFA4ADBB; }
+    private static int GLASS() { return HUD.isLightTheme() ? 0xFFEBEDF2 : 0xFF07090D; }
+    private static int GLASS_SOFT() { return HUD.isLightTheme() ? 0xFFE0E3EA : 0xFF0B0E14; }
+    private static int BORDER() { return HUD.isLightTheme() ? 0xFF6BA0C0 : 0xFF8DBED8; }
+    private static int VAPE_PRIMARY() { return HUD.isLightTheme() ? 0xFF4A5FD4 : 0xFF7C9DFF; }
+    private static int VAPE_SECONDARY() { return HUD.isLightTheme() ? 0xFF5A5EC4 : 0xFF838CEF; }
+    private static int VAPE_SURFACE() { return HUD.isLightTheme() ? 0xFFE8EBF0 : 0xFF171A20; }
+    private static int VAPE_SURFACE_VARIANT() { return HUD.isLightTheme() ? 0xFFDCE0E8 : 0xFF1E222B; }
+    private static int VAPE_ON_VARIANT() { return HUD.isLightTheme() ? 0xFF505560 : 0xFFAAB2C5; }
+    private static int shadowColor() { return HUD.isLightTheme() ? 0xFFFFFFFF : 0xFF000000; }
 
     public static Minecraft mc = Minecraft.getMinecraft();
 
@@ -96,10 +97,10 @@ public class Notification {
                     withAlpha(accent, Math.round(220.0f * bodyAlpha)), 1.0f);
         }
         RenderUtil.drawSoftShadow(x1, y1, x2, y2, 8.0f,
-                withAlpha(0xFF000000, Math.round(58.0f * bodyAlpha)), 7, 3.4f);
+                withAlpha(shadowColor(), Math.round(58.0f * bodyAlpha)), 7, 3.4f);
         RenderUtil.drawFrostedGlassRect(x1, y1, x2, y2, 8.0f, 1.0f,
-                withAlpha(GLASS, Math.round(146.0f * bodyAlpha)),
-                withAlpha(BORDER, Math.round(56.0f * bodyAlpha)));
+                withAlpha(GLASS(), Math.round(146.0f * bodyAlpha)),
+                withAlpha(BORDER(), Math.round(56.0f * bodyAlpha)));
         RenderUtil.drawHorizontalGradientRect(x1 + 10.0f, y1 + 4.0f, x2 - 10.0f, y1 + 5.1f,
                 withAlpha(accent, Math.round(120.0f * bodyAlpha)),
                 withAlpha(0xFF8B7CFF, Math.round(72.0f * bodyAlpha)));
@@ -107,7 +108,7 @@ public class Notification {
         float iconX = x1 + 11.0f;
         float iconY = y1 + 10.0f;
         RenderUtil.drawFrostedGlassRect(iconX, iconY, iconX + 24.0f, iconY + 24.0f, 7.0f, 0.8f,
-                withAlpha(GLASS_SOFT, Math.round(154.0f * bodyAlpha)),
+                withAlpha(GLASS_SOFT(), Math.round(154.0f * bodyAlpha)),
                 withAlpha(accent, Math.round(76.0f * bodyAlpha)));
         RenderUtil.drawSoftShadow(iconX, iconY, iconX + 24.0f, iconY + 24.0f, 7.0f,
                 withAlpha(accent, Math.round(28.0f * bodyAlpha)), 4, 1.8f);
@@ -115,10 +116,10 @@ public class Notification {
                 withAlpha(accent, Math.round(230.0f * bodyAlpha)));
 
         FontLoaders.C18.drawString(trim(getTitle(), FontLoaders.C18, width - 52.0f), x1 + 43.0f, y1 + 11.0f,
-                withAlpha(TEXT, Math.round(245.0f * bodyAlpha)));
+                withAlpha(TEXT(), Math.round(245.0f * bodyAlpha)));
         if (message.length() > 0) {
             FontLoaders.C14.drawString(trim(message, FontLoaders.C14, width - 54.0f), x1 + 43.0f, y1 + 27.0f,
-                    withAlpha(MUTED, Math.round(216.0f * bodyAlpha)));
+                    withAlpha(MUTED(), Math.round(216.0f * bodyAlpha)));
         }
 
         RenderUtil.drawProgressBar(x1 + 12.0f, y2 - 4.0f, x2 - 12.0f, y2 - 2.3f, 1.5f, progress,
@@ -133,9 +134,9 @@ public class Notification {
                     withAlpha(accent, Math.round(220.0f * bodyAlpha)), 1.0f);
         }
         RenderUtil.drawSoftShadow(x1, y1, x2, y2, radius,
-                withAlpha(0xFF000000, Math.round(58.0f * bodyAlpha)), 6, 2.2f);
+                withAlpha(shadowColor(), Math.round(58.0f * bodyAlpha)), 6, 2.2f);
         RenderUtil.drawRoundedBorderedRect(x1, y1, x2, y2, radius, 0.8f,
-                withAlpha(VAPE_SURFACE, Math.round(164.0f * bodyAlpha)),
+                withAlpha(VAPE_SURFACE(), Math.round(164.0f * bodyAlpha)),
                 withAlpha(0xFFFFFFFF, Math.round(24.0f * bodyAlpha)));
         RenderUtil.drawHorizontalGradientRect(x1 + 1.0f, y1 + 1.0f, x2 - 1.0f, y1 + 18.0f,
                 withAlpha(0xFFFFFFFF, Math.round(15.0f * bodyAlpha)), withAlpha(0xFF000000, 0));
@@ -147,7 +148,7 @@ public class Notification {
         RenderUtil.drawCircle(iconCenterX, iconCenterY, 0, 360, 15.0f,
                 withAlpha(accent, Math.round(218.0f * bodyAlpha)));
         RenderUtil.drawCircle(iconCenterX, iconCenterY, 0, 360, 12.0f,
-                withAlpha(VAPE_SURFACE_VARIANT, Math.round(40.0f * bodyAlpha)));
+                withAlpha(VAPE_SURFACE_VARIANT(), Math.round(40.0f * bodyAlpha)));
         drawCenteredIcon(getIcon(), FontLoaders.I18, iconCenterX, iconCenterY,
                 withAlpha(0xFFFFFFFF, Math.round(238.0f * bodyAlpha)));
 
@@ -155,7 +156,7 @@ public class Notification {
                 x1 + 51.0f, y1 + 11.0f, withAlpha(0xFFFFFFFF, Math.round(246.0f * bodyAlpha)));
         if (message.length() > 0) {
             FontLoaders.C12.drawString(trim(message, FontLoaders.C12, width - 68.0f),
-                    x1 + 51.0f, y1 + 29.0f, withAlpha(VAPE_ON_VARIANT, Math.round(220.0f * bodyAlpha)));
+                    x1 + 51.0f, y1 + 29.0f, withAlpha(VAPE_ON_VARIANT(), Math.round(220.0f * bodyAlpha)));
         }
         RenderUtil.drawProgressBar(x1 + 51.0f, y2 - 5.0f, x2 - 12.0f, y2 - 3.2f, 0.9f, progress,
                 withAlpha(0xFFFFFFFF, Math.round(16.0f * bodyAlpha)),
@@ -207,15 +208,15 @@ public class Notification {
         switch (type) {
             case MODULE:
             case INFO:
-                return VAPE_SECONDARY;
+                return VAPE_SECONDARY();
             case WARNING:
                 return 0xFFFFC857;
             case ERROR:
                 return 0xFFFF5C72;
             case SUCCESS:
-                return VAPE_PRIMARY;
+                return VAPE_PRIMARY();
             default:
-                return VAPE_SECONDARY;
+                return VAPE_SECONDARY();
         }
     }
 

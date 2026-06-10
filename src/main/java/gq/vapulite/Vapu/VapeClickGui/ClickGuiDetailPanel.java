@@ -71,16 +71,16 @@ final class ClickGuiDetailPanel {
         gui.settingsScroll = gui.animate(gui.settingsScroll, gui.targetSettingsScroll, 0.14f);
         panel.setBounds(gui.detailX, y, gui.detailW, gui.panelH)
                 .radius(VapeClickGui.PANEL_RADIUS)
-                .fill(VapeClickGui.GLASS_FILL)
-                .border(VapeClickGui.GLASS_BORDER)
-                .shadow(new Color(0, 0, 0, 230).getRGB(), 92.0f, 10, 7.0f)
-                .setAlpha(gui.openProgress)
+                .fill(gui.guiColors().glassFill)
+                .border(gui.guiColors().glassBorder)
+                .shadow(gui.shadowColor(230), 92.0f, 10, 7.0f)
+                .setAlpha(gui.guiAlpha)
                 .render(mouseX, mouseY, 0.0f);
 
         if (gui.selectedModule == null) {
             gui.drawCenteredText("No modules", gui.detailX, y + gui.panelH / 2.0f - 8.0f,
                     gui.detailX + gui.detailW, y + gui.panelH / 2.0f + 8.0f,
-                    gui.withAlpha(VapeClickGui.MUTED, 210.0f * gui.openProgress));
+                    gui.withAlpha(gui.guiColors().muted, 210.0f * gui.guiAlpha));
             return;
         }
 
@@ -88,9 +88,9 @@ final class ClickGuiDetailPanel {
         float headerY = y + 16.0f;
         drawModuleIcon(gui.selectedModule, headerX + 13.0f, headerY + 13.0f);
         FontLoaders.F16.drawString(gui.trim(gui.selectedModule.getName(), FontLoaders.F16, gui.detailW - 116.0f),
-                headerX + 38.0f, headerY + 1.0f, gui.withAlpha(VapeClickGui.TEXT, 255.0f * gui.openProgress));
+                headerX + 38.0f, headerY + 1.0f, gui.withAlpha(gui.guiColors().text, 255.0f * gui.guiAlpha));
         gui.drawFont(gui.trim(gui.getDescription(gui.selectedModule), FontLoaders.F14, gui.detailW - 150.0f),
-                headerX + 38.0f, headerY + 18.0f, gui.withAlpha(VapeClickGui.MUTED, 206.0f * gui.openProgress));
+                headerX + 38.0f, headerY + 18.0f, gui.withAlpha(gui.guiColors().muted, 206.0f * gui.guiAlpha));
         gui.drawSwitch(gui.getDetailSwitchX(), gui.getDetailSwitchY(y), gui.selectedModule.getState(), 1.0f, gui.selectedModule);
 
         drawTabs(y);
@@ -277,12 +277,12 @@ final class ClickGuiDetailPanel {
 
     private void drawModuleIcon(Module module, float centerX, float centerY) {
         RenderUtil.drawFrostedGlassRect(centerX - 13.0f, centerY - 13.0f, centerX + 13.0f, centerY + 13.0f,
-                8.0f, 0.8f, gui.withAlpha(VapeClickGui.GLASS_FILL_SOFT, 178.0f * gui.openProgress),
-                gui.withAlpha(VapeClickGui.ACCENT, 74.0f * gui.openProgress));
+                8.0f, 0.8f, gui.withAlpha(gui.guiColors().glassFillSoft, 178.0f * gui.guiAlpha),
+                gui.withAlpha(gui.guiColors().accent, 74.0f * gui.guiAlpha));
         RenderUtil.drawSoftShadow(centerX - 13.0f, centerY - 13.0f, centerX + 13.0f, centerY + 13.0f,
-                8.0f, gui.withAlpha(VapeClickGui.ACCENT, 34.0f * gui.openProgress), 4, 2.0f);
+                8.0f, gui.withAlpha(gui.guiColors().accent, 34.0f * gui.guiAlpha), 4, 2.0f);
         gui.drawCenteredIcon(ClickGuiIcons.forModule(module), FontLoaders.I20, centerX, centerY,
-                gui.withAlpha(new Color(226, 232, 248).getRGB(), 236.0f * gui.openProgress));
+                gui.withAlpha(new Color(226, 232, 248).getRGB(), 236.0f * gui.guiAlpha));
     }
 
     private void drawTabs(float panelY) {
@@ -291,21 +291,21 @@ final class ClickGuiDetailPanel {
         float tabW = gui.detailW - 12.0f;
         float tabH = 31.0f;
         RenderUtil.drawFrostedGlassRect(tabX, tabY, tabX + tabW, tabY + tabH, 5.0f, 0.8f,
-                gui.withAlpha(VapeClickGui.GLASS_FILL_SOFT, 164.0f * gui.openProgress),
-                gui.withAlpha(VapeClickGui.GLASS_BORDER, 40.0f * gui.openProgress));
+                gui.withAlpha(gui.guiColors().glassFillSoft, 164.0f * gui.guiAlpha),
+                gui.withAlpha(gui.guiColors().glassBorder, 40.0f * gui.guiAlpha));
         float each = tabW / DETAIL_TABS.length;
         for (int i = 0; i < DETAIL_TABS.length; i++) {
             float x = tabX + each * i;
             boolean active = i == gui.detailTabIndex;
             gui.drawCenteredText(DETAIL_TABS[i], x, tabY + 10.0f, x + each, tabY + 22.0f,
-                    gui.withAlpha(active ? VapeClickGui.TEXT : VapeClickGui.MUTED,
-                            (active ? 238.0f : 196.0f) * gui.openProgress));
+                    gui.withAlpha(active ? gui.guiColors().text : gui.guiColors().muted,
+                            (active ? 238.0f : 196.0f) * gui.guiAlpha));
             if (active) {
                 RenderUtil.drawSoftShadow(x + 9.0f, tabY + tabH - 2.0f, x + each - 9.0f, tabY + tabH,
-                        2.0f, gui.withAlpha(VapeClickGui.ACCENT, 100.0f * gui.openProgress), 4, 2.0f);
+                        2.0f, gui.withAlpha(gui.guiColors().accent, 100.0f * gui.guiAlpha), 4, 2.0f);
                 RenderUtil.drawHorizontalGradientRect(x + 9.0f, tabY + tabH - 1.4f, x + each - 9.0f, tabY + tabH - 0.4f,
-                        gui.withAlpha(VapeClickGui.ACCENT, 215.0f * gui.openProgress),
-                        gui.withAlpha(new Color(152, 135, 255).getRGB(), 215.0f * gui.openProgress));
+                        gui.withAlpha(gui.guiColors().accent, 215.0f * gui.guiAlpha),
+                        gui.withAlpha(new Color(152, 135, 255).getRGB(), 215.0f * gui.guiAlpha));
             }
         }
     }
@@ -370,40 +370,40 @@ final class ClickGuiDetailPanel {
         float active = gui.animateValueMap(gui.valueActiveProgress, red, gui.draggingColorRed == red ? 1.0f : 0.0f, 0.20f);
 
         gui.drawFont("Color", x, y + 8.0f,
-                gui.withAlpha(VapeClickGui.TEXT, 245.0f * alpha * gui.openProgress));
+                gui.withAlpha(gui.guiColors().text, 245.0f * alpha * gui.guiAlpha));
         gui.drawFont(rainbow ? "RGB Rainbow" : toHex(color), x, y + 25.0f,
-                gui.withAlpha(rainbow ? VapeClickGui.ACCENT : VapeClickGui.MUTED, 205.0f * alpha * gui.openProgress));
+                gui.withAlpha(rainbow ? gui.guiColors().accent : gui.guiColors().muted, 205.0f * alpha * gui.guiAlpha));
 
         RenderUtil.drawSoftShadow(paletteX, paletteY, paletteX + paletteW, paletteY + paletteH, 5.0f,
-                gui.withAlpha(color, (36.0f + active * 64.0f) * alpha * gui.openProgress), 5, 3.0f);
+                gui.withAlpha(color, (36.0f + active * 64.0f) * alpha * gui.guiAlpha), 5, 3.0f);
         RenderUtil.drawFrostedGlassRect(paletteX - 1.0f, paletteY - 1.0f, paletteX + paletteW + 1.0f,
                 paletteY + paletteH + 1.0f, 6.0f, 0.8f,
-                gui.withAlpha(VapeClickGui.GLASS_FILL_SOFT, 120.0f * alpha * gui.openProgress),
-                gui.withAlpha(rainbow ? VapeClickGui.ACCENT : VapeClickGui.GLASS_BORDER,
-                        (rainbow ? 95.0f : 52.0f) * alpha * gui.openProgress));
+                gui.withAlpha(gui.guiColors().glassFillSoft, 120.0f * alpha * gui.guiAlpha),
+                gui.withAlpha(rainbow ? gui.guiColors().accent : gui.guiColors().glassBorder,
+                        (rainbow ? 95.0f : 52.0f) * alpha * gui.guiAlpha));
         RenderUtil.drawRoundedHueRect(paletteX, paletteY, paletteX + paletteW, paletteY + paletteH,
-                5.0f, alpha * gui.openProgress);
+                5.0f, alpha * gui.guiAlpha);
         RenderUtil.drawRoundedBorderedRect(paletteX, paletteY, paletteX + paletteW, paletteY + paletteH,
                 5.0f, 0.8f, 0x00000000,
-                gui.withAlpha(new Color(255, 255, 255).getRGB(), 54.0f * alpha * gui.openProgress));
+                gui.withAlpha(new Color(255, 255, 255).getRGB(), 54.0f * alpha * gui.guiAlpha));
 
         float[] marker = getColorMarker(red, green, blue, paletteX, paletteY, paletteW, paletteH);
         RenderUtil.drawCircleOutline(marker[0], marker[1], 4.0f + active, 1.2f,
-                gui.withAlpha(new Color(255, 255, 255).getRGB(), 235.0f * alpha * gui.openProgress));
+                gui.withAlpha(new Color(255, 255, 255).getRGB(), 235.0f * alpha * gui.guiAlpha));
         RenderUtil.drawCircle(marker[0], marker[1], 0, 360, 2.1f,
-                gui.withAlpha(color, 240.0f * alpha * gui.openProgress));
+                gui.withAlpha(color, 240.0f * alpha * gui.guiAlpha));
 
         RenderUtil.drawFrostedGlassRect(previewX, y + 9.0f, previewX + preview, y + 34.0f, 7.0f, 0.8f,
-                gui.withAlpha(color, 230.0f * alpha * gui.openProgress),
-                gui.withAlpha(new Color(255, 255, 255).getRGB(), 70.0f * alpha * gui.openProgress));
+                gui.withAlpha(color, 230.0f * alpha * gui.guiAlpha),
+                gui.withAlpha(new Color(255, 255, 255).getRGB(), 70.0f * alpha * gui.guiAlpha));
         if (rainbow) {
             RenderUtil.drawCircle(previewX + preview - 5.5f, y + 13.5f, 0, 360, 2.6f,
-                    gui.withAlpha(VapeClickGui.ACCENT, 230.0f * alpha * gui.openProgress));
+                    gui.withAlpha(gui.guiColors().accent, 230.0f * alpha * gui.guiAlpha));
         }
 
         gui.drawFont("Double-click: RGB", paletteX, paletteY + paletteH + 6.0f,
-                gui.withAlpha(rainbow ? VapeClickGui.ACCENT : VapeClickGui.FAINT,
-                        160.0f * alpha * gui.openProgress));
+                gui.withAlpha(rainbow ? gui.guiColors().accent : gui.guiColors().faint,
+                        160.0f * alpha * gui.guiAlpha));
     }
 
     private float[] getPaletteBounds(float x, float y, float w) {
@@ -520,7 +520,7 @@ final class ClickGuiDetailPanel {
         float contentHeight = gui.getSettingsContentHeight(module);
         if (contentHeight <= 4.0f) {
             gui.drawFont("No settings in this section", x, y + 8.0f,
-                    gui.withAlpha(VapeClickGui.MUTED, 210.0f * gui.openProgress));
+                    gui.withAlpha(gui.guiColors().muted, 210.0f * gui.guiAlpha));
             return;
         }
         gui.targetSettingsScroll = gui.clamp(gui.targetSettingsScroll, -Math.max(0.0f, contentHeight - h), 0.0f);
@@ -545,7 +545,7 @@ final class ClickGuiDetailPanel {
                         gui.drawSoftRect(x - 6.0f, valueY + 1.0f, x + w + 2.0f,
                                 valueY + valueH - 2.0f, 6.0f,
                                 gui.withAlpha(new Color(36, 41, 55, 160).getRGB(),
-                                        120.0f * active * gui.openProgress));
+                                        120.0f * active * gui.guiAlpha));
                     }
                     if (gui.isColorStart(module, i)) {
                         drawColorPalette(module, (Numbers) values.get(i), (Numbers) values.get(i + 1),
@@ -573,7 +573,7 @@ final class ClickGuiDetailPanel {
     private void drawOption(Option value, float x, float y, float w, float alpha) {
         boolean enabled = Boolean.TRUE.equals(value.getValue());
         gui.drawFont(gui.trim(gui.getDisplayName(value), FontLoaders.F14, w - 68.0f), x, y + 8.0f,
-                gui.withAlpha(enabled ? VapeClickGui.TEXT : VapeClickGui.MUTED, 255.0f * alpha * gui.openProgress));
+                gui.withAlpha(enabled ? gui.guiColors().text : gui.guiColors().muted, 255.0f * alpha * gui.guiAlpha));
         gui.drawSwitch(gui.getOptionSwitchX(x, w), gui.getOptionSwitchY(y), enabled, alpha, value);
     }
 
@@ -592,18 +592,18 @@ final class ClickGuiDetailPanel {
         float pillW = gui.getDetailValuePillWidth();
         float pillX = x + w - pillW;
         gui.drawFont(gui.trim(gui.getDisplayName(value), FontLoaders.F14, labelW - 8.0f), x, y + 8.0f,
-                gui.withAlpha(VapeClickGui.TEXT, 245.0f * alpha * gui.openProgress));
+                gui.withAlpha(gui.guiColors().text, 245.0f * alpha * gui.guiAlpha));
         RenderUtil.drawRoundedRect(barX, barY, barX + barW, barY + 2.0f, 2.0f,
-                gui.withAlpha(new Color(61, 67, 82, 180).getRGB(), 178.0f * alpha * gui.openProgress));
+                gui.withAlpha(gui.guiColors().valueTrack, 178.0f * alpha * gui.guiAlpha));
         RenderUtil.drawProgressBar(barX, barY, barX + barW, barY + 2.0f, 2.0f, value.animX,
-                0x00000000, gui.withAlpha(new Color(132, 117, 255).getRGB(), 230.0f * alpha * gui.openProgress));
+                0x00000000, gui.withAlpha(gui.guiColors().valueFill, 230.0f * alpha * gui.guiAlpha));
         float knob = 3.2f + active * 1.0f;
         RenderUtil.drawSoftShadow(barX + barW * value.animX - knob, barY - 3.0f,
                 barX + barW * value.animX + knob, barY + 5.0f, 4.0f,
-                gui.withAlpha(new Color(132, 117, 255).getRGB(), 100.0f * alpha * gui.openProgress), 4, 2.0f);
+                gui.withAlpha(gui.guiColors().valueFill, 100.0f * alpha * gui.guiAlpha), 4, 2.0f);
         RenderUtil.drawRoundedRect(barX + barW * value.animX - knob, barY - knob + 1.0f,
                 barX + barW * value.animX + knob, barY + knob + 1.0f, knob,
-                gui.withAlpha(new Color(145, 128, 255).getRGB(), 255.0f * alpha * gui.openProgress));
+                gui.withAlpha(gui.guiColors().valueFill, 255.0f * alpha * gui.guiAlpha));
         drawValuePill(gui.formatNumber(current), pillX, y + 3.0f, pillW, alpha);
     }
 
@@ -632,28 +632,28 @@ final class ClickGuiDetailPanel {
         String rangeText = gui.formatNumber(Math.min(first, second)) + " - " + gui.formatNumber(Math.max(first, second));
 
         gui.drawFont(gui.trim(gui.getRangeDisplayName(minValue), FontLoaders.F14, labelW - 8.0f),
-                x, y + 8.0f, gui.withAlpha(VapeClickGui.TEXT, 245.0f * alpha * gui.openProgress));
+                x, y + 8.0f, gui.withAlpha(gui.guiColors().text, 245.0f * alpha * gui.guiAlpha));
         drawValuePill(rangeText, pillX, y + 3.0f, pillW, alpha);
         RenderUtil.drawRoundedRect(barX, barY, barX + barW, barY + 2.2f, 2.0f,
-                gui.withAlpha(new Color(61, 67, 82, 180).getRGB(), 178.0f * alpha * gui.openProgress));
+                gui.withAlpha(gui.guiColors().valueTrack, 178.0f * alpha * gui.guiAlpha));
         RenderUtil.drawRoundedRect(barX + barW * lowPct, barY, barX + barW * highPct, barY + 2.2f, 2.0f,
-                gui.withAlpha(new Color(132, 117, 255).getRGB(), 230.0f * alpha * gui.openProgress));
+                gui.withAlpha(gui.guiColors().valueFill, 230.0f * alpha * gui.guiAlpha));
         drawRangeKnob(barX + barW * minValue.animX, barY, 3.1f + activeMin * 1.0f, activeMin, alpha);
         drawRangeKnob(barX + barW * maxValue.animX, barY, 3.1f + activeMax * 1.0f, activeMax, alpha);
         if (active > 0.02f) {
             RenderUtil.drawSoftShadow(barX + barW * lowPct, barY - 2.0f, barX + barW * highPct, barY + 4.0f,
-                    3.0f, gui.withAlpha(new Color(132, 117, 255).getRGB(), 62.0f * active * alpha * gui.openProgress),
+                    3.0f, gui.withAlpha(gui.guiColors().valueFill, 62.0f * active * alpha * gui.guiAlpha),
                     4, 2.0f);
         }
     }
 
     private void drawRangeKnob(float centerX, float barY, float knob, float active, float alpha) {
         RenderUtil.drawSoftShadow(centerX - knob, barY - 3.0f, centerX + knob, barY + 5.0f, 4.0f,
-                gui.withAlpha(new Color(132, 117, 255).getRGB(), 82.0f * (0.35f + active) * alpha * gui.openProgress),
+                gui.withAlpha(gui.guiColors().valueFill, 82.0f * (0.35f + active) * alpha * gui.guiAlpha),
                 4, 2.0f);
         RenderUtil.drawRoundedRect(centerX - knob, barY - knob + 1.0f,
                 centerX + knob, barY + knob + 1.0f, knob,
-                gui.withAlpha(new Color(145, 128, 255).getRGB(), 255.0f * alpha * gui.openProgress));
+                gui.withAlpha(gui.guiColors().valueFill, 255.0f * alpha * gui.guiAlpha));
     }
 
     private void drawMode(Mode value, float x, float y, float w, float alpha) {
@@ -662,29 +662,29 @@ final class ClickGuiDetailPanel {
         float pillX = x + w - pillW;
         boolean expanded = expandedModes.contains(value);
         gui.drawFont(gui.trim(gui.getDisplayName(value), FontLoaders.F14, labelW - 8.0f), x, y + 8.0f,
-                gui.withAlpha(VapeClickGui.TEXT, 245.0f * alpha * gui.openProgress));
+                gui.withAlpha(gui.guiColors().text, 245.0f * alpha * gui.guiAlpha));
         float borderAlpha = expanded ? 110.0f : 48.0f;
         int fillColor = expanded
-                ? gui.withAlpha(new Color(35, 38, 62, 200).getRGB(), 200.0f * alpha * gui.openProgress)
-                : gui.withAlpha(VapeClickGui.GLASS_FILL_SOFT, 194.0f * alpha * gui.openProgress);
+                ? gui.withAlpha(gui.guiColors().modeExpandedFill, 200.0f * alpha * gui.guiAlpha)
+                : gui.withAlpha(gui.guiColors().glassFillSoft, 194.0f * alpha * gui.guiAlpha);
         RenderUtil.drawFrostedGlassRect(pillX, y + 3.0f, pillX + pillW, y + 23.0f, 5.0f, 0.8f,
                 fillColor,
-                gui.withAlpha(VapeClickGui.GLASS_BORDER, borderAlpha * alpha * gui.openProgress));
+                gui.withAlpha(gui.guiColors().glassBorder, borderAlpha * alpha * gui.guiAlpha));
         gui.drawFont(gui.trim(gui.formatModeLabel(value.getModeAsString()), FontLoaders.F14, pillW - 28.0f),
                 pillX + 12.0f, y + 9.0f,
-                gui.withAlpha(expanded ? VapeClickGui.ACCENT : VapeClickGui.TEXT,
-                        (expanded ? 240.0f : 230.0f) * alpha * gui.openProgress));
+                gui.withAlpha(expanded ? gui.guiColors().accent : gui.guiColors().text,
+                        (expanded ? 240.0f : 230.0f) * alpha * gui.guiAlpha));
         gui.drawFont(expanded ? "^" : "v", pillX + pillW - 15.0f, y + 8.0f,
-                gui.withAlpha(expanded ? VapeClickGui.ACCENT : VapeClickGui.MUTED,
-                        (expanded ? 220.0f : 185.0f) * alpha * gui.openProgress));
+                gui.withAlpha(expanded ? gui.guiColors().accent : gui.guiColors().muted,
+                        (expanded ? 220.0f : 185.0f) * alpha * gui.guiAlpha));
     }
 
     private void drawValuePill(String text, float x, float y, float w, float alpha) {
         RenderUtil.drawFrostedGlassRect(x, y, x + w, y + 20.0f, 5.0f, 0.8f,
-                gui.withAlpha(VapeClickGui.GLASS_FILL_SOFT, 190.0f * alpha * gui.openProgress),
-                gui.withAlpha(VapeClickGui.GLASS_BORDER, 46.0f * alpha * gui.openProgress));
+                gui.withAlpha(gui.guiColors().glassFillSoft, 190.0f * alpha * gui.guiAlpha),
+                gui.withAlpha(gui.guiColors().glassBorder, 46.0f * alpha * gui.guiAlpha));
         gui.drawCenteredText(text, x, y + 5.0f, x + w, y + 17.0f,
-                gui.withAlpha(VapeClickGui.TEXT, 220.0f * alpha * gui.openProgress));
+                gui.withAlpha(gui.guiColors().text, 220.0f * alpha * gui.guiAlpha));
     }
 
     private void drawSettingsScrollbar(float panelY, float contentHeight, float viewHeight) {
@@ -699,9 +699,9 @@ final class ClickGuiDetailPanel {
         float pct = gui.clamp(-gui.settingsScroll / maxScroll, 0.0f, 1.0f);
         float thumbY = trackY + (trackH - thumbH) * pct;
         gui.drawSoftRect(trackX, trackY, trackX + 2.0f, trackY + trackH, 2.0f,
-                gui.withAlpha(new Color(255, 255, 255, 26).getRGB(), 26.0f * gui.openProgress));
+                gui.withAlpha(new Color(255, 255, 255, 26).getRGB(), 26.0f * gui.guiAlpha));
         gui.drawSoftRect(trackX, thumbY, trackX + 2.0f, thumbY + thumbH, 2.0f,
-                gui.withAlpha(VapeClickGui.ACCENT, 150.0f * gui.openProgress));
+                gui.withAlpha(gui.guiColors().accent, 150.0f * gui.guiAlpha));
     }
 
     // ==================== Mode 下拉栏 ====================
@@ -758,10 +758,10 @@ final class ClickGuiDetailPanel {
 
             RenderUtil.drawFrostedGlassRect(pillX, dropdownY, pillX + pillW, dropdownY + fullDropdownH,
                     5.0f, 0.9f,
-                    gui.withAlpha(new Color(18, 22, 30, 240).getRGB(), 238.0f * gui.openProgress),
-                    gui.withAlpha(VapeClickGui.GLASS_BORDER, 62.0f * gui.openProgress));
+                    gui.withAlpha(gui.guiColors().dropdownBg, 238.0f * gui.guiAlpha),
+                    gui.withAlpha(gui.guiColors().glassBorder, 62.0f * gui.guiAlpha));
             RenderUtil.drawSoftShadow(pillX, dropdownY, pillX + pillW, dropdownY + fullDropdownH,
-                    5.0f, gui.withAlpha(new Color(0, 0, 0, 200).getRGB(), 82.0f * gui.openProgress), 6, 3.0f);
+                    5.0f, gui.withAlpha(gui.shadowColor(200), 82.0f * gui.guiAlpha), 6, 3.0f);
 
             for (int i = 0; i < modes.length; i++) {
                 float rowY = dropdownY + i * DROPDOWN_ROW_H;
@@ -771,14 +771,14 @@ final class ClickGuiDetailPanel {
                 if (hovered || selected) {
                     gui.drawSoftRect(pillX + 2.0f, rowY + 1.0f, pillX + pillW - 2.0f,
                             rowY + DROPDOWN_ROW_H - 1.0f,
-                            4.0f, gui.withAlpha(selected ? new Color(88, 90, 178, 160).getRGB()
-                                    : new Color(55, 58, 70, 140).getRGB(),
-                            (selected ? 178.0f : 110.0f) * gui.openProgress));
+                            4.0f, gui.withAlpha(selected ? gui.guiColors().modeRowSelected
+                                    : gui.guiColors().modeRowHovered,
+                            (selected ? 178.0f : 110.0f) * gui.guiAlpha));
                 }
                 gui.drawFont(gui.trim(gui.formatModeLabel(modes[i].toString()), FontLoaders.F14, pillW - 20.0f),
                         pillX + 10.0f, rowY + 4.0f,
-                        gui.withAlpha(selected ? VapeClickGui.ACCENT : VapeClickGui.TEXT,
-                                (selected ? 240.0f : 210.0f) * gui.openProgress));
+                        gui.withAlpha(selected ? gui.guiColors().accent : gui.guiColors().text,
+                                (selected ? 240.0f : 210.0f) * gui.guiAlpha));
             }
         } finally {
             gui.endScissor();

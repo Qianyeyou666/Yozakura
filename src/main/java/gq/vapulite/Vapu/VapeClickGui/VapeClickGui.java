@@ -36,19 +36,108 @@ import java.util.Map;
 import java.util.Set;
 
 public class VapeClickGui extends GuiScreen {
-    static final int BACKDROP = new Color(9, 13, 18, 164).getRGB();
-    static final int TOP_BAR = new Color(12, 15, 20, 232).getRGB();
-    static final int CARD = new Color(17, 21, 27, 222).getRGB();
-    static final int CARD_HOVER = new Color(25, 30, 38, 232).getRGB();
-    static final int CARD_OPEN = new Color(34, 35, 77, 238).getRGB();
-    static final int TEXT = new Color(232, 234, 236).getRGB();
-    static final int MUTED = new Color(152, 154, 158).getRGB();
-    static final int FAINT = new Color(83, 86, 92).getRGB();
-    static final int ACCENT = new Color(112, 193, 220).getRGB();
-    static final int RED = new Color(196, 78, 83).getRGB();
-    static final int GLASS_FILL = new Color(7, 9, 13, 154).getRGB();
-    static final int GLASS_FILL_SOFT = new Color(7, 9, 13, 122).getRGB();
-    static final int GLASS_BORDER = new Color(154, 190, 214, 58).getRGB();
+    static final class GuiPalette {
+        final int backdrop, topBar, card, cardHover, cardOpen;
+        final int text, muted, faint, accent, red;
+        final int glassFill, glassFillSoft, glassBorder;
+        final int navDefaultHover;
+        final int detailSelectedFill, detailSelectedBorder;
+        final int switchGlowColor;
+        final int valueTrack, valueFill;
+        final int modeExpandedFill, modeRowSelected, modeRowHovered;
+        final int dropdownBg, dropdownShadow;
+        final int shadowDim;
+
+        GuiPalette(int backdrop, int topBar, int card, int cardHover, int cardOpen,
+                   int text, int muted, int faint, int accent, int red,
+                   int glassFill, int glassFillSoft, int glassBorder,
+                   int navDefaultHover, int detailSelectedFill, int detailSelectedBorder,
+                   int switchGlowColor, int valueTrack, int valueFill,
+                   int modeExpandedFill, int modeRowSelected, int modeRowHovered,
+                   int dropdownBg, int dropdownShadow, int shadowDim) {
+            this.backdrop = backdrop; this.topBar = topBar; this.card = card; this.cardHover = cardHover;
+            this.cardOpen = cardOpen; this.text = text; this.muted = muted; this.faint = faint;
+            this.accent = accent; this.red = red; this.glassFill = glassFill; this.glassFillSoft = glassFillSoft;
+            this.glassBorder = glassBorder; this.navDefaultHover = navDefaultHover;
+            this.detailSelectedFill = detailSelectedFill; this.detailSelectedBorder = detailSelectedBorder;
+            this.switchGlowColor = switchGlowColor; this.valueTrack = valueTrack; this.valueFill = valueFill;
+            this.modeExpandedFill = modeExpandedFill; this.modeRowSelected = modeRowSelected;
+            this.modeRowHovered = modeRowHovered; this.dropdownBg = dropdownBg;
+            this.dropdownShadow = dropdownShadow; this.shadowDim = shadowDim;
+        }
+
+        static final GuiPalette DARK = new GuiPalette(
+                new Color(9, 13, 18, 164).getRGB(),
+                new Color(12, 15, 20, 232).getRGB(),
+                new Color(17, 21, 27, 222).getRGB(),
+                new Color(25, 30, 38, 232).getRGB(),
+                new Color(34, 35, 77, 238).getRGB(),
+                new Color(232, 234, 236).getRGB(),
+                new Color(152, 154, 158).getRGB(),
+                new Color(83, 86, 92).getRGB(),
+                new Color(112, 193, 220).getRGB(),
+                new Color(196, 78, 83).getRGB(),
+                new Color(7, 9, 13, 154).getRGB(),
+                new Color(7, 9, 13, 122).getRGB(),
+                new Color(154, 190, 214, 58).getRGB(),
+                new Color(37, 43, 54, 190).getRGB(),
+                new Color(55, 54, 130, 218).getRGB(),
+                new Color(132, 121, 255).getRGB(),
+                new Color(112, 193, 220).getRGB(),
+                new Color(61, 67, 82, 178).getRGB(),
+                new Color(132, 117, 255, 230).getRGB(),
+                new Color(35, 38, 62, 200).getRGB(),
+                new Color(88, 90, 178, 160).getRGB(),
+                new Color(55, 58, 70, 140).getRGB(),
+                new Color(18, 22, 30, 240).getRGB(),
+                new Color(0, 0, 0, 200).getRGB(),
+                new Color(0, 0, 0, 210).getRGB());
+
+        static final GuiPalette LIGHT = new GuiPalette(
+                new Color(230, 235, 242, 148).getRGB(),
+                new Color(220, 225, 234, 220).getRGB(),
+                new Color(240, 244, 250, 210).getRGB(),
+                new Color(225, 230, 240, 218).getRGB(),
+                new Color(200, 205, 235, 225).getRGB(),
+                new Color(28, 30, 36).getRGB(),
+                new Color(105, 110, 120).getRGB(),
+                new Color(155, 162, 175).getRGB(),
+                new Color(24, 142, 198).getRGB(),
+                new Color(182, 50, 55).getRGB(),
+                new Color(232, 236, 244, 148).getRGB(),
+                new Color(225, 230, 240, 118).getRGB(),
+                new Color(160, 175, 198, 54).getRGB(),
+                new Color(210, 215, 228, 170).getRGB(),
+                new Color(190, 192, 220, 200).getRGB(),
+                new Color(120, 108, 240).getRGB(),
+                new Color(24, 142, 198).getRGB(),
+                new Color(190, 195, 210, 170).getRGB(),
+                new Color(100, 88, 238, 215).getRGB(),
+                new Color(210, 215, 235, 190).getRGB(),
+                new Color(140, 145, 200, 148).getRGB(),
+                new Color(200, 205, 220, 132).getRGB(),
+                new Color(218, 224, 238, 228).getRGB(),
+                new Color(255, 255, 255, 120).getRGB(),
+                new Color(255, 255, 255, 140).getRGB());
+    }
+
+    GuiPalette guiColors() {
+        try {
+            return gq.vapulite.Vapu.modules.render.HUD.isLightTheme() ? GuiPalette.LIGHT : GuiPalette.DARK;
+        } catch (Exception e) {
+            return GuiPalette.DARK;
+        }
+    }
+
+    int shadowColor(int alpha) {
+        try {
+            return gq.vapulite.Vapu.modules.render.HUD.isLightTheme()
+                    ? withAlpha(0xFFFFFFFF, alpha)
+                    : new Color(0, 0, 0, alpha).getRGB();
+        } catch (Exception e) {
+            return new Color(0, 0, 0, alpha).getRGB();
+        }
+    }
 
     static final float NAV_H = 28.0f;
     static final float CARD_W = 222.0f;
@@ -123,6 +212,7 @@ public class VapeClickGui extends GuiScreen {
     boolean draggingScrollbar;
     float scrollbarDragOffset;
     float openProgress;
+    float guiAlpha;
     float navIndicatorX;
     float contentFade;
     float searchFocusProgress;
@@ -158,7 +248,7 @@ public class VapeClickGui extends GuiScreen {
     long fpsGraphLastSample;
     float fpsGraphSmoothed;
     float frameScale = 1.0f;
-    final UiTheme uiTheme = UiTheme.vape();
+    final UiTheme uiTheme = UiTheme.current();
     final UiToggle reusableToggle = new UiToggle().setTheme(uiTheme);
     final UiTextField searchField = new UiTextField().setTheme(uiTheme).placeholder("Search modules...").maxLength(32);
     final ClickGuiSearchBar searchBar = new ClickGuiSearchBar(this);
@@ -208,6 +298,7 @@ public class VapeClickGui extends GuiScreen {
         updateLayout(sr);
         ensureSelectedModule();
         openProgress = animate(openProgress, closing ? 0.0f : 1.0f, closing ? 0.20f : 0.16f);
+        guiAlpha = openProgress * gq.vapulite.Vapu.modules.render.ClickGUI.clickGuiAlpha.getValue().floatValue();
         contentFade = animate(contentFade, closing ? 0.0f : 1.0f, closing ? 0.18f : 0.14f);
         if (closing && openProgress <= CLOSE_END_PROGRESS) {
             mc.displayGuiScreen(null);
@@ -275,41 +366,41 @@ public class VapeClickGui extends GuiScreen {
     }
 
     void drawBackdrop(ScaledResolution sr) {
-        RenderUtil.drawRect(0, 0, sr.getScaledWidth(), sr.getScaledHeight(), withAlpha(BACKDROP, 94.0f * openProgress));
+        RenderUtil.drawRect(0, 0, sr.getScaledWidth(), sr.getScaledHeight(), withAlpha(guiColors().backdrop, 94.0f * guiAlpha));
         RenderUtil.drawGradientRect(0, 0, sr.getScaledWidth(), sr.getScaledHeight(),
-                withAlpha(new Color(51, 73, 99, 44).getRGB(), 44.0f * openProgress),
-                withAlpha(new Color(6, 8, 10, 92).getRGB(), 92.0f * openProgress));
+                withAlpha(new Color(51, 73, 99, 44).getRGB(), 44.0f * guiAlpha),
+                withAlpha(new Color(6, 8, 10, 92).getRGB(), 92.0f * guiAlpha));
         RenderUtil.drawGradientRect(0, sr.getScaledHeight() * 0.62f, sr.getScaledWidth(), sr.getScaledHeight(),
                 withAlpha(new Color(0, 0, 0, 0).getRGB(), 0.0f),
-                withAlpha(new Color(0, 0, 0, 130).getRGB(), 92.0f * openProgress));
+                withAlpha(new Color(0, 0, 0, 130).getRGB(), 92.0f * guiAlpha));
     }
 
     void drawBrand(float introY) {
         float x = contentX + 4.0f;
         float y = navY + 1.0f + introY * 0.35f;
-        FontLoaders.F18.drawString("VAPE", x, y, withAlpha(TEXT, 255.0f * openProgress));
+        FontLoaders.F18.drawString("VAPE", x, y, withAlpha(guiColors().text, 255.0f * guiAlpha));
         drawSoftRect(x + 42.0f, y + 1.0f, x + 61.0f, y + 12.0f, 4.0f,
-                withAlpha(new Color(42, 45, 86, 190).getRGB(), 180.0f * openProgress));
+                withAlpha(new Color(42, 45, 86, 190).getRGB(), 180.0f * guiAlpha));
         drawCenteredText("V4", x + 42.0f, y + 2.0f, x + 61.0f, y + 12.0f,
-                withAlpha(new Color(154, 148, 255).getRGB(), 230.0f * openProgress));
-        drawFont("Material 3 x VapuLite", x, y + 18.0f, withAlpha(MUTED, 190.0f * openProgress));
+                withAlpha(new Color(154, 148, 255).getRGB(), 230.0f * guiAlpha));
+        drawFont("Material 3 x VapuLite", x, y + 18.0f, withAlpha(guiColors().muted, 190.0f * guiAlpha));
     }
 
     void drawNavigation(int mouseX, int mouseY, float introY) {
         float y = navY + introY;
         RenderUtil.drawSoftShadow(navX, y, navX + navW, y + NAV_H, 9.0f,
-                withAlpha(new Color(0, 0, 0, 210).getRGB(), 70.0f * openProgress), 7, 5.0f);
+                withAlpha(shadowColor(210), 70.0f * guiAlpha), 7, 5.0f);
         RenderUtil.drawFrostedGlassRect(navX, y, navX + navW, y + NAV_H, 9.0f, 1.0f,
-                withAlpha(GLASS_FILL_SOFT, 186.0f * openProgress),
-                withAlpha(GLASS_BORDER, 52.0f * openProgress));
+                withAlpha(guiColors().glassFillSoft, 186.0f * guiAlpha),
+                withAlpha(guiColors().glassBorder, 52.0f * guiAlpha));
         float tabW = navW / GuiTab.values().length;
         float targetX = navX + currentTab.ordinal() * tabW + 2.0f;
         navIndicatorX = animate(navIndicatorX, targetX, 0.18f);
         RenderUtil.drawSoftShadow(navIndicatorX, y + 4.0f, navIndicatorX + tabW - 4.0f, y + NAV_H - 4.0f, 7.0f,
-                withAlpha(ACCENT, 85.0f * openProgress), 5, 4.0f);
+                withAlpha(guiColors().accent, 85.0f * guiAlpha), 5, 4.0f);
         RenderUtil.drawRoundedBorderedRect(navIndicatorX, y + 4.0f, navIndicatorX + tabW - 4.0f, y + NAV_H - 4.0f, 7.0f, 0.8f,
-                withAlpha(new Color(69, 62, 154, 232).getRGB(), 232.0f * openProgress),
-                withAlpha(new Color(142, 133, 255).getRGB(), 80.0f * openProgress));
+                withAlpha(new Color(69, 62, 154, 232).getRGB(), 232.0f * guiAlpha),
+                withAlpha(new Color(142, 133, 255).getRGB(), 80.0f * guiAlpha));
         for (int i = 0; i < GuiTab.values().length; i++) {
             GuiTab tab = GuiTab.values()[i];
             float x = navX + i * tabW;
@@ -317,10 +408,10 @@ public class VapeClickGui extends GuiScreen {
             float hover = animateTabMap(tab, hovered && tab != currentTab && !closing ? 1.0f : 0.0f, 0.18f);
             if (hover > 0.01f) {
                 drawSoftRect(x + 3.0f, y + 4.0f, x + tabW - 3.0f, y + NAV_H - 4.0f, 7.0f,
-                        withAlpha(new Color(37, 43, 54, 190).getRGB(), 190.0f * hover * openProgress));
+                        withAlpha(new Color(37, 43, 54, 190).getRGB(), 190.0f * hover * guiAlpha));
             }
-            int textColor = tab == currentTab ? TEXT : new Color(202, 205, 213).getRGB();
-            int color = withAlpha(textColor, 245.0f * openProgress);
+            int textColor = tab == currentTab ? guiColors().text : new Color(202, 205, 213).getRGB();
+            int color = withAlpha(textColor, 245.0f * guiAlpha);
             CFontRenderer navIconFont = FontLoaders.I16;
             String title = trim(tab.title, FontLoaders.F14, Math.max(18.0f, tabW - 42.0f));
             float iconW = navIconFont.getStringWidth(tab.icon);
@@ -449,7 +540,7 @@ public class VapeClickGui extends GuiScreen {
         reusableToggle.setBounds(x, y, SWITCH_W, SWITCH_H)
                 .enabled(enabled)
                 .progress(easeSmooth(progress))
-                .setAlpha(alpha * openProgress)
+                .setAlpha(alpha * guiAlpha)
                 .render(0, 0, 0.0f);
     }
 
@@ -1071,11 +1162,11 @@ public class VapeClickGui extends GuiScreen {
         float x = sr.getScaledWidth() / 2.0f - boxW / 2.0f;
         float y = sr.getScaledHeight() / 2.0f - boxH / 2.0f;
         RenderUtil.drawFrostedGlassRect(x, y, x + boxW, y + boxH, 8.0f, 1.0f,
-                withAlpha(GLASS_FILL, 218.0f), withAlpha(ACCENT, 130.0f));
-        drawCenteredText("KEYBIND", x, y + 14.0f, x + boxW, y + 25.0f, TEXT);
-        drawCenteredText(bindingModule.getName(), x, y + 34.0f, x + boxW, y + 45.0f, withAlpha(TEXT, 220.0f));
-        drawCenteredText("Current: " + getKeyName(bindingModule), x, y + 49.0f, x + boxW, y + 60.0f, withAlpha(MUTED, 215.0f));
-        drawCenteredText("Press key, DEL clears, ESC cancels", x, y + 66.0f, x + boxW, y + 77.0f, withAlpha(MUTED, 185.0f));
+                withAlpha(guiColors().glassFill, 218.0f), withAlpha(guiColors().accent, 130.0f));
+        drawCenteredText("KEYBIND", x, y + 14.0f, x + boxW, y + 25.0f, guiColors().text);
+        drawCenteredText(bindingModule.getName(), x, y + 34.0f, x + boxW, y + 45.0f, withAlpha(guiColors().text, 220.0f));
+        drawCenteredText("Current: " + getKeyName(bindingModule), x, y + 49.0f, x + boxW, y + 60.0f, withAlpha(guiColors().muted, 215.0f));
+        drawCenteredText("Press key, DEL clears, ESC cancels", x, y + 66.0f, x + boxW, y + 77.0f, withAlpha(guiColors().muted, 185.0f));
     }
 
     void addToast(String message) {
@@ -1097,9 +1188,9 @@ public class VapeClickGui extends GuiScreen {
         float x = sr.getScaledWidth() / 2.0f - w / 2.0f;
         float y = navY + NAV_H + SEARCH_H + 12.0f;
         RenderUtil.drawFrostedGlassRect(x, y, x + w, y + 17.0f, 6.0f, 0.8f,
-                withAlpha(GLASS_FILL_SOFT, 194.0f * alpha),
-                withAlpha(ACCENT, 75.0f * alpha));
-        drawCenteredText(toastText, x, y + 4.0f, x + w, y + 14.0f, withAlpha(TEXT, 230.0f * alpha));
+                withAlpha(guiColors().glassFillSoft, 194.0f * alpha),
+                withAlpha(guiColors().accent, 75.0f * alpha));
+        drawCenteredText(toastText, x, y + 4.0f, x + w, y + 14.0f, withAlpha(guiColors().text, 230.0f * alpha));
     }
 
     @Override
