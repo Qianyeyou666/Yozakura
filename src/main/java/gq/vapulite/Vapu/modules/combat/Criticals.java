@@ -48,13 +48,21 @@ public class Criticals extends Module {
     }
 
     public static void tryCritical() {
+        tryCritical(true);
+    }
+
+    public static void tryCritical(boolean allowMovementPackets) {
         if (INSTANCE == null || !INSTANCE.getState() || !INSTANCE.isInGame()) {
             return;
         }
-        INSTANCE.performCritical();
+        INSTANCE.performCritical(allowMovementPackets);
     }
 
     private void performCritical() {
+        performCritical(true);
+    }
+
+    private void performCritical(boolean allowMovementPackets) {
         if (!canCritical()) {
             return;
         }
@@ -69,6 +77,9 @@ public class Criticals extends Module {
             mc.thePlayer.motionY = 0.42D;
             mc.thePlayer.onGround = false;
         } else {
+            if (!allowMovementPackets) {
+                return;
+            }
             double x = mc.thePlayer.posX;
             double y = mc.thePlayer.posY;
             double z = mc.thePlayer.posZ;

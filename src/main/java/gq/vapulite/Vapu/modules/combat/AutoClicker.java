@@ -34,7 +34,7 @@ public class AutoClicker extends Module {
 
     @SubscribeEvent
     public void onTick(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) {
+        if (event.phase != TickEvent.Phase.START) {
             return;
         }
         if (!isInGame() || CombatUtil.shouldPauseForScreen()) {
@@ -62,7 +62,7 @@ public class AutoClicker extends Module {
         int key = mc.gameSettings.keyBindAttack.getKeyCode();
         KeyBinding.onTick(key);
         if (entity != null) {
-            Criticals.tryCritical();
+            Criticals.tryCritical(false);
             mc.thePlayer.swingItem();
             mc.playerController.attackEntity(mc.thePlayer, entity);
             HitSelect.onAttack(entity);

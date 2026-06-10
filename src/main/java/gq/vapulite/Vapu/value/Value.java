@@ -6,6 +6,7 @@ package gq.vapulite.Vapu.value;
 import gq.vapulite.Vapu.Client;
 
 import java.util.Objects;
+import java.util.function.BooleanSupplier;
 
 public abstract class Value<V> {
     private String displayName;
@@ -15,6 +16,7 @@ public abstract class Value<V> {
     public float optionAnimNow = 0;//present
     public float animX1;
     public float animX;
+    private BooleanSupplier visibleWhen;
 
     public Value(String displayName, String name) {
         this.displayName = displayName;
@@ -39,5 +41,21 @@ public abstract class Value<V> {
         }
         this.value = value;
         Client.markConfigDirty();
+    }
+
+    public Value<V> visibleWhen(BooleanSupplier visibleWhen) {
+        this.visibleWhen = visibleWhen;
+        return this;
+    }
+
+    public boolean isVisible() {
+        if (visibleWhen == null) {
+            return true;
+        }
+        try {
+            return visibleWhen.getAsBoolean();
+        } catch (Throwable ignored) {
+            return true;
+        }
     }
 }

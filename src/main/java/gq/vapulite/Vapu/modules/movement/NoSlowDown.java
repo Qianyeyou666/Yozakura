@@ -2,6 +2,7 @@ package gq.vapulite.Vapu.modules.movement;
 
 import gq.vapulite.Vapu.ModuleType;
 import gq.vapulite.Vapu.modules.Module;
+import gq.vapulite.Vapu.modules.combat.BlockHit;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.input.Keyboard;
@@ -17,6 +18,9 @@ public class NoSlowDown extends Module {
     @SubscribeEvent
     public void onUpdate(TickEvent event) {
         if (!isInGame()) {
+            return;
+        }
+        if (BlockHit.isBlockingActive()) {
             return;
         }
         mc.thePlayer.movementInput.moveStrafe = speedValue.getObject();

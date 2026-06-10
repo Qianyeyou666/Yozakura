@@ -183,7 +183,7 @@ final class ClickGuiSidePanel {
         }
         List<Value> values = gui.selectedModule.getValues();
         for (Value value : values) {
-            if (gui.isHiddenPaletteValue(gui.selectedModule, value)) {
+            if (!value.isVisible() || gui.isHiddenPaletteValue(gui.selectedModule, value)) {
                 continue;
             }
             gui.drawFont(gui.trim(value.getName(), FontLoaders.F14, 72.0f), gui.sideX + 16.0f, y + 65.0f,

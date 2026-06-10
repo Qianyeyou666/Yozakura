@@ -3,12 +3,14 @@ package gq.vapulite.Vapu.modules.combat;
 import gq.vapulite.Vapu.ModuleType;
 import gq.vapulite.Vapu.modules.Module;
 import gq.vapulite.Vapu.utils.RotationUtil;
-import gq.vapulite.Vapu.value.Mode;
 import gq.vapulite.Vapu.value.Numbers;
 import gq.vapulite.Vapu.value.Option;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.MathHelper;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.input.Keyboard;
@@ -17,52 +19,31 @@ import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 public class Aimbot extends Module {
-    public enum AimStyle {
-        LEGIT,
-        SMART,
-        AGGRESSIVE
-    }
+    private static final long TARGET_REACTION_MS = 150L;
+    private static final long TARGET_LOCK_MS = 650L;
+    private static final double PREDICTION = 0.28D;
 
-    public enum AimPoint {
-        CHEST,
-        HEAD,
-        DYNAMIC
-    }
-
-    private final Numbers<Double> range = new Numbers<Double>("Range", "Range", 4.4, 1.0, 6.0, 0.1);
-    private final Numbers<Double> fov = new Numbers<Double>("FOV", "FOV", 130.0, 10.0, 180.0, 5.0);
-    private final Numbers<Double> yawSpeed = new Numbers<Double>("Yaw Speed", "YawSpeed", 22.0, 1.0, 90.0, 1.0);
-    private final Numbers<Double> pitchSpeed = new Numbers<Double>("Pitch Speed", "PitchSpeed", 15.0, 1.0, 90.0, 1.0);
-    private final Numbers<Double> freeZone = new Numbers<Double>("Free Zone", "FreeZone", 0.45, 0.0, 6.0, 0.1);
-    private final Numbers<Double> prediction = new Numbers<Double>("Prediction", "Prediction", 0.65, 0.0, 2.5, 0.05);
-    private final Numbers<Double> reactionMs = new Numbers<Double>("Reaction MS", "ReactionMS", 70.0, 0.0, 260.0, 5.0);
-    private final Numbers<Double> lockMs = new Numbers<Double>("Lock MS", "LockMS", 520.0, 0.0, 2200.0, 20.0);
-    private final Numbers<Double> randomAmount = new Numbers<Double>("Randomize", "Randomize", 0.28, 0.0, 2.0, 0.05);
-    private final Mode<AimStyle> style = new Mode<AimStyle>("Style", "Style", AimStyle.values(), AimStyle.SMART);
-    private final Mode<AimPoint> aimPoint = new Mode<AimPoint>("Aim Point", "AimPoint", AimPoint.values(), AimPoint.DYNAMIC);
-    private final Option<Boolean> requireMouse = new Option<Boolean>("Mouse Down", "MouseDown", false);
-    private final Option<Boolean> onlyWeapon = new Option<Boolean>("Only Weapon", "OnlyWeapon", false);
+    private final Numbers<Double> range = new Numbers<Double>("Range", "Range", 4.0, 1.0, 5.0, 0.1);
+    private final Numbers<Double> fov = new Numbers<Double>("FOV", "FOV", 55.0, 5.0, 120.0, 5.0);
+    private final Numbers<Double> aimSpeed = new Numbers<Double>("Aim Speed", "AimSpeed", 3.0, 1.0, 10.0, 0.5);
+    private final Numbers<Double> deadZone = new Numbers<Double>("Dead Zone", "DeadZone", 1.6, 0.0, 6.0, 0.1);
+    private final Option<Boolean> onlyWeapon = new Option<Boolean>("Only Weapon", "OnlyWeapon", true);
     private final Option<Boolean> wallCheck = new Option<Boolean>("Wall Check", "WallCheck", true);
-    private final Option<Boolean> onlyYaw = new Option<Boolean>("Only Yaw", "OnlyYaw", false);
-    private final Option<Boolean> players = new Option<Boolean>("Players", "Players", true);
-    private final Option<Boolean> mobs = new Option<Boolean>("Mobs", "Mobs", true);
-    private final Option<Boolean> animals = new Option<Boolean>("Animals", "Animals", true);
-    private final Mode<CombatUtil.TargetPriority> priority =
-            new Mode<CombatUtil.TargetPriority>("Priority", "Priority", CombatUtil.TargetPriority.values(), CombatUtil.TargetPriority.FOV);
 
     public EntityLivingBase target;
     private int targetId = -1;
     private long targetChangedAt;
-    private long lastRandomAt;
-    private float randomYaw;
-    private float randomPitch;
+    private long nextOffsetAt;
+    private float offsetYaw;
+    private float offsetPitch;
+    private float targetOffsetYaw;
+    private float targetOffsetPitch;
     private final RotationUtil.State rotationState = new RotationUtil.State();
 
     public Aimbot() {
-        super("Aimbot", Keyboard.KEY_NONE, ModuleType.Combat, "Smoothly aim at the best target");
-        this.addValues(range, fov, yawSpeed, pitchSpeed, freeZone, prediction, reactionMs, lockMs, randomAmount,
-                style, aimPoint, requireMouse, onlyWeapon, wallCheck, onlyYaw, players, mobs, animals, priority);
-        Chinese = "自瞄";
+        super("AimAssist", Keyboard.KEY_NONE, ModuleType.Combat, "Light aim assist while attacking");
+        this.addValues(range, fov, aimSpeed, deadZone, onlyWeapon, wallCheck);
+        Chinese = "瞄准辅助";
     }
 
     @Override
@@ -76,20 +57,12 @@ public class Aimbot extends Module {
         super.disable();
     }
 
-    @SubscribeEvent
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onTick(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) {
+        if (event.phase != TickEvent.Phase.START) {
             return;
         }
-        if (!isInGame() || CombatUtil.shouldPauseForScreen()) {
-            resetTarget();
-            return;
-        }
-        if (Boolean.TRUE.equals(requireMouse.getValue()) && !mc.gameSettings.keyBindAttack.isKeyDown()) {
-            resetTarget();
-            return;
-        }
-        if (Boolean.TRUE.equals(onlyWeapon.getValue()) && !CombatUtil.isHoldingWeapon()) {
+        if (!canAssistNow()) {
             resetTarget();
             return;
         }
@@ -100,122 +73,180 @@ public class Aimbot extends Module {
             return;
         }
         if (target == null || nextTarget.getEntityId() != targetId) {
-            targetChangedAt = System.currentTimeMillis();
+            target = nextTarget;
             targetId = nextTarget.getEntityId();
+            targetChangedAt = System.currentTimeMillis();
+            nextOffsetAt = 0L;
+            offsetYaw = 0.0f;
+            offsetPitch = 0.0f;
+            targetOffsetYaw = 0.0f;
+            targetOffsetPitch = 0.0f;
             rotationState.reset();
-        }
-        target = nextTarget;
-        if (System.currentTimeMillis() - targetChangedAt < reactionMs.getValue().longValue()) {
             return;
         }
-        updateRandomOffsets();
+
+        target = nextTarget;
+        if (System.currentTimeMillis() - targetChangedAt < TARGET_REACTION_MS) {
+            return;
+        }
+        updateAimOffset();
         faceTarget(nextTarget);
     }
 
+    private boolean canAssistNow() {
+        if (!isInGame() || CombatUtil.shouldPauseForScreen()) {
+            return false;
+        }
+        if (!mc.gameSettings.keyBindAttack.isKeyDown()) {
+            return false;
+        }
+        if (KillAura.target != null) {
+            return false;
+        }
+        if (Boolean.TRUE.equals(onlyWeapon.getValue()) && !CombatUtil.isHoldingWeapon()) {
+            return false;
+        }
+        MovingObjectPosition hit = mc.objectMouseOver;
+        return hit == null || hit.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK;
+    }
+
     private EntityLivingBase selectTarget() {
+        EntityLivingBase hovered = getHoveredTarget();
+        if (hovered != null) {
+            return hovered;
+        }
         if (target != null && isLockedTargetValid(target)) {
             return target;
         }
 
         List<EntityLivingBase> targets = CombatUtil.collectTargets(range.getValue(), fov.getValue(),
-                players.getValue(), mobs.getValue(), animals.getValue(), !wallCheck.getValue());
+                true, false, false, !wallCheck.getValue());
         if (targets.isEmpty()) {
             return null;
         }
-        CombatUtil.sortTargets(targets, priority.getValue());
-        if (style.getValue() == AimStyle.SMART) {
-            targets.sort((first, second) -> Double.compare(smartScore(first), smartScore(second)));
-        }
+        targets.sort((first, second) -> Double.compare(assistScore(first), assistScore(second)));
         return targets.get(0);
     }
 
-    private boolean isLockedTargetValid(EntityLivingBase entity) {
-        if (System.currentTimeMillis() - targetChangedAt > lockMs.getValue().longValue()) {
-            return false;
+    private EntityLivingBase getHoveredTarget() {
+        if (mc.objectMouseOver == null || !(mc.objectMouseOver.entityHit instanceof EntityLivingBase)) {
+            return null;
         }
-        return CombatUtil.isValidTarget(entity, range.getValue() + 0.35D, Math.min(180.0D, fov.getValue() + 18.0D),
-                players.getValue(), mobs.getValue(), animals.getValue(), !wallCheck.getValue());
+        EntityLivingBase hovered = (EntityLivingBase) mc.objectMouseOver.entityHit;
+        return CombatUtil.isValidTarget(hovered, range.getValue() + 0.15D, 180.0D,
+                true, false, false, !wallCheck.getValue()) ? hovered : null;
     }
 
-    private double smartScore(EntityLivingBase entity) {
-        double distanceScore = mc.thePlayer.getDistanceToEntity(entity) * 0.55D;
-        double fovScore = CombatUtil.getFovDifference(entity) * 0.045D;
-        double healthScore = entity.getHealth() * 0.025D;
-        double hurtScore = entity.hurtTime * 0.08D;
-        return distanceScore + fovScore + healthScore + hurtScore;
+    private boolean isLockedTargetValid(EntityLivingBase entity) {
+        boolean relaxedLock = target != null && entity.getEntityId() == targetId
+                && System.currentTimeMillis() - targetChangedAt <= TARGET_LOCK_MS * 3L;
+        return CombatUtil.isValidTarget(entity, range.getValue() + 0.25D,
+                relaxedLock ? Math.min(150.0D, fov.getValue() + 18.0D) : Math.min(130.0D, fov.getValue() + 5.0D),
+                true, false, false, !wallCheck.getValue());
+    }
+
+    private double assistScore(EntityLivingBase entity) {
+        double fovScore = CombatUtil.getFovDifference(entity);
+        double distanceScore = mc.thePlayer.getDistanceToEntity(entity) * 8.0D;
+        double hurtPenalty = entity.hurtTime * 1.2D;
+        double lockBonus = target != null && entity.getEntityId() == targetId ? -18.0D : 0.0D;
+        return fovScore + distanceScore + hurtPenalty + lockBonus;
     }
 
     private void faceTarget(EntityLivingBase entity) {
-        float[] rotations = getSmartRotations(entity);
+        float[] rotations = getAssistRotations(entity);
+        float mouseStep = getMouseStep();
         float yawDiff = MathHelper.wrapAngleTo180_float(rotations[0] - mc.thePlayer.rotationYaw);
         float pitchDiff = MathHelper.wrapAngleTo180_float(rotations[1] - mc.thePlayer.rotationPitch);
-        float free = freeZone.getValue().floatValue();
-        float styleScale = style.getValue() == AimStyle.AGGRESSIVE ? 1.28f : style.getValue() == AimStyle.LEGIT ? 0.72f : 1.0f;
-        float yawStep = yawSpeed.getValue().floatValue() * styleScale;
-        float pitchStep = pitchSpeed.getValue().floatValue() * styleScale;
-        float jitter = (ThreadLocalRandom.current().nextFloat() - 0.5f) * randomAmount.getValue().floatValue() * 0.10f;
-        RotationUtil.applyToPlayer(mc, rotations[0] + jitter, rotations[1],
-                yawStep, pitchStep, Boolean.TRUE.equals(onlyYaw.getValue()), free, rotationState,
-                style.getValue() == AimStyle.LEGIT ? 0.30f : 0.42f, 0.22f, true);
+        float free = deadZone.getValue().floatValue();
+        if (Math.abs(yawDiff) <= free && Math.abs(pitchDiff) <= free) {
+            return;
+        }
+
+        float power = aimSpeed.getValue().floatValue();
+        float sensitivityScale = getSensitivityScale(mouseStep);
+        float distance = mc.thePlayer.getDistanceToEntity(entity);
+        float closeScale = distance < 2.8f ? 0.78f : 1.0f;
+        float correctionScale = MathHelper.clamp_float(Math.abs(yawDiff) / 24.0f, 0.38f, 1.0f);
+        float yawStep = MathHelper.clamp_float(1.0f + power * 0.82f, 1.4f, 9.2f)
+                * closeScale * sensitivityScale;
+        float pitchStep = MathHelper.clamp_float(0.55f + power * 0.48f, 0.75f, 5.2f)
+                * closeScale * sensitivityScale;
+
+        float edge = Math.abs(yawDiff) / Math.max(1.0f, fov.getValue().floatValue());
+        float fovScale = MathHelper.clamp_float(1.0f - RotationUtil.smoothStep(edge) * 0.48f, 0.42f, 1.0f);
+        boolean yawOnly = Math.abs(yawDiff) > Math.max(10.0f, fov.getValue().floatValue() * 0.24f);
+        RotationUtil.applyToPlayer(mc, rotations[0], rotations[1], yawStep * fovScale * correctionScale,
+                pitchStep * fovScale * MathHelper.clamp_float(correctionScale + 0.18f, 0.46f, 1.0f),
+                yawOnly, free, rotationState, 0.42f, 0.006f, true);
     }
 
-    private float[] getSmartRotations(EntityLivingBase entity) {
-        double predict = prediction.getValue();
-        double motionX = (entity.posX - entity.lastTickPosX) * predict;
-        double motionY = (entity.posY - entity.lastTickPosY) * Math.min(0.8D, predict);
-        double motionZ = (entity.posZ - entity.lastTickPosZ) * predict;
-        double targetX = entity.posX + motionX + randomYaw * entity.width * 0.18D;
-        double targetZ = entity.posZ + motionZ + randomPitch * entity.width * 0.12D;
-        double targetY = entity.posY + motionY + getAimHeight(entity) + randomPitch * 0.04D;
-
-        double diffX = targetX - mc.thePlayer.posX;
-        double diffY = targetY - (mc.thePlayer.posY + mc.thePlayer.getEyeHeight());
-        double diffZ = targetZ - mc.thePlayer.posZ;
-        double dist = Math.sqrt(diffX * diffX + diffZ * diffZ);
-        float yaw = (float) (Math.toDegrees(Math.atan2(diffZ, diffX)) - 90.0D) + randomYaw;
-        float pitch = (float) (-Math.toDegrees(Math.atan2(diffY, dist))) + randomPitch;
-        return new float[]{yaw, MathHelper.clamp_float(pitch, -90.0f, 90.0f)};
+    private float getMouseStep() {
+        float sensitivity = MathHelper.clamp_float(mc.gameSettings.mouseSensitivity, 0.0f, 1.0f);
+        float base = sensitivity * 0.6f + 0.2f;
+        return base * base * base * 1.2f;
     }
 
-    private double getAimHeight(EntityLivingBase entity) {
-        AimPoint point = aimPoint.getValue();
-        if (point == AimPoint.HEAD) {
-            return entity.getEyeHeight() * 0.94D;
-        }
-        if (point == AimPoint.CHEST) {
-            return entity.getEyeHeight() * 0.62D;
-        }
+    private float getSensitivityScale(float mouseStep) {
+        return MathHelper.clamp_float((float) Math.sqrt(mouseStep / 0.15f), 0.55f, 1.55f);
+    }
+
+    private float[] getAssistRotations(EntityLivingBase entity) {
+        updateOffsetDrift();
+        AxisAlignedBB box = entity.getEntityBoundingBox();
+        double width = Math.max(0.2D, Math.min(box.maxX - box.minX, box.maxZ - box.minZ));
+        double targetX = entity.posX + (entity.posX - entity.lastTickPosX) * PREDICTION + offsetYaw * width * 0.08D;
+        double targetZ = entity.posZ + (entity.posZ - entity.lastTickPosZ) * PREDICTION - offsetYaw * width * 0.05D;
+        double height = Math.max(0.2D, box.maxY - box.minY);
+        double targetY = box.minY + height * aimHeight(entity)
+                + (entity.posY - entity.lastTickPosY) * Math.min(0.6D, PREDICTION)
+                + offsetPitch * 0.025D;
+        return RotationUtil.getRotationsTo(mc, targetX, targetY, targetZ);
+    }
+
+    private double aimHeight(EntityLivingBase entity) {
         double distance = mc.thePlayer.getDistanceToEntity(entity);
-        double base = distance < 2.7D ? 0.58D : 0.76D;
-        if (entity.hurtTime > 4) {
-            base -= 0.08D;
+        double base = distance < 2.7D ? 0.58D : 0.67D;
+        if (entity.hurtTime > 5) {
+            base -= 0.05D;
         }
         if (!entity.onGround) {
-            base += 0.06D;
+            base += 0.04D;
         }
-        return entity.getEyeHeight() * MathHelper.clamp_double(base, 0.48D, 0.92D);
+        return MathHelper.clamp_double(base, 0.48D, 0.76D);
     }
 
-    private void updateRandomOffsets() {
+    private void updateAimOffset() {
         long now = System.currentTimeMillis();
-        if (now - lastRandomAt < 120L) {
+        if (now < nextOffsetAt) {
             return;
         }
-        lastRandomAt = now;
-        float amount = randomAmount.getValue().floatValue();
-        if (amount <= 0.0f) {
-            randomYaw = 0.0f;
-            randomPitch = 0.0f;
-            return;
+        nextOffsetAt = now + 850L + ThreadLocalRandom.current().nextLong(450L);
+        float amount = MathHelper.clamp_float(aimSpeed.getValue().floatValue() / 20.0f, 0.03f, 0.34f);
+        targetOffsetYaw = (ThreadLocalRandom.current().nextFloat() - 0.5f) * amount;
+        targetOffsetPitch = (ThreadLocalRandom.current().nextFloat() - 0.5f) * amount * 0.42f;
+    }
+
+    private void updateOffsetDrift() {
+        float yawDelta = targetOffsetYaw - offsetYaw;
+        float pitchDelta = targetOffsetPitch - offsetPitch;
+        if (Math.abs(yawDelta) > 0.012f) {
+            offsetYaw += yawDelta * 0.024f;
         }
-        randomYaw = (ThreadLocalRandom.current().nextFloat() - 0.5f) * amount;
-        randomPitch = (ThreadLocalRandom.current().nextFloat() - 0.5f) * amount * 0.55f;
+        if (Math.abs(pitchDelta) > 0.008f) {
+            offsetPitch += pitchDelta * 0.020f;
+        }
     }
 
     private void resetTarget() {
         this.target = null;
         this.targetId = -1;
         this.targetChangedAt = 0L;
+        this.nextOffsetAt = 0L;
+        this.offsetYaw = 0.0f;
+        this.offsetPitch = 0.0f;
+        this.targetOffsetYaw = 0.0f;
+        this.targetOffsetPitch = 0.0f;
         this.rotationState.reset();
     }
 

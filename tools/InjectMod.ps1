@@ -1,5 +1,5 @@
 param(
-    [string]$Dll = "build\libs\VapuLiteLoader-x64.dll",
+    [string]$Dll = "build\libs\VapuLiteReobf-x64.dll",
     [int]$ProcessId = 0
 )
 

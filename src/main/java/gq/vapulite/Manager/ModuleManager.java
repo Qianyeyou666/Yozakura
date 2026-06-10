@@ -12,6 +12,9 @@ import gq.vapulite.Vapu.modules.player.*;
 import gq.vapulite.Vapu.modules.render.*;
 import gq.vapulite.Vapu.modules.combat.*;
 
+import java.io.File;
+import java.io.FileWriter;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -70,51 +73,80 @@ public class ModuleManager {
         return name == null ? "" : name.replace(" ", "").replace("_", "").toLowerCase();
     }
 
+    private interface ModuleFactory {
+        Module create();
+    }
+
+    private static void addModule(String name, ModuleFactory factory) {
+        try {
+            Module module = factory.create();
+            if (module != null) {
+                Modules.add(module);
+            }
+        } catch (Throwable throwable) {
+            logModuleInitFailure(name, throwable);
+        }
+    }
+
+    private static void logModuleInitFailure(String name, Throwable throwable) {
+        try {
+            File log = new File(System.getProperty("java.io.tmpdir"), "VapuLiteModuleInit.log");
+            PrintWriter writer = new PrintWriter(new FileWriter(log, true));
+            try {
+                writer.println("Failed to initialize module: " + name);
+                throwable.printStackTrace(writer);
+            } finally {
+                writer.close();
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
     static {
         // 没Add的都是有问题的，不要add
-        Modules.add(new AntiBot());
-        Modules.add(new Speed());
-        Modules.add(new Sprint());
-        Modules.add(new NoJumpDelay());
-        Modules.add(new ClickGUI());
-        Modules.add(new IGN());
-        Modules.add(new StateMessage());
-        Modules.add(new HUD());
-        Modules.add(new TargetHUD());
-        Modules.add(new TargetESP());
-        Modules.add(new KeyboardDisplay());
-        Modules.add(new FullBright());
-        Modules.add(new AutoTools());
-        Modules.add(new IQBooster());
-        Modules.add(new AutoClicker());
-        Modules.add(new FastPlace());
-        Modules.add(new Scaffold());
-        Modules.add(new Clutch());
-        Modules.add(new BridgeAssist());
-        Modules.add(new LoadConfig());
-        Modules.add(new SaveConfig());
-        Modules.add(new Aimbot());
-        Modules.add(new Backtrack());
-        Modules.add(new Criticals());
-        Modules.add(new WTap());
-        Modules.add(new BlockHit());
-        Modules.add(new FakeLag());
-        Modules.add(new KnockbackDelay());
-        Modules.add(new HitSelect());
-        Modules.add(new Velocity());
-        Modules.add(new Uninject());
-        Modules.add(new InvMove());
-        Modules.add(new Health());
-        Modules.add(new KillAura());
-        Modules.add(new BowAimBot());
-        Modules.add(new NoFall());
-        Modules.add(new NoSlowDown());
-        Modules.add(new MurderMystery());
-        Modules.add(new FuckServer());
-        Modules.add(new Reach());
-        Modules.add(new HitBoxes());
-        Modules.add(new StorageESP());
-        Modules.add(new Chams());
-        Modules.add(new ESP());
+        addModule("AntiBot", new ModuleFactory() { public Module create() { return new AntiBot(); } });
+        addModule("Speed", new ModuleFactory() { public Module create() { return new Speed(); } });
+        addModule("Sprint", new ModuleFactory() { public Module create() { return new Sprint(); } });
+        addModule("NoJumpDelay", new ModuleFactory() { public Module create() { return new NoJumpDelay(); } });
+        addModule("ClickGUI", new ModuleFactory() { public Module create() { return new ClickGUI(); } });
+        addModule("IGN", new ModuleFactory() { public Module create() { return new IGN(); } });
+        addModule("StateMessage", new ModuleFactory() { public Module create() { return new StateMessage(); } });
+        addModule("HUD", new ModuleFactory() { public Module create() { return new HUD(); } });
+        addModule("TargetHUD", new ModuleFactory() { public Module create() { return new TargetHUD(); } });
+        addModule("TargetESP", new ModuleFactory() { public Module create() { return new TargetESP(); } });
+        addModule("KeyboardDisplay", new ModuleFactory() { public Module create() { return new KeyboardDisplay(); } });
+        addModule("FullBright", new ModuleFactory() { public Module create() { return new FullBright(); } });
+        addModule("AutoTools", new ModuleFactory() { public Module create() { return new AutoTools(); } });
+        addModule("IQBooster", new ModuleFactory() { public Module create() { return new IQBooster(); } });
+        addModule("AutoClicker", new ModuleFactory() { public Module create() { return new AutoClicker(); } });
+        addModule("FastPlace", new ModuleFactory() { public Module create() { return new FastPlace(); } });
+        addModule("Scaffold", new ModuleFactory() { public Module create() { return new Scaffold(); } });
+        addModule("Clutch", new ModuleFactory() { public Module create() { return new Clutch(); } });
+        addModule("BridgeAssist", new ModuleFactory() { public Module create() { return new BridgeAssist(); } });
+        addModule("LoadConfig", new ModuleFactory() { public Module create() { return new LoadConfig(); } });
+        addModule("SaveConfig", new ModuleFactory() { public Module create() { return new SaveConfig(); } });
+        addModule("Aimbot", new ModuleFactory() { public Module create() { return new Aimbot(); } });
+        addModule("Backtrack", new ModuleFactory() { public Module create() { return new Backtrack(); } });
+        addModule("Criticals", new ModuleFactory() { public Module create() { return new Criticals(); } });
+        addModule("WTap", new ModuleFactory() { public Module create() { return new WTap(); } });
+        addModule("BlockHit", new ModuleFactory() { public Module create() { return new BlockHit(); } });
+        addModule("FakeLag", new ModuleFactory() { public Module create() { return new FakeLag(); } });
+        addModule("KnockbackDelay", new ModuleFactory() { public Module create() { return new KnockbackDelay(); } });
+        addModule("HitSelect", new ModuleFactory() { public Module create() { return new HitSelect(); } });
+        addModule("Velocity", new ModuleFactory() { public Module create() { return new Velocity(); } });
+        addModule("Uninject", new ModuleFactory() { public Module create() { return new Uninject(); } });
+        addModule("InvMove", new ModuleFactory() { public Module create() { return new InvMove(); } });
+        addModule("Health", new ModuleFactory() { public Module create() { return new Health(); } });
+        addModule("KillAura", new ModuleFactory() { public Module create() { return new KillAura(); } });
+        addModule("BowAimBot", new ModuleFactory() { public Module create() { return new BowAimBot(); } });
+        addModule("NoFall", new ModuleFactory() { public Module create() { return new NoFall(); } });
+        addModule("NoSlowDown", new ModuleFactory() { public Module create() { return new NoSlowDown(); } });
+        addModule("MurderMystery", new ModuleFactory() { public Module create() { return new MurderMystery(); } });
+        addModule("FuckServer", new ModuleFactory() { public Module create() { return new FuckServer(); } });
+        addModule("Reach", new ModuleFactory() { public Module create() { return new Reach(); } });
+        addModule("HitBoxes", new ModuleFactory() { public Module create() { return new HitBoxes(); } });
+        addModule("StorageESP", new ModuleFactory() { public Module create() { return new StorageESP(); } });
+        addModule("Chams", new ModuleFactory() { public Module create() { return new Chams(); } });
+        addModule("ESP", new ModuleFactory() { public Module create() { return new ESP(); } });
     }
 }

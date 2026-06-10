@@ -47,6 +47,7 @@ public class FakeLag extends Module {
     private final Queue<QueuedPacket> queuedPackets = new ConcurrentLinkedQueue<QueuedPacket>();
     private Channel channel;
     private long nextBurstAt;
+    private long releaseAfterAttackAt;
     private volatile boolean lagAllowed;
 
     public FakeLag() {
@@ -59,6 +60,7 @@ public class FakeLag extends Module {
     public void enable() {
         queuedPackets.clear();
         nextBurstAt = System.currentTimeMillis() + offsetMillis();
+        releaseAfterAttackAt = 0L;
         lagAllowed = true;
         injectHandler();
     }
@@ -66,6 +68,7 @@ public class FakeLag extends Module {
     @Override
     public void disable() {
         lagAllowed = false;
+        releaseAfterAttackAt = 0L;
         releaseQueuedPackets();
         removeHandler();
     }
@@ -98,6 +101,12 @@ public class FakeLag extends Module {
             return;
         }
         releaseDuePackets();
+        if (releaseAfterAttackAt > 0L && now >= releaseAfterAttackAt) {
+            releaseAfterAttackAt = 0L;
+            releaseQueuedPackets();
+            nextBurstAt = now + offsetMillis();
+            return;
+        }
         if (current != LagMode.REPEL) {
             nextBurstAt = now + offsetMillis();
         }
@@ -185,7 +194,7 @@ public class FakeLag extends Module {
         LagMode current = mode.getValue();
         if (packet instanceof C02PacketUseEntity
                 && (current == LagMode.REPEL || Boolean.TRUE.equals(releaseOnAttack.getValue()))) {
-            releaseQueuedPackets();
+            schedulePostAttackRelease();
             return false;
         }
         if (packet instanceof C03PacketPlayer) {
@@ -295,6 +304,12 @@ public class FakeLag extends Module {
         while ((queued = queuedPackets.poll()) != null) {
             writePacket(queued);
         }
+    }
+
+    private void schedulePostAttackRelease() {
+        long now = System.currentTimeMillis();
+        releaseAfterAttackAt = Math.max(releaseAfterAttackAt, now + 45L);
+        nextBurstAt = Math.max(nextBurstAt, releaseAfterAttackAt);
     }
 
     private void writePacket(final QueuedPacket queued) {

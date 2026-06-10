@@ -90,11 +90,11 @@ public class FileManager {
 
             JsonObject jsonObject = (JsonObject) jsonElement;
             for (final Module module : ModuleManager.getModules()) {
-                if (!jsonObject.has(module.name)) {
+                final JsonElement moduleElement = getModuleElement(jsonObject, module);
+                if (moduleElement == null) {
                     continue;
                 }
 
-                final JsonElement moduleElement = jsonObject.get(module.getName());
                 if (moduleElement == null || moduleElement instanceof JsonNull || !moduleElement.isJsonObject()) {
                     continue;
                 }
@@ -177,6 +177,16 @@ public class FileManager {
     private void captureCurrentSnapshot() {
         lastSavedSnapshot = createSnapshot();
         dirty = false;
+    }
+
+    private JsonElement getModuleElement(JsonObject jsonObject, Module module) {
+        if (jsonObject.has(module.name)) {
+            return jsonObject.get(module.name);
+        }
+        if ("AimAssist".equalsIgnoreCase(module.getName()) && jsonObject.has("Aimbot")) {
+            return jsonObject.get("Aimbot");
+        }
+        return null;
     }
 
     private String createSnapshot() {

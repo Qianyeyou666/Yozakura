@@ -570,7 +570,8 @@ public class VapeClickGui extends GuiScreen {
 
     float getValueHeight(Module module, int index) {
         if (module != null && index >= 0 && index < module.getValues().size()
-                && isHiddenPaletteValue(module, module.getValues().get(index))) {
+                && (!module.getValues().get(index).isVisible()
+                || isHiddenPaletteValue(module, module.getValues().get(index)))) {
             return 0.0f;
         }
         if (isRangeStart(module, index)) {
@@ -652,7 +653,7 @@ public class VapeClickGui extends GuiScreen {
             return false;
         }
         Value value = module.getValues().get(index);
-        if (isHiddenPaletteValue(module, value) || isColorContinuation(module, index)
+        if (!value.isVisible() || isHiddenPaletteValue(module, value) || isColorContinuation(module, index)
                 || isRangeContinuation(module, index)) {
             return false;
         }
