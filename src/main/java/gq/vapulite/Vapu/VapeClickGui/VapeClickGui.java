@@ -139,6 +139,14 @@ public class VapeClickGui extends GuiScreen {
         }
     }
 
+    void drawThemedGlass(float x, float y, float x2, float y2, float radius, float strength, int fill, int border) {
+        if (gq.vapulite.Vapu.modules.render.HUD.isLightTheme()) {
+            RenderUtil.drawRoundedBorderedRect(x, y, x2, y2, radius, strength, fill, border);
+        } else {
+            drawThemedGlass(x, y, x2, y2, radius, strength, fill, border);
+        }
+    }
+
     static final float NAV_H = 28.0f;
     static final float CARD_W = 222.0f;
     static final float CARD_H = 50.0f;
@@ -390,7 +398,7 @@ public class VapeClickGui extends GuiScreen {
         float y = navY + introY;
         RenderUtil.drawSoftShadow(navX, y, navX + navW, y + NAV_H, 9.0f,
                 withAlpha(shadowColor(210), 70.0f * guiAlpha), 7, 5.0f);
-        RenderUtil.drawFrostedGlassRect(navX, y, navX + navW, y + NAV_H, 9.0f, 1.0f,
+        drawThemedGlass(navX, y, navX + navW, y + NAV_H, 9.0f, 1.0f,
                 withAlpha(guiColors().glassFillSoft, 186.0f * guiAlpha),
                 withAlpha(guiColors().glassBorder, 52.0f * guiAlpha));
         float tabW = navW / GuiTab.values().length;
@@ -1161,7 +1169,7 @@ public class VapeClickGui extends GuiScreen {
         float boxH = 84.0f;
         float x = sr.getScaledWidth() / 2.0f - boxW / 2.0f;
         float y = sr.getScaledHeight() / 2.0f - boxH / 2.0f;
-        RenderUtil.drawFrostedGlassRect(x, y, x + boxW, y + boxH, 8.0f, 1.0f,
+        drawThemedGlass(x, y, x + boxW, y + boxH, 8.0f, 1.0f,
                 withAlpha(guiColors().glassFill, 218.0f), withAlpha(guiColors().accent, 130.0f));
         drawCenteredText("KEYBIND", x, y + 14.0f, x + boxW, y + 25.0f, guiColors().text);
         drawCenteredText(bindingModule.getName(), x, y + 34.0f, x + boxW, y + 45.0f, withAlpha(guiColors().text, 220.0f));
@@ -1187,7 +1195,7 @@ public class VapeClickGui extends GuiScreen {
         float w = FontLoaders.F14.getStringWidth(toastText) + 20.0f;
         float x = sr.getScaledWidth() / 2.0f - w / 2.0f;
         float y = navY + NAV_H + SEARCH_H + 12.0f;
-        RenderUtil.drawFrostedGlassRect(x, y, x + w, y + 17.0f, 6.0f, 0.8f,
+        drawThemedGlass(x, y, x + w, y + 17.0f, 6.0f, 0.8f,
                 withAlpha(guiColors().glassFillSoft, 194.0f * alpha),
                 withAlpha(guiColors().accent, 75.0f * alpha));
         drawCenteredText(toastText, x, y + 4.0f, x + w, y + 14.0f, withAlpha(guiColors().text, 230.0f * alpha));

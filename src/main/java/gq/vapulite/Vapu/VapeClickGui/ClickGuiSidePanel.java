@@ -48,7 +48,7 @@ final class ClickGuiSidePanel {
         RenderUtil.drawSoftShadow(gui.sideX, gui.navY, gui.sideX + gui.sideW, gui.navY + VapeClickGui.NAV_H,
                 VapeClickGui.PANEL_RADIUS, gui.withAlpha(gui.shadowColor(220),
                         70.0f * gui.guiAlpha), 8, 5.0f);
-        RenderUtil.drawFrostedGlassRect(gui.sideX, gui.navY, gui.sideX + gui.sideW, gui.navY + VapeClickGui.NAV_H,
+        gui.drawThemedGlass(gui.sideX, gui.navY, gui.sideX + gui.sideW, gui.navY + VapeClickGui.NAV_H,
                 VapeClickGui.PANEL_RADIUS, 1.0f,
                 gui.withAlpha(gui.guiColors().glassFill, 206.0f * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, 50.0f * gui.guiAlpha));
@@ -68,7 +68,7 @@ final class ClickGuiSidePanel {
     private void drawStatsPanel(float y) {
         RenderUtil.drawSoftShadow(gui.sideX, y, gui.sideX + gui.sideW, y + 64.0f, VapeClickGui.PANEL_RADIUS,
                 gui.withAlpha(gui.shadowColor(220), 70.0f * gui.guiAlpha), 8, 5.0f);
-        RenderUtil.drawFrostedGlassRect(gui.sideX, y, gui.sideX + gui.sideW, y + 64.0f, VapeClickGui.PANEL_RADIUS, 1.0f,
+        gui.drawThemedGlass(gui.sideX, y, gui.sideX + gui.sideW, y + 64.0f, VapeClickGui.PANEL_RADIUS, 1.0f,
                 gui.withAlpha(gui.guiColors().glassFill, 204.0f * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, 48.0f * gui.guiAlpha));
         drawStat("FPS", gui.getLiveFpsText(), gui.sideX + 12.0f, y + 12.0f, gui.guiColors().text);
@@ -133,7 +133,7 @@ final class ClickGuiSidePanel {
         float h = Math.min(180.0f, gui.panelH - 130.0f);
         RenderUtil.drawSoftShadow(gui.sideX, y, gui.sideX + gui.sideW, y + h, VapeClickGui.PANEL_RADIUS,
                 gui.withAlpha(gui.shadowColor(230), 78.0f * gui.guiAlpha), 9, 6.0f);
-        RenderUtil.drawFrostedGlassRect(gui.sideX, y, gui.sideX + gui.sideW, y + h, VapeClickGui.PANEL_RADIUS, 1.0f,
+        gui.drawThemedGlass(gui.sideX, y, gui.sideX + gui.sideW, y + h, VapeClickGui.PANEL_RADIUS, 1.0f,
                 gui.withAlpha(gui.guiColors().glassFill, 210.0f * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, 48.0f * gui.guiAlpha));
         if (gui.selectedModule == null) {
@@ -195,7 +195,7 @@ final class ClickGuiSidePanel {
     }
 
     private void drawKeyChip(float x, float y, float w, float h, Module module) {
-        RenderUtil.drawFrostedGlassRect(x, y, x + w, y + h, 6.0f, 0.8f,
+        gui.drawThemedGlass(x, y, x + w, y + h, 6.0f, 0.8f,
                 gui.withAlpha(gui.guiColors().glassFillSoft, 198.0f * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, 50.0f * gui.guiAlpha));
         gui.drawCenteredText(gui.getKeyName(module), x, y + 4.0f, x + w, y + h - 2.0f,

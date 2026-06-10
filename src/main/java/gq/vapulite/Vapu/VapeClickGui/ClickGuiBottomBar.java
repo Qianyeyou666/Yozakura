@@ -16,7 +16,7 @@ final class ClickGuiBottomBar {
     void render(ScaledResolution sr) {
         float y = sr.getScaledHeight() - 34.0f;
         float profileW = 132.0f;
-        RenderUtil.drawFrostedGlassRect(gui.contentX, y, gui.contentX + profileW, y + 25.0f, 8.0f, 1.0f,
+        gui.drawThemedGlass(gui.contentX, y, gui.contentX + profileW, y + 25.0f, 8.0f, 1.0f,
                 gui.withAlpha(gui.guiColors().glassFillSoft, 190.0f * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, 48.0f * gui.guiAlpha));
         gui.drawSoftRect(gui.contentX + 10.0f, y + 5.0f, gui.contentX + 26.0f, y + 21.0f, 5.0f,
@@ -32,7 +32,7 @@ final class ClickGuiBottomBar {
 
         float hintW = 96.0f;
         float hintX = sr.getScaledWidth() - hintW - 16.0f;
-        RenderUtil.drawFrostedGlassRect(hintX, y, hintX + hintW, y + 25.0f, 8.0f, 1.0f,
+        gui.drawThemedGlass(hintX, y, hintX + hintW, y + 25.0f, 8.0f, 1.0f,
                 gui.withAlpha(gui.guiColors().glassFillSoft, 190.0f * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, 48.0f * gui.guiAlpha));
         gui.drawCenteredText("Right Shift", hintX + 8.0f, y + 7.0f, hintX + 64.0f, y + 19.0f,

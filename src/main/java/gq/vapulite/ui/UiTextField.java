@@ -1,5 +1,6 @@
 package gq.vapulite.ui;
 
+import gq.vapulite.Vapu.modules.render.HUD;
 import gq.vapulite.Vapu.utils.RenderUtil;
 import gq.vapulite.font.FontLoaders;
 import org.lwjgl.input.Keyboard;
@@ -68,7 +69,7 @@ public class UiTextField extends UiComponent {
         float radius = Math.min(17.0f, bounds.height / 2.0f);
         int border = focused || hovered ? theme.accent : theme.fieldBorder;
         float borderAlpha = focused ? 138.0f : hovered ? 96.0f : 72.0f;
-        RenderUtil.drawFrostedGlassRect(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, 1.15f,
+        HUD.drawThemedFrostedGlass(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, 1.15f,
                 theme.withAlpha(theme.fieldFill, 156.0f * alpha),
                 theme.withAlpha(border, borderAlpha * alpha));
         RenderUtil.drawRoundedBorderedRect(bounds.x + 1.8f, bounds.y + 1.8f, bounds.right() - 1.8f,

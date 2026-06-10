@@ -69,8 +69,12 @@ public class UiPanel extends UiComponent {
             RenderUtil.drawSoftShadow(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius,
                     theme.withAlpha(shadowColor, shadowAlpha * alpha), shadowLayers, shadowSpread);
         }
-        RenderUtil.drawFrostedGlassRect(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, borderWidth,
-                theme.withAlpha(fillColor, ((fillColor >>> 24) & 255) * alpha),
-                theme.withAlpha(borderColor, ((borderColor >>> 24) & 255) * alpha));
+        int f = theme.withAlpha(fillColor, ((fillColor >>> 24) & 255) * alpha);
+        int b = theme.withAlpha(borderColor, ((borderColor >>> 24) & 255) * alpha);
+        if (gq.vapulite.Vapu.modules.render.HUD.isLightTheme()) {
+            RenderUtil.drawRoundedBorderedRect(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, borderWidth, f, b);
+        } else {
+            RenderUtil.drawFrostedGlassRect(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, borderWidth, f, b);
+        }
     }
 }

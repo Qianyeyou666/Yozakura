@@ -170,7 +170,7 @@ final class ClickGuiModuleList {
         }
         if (selected) {
             int selectedFill = new Color(55, 54, 130, 218).getRGB();
-            RenderUtil.drawFrostedGlassRect(x, y, x + rowW, y + height, 7.0f, 0.8f,
+            gui.drawThemedGlass(x, y, x + rowW, y + height, 7.0f, 0.8f,
                     gui.withAlpha(selectedFill, 218.0f * alpha * gui.guiAlpha),
                     gui.withAlpha(new Color(132, 121, 255).getRGB(), 78.0f * alpha * gui.guiAlpha));
         } else if (hover > 0.01f) {

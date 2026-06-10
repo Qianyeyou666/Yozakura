@@ -98,7 +98,7 @@ public class Notification {
         }
         RenderUtil.drawSoftShadow(x1, y1, x2, y2, 8.0f,
                 withAlpha(shadowColor(), Math.round(58.0f * bodyAlpha)), 7, 3.4f);
-        RenderUtil.drawFrostedGlassRect(x1, y1, x2, y2, 8.0f, 1.0f,
+        HUD.drawThemedFrostedGlass(x1, y1, x2, y2, 8.0f, 1.0f,
                 withAlpha(GLASS(), Math.round(146.0f * bodyAlpha)),
                 withAlpha(BORDER(), Math.round(56.0f * bodyAlpha)));
         RenderUtil.drawHorizontalGradientRect(x1 + 10.0f, y1 + 4.0f, x2 - 10.0f, y1 + 5.1f,
@@ -107,7 +107,7 @@ public class Notification {
 
         float iconX = x1 + 11.0f;
         float iconY = y1 + 10.0f;
-        RenderUtil.drawFrostedGlassRect(iconX, iconY, iconX + 24.0f, iconY + 24.0f, 7.0f, 0.8f,
+        HUD.drawThemedFrostedGlass(iconX, iconY, iconX + 24.0f, iconY + 24.0f, 7.0f, 0.8f,
                 withAlpha(GLASS_SOFT(), Math.round(154.0f * bodyAlpha)),
                 withAlpha(accent, Math.round(76.0f * bodyAlpha)));
         RenderUtil.drawSoftShadow(iconX, iconY, iconX + 24.0f, iconY + 24.0f, 7.0f,

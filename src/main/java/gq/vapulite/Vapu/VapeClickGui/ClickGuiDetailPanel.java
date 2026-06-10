@@ -276,7 +276,7 @@ final class ClickGuiDetailPanel {
     }
 
     private void drawModuleIcon(Module module, float centerX, float centerY) {
-        RenderUtil.drawFrostedGlassRect(centerX - 13.0f, centerY - 13.0f, centerX + 13.0f, centerY + 13.0f,
+        gui.drawThemedGlass(centerX - 13.0f, centerY - 13.0f, centerX + 13.0f, centerY + 13.0f,
                 8.0f, 0.8f, gui.withAlpha(gui.guiColors().glassFillSoft, 178.0f * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().accent, 74.0f * gui.guiAlpha));
         RenderUtil.drawSoftShadow(centerX - 13.0f, centerY - 13.0f, centerX + 13.0f, centerY + 13.0f,
@@ -290,7 +290,7 @@ final class ClickGuiDetailPanel {
         float tabY = panelY + 58.0f;
         float tabW = gui.detailW - 12.0f;
         float tabH = 31.0f;
-        RenderUtil.drawFrostedGlassRect(tabX, tabY, tabX + tabW, tabY + tabH, 5.0f, 0.8f,
+        gui.drawThemedGlass(tabX, tabY, tabX + tabW, tabY + tabH, 5.0f, 0.8f,
                 gui.withAlpha(gui.guiColors().glassFillSoft, 164.0f * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, 40.0f * gui.guiAlpha));
         float each = tabW / DETAIL_TABS.length;
@@ -376,7 +376,7 @@ final class ClickGuiDetailPanel {
 
         RenderUtil.drawSoftShadow(paletteX, paletteY, paletteX + paletteW, paletteY + paletteH, 5.0f,
                 gui.withAlpha(color, (36.0f + active * 64.0f) * alpha * gui.guiAlpha), 5, 3.0f);
-        RenderUtil.drawFrostedGlassRect(paletteX - 1.0f, paletteY - 1.0f, paletteX + paletteW + 1.0f,
+        gui.drawThemedGlass(paletteX - 1.0f, paletteY - 1.0f, paletteX + paletteW + 1.0f,
                 paletteY + paletteH + 1.0f, 6.0f, 0.8f,
                 gui.withAlpha(gui.guiColors().glassFillSoft, 120.0f * alpha * gui.guiAlpha),
                 gui.withAlpha(rainbow ? gui.guiColors().accent : gui.guiColors().glassBorder,
@@ -393,7 +393,7 @@ final class ClickGuiDetailPanel {
         RenderUtil.drawCircle(marker[0], marker[1], 0, 360, 2.1f,
                 gui.withAlpha(color, 240.0f * alpha * gui.guiAlpha));
 
-        RenderUtil.drawFrostedGlassRect(previewX, y + 9.0f, previewX + preview, y + 34.0f, 7.0f, 0.8f,
+        gui.drawThemedGlass(previewX, y + 9.0f, previewX + preview, y + 34.0f, 7.0f, 0.8f,
                 gui.withAlpha(color, 230.0f * alpha * gui.guiAlpha),
                 gui.withAlpha(new Color(255, 255, 255).getRGB(), 70.0f * alpha * gui.guiAlpha));
         if (rainbow) {
@@ -667,7 +667,7 @@ final class ClickGuiDetailPanel {
         int fillColor = expanded
                 ? gui.withAlpha(gui.guiColors().modeExpandedFill, 200.0f * alpha * gui.guiAlpha)
                 : gui.withAlpha(gui.guiColors().glassFillSoft, 194.0f * alpha * gui.guiAlpha);
-        RenderUtil.drawFrostedGlassRect(pillX, y + 3.0f, pillX + pillW, y + 23.0f, 5.0f, 0.8f,
+        gui.drawThemedGlass(pillX, y + 3.0f, pillX + pillW, y + 23.0f, 5.0f, 0.8f,
                 fillColor,
                 gui.withAlpha(gui.guiColors().glassBorder, borderAlpha * alpha * gui.guiAlpha));
         gui.drawFont(gui.trim(gui.formatModeLabel(value.getModeAsString()), FontLoaders.F14, pillW - 28.0f),
@@ -680,7 +680,7 @@ final class ClickGuiDetailPanel {
     }
 
     private void drawValuePill(String text, float x, float y, float w, float alpha) {
-        RenderUtil.drawFrostedGlassRect(x, y, x + w, y + 20.0f, 5.0f, 0.8f,
+        gui.drawThemedGlass(x, y, x + w, y + 20.0f, 5.0f, 0.8f,
                 gui.withAlpha(gui.guiColors().glassFillSoft, 190.0f * alpha * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, 46.0f * alpha * gui.guiAlpha));
         gui.drawCenteredText(text, x, y + 5.0f, x + w, y + 17.0f,
@@ -756,7 +756,7 @@ final class ClickGuiDetailPanel {
                 }
             }
 
-            RenderUtil.drawFrostedGlassRect(pillX, dropdownY, pillX + pillW, dropdownY + fullDropdownH,
+            gui.drawThemedGlass(pillX, dropdownY, pillX + pillW, dropdownY + fullDropdownH,
                     5.0f, 0.9f,
                     gui.withAlpha(gui.guiColors().dropdownBg, 238.0f * gui.guiAlpha),
                     gui.withAlpha(gui.guiColors().glassBorder, 62.0f * gui.guiAlpha));

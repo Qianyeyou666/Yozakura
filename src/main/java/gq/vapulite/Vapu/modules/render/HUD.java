@@ -203,7 +203,7 @@ public class HUD extends Module {
                 drawGlass(x, y, x + boxW, y + boxH, round, getGlassAlpha(), 54);
                 RenderUtil.drawHorizontalGradientRect(x + 9.0f, y + 4.0f, x + boxW - 9.0f, y + 5.2f,
                         withAlpha(palette().accent, 120), withAlpha(palette().accentAlt, 92));
-                RenderUtil.drawFrostedGlassRect(x + 10.0f, y + 9.0f, x + 10.0f + iconSize, y + 9.0f + iconSize,
+                drawThemedFrostedGlass(x + 10.0f, y + 9.0f, x + 10.0f + iconSize, y + 9.0f + iconSize,
                         7.0f, 0.8f, withAlpha(palette().glassSoft, getSoftAlpha() + 18), withAlpha(palette().accent, 84));
                 RenderUtil.drawSoftShadow(x + 10.0f, y + 9.0f, x + 10.0f + iconSize, y + 9.0f + iconSize,
                         7.0f, withAlpha(palette().accent, 34), 4, 2.0f);
@@ -500,7 +500,7 @@ public class HUD extends Module {
                 if (Boolean.TRUE.equals(backgrounds.getValue())) {
                     RenderUtil.drawSoftShadow(x, y, right, y + rowH, round,
                             withAlpha(palette().shadowColor, Math.round(34.0f * progress)), 4, 2.4f);
-                    RenderUtil.drawFrostedGlassRect(x, y, right, y + rowH, round, 0.8f,
+                    drawThemedFrostedGlass(x, y, right, y + rowH, round, 0.8f,
                             withAlpha(palette().glass, rowAlpha), withAlpha(palette().border, Math.round(42.0f * progress)));
                     RenderUtil.drawVerticalGradientRect(right - 3.0f, y + 3.0f, right - 1.4f, y + rowH - 3.0f,
                             withAlpha(accent, Math.round(205.0f * progress)),
@@ -681,7 +681,7 @@ public class HUD extends Module {
                             FontLoaders.C14, 88.0f);
                     String duration = Potion.getDurationString(effect);
 
-                    RenderUtil.drawFrostedGlassRect(x + 8.0f, rowY, x + 25.0f, rowY + 17.0f, 5.0f, 0.7f,
+                    drawThemedFrostedGlass(x + 8.0f, rowY, x + 25.0f, rowY + 17.0f, 5.0f, 0.7f,
                             withAlpha(palette().glassSoft, getSoftAlpha()), withAlpha(accent, 68));
                     RenderUtil.drawCircle(x + 16.5f, rowY + 8.5f, 0, 360, 3.2f, withAlpha(accent, 210));
                     FontLoaders.C14.drawString(name, x + 31.0f, rowY + 2.0f, withAlpha(palette().text, 226));
@@ -733,7 +733,7 @@ public class HUD extends Module {
 
     private void drawStatusChip(String text, float x, float y, float w, int accent) {
         if (Boolean.TRUE.equals(backgrounds.getValue())) {
-            RenderUtil.drawFrostedGlassRect(x, y, x + w, y + 14.0f, 5.0f, 0.6f,
+            drawThemedFrostedGlass(x, y, x + w, y + 14.0f, 5.0f, 0.6f,
                     withAlpha(palette().glassSoft, getSoftAlpha()), withAlpha(accent, 48));
             RenderUtil.drawCircle(x + 7.5f, y + 7.0f, 0, 360, 2.0f, withAlpha(accent, 185));
         }
@@ -743,8 +743,17 @@ public class HUD extends Module {
 
     private void drawGlass(float x, float y, float x2, float y2, float round, int fillAlpha, int borderAlpha) {
         RenderUtil.drawSoftShadow(x, y, x2, y2, round, withAlpha(palette().shadowColor, 44), 6, 3.2f);
-        RenderUtil.drawFrostedGlassRect(x, y, x2, y2, round, 1.0f,
+        drawThemedFrostedGlass(x, y, x2, y2, round, 1.0f,
                 withAlpha(palette().glass, fillAlpha), withAlpha(palette().border, borderAlpha));
+    }
+
+    public static void drawThemedFrostedGlass(float x, float y, float x2, float y2, float radius, float strength,
+                                                int fillColor, int borderColor) {
+        if (isLightTheme()) {
+            RenderUtil.drawRoundedBorderedRect(x, y, x2, y2, radius, 0.8f, fillColor, borderColor);
+        } else {
+            drawThemedFrostedGlass(x, y, x2, y2, radius, strength, fillColor, borderColor);
+        }
     }
 
     private void drawVapeCard(float x, float y, float x2, float y2, float radius, int alpha) {
