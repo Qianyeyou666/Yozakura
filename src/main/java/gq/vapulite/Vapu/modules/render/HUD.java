@@ -546,7 +546,6 @@ public class HUD extends Module {
         beginScaled(x, y, uiScale);
         try {
             if (Boolean.TRUE.equals(backgrounds.getValue())) {
-                drawGlowIfEnabled(x, y, x + listW, y + listH, 6.0f, VAPE_PRIMARY);
                 drawVapeCard(x, y, x + listW, y + listH, 6.0f, 150);
                 float lineX = rightSide ? x + listW - lineW : x;
                 RenderUtil.drawVerticalGradientRect(lineX, y + 5.0f, lineX + lineW, y + listH - 5.0f,
@@ -572,6 +571,7 @@ public class HUD extends Module {
                     float rowTop = drawY;
                     float rowBottom = drawY + rowH;
                     int rowAlpha = Math.round((index == 0 ? 44.0f : 26.0f) * progress);
+                    drawGlowIfEnabled(x + 4.0f, rowTop, x + listW - 4.0f, rowBottom, 4.0f, getCategoryAccent(module));
                     if (Boolean.TRUE.equals(backgrounds.getValue())) {
                         RenderUtil.drawRect(x + 4.0f, rowTop, x + listW - 4.0f, rowBottom,
                                 withAlpha(VAPE_SURFACE_VARIANT, rowAlpha));
