@@ -38,7 +38,7 @@ final class ClickGuiBottomBar {
         gui.drawCenteredText("Right Shift", hintX + 8.0f, y + 7.0f, hintX + 64.0f, y + 19.0f,
                 gui.withAlpha(gui.guiColors().text, 220.0f * gui.guiAlpha));
         gui.drawSoftRect(hintX + 66.0f, y + 5.0f, hintX + hintW - 7.0f, y + 20.0f, 6.0f,
-                gui.withAlpha(new Color(69, 62, 154, 232).getRGB(), 232.0f * gui.guiAlpha));
+                gui.withAlpha(gui.guiColors().detailSelectedFill, 232.0f * gui.guiAlpha));
         gui.drawCenteredText("GUI", hintX + 66.0f, y + 8.0f, hintX + hintW - 7.0f, y + 19.0f,
                 gui.withAlpha(gui.guiColors().text, 245.0f * gui.guiAlpha));
     }

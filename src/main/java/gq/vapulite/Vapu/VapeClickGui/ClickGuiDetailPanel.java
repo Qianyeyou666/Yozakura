@@ -542,10 +542,10 @@ final class ClickGuiDetailPanel {
                     float active = gui.animateValueMap(gui.valueActiveProgress, value,
                             gui.draggingNumber == value ? 1.0f : 0.0f, 0.18f);
                     if (active > 0.02f) {
-                        gui.drawSoftRect(x - 6.0f, valueY + 1.0f, x + w + 2.0f,
-                                valueY + valueH - 2.0f, 6.0f,
-                                gui.withAlpha(new Color(36, 41, 55, 160).getRGB(),
-                                        120.0f * active * gui.guiAlpha));
+//                        gui.drawSoftRect(x - 6.0f, valueY + 1.0f, x + w + 2.0f,
+//                                valueY + valueH - 2.0f, 6.0f,
+//                                gui.withAlpha(new Color(36, 41, 55, 160).getRGB(),
+//                                        120.0f * active * gui.guiAlpha));
                     }
                     if (gui.isColorStart(module, i)) {
                         drawColorPalette(module, (Numbers) values.get(i), (Numbers) values.get(i + 1),

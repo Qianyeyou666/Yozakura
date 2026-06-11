@@ -109,12 +109,12 @@ public class VapeClickGui extends GuiScreen {
                 new Color(160, 175, 198, 54).getRGB(),
                 new Color(210, 215, 228, 170).getRGB(),
                 new Color(190, 192, 220, 200).getRGB(),
-                new Color(120, 108, 240).getRGB(),
+                new Color(130, 160, 240).getRGB(),
                 new Color(24, 142, 198).getRGB(),
                 new Color(190, 195, 210, 170).getRGB(),
-                new Color(100, 88, 238, 215).getRGB(),
+                new Color(120, 165, 235, 215).getRGB(),
                 new Color(210, 215, 235, 190).getRGB(),
-                new Color(140, 145, 200, 148).getRGB(),
+                new Color(170, 185, 228, 148).getRGB(),
                 new Color(200, 205, 220, 132).getRGB(),
                 new Color(218, 224, 238, 228).getRGB(),
                 new Color(255, 255, 255, 120).getRGB(),
@@ -388,7 +388,7 @@ public class VapeClickGui extends GuiScreen {
         float y = navY + 1.0f + introY * 0.35f;
         FontLoaders.F18.drawString("VAPE", x, y, withAlpha(guiColors().text, 255.0f * guiAlpha));
         drawSoftRect(x + 42.0f, y + 1.0f, x + 61.0f, y + 12.0f, 4.0f,
-                withAlpha(new Color(42, 45, 86, 190).getRGB(), 180.0f * guiAlpha));
+                withAlpha(guiColors().detailSelectedFill, 180.0f * guiAlpha));
         drawCenteredText("V4", x + 42.0f, y + 2.0f, x + 61.0f, y + 12.0f,
                 withAlpha(new Color(154, 148, 255).getRGB(), 230.0f * guiAlpha));
         drawFont("Material 3 x VapuLite", x, y + 18.0f, withAlpha(guiColors().muted, 190.0f * guiAlpha));
@@ -407,8 +407,8 @@ public class VapeClickGui extends GuiScreen {
         RenderUtil.drawSoftShadow(navIndicatorX, y + 4.0f, navIndicatorX + tabW - 4.0f, y + NAV_H - 4.0f, 7.0f,
                 withAlpha(guiColors().accent, 85.0f * guiAlpha), 5, 4.0f);
         RenderUtil.drawRoundedBorderedRect(navIndicatorX, y + 4.0f, navIndicatorX + tabW - 4.0f, y + NAV_H - 4.0f, 7.0f, 0.8f,
-                withAlpha(new Color(69, 62, 154, 232).getRGB(), 232.0f * guiAlpha),
-                withAlpha(new Color(142, 133, 255).getRGB(), 80.0f * guiAlpha));
+                withAlpha(guiColors().detailSelectedFill, 232.0f * guiAlpha),
+                withAlpha(guiColors().detailSelectedBorder, 80.0f * guiAlpha));
         for (int i = 0; i < GuiTab.values().length; i++) {
             GuiTab tab = GuiTab.values()[i];
             float x = navX + i * tabW;
@@ -416,9 +416,9 @@ public class VapeClickGui extends GuiScreen {
             float hover = animateTabMap(tab, hovered && tab != currentTab && !closing ? 1.0f : 0.0f, 0.18f);
             if (hover > 0.01f) {
                 drawSoftRect(x + 3.0f, y + 4.0f, x + tabW - 3.0f, y + NAV_H - 4.0f, 7.0f,
-                        withAlpha(new Color(37, 43, 54, 190).getRGB(), 190.0f * hover * guiAlpha));
+                        withAlpha(guiColors().navDefaultHover, 190.0f * hover * guiAlpha));
             }
-            int textColor = tab == currentTab ? guiColors().text : new Color(202, 205, 213).getRGB();
+            int textColor = tab == currentTab ? guiColors().text : guiColors().muted;
             int color = withAlpha(textColor, 245.0f * guiAlpha);
             CFontRenderer navIconFont = FontLoaders.I16;
             String title = trim(tab.title, FontLoaders.F14, Math.max(18.0f, tabW - 42.0f));

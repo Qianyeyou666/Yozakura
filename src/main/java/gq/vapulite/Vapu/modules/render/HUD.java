@@ -76,8 +76,8 @@ public class HUD extends Module {
 
         static final HudPalette LIGHT = new HudPalette(
                 0xFF1C1E22, 0xFF606468, 0xFFEBEDF2, 0xFFE0E3EA, 0xFF6BA0C0,
-                0xFF18A0C8, 0xFF6050E8,
-                0xFF4A5FD4, 0xFF5A5EC4, 0xFF20AAD4,
+                0xFF18A0C8, 0xFF6088E8,
+                0xFF6090E0, 0xFF6888E0, 0xFF20AAD4,
                 0xFFE8EBF0, 0xFFDCE0E8, 0xFF181A20, 0xFF505560,
                 0xFFFFFFFF);
     }
@@ -598,7 +598,7 @@ public class HUD extends Module {
                                 withAlpha(palette().vapeSurfaceVariant, rowAlpha));
                         if (index > 0) {
                             RenderUtil.drawRect(x + 8.0f, rowTop, x + listW - 8.0f, rowTop + 0.6f,
-                                    withAlpha(0xFFFFFFFF, Math.round(18.0f * progress)));
+                                    withAlpha(palette().vapeOnVariant, Math.round(18.0f * progress)));
                         }
                         float pulseLineX = rightSide ? x + listW - lineW : x;
                         RenderUtil.drawRect(pulseLineX, rowTop + 4.0f, pulseLineX + lineW, rowBottom - 4.0f,
@@ -610,7 +610,7 @@ public class HUD extends Module {
                     float sideW = sideText.length() == 0 ? 0.0f : font.getStringWidth(sideText);
                     String name = trim(label.name, font, contentRight - contentLeft - sideW - 8.0f);
                     font.drawString(name, contentLeft, drawY + 7.0f,
-                            withAlpha(0xFFFFFFFF, Math.round(246.0f * progress)));
+                            withAlpha(palette().vapeOnSurface, Math.round(246.0f * progress)));
                     if (sideText.length() > 0) {
                         font.drawString(sideText, contentRight - sideW, drawY + 7.0f,
                                 withAlpha(palette().vapeSecondary, Math.round(238.0f * progress)));

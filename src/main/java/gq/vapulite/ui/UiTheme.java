@@ -85,12 +85,12 @@ public final class UiTheme {
                 new Color(225, 228, 235, 158).getRGB(), // control
                 new Color(210, 214, 224, 182).getRGB(), // controlHover
                 new Color(200, 205, 215, 225).getRGB(), // toggleOff
-                new Color(82, 79, 190, 225).getRGB(),   // toggleOn
+                new Color(90, 165, 230, 225).getRGB(),   // toggleOn
                 new Color(140, 145, 155).getRGB(),      // toggleKnobOff
                 new Color(230, 240, 248).getRGB(),      // toggleKnobOn
                 new Color(216, 220, 228, 156).getRGB(), // fieldFill
-                new Color(40, 110, 140).getRGB(),       // fieldBorder
-                new Color(38, 90, 112).getRGB(),        // fieldInnerBorder
+                new Color(80, 175, 215).getRGB(),       // fieldBorder
+                new Color(70, 155, 195).getRGB(),       // fieldInnerBorder
                 new Color(200, 205, 216, 220).getRGB(), // sliderTrack
                 new Color(100, 108, 130).getRGB());     // selectBorder
     }

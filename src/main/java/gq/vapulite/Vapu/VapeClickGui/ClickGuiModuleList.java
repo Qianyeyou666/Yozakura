@@ -169,12 +169,11 @@ final class ClickGuiModuleList {
                     gui.withAlpha(new Color(112, 101, 255).getRGB(), (14.0f + click * 36.0f) * alpha * gui.guiAlpha), 5, 2.8f);
         }
         if (selected) {
-            int selectedFill = new Color(55, 54, 130, 218).getRGB();
             gui.drawThemedGlass(x, y, x + rowW, y + height, 7.0f, 0.8f,
-                    gui.withAlpha(selectedFill, 218.0f * alpha * gui.guiAlpha),
-                    gui.withAlpha(new Color(132, 121, 255).getRGB(), 78.0f * alpha * gui.guiAlpha));
+                    gui.withAlpha(gui.guiColors().detailSelectedFill, 218.0f * alpha * gui.guiAlpha),
+                    gui.withAlpha(gui.guiColors().detailSelectedBorder, 78.0f * alpha * gui.guiAlpha));
         } else if (hover > 0.01f) {
-            int hoverFill = gui.blendColor(new Color(255, 255, 255, 0).getRGB(), new Color(34, 39, 52, 94).getRGB(), hover);
+            int hoverFill = gui.blendColor(new Color(0, 0, 0, 0).getRGB(), gui.guiColors().navDefaultHover, hover);
             RenderUtil.drawRoundedRect(x, y, x + rowW, y + height, VapeClickGui.CARD_RADIUS,
                     gui.withAlpha(hoverFill, gui.getAlpha(hoverFill) * alpha * gui.guiAlpha));
         }
@@ -191,7 +190,7 @@ final class ClickGuiModuleList {
         drawModuleIcon(module, x + 20.0f, centerY, selected, alpha);
         String name = gui.trim(module.getName(), FontLoaders.F14, 86.0f);
         gui.drawFont(name, x + 42.0f, y + 12.0f,
-                gui.withAlpha(enabled ? gui.guiColors().text : new Color(205, 208, 214).getRGB(), 255.0f * alpha * gui.guiAlpha));
+                gui.withAlpha(enabled ? gui.guiColors().text : gui.guiColors().muted, 255.0f * alpha * gui.guiAlpha));
         gui.drawFont(gui.trim(gui.getDescription(module), FontLoaders.F14, 90.0f), x + 42.0f, y + 27.0f,
                 gui.withAlpha(gui.guiColors().muted, 198.0f * alpha * gui.guiAlpha));
         gui.drawSwitch(gui.getModuleSwitchX(x), gui.getModuleSwitchY(y), enabled, alpha, module);
@@ -224,7 +223,7 @@ final class ClickGuiModuleList {
     }
 
     private void drawModuleIcon(Module module, float centerX, float centerY, boolean selected, float alpha) {
-        int color = gui.withAlpha(selected || module.getState() ? new Color(226, 230, 246).getRGB() : new Color(166, 174, 190).getRGB(),
+        int color = gui.withAlpha(selected || module.getState() ? gui.guiColors().text : gui.guiColors().muted,
                 220.0f * alpha * gui.guiAlpha);
         gui.drawCenteredIcon(ClickGuiIcons.forModule(module), FontLoaders.I20, centerX, centerY, color);
     }
@@ -245,7 +244,7 @@ final class ClickGuiModuleList {
         float dragBoost = gui.draggingScrollbar ? 1.0f : 0.0f;
         gui.drawSoftRect(metrics.trackX, metrics.trackY, metrics.trackX + 2.2f,
                 metrics.trackY + metrics.trackHeight, 2.0f,
-                gui.withAlpha(new Color(255, 255, 255, 32).getRGB(), 32.0f * gui.scrollbarAlpha * gui.guiAlpha));
+                gui.withAlpha(new Color(128, 128, 128, 32).getRGB(), 32.0f * gui.scrollbarAlpha * gui.guiAlpha));
         RenderUtil.drawSoftShadow(metrics.trackX, metrics.thumbY, metrics.trackX + 2.2f,
                 metrics.thumbY + metrics.thumbHeight, 2.0f,
                 gui.withAlpha(gui.guiColors().accent, (35.0f + dragBoost * 60.0f) * gui.scrollbarAlpha * gui.guiAlpha), 4, 2.0f);
