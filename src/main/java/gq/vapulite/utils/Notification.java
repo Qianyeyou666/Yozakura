@@ -17,17 +17,23 @@ public class Notification {
     public static final int SUCCESS = 3;
     public static final int MODULE = 4;
 
-    private static int TEXT() { return HUD.isLightTheme() ? 0xFF1C1E22 : 0xFFE8EAEC; }
-    private static int MUTED() { return HUD.isLightTheme() ? 0xFF606468 : 0xFFA4ADBB; }
-    private static int GLASS() { return HUD.isLightTheme() ? 0xFFEBEDF2 : 0xFF07090D; }
-    private static int GLASS_SOFT() { return HUD.isLightTheme() ? 0xFFE0E3EA : 0xFF0B0E14; }
-    private static int BORDER() { return HUD.isLightTheme() ? 0xFF6BA0C0 : 0xFF8DBED8; }
-    private static int VAPE_PRIMARY() { return HUD.isLightTheme() ? 0xFF4A5FD4 : 0xFF7C9DFF; }
-    private static int VAPE_SECONDARY() { return HUD.isLightTheme() ? 0xFF5A5EC4 : 0xFF838CEF; }
-    private static int VAPE_SURFACE() { return HUD.isLightTheme() ? 0xFFE8EBF0 : 0xFF171A20; }
-    private static int VAPE_SURFACE_VARIANT() { return HUD.isLightTheme() ? 0xFFDCE0E8 : 0xFF1E222B; }
-    private static int VAPE_ON_VARIANT() { return HUD.isLightTheme() ? 0xFF505560 : 0xFFAAB2C5; }
-    private static int shadowColor() { return HUD.isLightTheme() ? 0xFFFFFFFF : 0xFF000000; }
+    private static boolean isLightStyle() { return HUD.isLightTheme(); }
+    private static boolean isSakura() { return HUD.getTheme() == HUD.Theme.SAKURA; }
+
+    private static int TEXT() { return isLightStyle() ? 0xFF1C1E22 : 0xFFE8EAEC; }
+    private static int MUTED() { return isLightStyle() ? 0xFF606468 : 0xFFA4ADBB; }
+    private static int GLASS() { return isSakura() ? 0xFFF5EEF2 : (isLightStyle() ? 0xFFEBEDF2 : 0xFF07090D); }
+    private static int GLASS_SOFT() { return isSakura() ? 0xFFEBE0E6 : (isLightStyle() ? 0xFFE0E3EA : 0xFF0B0E14); }
+    private static int BORDER() { return isSakura() ? 0xFFD0A8B8 : (isLightStyle() ? 0xFF6BA0C0 : 0xFF8DBED8); }
+    private static int VAPE_PRIMARY() { return isSakura() ? 0xFFE090A8 : (isLightStyle() ? 0xFF6090E0 : 0xFF7C9DFF); }
+    private static int VAPE_SECONDARY() { return isSakura() ? 0xFFD88098 : (isLightStyle() ? 0xFF6888E0 : 0xFF838CEF); }
+    private static int VAPE_SURFACE() { return isSakura() ? 0xFFF0E8EC : (isLightStyle() ? 0xFFE8EBF0 : 0xFF171A20); }
+    private static int VAPE_SURFACE_VARIANT() { return isSakura() ? 0xFFE8DCE2 : (isLightStyle() ? 0xFFDCE0E8 : 0xFF1E222B); }
+    private static int VAPE_ON_VARIANT() { return isLightStyle() ? 0xFF505560 : 0xFFAAB2C5; }
+    private static int ACCENT_ALT() { return isSakura() ? 0xFFE87898 : (isLightStyle() ? 0xFF6088E8 : 0xFF8B7CFF); }
+    private static int onSurfaceColor() { return isLightStyle() ? 0xFF181A20 : 0xFFFFFFFF; }
+    private static int progressTrack() { return isLightStyle() ? 0xFF000000 : 0xFFFFFFFF; }
+    private static int shadowColor() { return isLightStyle() ? 0xFFFFFFFF : 0xFF000000; }
 
     public static Minecraft mc = Minecraft.getMinecraft();
 
@@ -103,7 +109,7 @@ public class Notification {
                 withAlpha(BORDER(), Math.round(56.0f * bodyAlpha)));
         RenderUtil.drawHorizontalGradientRect(x1 + 10.0f, y1 + 4.0f, x2 - 10.0f, y1 + 5.1f,
                 withAlpha(accent, Math.round(120.0f * bodyAlpha)),
-                withAlpha(0xFF8B7CFF, Math.round(72.0f * bodyAlpha)));
+                withAlpha(ACCENT_ALT(), Math.round(72.0f * bodyAlpha)));
 
         float iconX = x1 + 11.0f;
         float iconY = y1 + 10.0f;
@@ -123,7 +129,7 @@ public class Notification {
         }
 
         RenderUtil.drawProgressBar(x1 + 12.0f, y2 - 4.0f, x2 - 12.0f, y2 - 2.3f, 1.5f, progress,
-                withAlpha(0xFFFFFFFF, Math.round(18.0f * bodyAlpha)),
+                withAlpha(progressTrack(), Math.round(18.0f * bodyAlpha)),
                 withAlpha(accent, Math.round(190.0f * bodyAlpha)));
     }
 
@@ -150,16 +156,16 @@ public class Notification {
         RenderUtil.drawCircle(iconCenterX, iconCenterY, 0, 360, 12.0f,
                 withAlpha(VAPE_SURFACE_VARIANT(), Math.round(40.0f * bodyAlpha)));
         drawCenteredIcon(getIcon(), FontLoaders.I18, iconCenterX, iconCenterY,
-                withAlpha(0xFFFFFFFF, Math.round(238.0f * bodyAlpha)));
+                withAlpha(onSurfaceColor(), Math.round(238.0f * bodyAlpha)));
 
         FontLoaders.C16.drawString(trim(getTitle(), FontLoaders.C16, width - 64.0f),
-                x1 + 51.0f, y1 + 11.0f, withAlpha(0xFFFFFFFF, Math.round(246.0f * bodyAlpha)));
+                x1 + 51.0f, y1 + 11.0f, withAlpha(onSurfaceColor(), Math.round(246.0f * bodyAlpha)));
         if (message.length() > 0) {
             FontLoaders.C12.drawString(trim(message, FontLoaders.C12, width - 68.0f),
                     x1 + 51.0f, y1 + 29.0f, withAlpha(VAPE_ON_VARIANT(), Math.round(220.0f * bodyAlpha)));
         }
         RenderUtil.drawProgressBar(x1 + 51.0f, y2 - 5.0f, x2 - 12.0f, y2 - 3.2f, 0.9f, progress,
-                withAlpha(0xFFFFFFFF, Math.round(16.0f * bodyAlpha)),
+                withAlpha(progressTrack(), Math.round(16.0f * bodyAlpha)),
                 withAlpha(accent, Math.round(150.0f * bodyAlpha)));
     }
 

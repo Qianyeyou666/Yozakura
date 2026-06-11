@@ -489,6 +489,16 @@ public class VapeClickGui extends GuiScreen {
         return "O";
     }
 
+    int getCategoryAccent(Module module) {
+        if (module.getCategory() == ModuleType.Combat) return 0xFF8B7CFF;
+        if (module.getCategory() == ModuleType.Movement) return 0xFF70C1DC;
+        if (module.getCategory() == ModuleType.Render) return 0xFFFF8DA8;
+        if (module.getCategory() == ModuleType.Player) return 0xFF6FD39A;
+        if (module.getCategory() == ModuleType.World) return 0xFFFFC76D;
+        if (module.getCategory() == ModuleType.Config) return 0xFFB7A4FF;
+        return 0xFFD4DAE3;
+    }
+
     String getPingText() {
         try {
             if (mc.thePlayer != null && mc.getNetHandler() != null && mc.getNetHandler().getPlayerInfo(mc.thePlayer.getUniqueID()) != null) {

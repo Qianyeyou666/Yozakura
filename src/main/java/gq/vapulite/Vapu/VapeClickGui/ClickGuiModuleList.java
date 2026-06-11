@@ -173,11 +173,20 @@ final class ClickGuiModuleList {
             RenderUtil.drawSoftShadow(x, y, x + rowW, y + height, 7.0f,
                     gui.withAlpha(new Color(112, 101, 255).getRGB(), (14.0f + click * 36.0f) * alpha * gui.guiAlpha), 5, 2.8f);
         }
+        boolean enabled = module.getState();
         if (selected) {
             gui.drawThemedGlass(x, y, x + rowW, y + height, 7.0f, 0.8f,
                     gui.withAlpha(gui.guiColors().detailSelectedFill, 218.0f * alpha * gui.guiAlpha),
                     gui.withAlpha(gui.guiColors().detailSelectedBorder, 78.0f * alpha * gui.guiAlpha));
-        } else if (hover > 0.01f) {
+        } else if (enabled) {
+            int accent = gui.guiColors().accent;
+            int bgColor = gq.vapulite.Vapu.modules.render.HUD.isLightTheme()
+                    ? gui.blendColor(accent, 0xFFFFFFFF, 0.55f)   // 浅色/粉：混白提亮
+                    : gui.blendColor(accent, 0xFF000000, 0.55f);  // 暗色：混黑压深
+            RenderUtil.drawRoundedRect(x, y, x + rowW, y + height, VapeClickGui.CARD_RADIUS,
+                    gui.withAlpha(bgColor, 46.0f * alpha * gui.guiAlpha));
+        }
+        if (!selected && hover > 0.01f) {
             int hoverFill = gui.blendColor(new Color(0, 0, 0, 0).getRGB(), gui.guiColors().navDefaultHover, hover);
             RenderUtil.drawRoundedRect(x, y, x + rowW, y + height, VapeClickGui.CARD_RADIUS,
                     gui.withAlpha(hoverFill, gui.getAlpha(hoverFill) * alpha * gui.guiAlpha));

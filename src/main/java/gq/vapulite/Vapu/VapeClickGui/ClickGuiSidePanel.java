@@ -181,17 +181,17 @@ final class ClickGuiSidePanel {
                     gui.withAlpha(i == 0 && gui.selectedModule.getState() ? gui.guiColors().accent : gui.guiColors().text,
                             220.0f * gui.guiAlpha));
         }
-        List<Value> values = gui.selectedModule.getValues();
-        for (Value value : values) {
-            if (!value.isVisible() || gui.isHiddenPaletteValue(gui.selectedModule, value)) {
-                continue;
-            }
-            gui.drawFont(gui.trim(value.getName(), FontLoaders.F14, 72.0f), gui.sideX + 16.0f, y + 65.0f,
-                    gui.withAlpha(gui.guiColors().muted, 170.0f * gui.guiAlpha));
-            gui.drawFont(gui.trim(gui.getValueText(value), FontLoaders.F14, 70.0f), gui.sideX + gui.sideW - 86.0f, y + 65.0f,
-                    gui.withAlpha(gui.guiColors().text, 215.0f * gui.guiAlpha));
-            break;
-        }
+//        List<Value> values = gui.selectedModule.getValues();
+//        for (Value value : values) {
+//            if (!value.isVisible() || gui.isHiddenPaletteValue(gui.selectedModule, value)) {
+//                continue;
+//            }
+//            gui.drawFont(gui.trim(value.getName(), FontLoaders.F14, 72.0f), gui.sideX + 16.0f, y + 65.0f,
+//                    gui.withAlpha(gui.guiColors().muted, 170.0f * gui.guiAlpha));
+//            gui.drawFont(gui.trim(gui.getValueText(value), FontLoaders.F14, 70.0f), gui.sideX + gui.sideW - 86.0f, y + 65.0f,
+//                    gui.withAlpha(gui.guiColors().text, 215.0f * gui.guiAlpha));
+//            break;
+//        }
     }
 
     private void drawKeyChip(float x, float y, float w, float h, Module module) {
