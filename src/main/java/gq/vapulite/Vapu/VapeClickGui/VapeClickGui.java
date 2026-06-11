@@ -97,7 +97,7 @@ public class VapeClickGui extends GuiScreen {
                 new Color(232, 234, 236).getRGB(),
                 new Color(152, 154, 158).getRGB(),
                 new Color(83, 86, 92).getRGB(),
-                new Color(112, 193, 220).getRGB(),
+                new Color(132, 117, 255).getRGB(),
                 new Color(196, 78, 83).getRGB(),
                 new Color(7, 9, 13, 154).getRGB(),
                 new Color(7, 9, 13, 122).getRGB(),
@@ -105,7 +105,7 @@ public class VapeClickGui extends GuiScreen {
                 new Color(37, 43, 54, 190).getRGB(),
                 new Color(55, 54, 130, 218).getRGB(),
                 new Color(132, 121, 255).getRGB(),
-                new Color(112, 193, 220).getRGB(),
+                new Color(132, 117, 255).getRGB(),
                 new Color(61, 67, 82, 178).getRGB(),
                 new Color(132, 117, 255, 230).getRGB(),
                 new Color(35, 38, 62, 200).getRGB(),
@@ -145,31 +145,58 @@ public class VapeClickGui extends GuiScreen {
 
         /** 樱花/粉色主题配色 */
         static final GuiPalette SAKURA = new GuiPalette(
-                new Color(240, 230, 236, 148).getRGB(),
-                new Color(235, 225, 234, 220).getRGB(),
-                new Color(248, 240, 245, 210).getRGB(),
-                new Color(238, 228, 238, 218).getRGB(),
-                new Color(230, 205, 222, 225).getRGB(),
-                new Color(28, 30, 36).getRGB(),
-                new Color(105, 110, 120).getRGB(),
-                new Color(155, 162, 175).getRGB(),
-                new Color(220, 130, 160).getRGB(),
-                new Color(195, 60, 68).getRGB(),
-                new Color(245, 235, 240, 148).getRGB(),
-                new Color(238, 225, 234, 118).getRGB(),
-                new Color(195, 165, 182, 54).getRGB(),
-                new Color(225, 210, 222, 170).getRGB(),
-                new Color(228, 185, 205, 200).getRGB(),
-                new Color(210, 120, 158).getRGB(),
-                new Color(220, 130, 160).getRGB(),
-                new Color(215, 200, 212, 170).getRGB(),
-                new Color(210, 120, 158, 215).getRGB(),
-                new Color(230, 215, 225, 190).getRGB(),
-                new Color(220, 195, 212, 148).getRGB(),
-                new Color(215, 205, 215, 132).getRGB(),
-                new Color(235, 225, 234, 228).getRGB(),
-                new Color(255, 255, 255, 120).getRGB(),
-                new Color(255, 255, 255, 140).getRGB());
+                new Color(248, 232, 239, 108).getRGB(),
+                new Color(255, 248, 252, 244).getRGB(),
+                new Color(255, 249, 252, 246).getRGB(),
+                new Color(253, 241, 248, 248).getRGB(),
+                new Color(255, 220, 237, 242).getRGB(),
+                new Color(36, 30, 38).getRGB(),
+                new Color(122, 108, 119).getRGB(),
+                new Color(174, 154, 168).getRGB(),
+                new Color(229, 107, 157).getRGB(),
+                new Color(195, 60, 78).getRGB(),
+                new Color(255, 249, 252, 250).getRGB(),
+                new Color(255, 249, 252, 250).getRGB(),
+                new Color(226, 165, 194, 104).getRGB(),
+                new Color(255, 228, 241, 214).getRGB(),
+                new Color(250, 195, 220, 226).getRGB(),
+                new Color(226, 112, 162).getRGB(),
+                new Color(229, 107, 157).getRGB(),
+                new Color(234, 214, 226, 206).getRGB(),
+                new Color(229, 107, 157, 232).getRGB(),
+                new Color(250, 232, 242, 224).getRGB(),
+                new Color(235, 184, 208, 168).getRGB(),
+                new Color(238, 216, 228, 150).getRGB(),
+                new Color(255, 246, 251, 238).getRGB(),
+                new Color(255, 220, 236, 150).getRGB(),
+                new Color(120, 72, 96, 84).getRGB());
+
+        static final GuiPalette GRAY = new GuiPalette(
+                new Color(16, 18, 22, 132).getRGB(),
+                new Color(24, 27, 32, 232).getRGB(),
+                new Color(24, 27, 32, 220).getRGB(),
+                new Color(38, 42, 49, 228).getRGB(),
+                new Color(58, 61, 68, 236).getRGB(),
+                new Color(232, 234, 236).getRGB(),
+                new Color(168, 171, 176).getRGB(),
+                new Color(106, 110, 118).getRGB(),
+                new Color(184, 192, 204).getRGB(),
+                new Color(196, 78, 83).getRGB(),
+                new Color(18, 21, 26, 168).getRGB(),
+                new Color(24, 27, 32, 136).getRGB(),
+                new Color(190, 196, 206, 62).getRGB(),
+                new Color(54, 59, 68, 180).getRGB(),
+                new Color(70, 76, 86, 214).getRGB(),
+                new Color(204, 210, 220).getRGB(),
+                new Color(184, 192, 204).getRGB(),
+                new Color(72, 78, 88, 180).getRGB(),
+                new Color(198, 206, 218, 224).getRGB(),
+                new Color(48, 52, 60, 196).getRGB(),
+                new Color(108, 116, 130, 152).getRGB(),
+                new Color(76, 82, 92, 142).getRGB(),
+                new Color(24, 28, 34, 238).getRGB(),
+                new Color(0, 0, 0, 180).getRGB(),
+                new Color(0, 0, 0, 205).getRGB());
     }
 
     /** 根据 HUD 模块设置获取当前 GUI 配色 */
@@ -177,6 +204,9 @@ public class VapeClickGui extends GuiScreen {
         try {
             if (gq.vapulite.Vapu.modules.render.HUD.getTheme() == gq.vapulite.Vapu.modules.render.HUD.Theme.SAKURA) {
                 return GuiPalette.SAKURA;
+            }
+            if (gq.vapulite.Vapu.modules.render.HUD.getTheme() == gq.vapulite.Vapu.modules.render.HUD.Theme.GRAY) {
+                return GuiPalette.GRAY;
             }
             return gq.vapulite.Vapu.modules.render.HUD.isLightTheme() ? GuiPalette.LIGHT : GuiPalette.DARK;
         } catch (Exception e) {
@@ -201,8 +231,18 @@ public class VapeClickGui extends GuiScreen {
      * 浅色主题使用简单的圆角边框矩形，暗色主题使用毛玻璃（Frosted Glass）效果。
      */
     void drawThemedGlass(float x, float y, float x2, float y2, float radius, float strength, int fill, int border) {
+        if (gq.vapulite.Vapu.modules.render.HUD.isSakuraTheme()) {
+            int solidFill = withAlpha(guiColors().glassFill, Math.max(getAlpha(fill), 238.0f));
+            int solidBorder = withAlpha(guiColors().glassBorder, Math.max(getAlpha(border), 54.0f));
+            RenderUtil.drawRoundedBorderedRect(x, y, x2, y2, radius, strength, solidFill, solidBorder);
+            return;
+        }
         if (gq.vapulite.Vapu.modules.render.HUD.isLightTheme()) {
             RenderUtil.drawRoundedBorderedRect(x, y, x2, y2, radius, strength, fill, border);
+        } else if (gq.vapulite.Vapu.modules.render.HUD.isGrayTheme()) {
+            if (!ShaderRenderer.drawFrostedGlass(x, y, x2, y2, radius, strength, fill, border)) {
+                RenderUtil.drawRoundedBorderedRect(x, y, x2, y2, radius, strength, fill, border);
+            }
         } else {
             RenderUtil.drawFrostedGlassRect(x, y, x2, y2, radius, strength, fill, border);
         }
@@ -210,14 +250,15 @@ public class VapeClickGui extends GuiScreen {
 
     // ==================== 布局常量 ====================
     static final float NAV_H = 28.0f;            // 导航栏高度
-    static final float CARD_W = 222.0f;          // 模块卡片宽度
+    static final float CARD_W = 194.0f;          // 模块卡片宽度
     static final float CARD_H = 50.0f;           // 模块卡片高度
     static final float GAP = 10.0f;              // 面板间距
     static final float SEARCH_H = 38.0f;         // 搜索栏高度
+    static final float MODULE_PANEL_SHORTEN = 68.0f; // 左侧模块列表比主体面板短出的高度
     static final float PANEL_RADIUS = 8.0f;      // 面板圆角半径
     static final float CARD_RADIUS = 7.0f;       // 卡片圆角半径
-    static final float DETAIL_MIN_W = 350.0f;    // 详情面板最小宽度
-    static final float DETAIL_MAX_W = 560.0f;    // 详情面板最大宽度
+    static final float DETAIL_MIN_W = 300.0f;    // 详情面板最小宽度
+    static final float DETAIL_MAX_W = 360.0f;    // 详情面板最大宽度
     static final float SIDE_W = 170.0f;          // 侧边面板宽度
     static final float DETAIL_HEADER_H = 98.0f;  // 详情面板头部高度
     static final float VALUE_ROW_H = 26.0f;      // 普通值行高度
@@ -228,6 +269,7 @@ public class VapeClickGui extends GuiScreen {
     static final float SWITCH_W = 28.0f;         // 开关宽度
     static final float SWITCH_H = 14.0f;         // 开关高度
     static final float SWITCH_HIT_PAD = 5.0f;    // 开关点击区域的额外内边距
+    static final float BOTTOM_BAR_H = 86.0f;     // 底部全局控制栏高度
     static final float CLOSE_END_PROGRESS = 0.22f; // 关闭动画结束阈值
     static final float CLOSING_TEXT_CUTOFF = 0.36f; // 关闭动画中文字消失阈值
     static final int FPS_GRAPH_SAMPLES = 44;     // FPS 波形图采样数
@@ -265,6 +307,8 @@ public class VapeClickGui extends GuiScreen {
     Module bindingModule;               // 当前正在绑定的模块
     final Map<Module, Float> hoverProgress = new HashMap<Module, Float>();     // 模块悬停动画进度
     final Map<Module, Float> clickProgress = new HashMap<Module, Float>();     // 模块点击动画进度
+    final Map<Module, Float> keyChipHoverProgress = new HashMap<Module, Float>(); // 侧栏按键按钮悬停动画进度
+    final Map<Module, Float> keyChipClickProgress = new HashMap<Module, Float>(); // 侧栏按键按钮点击动画进度
     final Map<Module, Float> toggleProgress = new HashMap<Module, Float>();    // 模块开关动画进度
     final Map<GuiTab, Float> tabHoverProgress = new HashMap<GuiTab, Float>();  // 标签页悬停动画进度
     final Map<Value, Float> valueToggleProgress = new HashMap<Value, Float>(); // 设置值开关动画进度
@@ -289,6 +333,11 @@ public class VapeClickGui extends GuiScreen {
     float scrollbarAlpha;             // 滚动条透明度
     boolean draggingScrollbar;        // 是否正在拖拽滚动条
     float scrollbarDragOffset;        // 滚动条拖拽偏移
+    String draggingSidePanel;         // 当前正在拖拽的右侧面板
+    float draggingSidePanelStartMouseX;
+    float draggingSidePanelStartMouseY;
+    float draggingSidePanelStartOffsetX;
+    float draggingSidePanelStartOffsetY;
     float openProgress;              // GUI 打开动画进度 0→1
     float guiAlpha;                  // 全局 GUI 透明度
     float navIndicatorX;             // 导航栏指示器 X 坐标
@@ -305,6 +354,8 @@ public class VapeClickGui extends GuiScreen {
     float sideW;                     // 侧边面板宽度
     float windowW;                   // 窗口总宽度
     float panelH;                    // 面板高度
+    int currentMouseX;               // 当前帧鼠标 X
+    int currentMouseY;               // 当前帧鼠标 Y
     boolean sidePanelVisible;        // 侧边面板是否可见（屏幕宽度 >= 900px）
     static int detailTabIndex;       // 详情面板当前标签页索引
     String searchQuery = "";         // 搜索查询文本
@@ -326,6 +377,14 @@ public class VapeClickGui extends GuiScreen {
     long fpsGraphLastSample;         // FPS 波形图上次采样时间
     float fpsGraphSmoothed;          // FPS 平滑值
     float frameScale = 1.0f;         // 帧缩放因子（用于帧率无关动画）
+    gq.vapulite.Vapu.modules.render.HUD.Theme lastTheme = gq.vapulite.Vapu.modules.render.HUD.Theme.DARK;
+    float themeFadeProgress = 0.0f;
+    final Map<gq.vapulite.Vapu.modules.render.HUD.Theme, Float> themeSwatchProgress = new HashMap<gq.vapulite.Vapu.modules.render.HUD.Theme, Float>();
+    final Map<gq.vapulite.Vapu.modules.render.HUD.Theme, Float> themeSwatchHoverProgress = new HashMap<gq.vapulite.Vapu.modules.render.HUD.Theme, Float>();
+    final Map<gq.vapulite.Vapu.modules.render.HUD.Theme, Float> designSwatchHoverProgress = new HashMap<gq.vapulite.Vapu.modules.render.HUD.Theme, Float>();
+    float designThemeButtonHoverProgress = 0.0f;
+    float designResetButtonHoverProgress = 0.0f;
+    float designResetButtonPressProgress = 0.0f;
     final UiTheme uiTheme = UiTheme.current();                    // UI 主题
     final UiToggle reusableToggle = new UiToggle().setTheme(uiTheme); // 可复用的开关控件
     final UiTextField searchField = new UiTextField().setTheme(uiTheme).placeholder("Search modules...").maxLength(32); // 搜索文本框
@@ -357,6 +416,7 @@ public class VapeClickGui extends GuiScreen {
         closing = false;
         savedOnClose = false;
         draggingScrollbar = false;
+        draggingSidePanel = null;
         draggingNumber = null;
         draggingNumberCustomRange = false;
         draggingNumberPair = null;
@@ -372,6 +432,8 @@ public class VapeClickGui extends GuiScreen {
         fpsGraphLastSample = 0L;
         fpsGraphSmoothed = 0.0f;
         frameScale = 1.0f;
+        lastTheme = gq.vapulite.Vapu.modules.render.HUD.getTheme();
+        themeFadeProgress = 0.0f;
     }
 
     /**
@@ -381,6 +443,8 @@ public class VapeClickGui extends GuiScreen {
      */
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
+        currentMouseX = mouseX;
+        currentMouseY = mouseY;
         updateFrameScale();
         ScaledResolution sr = new ScaledResolution(mc);
         updateLayout(sr);
@@ -399,11 +463,13 @@ public class VapeClickGui extends GuiScreen {
             mc.displayGuiScreen(null);
             return;
         }
+        updateThemeTransition();
         drawBackdrop(sr);
         ShaderRenderer.invalidateFrostedGlass();
         // 更新交互状态
         if (!closing) {
             moduleList.updateScrollbarDrag(mouseY);
+            sidePanel.updateDrag(mouseX, mouseY);
             updateScroll(mouseX, mouseY);
         }
         // 颜色拖拽持续更新
@@ -423,13 +489,12 @@ public class VapeClickGui extends GuiScreen {
 
         // 渲染各区域（introY 用于打开/关闭动画的位移效果）
         float introY = (1.0f - easeOut(openProgress)) * (closing ? 18.0f : -10.0f);
-        drawBrand(introY);
         drawNavigation(mouseX, mouseY, introY);
         moduleList.render(mouseX, mouseY, introY);
         searchBar.render(mouseX, mouseY, introY);
         detailPanel.render(mouseX, mouseY, introY);
         sidePanel.render(sr, mouseX, mouseY, introY);
-        bottomBar.render(sr);
+        drawThemeFade(sr);
         super.drawScreen(mouseX, mouseY, partialTicks);
         drawKeybindOverlay(sr);
         drawToast(sr);
@@ -468,9 +533,9 @@ public class VapeClickGui extends GuiScreen {
         detailX = contentX + CARD_W + GAP;
         sideX = detailX + detailW + GAP;
         navX = detailX;
-        navW = detailW;
+        navW = detailW + (sidePanelVisible ? GAP + sideW : 0.0f);
         contentY = navY + NAV_H + 12.0f;
-        panelH = Math.max(220.0f, screenH - contentY - 48.0f);
+        panelH = Math.max(280.0f, screenH - contentY - 12.0f);
     }
 
     /**
@@ -479,7 +544,16 @@ public class VapeClickGui extends GuiScreen {
      * 包含三层：实色底色 + 顶部到中间渐变 + 中间到底部渐变（底部加深）。
      */
     void drawBackdrop(ScaledResolution sr) {
-        RenderUtil.drawRect(0, 0, sr.getScaledWidth(), sr.getScaledHeight(), withAlpha(guiColors().backdrop, 94.0f * guiAlpha));
+        RenderUtil.drawRect(0, 0, sr.getScaledWidth(), sr.getScaledHeight(), withAlpha(guiColors().backdrop, 86.0f * guiAlpha));
+        if (gq.vapulite.Vapu.modules.render.HUD.isSakuraTheme()) {
+            RenderUtil.drawGradientRect(0, 0, sr.getScaledWidth(), sr.getScaledHeight(),
+                    withAlpha(new Color(255, 234, 244, 56).getRGB(), 56.0f * guiAlpha),
+                    withAlpha(new Color(232, 198, 218, 34).getRGB(), 34.0f * guiAlpha));
+            RenderUtil.drawGradientRect(0, sr.getScaledHeight() * 0.58f, sr.getScaledWidth(), sr.getScaledHeight(),
+                    withAlpha(new Color(255, 255, 255, 0).getRGB(), 0.0f),
+                    withAlpha(new Color(248, 223, 236, 70).getRGB(), 62.0f * guiAlpha));
+            return;
+        }
         RenderUtil.drawGradientRect(0, 0, sr.getScaledWidth(), sr.getScaledHeight(),
                 withAlpha(new Color(51, 73, 99, 44).getRGB(), 44.0f * guiAlpha),
                 withAlpha(new Color(6, 8, 10, 92).getRGB(), 92.0f * guiAlpha));
@@ -488,18 +562,41 @@ public class VapeClickGui extends GuiScreen {
                 withAlpha(new Color(0, 0, 0, 130).getRGB(), 92.0f * guiAlpha));
     }
 
+    void updateThemeTransition() {
+        gq.vapulite.Vapu.modules.render.HUD.Theme current = gq.vapulite.Vapu.modules.render.HUD.getTheme();
+        if (current != lastTheme) {
+            lastTheme = current;
+            themeFadeProgress = 1.0f;
+        }
+        themeFadeProgress = animate(themeFadeProgress, 0.0f, 0.13f);
+    }
+
+    void drawThemeFade(ScaledResolution sr) {
+        if (themeFadeProgress <= 0.01f) {
+            return;
+        }
+        float eased = easeOut(themeFadeProgress);
+        int color = gq.vapulite.Vapu.modules.render.HUD.isSakuraTheme()
+                ? new Color(255, 226, 240).getRGB()
+                : gq.vapulite.Vapu.modules.render.HUD.isLightTheme()
+                ? new Color(230, 238, 248).getRGB()
+                : new Color(20, 24, 32).getRGB();
+        RenderUtil.drawRect(0, 0, sr.getScaledWidth(), sr.getScaledHeight(),
+                withAlpha(color, 34.0f * eased * guiAlpha));
+    }
+
     /**
-     * 绘制左上角品牌标识（VAPE + V4 标签 + 副标题）。
+     * 绘制顶部用户区和分类导航共用的连体背景。
      */
-    void drawBrand(float introY) {
-        float x = contentX + 4.0f;
-        float y = navY + 1.0f + introY * 0.35f;
-        FontLoaders.F18.drawString("VAPE", x, y, withAlpha(guiColors().text, 255.0f * guiAlpha));
-        drawSoftRect(x + 42.0f, y + 1.0f, x + 61.0f, y + 12.0f, 4.0f,
-                withAlpha(guiColors().detailSelectedFill, 180.0f * guiAlpha));
-        drawCenteredText("V4", x + 42.0f, y + 2.0f, x + 61.0f, y + 12.0f,
-                withAlpha(new Color(154, 148, 255).getRGB(), 230.0f * guiAlpha));
-        drawFont("Material 3 x VapuLite", x, y + 18.0f, withAlpha(guiColors().muted, 190.0f * guiAlpha));
+    void drawTopBarBackground(float introY) {
+        float x = contentX;
+        float y = navY + introY;
+        float right = navX + navW;
+        RenderUtil.drawSoftShadow(x, y, right, y + NAV_H, 9.0f,
+                withAlpha(shadowColor(210), 70.0f * guiAlpha), 7, 5.0f);
+        drawThemedGlass(x, y, right, y + NAV_H, 9.0f, 1.0f,
+                withAlpha(guiColors().glassFillSoft, 186.0f * guiAlpha),
+                withAlpha(guiColors().glassBorder, 52.0f * guiAlpha));
     }
 
     /**
@@ -510,7 +607,6 @@ public class VapeClickGui extends GuiScreen {
      */
     void drawNavigation(int mouseX, int mouseY, float introY) {
         float y = navY + introY;
-        // 导航栏背景
         RenderUtil.drawSoftShadow(navX, y, navX + navW, y + NAV_H, 9.0f,
                 withAlpha(shadowColor(210), 70.0f * guiAlpha), 7, 5.0f);
         drawThemedGlass(navX, y, navX + navW, y + NAV_H, 9.0f, 1.0f,
@@ -720,7 +816,7 @@ public class VapeClickGui extends GuiScreen {
      */
     void updateScroll(int mouseX, int mouseY) {
         int wheel = Mouse.getDWheel();
-        if (draggingScrollbar || wheel == 0) {
+        if (draggingScrollbar || draggingSidePanel != null || wheel == 0) {
             return;
         }
         if (detailPanel.updateScroll(mouseX, mouseY, wheel)) {
@@ -739,6 +835,7 @@ public class VapeClickGui extends GuiScreen {
         if (bindingModule != null) {
             return;
         }
+        ScaledResolution sr = new ScaledResolution(mc);
         if (closing || searchBar.mouseClicked(mouseX, mouseY, mouseButton) || handleNavClick(mouseX, mouseY)
                 || moduleList.handleScrollbarClick(mouseX, mouseY, mouseButton) || detailPanel.mouseClicked(mouseX, mouseY, mouseButton)
                 || sidePanel.mouseClicked(mouseX, mouseY, mouseButton)) {
@@ -784,7 +881,22 @@ public class VapeClickGui extends GuiScreen {
         draggingNumberPair = null;
         clearDraggingColor();
         draggingScrollbar = false;
+        draggingSidePanel = null;
         super.mouseReleased(mouseX, mouseY, state);
+    }
+
+    void resetUiLayout() {
+        ClickGUI.windowX.setValue(-1.0);
+        ClickGUI.windowY.setValue(-1.0);
+        ClickGUI.sideStatsOffsetX.setValue(0.0);
+        ClickGUI.sideStatsOffsetY.setValue(0.0);
+        ClickGUI.sideSummaryOffsetX.setValue(0.0);
+        ClickGUI.sideSummaryOffsetY.setValue(0.0);
+        ClickGUI.sideDesignOffsetX.setValue(0.0);
+        ClickGUI.sideDesignOffsetY.setValue(0.0);
+        draggingSidePanel = null;
+        designResetButtonPressProgress = 1.0f;
+        addToast("UI layout reset");
     }
 
     /**
@@ -837,7 +949,12 @@ public class VapeClickGui extends GuiScreen {
 
     /** @return 列表可视区域高度 */
     float getListHeight() {
-        return Math.max(120.0f, panelH - SEARCH_H - 52.0f);
+        return Math.max(120.0f, getModulePanelHeight() - SEARCH_H - 52.0f);
+    }
+
+    /** @return 左侧模块列表面板高度，独立短于右侧主体面板 */
+    float getModulePanelHeight() {
+        return Math.max(220.0f, panelH - MODULE_PANEL_SHORTEN);
     }
 
     /** @return 模块列表起始 Y 坐标 */
@@ -1159,7 +1276,7 @@ public class VapeClickGui extends GuiScreen {
     }
 
     float getModuleSwitchX(float cardX) {
-        return cardX + CARD_W - SWITCH_W - 62.0f;
+        return cardX + CARD_W - SWITCH_W - 54.0f;
     }
 
     float getModuleSwitchY(float cardY) {

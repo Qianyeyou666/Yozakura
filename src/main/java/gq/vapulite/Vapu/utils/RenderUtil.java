@@ -1,6 +1,7 @@
 package gq.vapulite.Vapu.utils;
 
 import gq.vapulite.render.RenderState;
+import gq.vapulite.render.Blur;
 import gq.vapulite.render.ShaderRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
@@ -506,6 +507,10 @@ public class RenderUtil {
 
         RenderState.begin2D();
         try {
+            if (Blur.drawBlur(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
+                    radius, borderWidth, fillColor, borderColor)) {
+                return;
+            }
             if (ShaderRenderer.drawFrostedGlass(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
                     radius, borderWidth, fillColor, borderColor)) {
                 return;

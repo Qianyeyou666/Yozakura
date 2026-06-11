@@ -6,9 +6,11 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL20;
+import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GLContext;
 
 import java.nio.ByteBuffer;
+import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.HashMap;
 import java.util.Map;
@@ -35,10 +37,20 @@ public final class ShaderRenderer {
     private static Program lineProgram;
     private static Program circleBadgeProgram;
     private static Program frostedGlassProgram;
+    private static Program copyProgram;
+    private static Program gaussianBlurProgram;
     private static final IntBuffer VIEWPORT_BUFFER = BufferUtils.createIntBuffer(16);
+    private static final FloatBuffer GAUSSIAN_WEIGHT_BUFFER = BufferUtils.createFloatBuffer(256);
     private static int screenTexture;
+    private static int blurTextureA;
+    private static int blurTextureB;
+    private static int blurFramebufferA;
+    private static int blurFramebufferB;
     private static int capturedWidth;
     private static int capturedHeight;
+    private static int blurWidth;
+    private static int blurHeight;
+    private static boolean frostedBlurReady;
     private static boolean frostedGlassDirty = true;
     private static boolean disabled;
     private static boolean loggedFailure;
@@ -48,6 +60,7 @@ public final class ShaderRenderer {
 
     public static void invalidateFrostedGlass() {
         frostedGlassDirty = true;
+        Blur.invalidate();
     }
 
     public static boolean drawRect(float left, float top, float right, float bottom, int color) {
@@ -202,12 +215,16 @@ public final class ShaderRenderer {
         try {
             GL13.glActiveTexture(GL13.GL_TEXTURE0);
             GL11.glEnable(GL11.GL_TEXTURE_2D);
-            GL11.glBindTexture(GL11.GL_TEXTURE_2D, screenTexture);
+            int sourceTexture = frostedBlurReady ? blurTextureB : screenTexture;
+            int sourceWidth = frostedBlurReady ? blurWidth : capturedWidth;
+            int sourceHeight = frostedBlurReady ? blurHeight : capturedHeight;
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, sourceTexture);
             setRoundedUniforms(program, width, height, radius);
             program.set1f("borderWidth", clampedBorder);
-            program.set1f("grainStrength", 0.028f);
-            program.set1f("blurRadius", 4.6f);
-            program.set2f("screenSize", capturedWidth, capturedHeight);
+            program.set1f("grainStrength", 0.0f);
+            program.set1f("blurRadius", 13.5f);
+            program.set2f("screenSize", sourceWidth, sourceHeight);
+            program.set2f("viewportSize", capturedWidth, capturedHeight);
             program.set1i("screenTex", 0);
             setColor(program, "fillColor", fillColor);
             setColor(program, "borderColor", borderColor);
@@ -370,15 +387,147 @@ public final class ShaderRenderer {
                 capturedWidth = viewportW;
                 capturedHeight = viewportH;
                 frostedGlassDirty = true;
+                frostedBlurReady = false;
             }
             if (frostedGlassDirty) {
                 GL11.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, viewportX, viewportY, viewportW, viewportH);
+                frostedBlurReady = buildFrostedBlur(viewportW, viewportH);
                 frostedGlassDirty = false;
             }
             return true;
         } finally {
             restoreTexture0State(textureState);
         }
+    }
+
+    private static boolean buildFrostedBlur(int width, int height) {
+        if (!supportsFramebufferBlur() || width <= 0 || height <= 0
+                || getCopyProgram() == null || getGaussianBlurProgram() == null) {
+            return false;
+        }
+        int targetWidth = Math.max(1, width / 2);
+        int targetHeight = Math.max(1, height / 2);
+        int previousFramebuffer = GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
+        VIEWPORT_BUFFER.clear();
+        GL11.glGetInteger(GL11.GL_VIEWPORT, VIEWPORT_BUFFER);
+        int previousViewportX = VIEWPORT_BUFFER.get(0);
+        int previousViewportY = VIEWPORT_BUFFER.get(1);
+        int previousViewportW = VIEWPORT_BUFFER.get(2);
+        int previousViewportH = VIEWPORT_BUFFER.get(3);
+        try {
+            if (!ensureBlurTargets(targetWidth, targetHeight)) {
+                return false;
+            }
+            blurWidth = targetWidth;
+            blurHeight = targetHeight;
+            copyTextureToTarget(screenTexture, blurFramebufferA, targetWidth, targetHeight);
+            runBlurPass(blurTextureA, blurFramebufferB, targetWidth, targetHeight, 1.0f, 0.0f);
+            runBlurPass(blurTextureB, blurFramebufferA, targetWidth, targetHeight, 0.0f, 1.0f);
+            runBlurPass(blurTextureA, blurFramebufferB, targetWidth, targetHeight, 1.0f, 0.0f);
+            runBlurPass(blurTextureB, blurFramebufferA, targetWidth, targetHeight, 0.0f, 1.0f);
+            return true;
+        } catch (Throwable throwable) {
+            logFailure(throwable);
+            return false;
+        } finally {
+            GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, previousFramebuffer);
+            GL11.glViewport(previousViewportX, previousViewportY, previousViewportW, previousViewportH);
+        }
+    }
+
+    private static boolean ensureBlurTargets(int width, int height) {
+        if (blurTextureA == 0) {
+            blurTextureA = GL11.glGenTextures();
+        }
+        if (blurTextureB == 0) {
+            blurTextureB = GL11.glGenTextures();
+        }
+        if (blurFramebufferA == 0) {
+            blurFramebufferA = GL30.glGenFramebuffers();
+        }
+        if (blurFramebufferB == 0) {
+            blurFramebufferB = GL30.glGenFramebuffers();
+        }
+        setupBlurTexture(blurTextureA, width, height);
+        setupBlurTexture(blurTextureB, width, height);
+        return attachBlurTarget(blurFramebufferA, blurTextureA) && attachBlurTarget(blurFramebufferB, blurTextureB);
+    }
+
+    private static void setupBlurTexture(int texture, int width, int height) {
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, texture);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGB, width, height, 0,
+                GL11.GL_RGB, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
+    }
+
+    private static boolean attachBlurTarget(int framebuffer, int texture) {
+        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, framebuffer);
+        GL30.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, texture, 0);
+        return GL30.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER) == GL30.GL_FRAMEBUFFER_COMPLETE;
+    }
+
+    private static void copyTextureToTarget(int sourceTexture, int framebuffer, int width, int height) {
+        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, framebuffer);
+        GL11.glViewport(0, 0, width, height);
+        Program program = getCopyProgram();
+        ShaderState shaderState = beginProgram(program);
+        try {
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            GL11.glEnable(GL11.GL_TEXTURE_2D);
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, sourceTexture);
+            program.set1i("screenTex", 0);
+            drawFullscreenPassQuad();
+        } finally {
+            endProgram(shaderState);
+        }
+    }
+
+    private static void runBlurPass(int sourceTexture, int framebuffer, int width, int height, float dirX, float dirY) {
+        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, framebuffer);
+        GL11.glViewport(0, 0, width, height);
+        Program program = getGaussianBlurProgram();
+        ShaderState shaderState = beginProgram(program);
+        try {
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            GL11.glEnable(GL11.GL_TEXTURE_2D);
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, sourceTexture);
+            program.set1i("screenTex", 0);
+            float radius = 18.0f;
+            program.set2f("texelSize", 1.0f / Math.max(1.0f, width), 1.0f / Math.max(1.0f, height));
+            program.set2f("direction", dirX * 2.0f, dirY * 2.0f);
+            program.set1f("radius", radius);
+            setGaussianWeights(program, radius);
+            drawFullscreenPassQuad();
+        } finally {
+            endProgram(shaderState);
+        }
+    }
+
+    private static boolean supportsFramebufferBlur() {
+        try {
+            return GLContext.getCapabilities() != null && GLContext.getCapabilities().OpenGL30;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private static void setGaussianWeights(Program program, float radius) {
+        float sigma = Math.max(radius / 2.0f, 0.001f);
+        GAUSSIAN_WEIGHT_BUFFER.clear();
+        for (int i = 0; i < 256; i++) {
+            float weight = i <= radius ? calculateGaussianValue(i, sigma) : 0.0f;
+            GAUSSIAN_WEIGHT_BUFFER.put(weight);
+        }
+        GAUSSIAN_WEIGHT_BUFFER.flip();
+        GL20.glUniform1(program.uniform("weights"), GAUSSIAN_WEIGHT_BUFFER);
+    }
+
+    private static float calculateGaussianValue(float x, float sigma) {
+        double output = 1.0D / Math.sqrt(2.0D * Math.PI * sigma * sigma);
+        return (float) (output * Math.exp(-(x * x) / (2.0D * sigma * sigma)));
     }
 
     private static void setRoundedUniforms(Program program, float width, float height, float radius) {
@@ -471,6 +620,20 @@ public final class ShaderRenderer {
             frostedGlassProgram = createProgram(FROSTED_GLASS_FRAGMENT);
         }
         return frostedGlassProgram;
+    }
+
+    private static Program getCopyProgram() {
+        if (copyProgram == null) {
+            copyProgram = createProgram(TEXTURE_COPY_FRAGMENT);
+        }
+        return copyProgram;
+    }
+
+    private static Program getGaussianBlurProgram() {
+        if (gaussianBlurProgram == null) {
+            gaussianBlurProgram = createProgram(GAUSSIAN_BLUR_FRAGMENT);
+        }
+        return gaussianBlurProgram;
     }
 
     private static Program createProgram(String fragmentSource) {
@@ -630,6 +793,32 @@ public final class ShaderRenderer {
         GL11.glTexCoord2f(1.0f, 0.0f);
         GL11.glVertex2f(drawRight, drawTop);
         GL11.glEnd();
+    }
+
+    private static void drawFullscreenPassQuad() {
+        GL11.glMatrixMode(GL11.GL_PROJECTION);
+        GL11.glPushMatrix();
+        GL11.glLoadIdentity();
+        GL11.glMatrixMode(GL11.GL_MODELVIEW);
+        GL11.glPushMatrix();
+        GL11.glLoadIdentity();
+        try {
+            GL11.glBegin(GL11.GL_QUADS);
+            GL11.glTexCoord2f(0.0f, 0.0f);
+            GL11.glVertex2f(-1.0f, -1.0f);
+            GL11.glTexCoord2f(1.0f, 0.0f);
+            GL11.glVertex2f(1.0f, -1.0f);
+            GL11.glTexCoord2f(1.0f, 1.0f);
+            GL11.glVertex2f(1.0f, 1.0f);
+            GL11.glTexCoord2f(0.0f, 1.0f);
+            GL11.glVertex2f(-1.0f, 1.0f);
+            GL11.glEnd();
+        } finally {
+            GL11.glPopMatrix();
+            GL11.glMatrixMode(GL11.GL_PROJECTION);
+            GL11.glPopMatrix();
+            GL11.glMatrixMode(GL11.GL_MODELVIEW);
+        }
     }
 
     private static final class Program {
@@ -970,6 +1159,36 @@ public final class ShaderRenderer {
             "    gl_FragColor = vec4(rgb, alpha);\n" +
             "}\n";
 
+    private static final String TEXTURE_COPY_FRAGMENT =
+            "#version 120\n" +
+            "uniform sampler2D screenTex;\n" +
+            "void main() {\n" +
+            "    gl_FragColor = texture2D(screenTex, gl_TexCoord[0].st);\n" +
+            "}\n";
+
+    private static final String GAUSSIAN_BLUR_FRAGMENT =
+            "#version 120\n" +
+            "uniform sampler2D screenTex;\n" +
+            "uniform vec2 texelSize, direction;\n" +
+            "uniform float radius;\n" +
+            "uniform float weights[256];\n" +
+            "#define offset texelSize * direction\n" +
+            "vec2 safeUv(vec2 uv) {\n" +
+            "    return clamp(uv, vec2(0.0015), vec2(0.9985));\n" +
+            "}\n" +
+            "void main() {\n" +
+            "    vec2 uv = gl_TexCoord[0].st;\n" +
+            "    vec3 color = texture2D(screenTex, safeUv(uv)).rgb * weights[0];\n" +
+            "    float totalWeight = weights[0];\n" +
+            "    for (float f = 1.0; f <= radius; f++) {\n" +
+            "        float weight = weights[int(abs(f))];\n" +
+            "        color += texture2D(screenTex, safeUv(uv + f * offset)).rgb * weight;\n" +
+            "        color += texture2D(screenTex, safeUv(uv - f * offset)).rgb * weight;\n" +
+            "        totalWeight += weight * 2.0;\n" +
+            "    }\n" +
+            "    gl_FragColor = vec4(color / max(totalWeight, 0.0001), 1.0);\n" +
+            "}\n";
+
     private static final String FROSTED_GLASS_FRAGMENT =
             "#version 120\n" +
             "uniform vec2 rectSize;\n" +
@@ -977,6 +1196,7 @@ public final class ShaderRenderer {
             "uniform vec4 borderColor;\n" +
             "uniform sampler2D screenTex;\n" +
             "uniform vec2 screenSize;\n" +
+            "uniform vec2 viewportSize;\n" +
             "uniform float radius;\n" +
             "uniform float borderWidth;\n" +
             "uniform float padding;\n" +
@@ -990,18 +1210,69 @@ public final class ShaderRenderer {
             "float noise(vec2 p) {\n" +
             "    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);\n" +
             "}\n" +
-            "vec4 blurSample(vec2 uv) {\n" +
+            "float softNoise(vec2 p) {\n" +
+            "    vec2 i = floor(p);\n" +
+            "    vec2 f = fract(p);\n" +
+            "    f = f * f * (3.0 - 2.0 * f);\n" +
+            "    float a = noise(i);\n" +
+            "    float b = noise(i + vec2(1.0, 0.0));\n" +
+            "    float c = noise(i + vec2(0.0, 1.0));\n" +
+            "    float d = noise(i + vec2(1.0, 1.0));\n" +
+            "    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);\n" +
+            "}\n" +
+            "vec3 bloomPick(vec3 color) {\n" +
+            "    float luma = dot(color, vec3(0.299, 0.587, 0.114));\n" +
+            "    float mask = smoothstep(0.46, 0.94, luma);\n" +
+            "    return color * mask;\n" +
+            "}\n" +
+            "vec2 safeUv(vec2 uv) {\n" +
+            "    return clamp(uv, vec2(0.0015), vec2(0.9985));\n" +
+            "}\n" +
+            "vec4 glassBlur(vec2 uv) {\n" +
             "    vec2 texel = 1.0 / max(screenSize, vec2(1.0));\n" +
-            "    vec2 radiusVec = texel * blurRadius;\n" +
-            "    vec4 c = texture2D(screenTex, uv) * 0.160;\n" +
-            "    c += texture2D(screenTex, uv + radiusVec * vec2(-1.0, 0.0)) * 0.120;\n" +
-            "    c += texture2D(screenTex, uv + radiusVec * vec2(1.0, 0.0)) * 0.120;\n" +
-            "    c += texture2D(screenTex, uv + radiusVec * vec2(0.0, -1.0)) * 0.120;\n" +
-            "    c += texture2D(screenTex, uv + radiusVec * vec2(0.0, 1.0)) * 0.120;\n" +
-            "    c += texture2D(screenTex, uv + radiusVec * vec2(-0.72, -0.72)) * 0.090;\n" +
-            "    c += texture2D(screenTex, uv + radiusVec * vec2(0.72, -0.72)) * 0.090;\n" +
-            "    c += texture2D(screenTex, uv + radiusVec * vec2(-0.72, 0.72)) * 0.090;\n" +
-            "    c += texture2D(screenTex, uv + radiusVec * vec2(0.72, 0.72)) * 0.090;\n" +
+            "    vec2 r1 = texel * blurRadius;\n" +
+            "    vec2 r2 = r1 * 2.15;\n" +
+            "    vec2 r3 = r1 * 3.65;\n" +
+            "    vec4 c = texture2D(screenTex, safeUv(uv)) * 0.150;\n" +
+            "    c += texture2D(screenTex, safeUv(uv + r1 * vec2( 1.0,  0.0))) * 0.082;\n" +
+            "    c += texture2D(screenTex, safeUv(uv + r1 * vec2(-1.0,  0.0))) * 0.082;\n" +
+            "    c += texture2D(screenTex, safeUv(uv + r1 * vec2( 0.0,  1.0))) * 0.082;\n" +
+            "    c += texture2D(screenTex, safeUv(uv + r1 * vec2( 0.0, -1.0))) * 0.082;\n" +
+            "    c += texture2D(screenTex, safeUv(uv + r1 * vec2( 0.72,  0.72))) * 0.060;\n" +
+            "    c += texture2D(screenTex, safeUv(uv + r1 * vec2(-0.72,  0.72))) * 0.060;\n" +
+            "    c += texture2D(screenTex, safeUv(uv + r1 * vec2( 0.72, -0.72))) * 0.060;\n" +
+            "    c += texture2D(screenTex, safeUv(uv + r1 * vec2(-0.72, -0.72))) * 0.060;\n" +
+            "    c += texture2D(screenTex, safeUv(uv + r2 * vec2( 1.0,  0.0))) * 0.043;\n" +
+            "    c += texture2D(screenTex, safeUv(uv + r2 * vec2(-1.0,  0.0))) * 0.043;\n" +
+            "    c += texture2D(screenTex, safeUv(uv + r2 * vec2( 0.0,  1.0))) * 0.043;\n" +
+            "    c += texture2D(screenTex, safeUv(uv + r2 * vec2( 0.0, -1.0))) * 0.043;\n" +
+            "    c += texture2D(screenTex, safeUv(uv + r2 * vec2( 0.72,  0.72))) * 0.030;\n" +
+            "    c += texture2D(screenTex, safeUv(uv + r2 * vec2(-0.72,  0.72))) * 0.030;\n" +
+            "    c += texture2D(screenTex, safeUv(uv + r2 * vec2( 0.72, -0.72))) * 0.030;\n" +
+            "    c += texture2D(screenTex, safeUv(uv + r2 * vec2(-0.72, -0.72))) * 0.030;\n" +
+            "    c += texture2D(screenTex, safeUv(uv + r3 * vec2( 0.90,  0.44))) * 0.019;\n" +
+            "    c += texture2D(screenTex, safeUv(uv + r3 * vec2(-0.90,  0.44))) * 0.019;\n" +
+            "    c += texture2D(screenTex, safeUv(uv + r3 * vec2( 0.44, -0.90))) * 0.019;\n" +
+            "    c += texture2D(screenTex, safeUv(uv + r3 * vec2(-0.44, -0.90))) * 0.019;\n" +
+            "    return c / 1.039;\n" +
+            "}\n" +
+            "vec3 bokehGlow(vec2 uv) {\n" +
+            "    vec2 texel = 1.0 / max(screenSize, vec2(1.0));\n" +
+            "    vec2 r = texel * blurRadius * 4.8;\n" +
+            "    vec3 c = vec3(0.0);\n" +
+            "    c += bloomPick(texture2D(screenTex, safeUv(uv + r * vec2( 1.00,  0.00))).rgb) * 0.095;\n" +
+            "    c += bloomPick(texture2D(screenTex, safeUv(uv + r * vec2( 0.70,  0.70))).rgb) * 0.088;\n" +
+            "    c += bloomPick(texture2D(screenTex, safeUv(uv + r * vec2( 0.00,  1.00))).rgb) * 0.095;\n" +
+            "    c += bloomPick(texture2D(screenTex, safeUv(uv + r * vec2(-0.70,  0.70))).rgb) * 0.088;\n" +
+            "    c += bloomPick(texture2D(screenTex, safeUv(uv + r * vec2(-1.00,  0.00))).rgb) * 0.095;\n" +
+            "    c += bloomPick(texture2D(screenTex, safeUv(uv + r * vec2(-0.70, -0.70))).rgb) * 0.088;\n" +
+            "    c += bloomPick(texture2D(screenTex, safeUv(uv + r * vec2( 0.00, -1.00))).rgb) * 0.095;\n" +
+            "    c += bloomPick(texture2D(screenTex, safeUv(uv + r * vec2( 0.70, -0.70))).rgb) * 0.088;\n" +
+            "    vec2 r2 = r * 1.85;\n" +
+            "    c += bloomPick(texture2D(screenTex, safeUv(uv + r2 * vec2( 0.92,  0.38))).rgb) * 0.055;\n" +
+            "    c += bloomPick(texture2D(screenTex, safeUv(uv + r2 * vec2(-0.92,  0.38))).rgb) * 0.055;\n" +
+            "    c += bloomPick(texture2D(screenTex, safeUv(uv + r2 * vec2( 0.38, -0.92))).rgb) * 0.055;\n" +
+            "    c += bloomPick(texture2D(screenTex, safeUv(uv + r2 * vec2(-0.38, -0.92))).rgb) * 0.055;\n" +
             "    return c;\n" +
             "}\n" +
             "void main() {\n" +
@@ -1017,17 +1288,28 @@ public final class ShaderRenderer {
             "    float innerDistance = roundSDF(coord - halfSize, innerHalf, innerRadius);\n" +
             "    float innerAlpha = 1.0 - smoothstep(0.0, softness, innerDistance);\n" +
             "    float borderMask = clamp(outerAlpha - innerAlpha, 0.0, 1.0);\n" +
-            "    float grain = noise(gl_FragCoord.xy * 0.85) - 0.5;\n" +
-            "    float topGlow = (1.0 - st.y) * 0.035;\n" +
-            "    float sideGlow = (1.0 - st.x) * 0.012;\n" +
-            "    vec2 screenUv = clamp(gl_FragCoord.xy / max(screenSize, vec2(1.0)), vec2(0.001), vec2(0.999));\n" +
-            "    vec2 refractUv = screenUv + vec2(noise(gl_FragCoord.yx * 0.13) - 0.5, grain) / max(screenSize, vec2(1.0)) * 2.4;\n" +
-            "    vec3 blurred = blurSample(refractUv).rgb;\n" +
+            "    float grain = 0.0;\n" +
+            "    float fineGrain = 0.0;\n" +
+            "    float fog = softNoise(gl_FragCoord.xy * 0.018) - 0.5;\n" +
+            "    float topGlow = (1.0 - st.y) * 0.052;\n" +
+            "    float sideGlow = (1.0 - st.x) * 0.018;\n" +
+            "    vec2 screenUv = safeUv(gl_FragCoord.xy / max(viewportSize, vec2(1.0)));\n" +
+            "    vec2 refractUv = screenUv + vec2(noise(gl_FragCoord.yx * 0.13) - 0.5, grain + fog * 0.65) / max(screenSize, vec2(1.0)) * 7.0;\n" +
+            "    vec3 blurred = glassBlur(refractUv).rgb;\n" +
+            "    vec3 bokeh = bokehGlow(refractUv);\n" +
+            "    float luma = dot(blurred, vec3(0.299, 0.587, 0.114));\n" +
+            "    blurred = mix(vec3(luma), blurred, 0.82);\n" +
+            "    blurred = mix(blurred, vec3(0.5) + (blurred - vec3(0.5)) * 0.78, 0.55);\n" +
             "    vec3 tint = fillColor.rgb + vec3(topGlow + sideGlow + grain * grainStrength);\n" +
-            "    vec3 glass = mix(blurred, tint, clamp(fillColor.a * 0.65 + 0.24, 0.0, 0.78));\n" +
-            "    vec3 edge = mix(glass, borderColor.rgb + vec3(0.06), clamp(borderColor.a * 3.2, 0.0, 1.0));\n" +
-            "    float fillAlpha = clamp(fillColor.a * 0.78 + 0.045, 0.0, 0.80) * innerAlpha;\n" +
-            "    float borderAlpha = borderColor.a * borderMask;\n" +
+            "    float tintAmount = clamp(fillColor.a * 0.36 + 0.13, 0.16, 0.50);\n" +
+            "    vec3 glass = mix(blurred, tint, tintAmount);\n" +
+            "    glass += bokeh * 0.72;\n" +
+            "    glass += vec3(0.030 * (1.0 - st.y) + 0.010 * (1.0 - st.x));\n" +
+            "    glass += vec3(fog * 0.026);\n" +
+            "    glass = mix(glass, glass + fillColor.rgb * 0.10, smoothstep(0.35, 1.0, length(bokeh)));\n" +
+            "    vec3 edge = mix(glass, borderColor.rgb + vec3(0.10), clamp(borderColor.a * 3.4, 0.0, 1.0));\n" +
+            "    float fillAlpha = clamp(fillColor.a * 0.56 + 0.070, 0.10, 0.66) * innerAlpha;\n" +
+            "    float borderAlpha = borderColor.a * borderMask * 1.08;\n" +
             "    float totalAlpha = max(fillAlpha, borderAlpha);\n" +
             "    vec3 rgb = mix(glass, edge, borderMask);\n" +
             "    gl_FragColor = vec4(clamp(rgb, 0.0, 1.0), totalAlpha);\n" +

@@ -1,6 +1,7 @@
 package gq.vapulite.Vapu.utils;
 
 import gq.vapulite.Vapu.value.Numbers;
+import gq.vapulite.Vapu.VapeClickGui.VapeClickGui;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.client.gui.ScaledResolution;
@@ -34,8 +35,12 @@ public final class HudDrag {
         x = clamp(x, 2.0f, Math.max(2.0f, sr.getScaledWidth() - width - 2.0f));
         y = clamp(y, 2.0f, Math.max(2.0f, sr.getScaledHeight() - height - 2.0f));
 
-        if (!isEditMode()) {
+        if (!isEditMode() || isClickGuiOpen()) {
             if (!Mouse.isButtonDown(0)) {
+                activeId = null;
+                selectedId = null;
+            }
+            if (isClickGuiOpen()) {
                 activeId = null;
                 selectedId = null;
             }
@@ -67,7 +72,7 @@ public final class HudDrag {
     }
 
     public static void drawHint(String id, float x, float y, float width, float height, float radius) {
-        if (!isEditMode()) {
+        if (!isEditMode() || isClickGuiOpen()) {
             return;
         }
         ScaledResolution sr = new ScaledResolution(MC);
@@ -102,6 +107,10 @@ public final class HudDrag {
 
     public static boolean isSelected(String id) {
         return id != null && id.equals(selectedId);
+    }
+
+    private static boolean isClickGuiOpen() {
+        return MC.currentScreen instanceof VapeClickGui;
     }
 
     private static float resolvePosition(Numbers<Double> value, float fallback) {

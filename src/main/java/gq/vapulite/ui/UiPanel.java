@@ -1,6 +1,7 @@
 package gq.vapulite.ui;
 
 import gq.vapulite.Vapu.utils.RenderUtil;
+import gq.vapulite.render.ShaderRenderer;
 
 import java.awt.Color;
 
@@ -71,8 +72,18 @@ public class UiPanel extends UiComponent {
         }
         int f = theme.withAlpha(fillColor, ((fillColor >>> 24) & 255) * alpha);
         int b = theme.withAlpha(borderColor, ((borderColor >>> 24) & 255) * alpha);
+        if (gq.vapulite.Vapu.modules.render.HUD.isSakuraTheme()) {
+            f = theme.withAlpha(theme.panel, Math.max((theme.panel >>> 24) & 255, 238) * alpha);
+            b = theme.withAlpha(theme.panelBorder, Math.max((theme.panelBorder >>> 24) & 255, 58) * alpha);
+            RenderUtil.drawRoundedBorderedRect(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, borderWidth, f, b);
+            return;
+        }
         if (gq.vapulite.Vapu.modules.render.HUD.isLightTheme()) {
             RenderUtil.drawRoundedBorderedRect(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, borderWidth, f, b);
+        } else if (gq.vapulite.Vapu.modules.render.HUD.isGrayTheme()) {
+            if (!ShaderRenderer.drawFrostedGlass(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, borderWidth, f, b)) {
+                RenderUtil.drawRoundedBorderedRect(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, borderWidth, f, b);
+            }
         } else {
             RenderUtil.drawFrostedGlassRect(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, borderWidth, f, b);
         }

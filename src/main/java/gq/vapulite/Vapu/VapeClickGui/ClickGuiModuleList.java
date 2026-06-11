@@ -49,9 +49,10 @@ final class ClickGuiModuleList {
         // 平滑滚动动画
         gui.listScroll = gui.animate(gui.listScroll, gui.targetListScroll, 0.12f);
         float listHeight = gui.getListHeight();
+        float modulePanelHeight = gui.getModulePanelHeight();
         float panelY = gui.contentY + introY;
         // 绘制列表面板背景
-        panel.setBounds(gui.contentX, panelY, VapeClickGui.CARD_W, gui.panelH)
+        panel.setBounds(gui.contentX, panelY, VapeClickGui.CARD_W, modulePanelHeight)
                 .radius(VapeClickGui.PANEL_RADIUS)
                 .fill(gui.guiColors().glassFill)
                 .border(gui.guiColors().glassBorder)
@@ -81,7 +82,7 @@ final class ClickGuiModuleList {
             gui.endScissor();
         }
         // 绘制底部模块计数和滚动条
-        drawModuleCount(panelY);
+        drawModuleCount(panelY, modulePanelHeight);
         drawScrollbar(drawContentY, listHeight);
     }
 
@@ -274,11 +275,11 @@ final class ClickGuiModuleList {
         float centerY = y + 24.0f;
         drawModuleIcon(module, x + 20.0f, centerY, selected, alpha);
         // 模块名称
-        String name = gui.trim(module.getName(), FontLoaders.F14, 86.0f);
+        String name = gui.trim(module.getName(), FontLoaders.F14, 66.0f);
         gui.drawFont(name, x + 42.0f, y + 12.0f,
                 gui.withAlpha(enabled ? gui.guiColors().text : gui.guiColors().muted, 255.0f * alpha * gui.guiAlpha));
         // 模块描述
-        gui.drawFont(gui.trim(gui.getDescription(module), FontLoaders.F14, 90.0f), x + 42.0f, y + 27.0f,
+        gui.drawFont(gui.trim(gui.getDescription(module), FontLoaders.F14, 70.0f), x + 42.0f, y + 27.0f,
                 gui.withAlpha(gui.guiColors().muted, 198.0f * alpha * gui.guiAlpha));
         // 开关和收藏星标
         gui.drawSwitch(gui.getModuleSwitchX(x), gui.getModuleSwitchY(y), enabled, alpha, module);
@@ -288,14 +289,14 @@ final class ClickGuiModuleList {
     /**
      * 绘制底部模块计数文字（"X enabled / Y modules" 或 "N results / Y modules"）。
      */
-    private void drawModuleCount(float panelY) {
+    private void drawModuleCount(float panelY, float modulePanelHeight) {
         int visible = gui.getVisibleModules().size();
         int enabled = gui.getEnabledModules();
         int total = ModuleManager.getModules().size();
         String text = gui.searchQuery.length() == 0
                 ? enabled + " enabled / " + total + " modules"
                 : visible + " results / " + total + " modules";
-        gui.drawFont(text, gui.contentX + 16.0f, panelY + gui.panelH - 20.0f,
+        gui.drawFont(text, gui.contentX + 16.0f, panelY + modulePanelHeight - 20.0f,
                 gui.withAlpha(gui.guiColors().muted, 205.0f * gui.guiAlpha));
     }
 

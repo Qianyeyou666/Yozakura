@@ -48,7 +48,8 @@ public class HUD extends Module {
     public enum Theme {
         DARK,
         LIGHT,
-        SAKURA
+        SAKURA,
+        GRAY
     }
 
     private static final class HudPalette {
@@ -84,16 +85,24 @@ public class HUD extends Module {
                 0xFFFFFFFF);
 
         static final HudPalette SAKURA = new HudPalette(
-                0xFF1C1E22, 0xFF606468, 0xFFF5EEF2, 0xFFEBE0E6, 0xFFD0A8B8,
-                0xFFE890A8, 0xFFE87898,
-                0xFFE090A8, 0xFFD88098, 0xFFF0B0C0,
-                0xFFF0E8EC, 0xFFE8DCE2, 0xFF181A20, 0xFF505560,
-                0xFFFFFFFF);
+                0xFF241E26, 0xFF7A6E78, 0xFFFDF4F8, 0xFFF6E8F0, 0xFFE5AFC7,
+                0xFFE56B9D, 0xFFD88AC4,
+                0xFFE56B9D, 0xFFD979A8, 0xFFF3A4C8,
+                0xFFFFF7FA, 0xFFF4E4ED, 0xFF241E26, 0xFF786A75,
+                0x66F1B5CC);
+
+        static final HudPalette GRAY = new HudPalette(
+                0xFFE7E8EA, 0xFFA8ABB0, 0xFF171A1F, 0xFF1F232A, 0xFFB7BDC6,
+                0xFFB8C0CC, 0xFFD6DAE0,
+                0xFFB8C0CC, 0xFFA8B0BC, 0xFFE0E4EA,
+                0xFF1B1F25, 0xFF252A32, 0xFFF4F5F6, 0xFFB8BEC8,
+                0xFF000000);
     }
 
     private static HudPalette palette() {
         Theme t = getTheme();
         if (t == Theme.SAKURA) return HudPalette.SAKURA;
+        if (t == Theme.GRAY) return HudPalette.GRAY;
         return t == Theme.LIGHT ? HudPalette.LIGHT : HudPalette.DARK;
     }
 
@@ -134,7 +143,7 @@ public class HUD extends Module {
         Chinese = "HUD界面";
         instance = this;
         activeStyle = getSelectedStyle();
-        this.addValues(hudStyle, theme, watermark, arrayList, backgrounds, keybinds, parameters, notifications,
+        this.addValues(theme, watermark, arrayList, backgrounds, keybinds, parameters, notifications,
                 potionEffects, inventoryDisplay, glow, alpha, radius, watermarkX, watermarkY, watermarkScale,
                 moduleListX, moduleListY, moduleListScale, potionX, potionY, potionScale, inventoryX, inventoryY,
                 inventoryScale);
@@ -765,6 +774,10 @@ public class HUD extends Module {
                                                 int fillColor, int borderColor) {
         if (isLightTheme()) {
             RenderUtil.drawRoundedBorderedRect(x, y, x2, y2, radius, 0.8f, fillColor, borderColor);
+        } else if (isGrayTheme()) {
+            if (!ShaderRenderer.drawFrostedGlass(x, y, x2, y2, radius, strength, fillColor, borderColor)) {
+                RenderUtil.drawRoundedBorderedRect(x, y, x2, y2, radius, 0.8f, fillColor, borderColor);
+            }
         } else {
             RenderUtil.drawFrostedGlassRect(x, y, x2, y2, radius, strength, fillColor, borderColor);
         }
@@ -1111,9 +1124,23 @@ public class HUD extends Module {
         return Theme.DARK;
     }
 
+    public static void setTheme(Theme next) {
+        if (instance != null && next != null && instance.theme != null) {
+            instance.theme.setValue(next);
+        }
+    }
+
     public static boolean isLightTheme() {
         Theme t = getTheme();
         return t == Theme.LIGHT || t == Theme.SAKURA;
+    }
+
+    public static boolean isSakuraTheme() {
+        return getTheme() == Theme.SAKURA;
+    }
+
+    public static boolean isGrayTheme() {
+        return getTheme() == Theme.GRAY;
     }
 
     private void beginScaled(float x, float y, float scale) {

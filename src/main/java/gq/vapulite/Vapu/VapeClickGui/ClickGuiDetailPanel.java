@@ -117,11 +117,12 @@ final class ClickGuiDetailPanel {
         // 绘制面板背景
         panel.setBounds(gui.detailX, y, gui.detailW, gui.panelH)
                 .radius(VapeClickGui.PANEL_RADIUS)
-                .fill(gui.guiColors().glassFill)
+                .fill(detailPanelFill())
                 .border(gui.guiColors().glassBorder)
                 .shadow(gui.shadowColor(230), 92.0f, 10, 7.0f)
                 .setAlpha(gui.guiAlpha)
                 .render(mouseX, mouseY, 0.0f);
+        drawPanelSurfaces(y);
 
         // 未选中模块时的空状态提示
         if (gui.selectedModule == null) {
@@ -375,6 +376,58 @@ final class ClickGuiDetailPanel {
                 gui.withAlpha(new Color(226, 232, 248).getRGB(), 236.0f * gui.guiAlpha));
     }
 
+    private void drawPanelSurfaces(float panelY) {
+        if (isUnifiedDarkSurface()) {
+            return;
+        }
+        float headerX = gui.detailX + 7.0f;
+        float headerY = panelY + 7.0f;
+        float headerW = gui.detailW - 14.0f;
+        float headerH = 84.0f;
+        int headerFill = surfaceColor(true);
+        int contentFill = surfaceColor(false);
+
+        RenderUtil.drawRoundedBorderedRect(headerX, headerY, headerX + headerW, headerY + headerH, 7.0f, 0.7f,
+                gui.withAlpha(headerFill, 116.0f * gui.guiAlpha),
+                gui.withAlpha(gui.guiColors().glassBorder, 28.0f * gui.guiAlpha));
+        if (gq.vapulite.Vapu.modules.render.HUD.isSakuraTheme()) {
+            RenderUtil.drawHorizontalGradientRect(headerX + 2.0f, headerY + 2.0f,
+                    headerX + headerW - 2.0f, headerY + 30.0f,
+                    gui.withAlpha(new Color(255, 232, 244).getRGB(), 82.0f * gui.guiAlpha),
+                    gui.withAlpha(new Color(255, 250, 253).getRGB(), 28.0f * gui.guiAlpha));
+        }
+
+        float contentX = gui.detailX + 13.0f;
+        float contentY = gui.getDetailValuesY(panelY) - 8.0f;
+        float contentW = gui.detailW - 26.0f;
+        float contentH = Math.max(24.0f, gui.panelH - (contentY - panelY) - 10.0f);
+        RenderUtil.drawRoundedBorderedRect(contentX, contentY, contentX + contentW, contentY + contentH, 7.0f, 0.6f,
+                gui.withAlpha(contentFill, 64.0f * gui.guiAlpha),
+                gui.withAlpha(gui.guiColors().glassBorder, 22.0f * gui.guiAlpha));
+    }
+
+    private int surfaceColor(boolean header) {
+        if (gq.vapulite.Vapu.modules.render.HUD.isSakuraTheme()) {
+            return header ? new Color(255, 236, 246).getRGB() : new Color(255, 252, 254).getRGB();
+        }
+        if (gq.vapulite.Vapu.modules.render.HUD.isLightTheme()) {
+            return header ? new Color(226, 232, 242).getRGB() : new Color(246, 248, 252).getRGB();
+        }
+        return new Color(11, 14, 20).getRGB();
+    }
+
+    private int detailPanelFill() {
+        if (isUnifiedDarkSurface()) {
+            return new Color(11, 14, 20, 226).getRGB();
+        }
+        return gui.guiColors().glassFill;
+    }
+
+    private boolean isUnifiedDarkSurface() {
+        return !gq.vapulite.Vapu.modules.render.HUD.isSakuraTheme()
+                && !gq.vapulite.Vapu.modules.render.HUD.isLightTheme();
+    }
+
     /**
      * 绘制详情标签页（General / Targets / Extra / Rotation / Visuals）。
      * <p>
@@ -386,9 +439,11 @@ final class ClickGuiDetailPanel {
         float tabW = gui.detailW - 12.0f;
         float tabH = 31.0f;
         // 标签栏背景
-        gui.drawThemedGlass(tabX, tabY, tabX + tabW, tabY + tabH, 5.0f, 0.8f,
-                gui.withAlpha(gui.guiColors().glassFillSoft, 164.0f * gui.guiAlpha),
-                gui.withAlpha(gui.guiColors().glassBorder, 40.0f * gui.guiAlpha));
+        if (!isUnifiedDarkSurface()) {
+            gui.drawThemedGlass(tabX, tabY, tabX + tabW, tabY + tabH, 5.0f, 0.8f,
+                    gui.withAlpha(surfaceColor(true), 96.0f * gui.guiAlpha),
+                    gui.withAlpha(gui.guiColors().glassBorder, 34.0f * gui.guiAlpha));
+        }
         float each = tabW / DETAIL_TABS.length;
         for (int i = 0; i < DETAIL_TABS.length; i++) {
             float x = tabX + each * i;
@@ -675,6 +730,9 @@ final class ClickGuiDetailPanel {
         float h = gui.getDetailValuesHeight();
         Module module = gui.selectedModule;
         float contentHeight = gui.getSettingsContentHeight(module);
+        RenderUtil.drawRoundedBorderedRect(x - 8.0f, y - 6.0f, x + w + 8.0f, y + h + 4.0f, 7.0f, 0.6f,
+                gui.withAlpha(surfaceColor(false), 42.0f * gui.guiAlpha),
+                gui.withAlpha(gui.guiColors().glassBorder, 18.0f * gui.guiAlpha));
         // 空设置提示
         if (contentHeight <= 4.0f) {
             gui.drawFont("No settings in this section", x, y + 8.0f,
