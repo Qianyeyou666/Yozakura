@@ -13,11 +13,17 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
+import java.awt.image.DataBufferInt;
+import java.util.Arrays;
 
 public class CFont {
-    private static final int ATLAS_WIDTH = 512;
+    private static final int ATLAS_SCALE = 2;
+    private static final int ATLAS_WIDTH = 1024;
     private static final int GLYPH_PADDING = 8;
-    protected static final int FONT_TEXTURE_FILTER = GL11.GL_NEAREST;
+    private static final int GLYPH_INSET_X = 2;
+    private static final int GLYPH_INSET_Y = 2;
+    private static final int TRANSPARENT_WHITE = 0x00FFFFFF;
+    protected static final int FONT_TEXTURE_FILTER = GL11.GL_LINEAR;
     protected CharData[] charData = new CharData[256];
     protected Font font;
     protected boolean antiAlias;
@@ -46,46 +52,53 @@ public class CFont {
     }
 
     protected BufferedImage generateFontImage(Font font, boolean antiAlias, boolean fractionalMetrics, CharData[] chars) {
+        Font renderFont = scaledFont(font);
         BufferedImage metricsImage = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
         Graphics2D metricsGraphics = metricsImage.createGraphics();
-        setupGraphics(metricsGraphics, font, antiAlias, fractionalMetrics);
+        setupGraphics(metricsGraphics, renderFont, antiAlias, fractionalMetrics);
         FontMetrics fontMetrics = metricsGraphics.getFontMetrics();
         int charHeight = 0;
         int positionX = 0;
-        int positionY = 1;
+        int positionY = ATLAS_SCALE;
         int measuredFontHeight = -1;
 
         for (int i = 0; i < chars.length; i++) {
             char character = (char) i;
             CharData data = new CharData();
             Rectangle2D bounds = fontMetrics.getStringBounds(String.valueOf(character), metricsGraphics);
-            data.width = Math.max(1, bounds.getBounds().width + GLYPH_PADDING);
-            data.height = bounds.getBounds().height;
-            if (positionX + data.width >= ATLAS_WIDTH) {
+            int glyphWidth = Math.max(1, (int) Math.ceil(bounds.getWidth() / ATLAS_SCALE));
+            int glyphHeight = Math.max(1, (int) Math.ceil(bounds.getHeight() / ATLAS_SCALE));
+            data.width = glyphWidth + GLYPH_PADDING;
+            data.height = glyphHeight + GLYPH_INSET_Y * 2;
+            data.advance = glyphWidth;
+            data.yOffset = GLYPH_INSET_Y;
+            data.srcWidth = data.width * ATLAS_SCALE;
+            data.srcHeight = data.height * ATLAS_SCALE;
+            data.drawable = character > ' ';
+            if (positionX + data.srcWidth >= ATLAS_WIDTH) {
                 positionX = 0;
                 positionY += charHeight;
                 charHeight = 0;
             }
-            if (data.height > charHeight) {
-                charHeight = data.height;
+            if (data.srcHeight > charHeight) {
+                charHeight = data.srcHeight;
             }
             data.storedX = positionX;
             data.storedY = positionY;
-            if (data.height > measuredFontHeight) {
-                measuredFontHeight = data.height;
+            if (glyphHeight > measuredFontHeight) {
+                measuredFontHeight = glyphHeight;
             }
             chars[i] = data;
-            positionX += data.width;
+            positionX += data.srcWidth;
         }
 
         int atlasHeight = Math.max(1, positionY + Math.max(charHeight, fontMetrics.getAscent()));
         metricsGraphics.dispose();
 
         BufferedImage bufferedImage = new BufferedImage(ATLAS_WIDTH, atlasHeight, BufferedImage.TYPE_INT_ARGB);
+        fillTransparentWhite(bufferedImage);
         Graphics2D graphics = bufferedImage.createGraphics();
-        setupGraphics(graphics, font, antiAlias, fractionalMetrics);
-        graphics.setColor(new Color(255, 255, 255, 0));
-        graphics.fillRect(0, 0, ATLAS_WIDTH, atlasHeight);
+        setupGraphics(graphics, renderFont, antiAlias, fractionalMetrics);
         graphics.setColor(Color.WHITE);
 
         FontMetrics renderMetrics = graphics.getFontMetrics();
@@ -93,7 +106,13 @@ public class CFont {
             CharData data = chars[i];
             data.atlasWidth = ATLAS_WIDTH;
             data.atlasHeight = atlasHeight;
-            graphics.drawString(String.valueOf((char) i), data.storedX + 2, data.storedY + renderMetrics.getAscent());
+            data.u1 = (float) data.storedX / (float) ATLAS_WIDTH;
+            data.v1 = (float) data.storedY / (float) atlasHeight;
+            data.u2 = (float) (data.storedX + data.srcWidth) / (float) ATLAS_WIDTH;
+            data.v2 = (float) (data.storedY + data.srcHeight) / (float) atlasHeight;
+            graphics.drawString(String.valueOf((char) i),
+                    data.storedX + GLYPH_INSET_X * ATLAS_SCALE,
+                    data.storedY + GLYPH_INSET_Y * ATLAS_SCALE + renderMetrics.getAscent());
         }
 
         graphics.dispose();
@@ -106,8 +125,7 @@ public class CFont {
             return;
         }
         CharData data = chars[character];
-        drawQuad(x, y, data.width, data.height, data.storedX, data.storedY, data.width, data.height,
-                data.atlasWidth, data.atlasHeight);
+        drawQuad(x, y - data.yOffset, data.width, data.height, data.u1, data.v1, data.u2, data.v2);
     }
 
     protected void drawQuad(float x, float y, float width, float height, float srcX, float srcY,
@@ -130,6 +148,19 @@ public class CFont {
         GL11.glVertex2d(x + width, y);
     }
 
+    protected void drawQuad(float x, float y, float width, float height, float u1, float v1, float u2, float v2) {
+        float right = x + width;
+        float bottom = y + height;
+        GL11.glTexCoord2f(u2, v1);
+        GL11.glVertex2f(right, y);
+        GL11.glTexCoord2f(u1, v1);
+        GL11.glVertex2f(x, y);
+        GL11.glTexCoord2f(u1, v2);
+        GL11.glVertex2f(x, bottom);
+        GL11.glTexCoord2f(u2, v2);
+        GL11.glVertex2f(right, bottom);
+    }
+
     public int getStringHeight(String text) {
         return getHeight();
     }
@@ -146,7 +177,7 @@ public class CFont {
         for (int i = 0; i < text.length(); i++) {
             char character = text.charAt(i);
             if (character < charData.length) {
-                width += charData[character].width - 8 + charOffset;
+                width += charData[character].advance + charOffset;
             }
         }
         return width / 2;
@@ -196,12 +227,18 @@ public class CFont {
 
     private void setupGraphics(Graphics2D graphics, Font font, boolean antiAlias, boolean fractionalMetrics) {
         graphics.setFont(font);
+        graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+        graphics.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
+        graphics.setRenderingHint(RenderingHints.KEY_COLOR_RENDERING, RenderingHints.VALUE_COLOR_RENDER_QUALITY);
+        graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        graphics.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
         graphics.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS,
                 fractionalMetrics ? RenderingHints.VALUE_FRACTIONALMETRICS_ON : RenderingHints.VALUE_FRACTIONALMETRICS_OFF);
         graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
                 antiAlias ? RenderingHints.VALUE_TEXT_ANTIALIAS_ON : RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
         graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                 antiAlias ? RenderingHints.VALUE_ANTIALIAS_ON : RenderingHints.VALUE_ANTIALIAS_OFF);
+        graphics.setRenderingHint(RenderingHints.KEY_TEXT_LCD_CONTRAST, 140);
     }
 
     protected void applyFontTextureParameters() {
@@ -220,12 +257,30 @@ public class CFont {
         GL13.glActiveTexture(textureUnit);
     }
 
+    private Font scaledFont(Font font) {
+        return font.deriveFont(font.getStyle(), font.getSize2D() * ATLAS_SCALE);
+    }
+
+    private void fillTransparentWhite(BufferedImage image) {
+        int[] pixels = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
+        Arrays.fill(pixels, TRANSPARENT_WHITE);
+    }
+
     protected class CharData {
         public int width;
         public int height;
+        public int advance;
+        public int yOffset;
         public int storedX;
         public int storedY;
+        public int srcWidth;
+        public int srcHeight;
         public int atlasWidth;
         public int atlasHeight;
+        public boolean drawable;
+        public float u1;
+        public float v1;
+        public float u2;
+        public float v2;
     }
 }

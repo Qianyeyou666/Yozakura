@@ -10,11 +10,14 @@ import java.awt.Font;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 public class CFontRenderer extends CFont {
     private static final String FORMAT_CODES = "0123456789abcdefklmnor";
+    private static final int WIDTH_CACHE_LIMIT = 1024;
+    private static boolean scaleCompensationEnabled = false;
     private static final int FONT_ATTRIB_MASK = GL11.GL_ENABLE_BIT
             | GL11.GL_COLOR_BUFFER_BIT
             | GL11.GL_CURRENT_BIT
@@ -34,6 +37,12 @@ public class CFontRenderer extends CFont {
     private Font italicFont;
     private Font boldItalicFont;
     private final Map<Integer, CFontRenderer> scaledRenderers = new HashMap<Integer, CFontRenderer>();
+    private final Map<String, Integer> widthCache = new LinkedHashMap<String, Integer>(128, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Integer> eldest) {
+            return size() > WIDTH_CACHE_LIMIT;
+        }
+    };
 
     public CFontRenderer(Font font, boolean antiAlias, boolean fractionalMetrics) {
         this(font, font.deriveFont(Font.BOLD), font.deriveFont(Font.ITALIC),
@@ -75,12 +84,16 @@ public class CFontRenderer extends CFont {
         return drawStringInternal(text, x, y, color, shadow, true);
     }
 
+    public static void setScaleCompensationEnabled(boolean enabled) {
+        scaleCompensationEnabled = enabled;
+    }
+
     private float drawStringInternal(String text, double x, double y, int color, boolean shadow,
                                      boolean allowScaleCompensation) {
         if (text == null || text.length() == 0) {
             return 0.0f;
         }
-        if (allowScaleCompensation) {
+        if (allowScaleCompensation && scaleCompensationEnabled) {
             ParentScale parentScale = getParentScale();
             if (parentScale.scaled) {
                 return drawScaleCompensatedString(text, x, y, color, shadow, parentScale);
@@ -105,6 +118,8 @@ public class CFontRenderer extends CFont {
         boolean italic = false;
         boolean strikethrough = false;
         boolean underline = false;
+        x = snapToTextGrid(x);
+        y = snapToTextGrid(y);
         x = (x - 1.0) * 2.0;
         y = (y - 3.0) * 2.0;
 
@@ -113,6 +128,8 @@ public class CFontRenderer extends CFont {
         int previousTexture = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
         GL11.glPushAttrib(FONT_ATTRIB_MASK);
         GL11.glPushMatrix();
+        boolean drawingBatch = false;
+        int boundTextureId = -1;
         try {
             GlStateManager.scale(0.5, 0.5, 0.5);
             GlStateManager.enableAlpha();
@@ -127,12 +144,16 @@ public class CFontRenderer extends CFont {
             GL11.glDisable(GL13.GL_MULTISAMPLE);
             GL11.glTexEnvi(GL11.GL_TEXTURE_ENV, GL11.GL_TEXTURE_ENV_MODE, GL11.GL_MODULATE);
             applyGlColor(color, alpha);
-            bindFontTexture(currentTexture);
+            boundTextureId = bindFontTexture(currentTexture, boundTextureId);
 
             for (int i = 0; i < text.length(); i++) {
                 char character = text.charAt(i);
                 if (character == '\u00a7' && i < text.length() - 1) {
                     int colorIndex = FORMAT_CODES.indexOf(Character.toLowerCase(text.charAt(i + 1)));
+                    if (drawingBatch) {
+                        GL11.glEnd();
+                        drawingBatch = false;
+                    }
                     if (colorIndex < 16) {
                         bold = false;
                         italic = false;
@@ -148,7 +169,7 @@ public class CFontRenderer extends CFont {
                             colorIndex += 16;
                         }
                         applyGlColor((color & 0xFF000000) | colorCode[colorIndex], alpha);
-                        bindFontTexture(currentTexture);
+                        boundTextureId = bindFontTexture(currentTexture, boundTextureId);
                     } else if (colorIndex == 16) {
                         randomCase = true;
                     } else if (colorIndex == 17) {
@@ -160,7 +181,7 @@ public class CFontRenderer extends CFont {
                             currentData = boldChars;
                             currentTexture = texBold;
                         }
-                        bindFontTexture(currentTexture);
+                        boundTextureId = bindFontTexture(currentTexture, boundTextureId);
                     } else if (colorIndex == 18) {
                         strikethrough = true;
                     } else if (colorIndex == 19) {
@@ -174,7 +195,7 @@ public class CFontRenderer extends CFont {
                             currentData = italicChars;
                             currentTexture = texItalic;
                         }
-                        bindFontTexture(currentTexture);
+                        boundTextureId = bindFontTexture(currentTexture, boundTextureId);
                     } else if (colorIndex == 21) {
                         bold = false;
                         italic = false;
@@ -184,7 +205,7 @@ public class CFontRenderer extends CFont {
                         currentData = charData;
                         currentTexture = tex;
                         applyGlColor(color, alpha);
-                        bindFontTexture(currentTexture);
+                        boundTextureId = bindFontTexture(currentTexture, boundTextureId);
                     }
                     i++;
                     continue;
@@ -200,21 +221,42 @@ public class CFontRenderer extends CFont {
                 }
 
                 CharData glyph = currentData[character];
-                GL11.glBegin(GL11.GL_TRIANGLES);
-                drawChar(currentData, character, (float) x, (float) y);
-                GL11.glEnd();
+                if (glyph.drawable) {
+                    if (!drawingBatch) {
+                        GL11.glBegin(GL11.GL_QUADS);
+                        drawingBatch = true;
+                    }
+                    drawChar(currentData, character, (float) x, (float) y);
+                }
                 if (strikethrough) {
-                    drawLine(x, y + glyph.height / 2.0, x + glyph.width - 8.0, y + glyph.height / 2.0, 1.0f);
-                    bindFontTexture(currentTexture);
+                    if (drawingBatch) {
+                        GL11.glEnd();
+                        drawingBatch = false;
+                    }
+                    double lineY = y + Math.max(1, fontHeight) / 2.0;
+                    drawLine(x, lineY, x + glyph.advance, lineY, 1.0f);
+                    boundTextureId = bindFontTexture(currentTexture, boundTextureId);
                 }
                 if (underline) {
-                    drawLine(x, y + glyph.height - 2.0, x + glyph.width - 8.0, y + glyph.height - 2.0, 1.0f);
-                    bindFontTexture(currentTexture);
+                    if (drawingBatch) {
+                        GL11.glEnd();
+                        drawingBatch = false;
+                    }
+                    double lineY = y + Math.max(1, fontHeight) - 2.0;
+                    drawLine(x, lineY, x + glyph.advance, lineY, 1.0f);
+                    boundTextureId = bindFontTexture(currentTexture, boundTextureId);
                 }
-                x += glyph.width - 8 + charOffset;
+                x += glyph.advance + charOffset;
+            }
+            if (drawingBatch) {
+                GL11.glEnd();
+                drawingBatch = false;
             }
             GL11.glHint(GL11.GL_LINE_SMOOTH_HINT, GL11.GL_NICEST);
         } finally {
+            if (drawingBatch) {
+                GL11.glEnd();
+            }
             GL11.glPopMatrix();
             GL11.glPopAttrib();
             setActiveTexture(GL13.GL_TEXTURE0);
@@ -224,6 +266,10 @@ public class CFontRenderer extends CFont {
             setActiveTexture(previousActiveTexture);
         }
         return (float) x / 2.0f;
+    }
+
+    private double snapToTextGrid(double value) {
+        return Math.round(value * 2.0) / 2.0;
     }
 
     private float drawScaleCompensatedString(String text, double x, double y, int color, boolean shadow,
@@ -288,6 +334,11 @@ public class CFontRenderer extends CFont {
         if (text == null) {
             return 0;
         }
+        String cacheKey = charOffset + "\u0000" + text;
+        Integer cachedWidth = widthCache.get(cacheKey);
+        if (cachedWidth != null) {
+            return cachedWidth.intValue();
+        }
         int width = 0;
         CharData[] currentData = charData;
         boolean bold = false;
@@ -315,10 +366,12 @@ public class CFontRenderer extends CFont {
                 continue;
             }
             if (character < currentData.length) {
-                width += currentData[character].width - 8 + charOffset;
+                width += currentData[character].advance + charOffset;
             }
         }
-        return width / 2;
+        int result = width / 2;
+        widthCache.put(cacheKey, result);
+        return result;
     }
 
     @Override
@@ -327,6 +380,7 @@ public class CFontRenderer extends CFont {
         this.boldFont = font.deriveFont(Font.BOLD);
         this.italicFont = font.deriveFont(Font.ITALIC);
         this.boldItalicFont = font.deriveFont(Font.BOLD | Font.ITALIC);
+        widthCache.clear();
         scaledRenderers.clear();
         setupBoldItalicIDs();
     }
@@ -334,6 +388,7 @@ public class CFontRenderer extends CFont {
     @Override
     public void setAntiAlias(boolean antiAlias) {
         super.setAntiAlias(antiAlias);
+        widthCache.clear();
         scaledRenderers.clear();
         setupBoldItalicIDs();
     }
@@ -341,6 +396,7 @@ public class CFontRenderer extends CFont {
     @Override
     public void setFractionalMetrics(boolean fractionalMetrics) {
         super.setFractionalMetrics(fractionalMetrics);
+        widthCache.clear();
         scaledRenderers.clear();
         setupBoldItalicIDs();
     }
@@ -361,15 +417,17 @@ public class CFontRenderer extends CFont {
         GL11.glEnable(GL11.GL_TEXTURE_2D);
     }
 
-    private void bindFontTexture(DynamicTexture texture) {
+    private int bindFontTexture(DynamicTexture texture, int boundTextureId) {
         if (texture == null) {
-            return;
+            return boundTextureId;
         }
-        setActiveTexture(GL13.GL_TEXTURE0);
         int textureId = texture.getGlTextureId();
-        GlStateManager.bindTexture(textureId);
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
-        applyFontTextureParameters();
+        if (textureId != boundTextureId) {
+            setActiveTexture(GL13.GL_TEXTURE0);
+            GlStateManager.bindTexture(textureId);
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
+        }
+        return textureId;
     }
 
     private int shadowColor(int color) {

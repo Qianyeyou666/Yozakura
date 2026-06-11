@@ -90,11 +90,11 @@ public abstract class FontLoaders {
     public static final CFontRenderer I18 = icon(18);
     public static final CFontRenderer I20 = icon(20);
     public static final CFontRenderer I26 = icon(26);
-    public static final ArrayList<CFontRenderer> fonts = new ArrayList<CFontRenderer>();
+    public static final ArrayList<CFontRenderer> fonts = new LazyFontList();
 
     static {
         for (int size = 10; size <= 40; size++) {
-            fonts.add(regular(size));
+            fonts.add(null);
         }
     }
 
@@ -203,6 +203,18 @@ public abstract class FontLoaders {
         FontFamily(ResourceLocation location, ResourceLocation italicLocation) {
             this.location = location;
             this.italicLocation = italicLocation;
+        }
+    }
+
+    private static final class LazyFontList extends ArrayList<CFontRenderer> {
+        @Override
+        public CFontRenderer get(int index) {
+            CFontRenderer renderer = super.get(index);
+            if (renderer == null && index >= 0 && index <= 30) {
+                renderer = regular(index + 10);
+                super.set(index, renderer);
+            }
+            return renderer;
         }
     }
 }
