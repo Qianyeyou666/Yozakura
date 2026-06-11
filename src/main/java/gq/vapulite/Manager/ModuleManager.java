@@ -148,5 +148,11 @@ public class ModuleManager {
         addModule("StorageESP", new ModuleFactory() { public Module create() { return new StorageESP(); } });
         addModule("Chams", new ModuleFactory() { public Module create() { return new Chams(); } });
         addModule("ESP", new ModuleFactory() { public Module create() { return new ESP(); } });
+        addModule("Test", new ModuleFactory() {
+            @Override
+            public Module create() {
+                return new Test();
+            }
+        });
     }
 }

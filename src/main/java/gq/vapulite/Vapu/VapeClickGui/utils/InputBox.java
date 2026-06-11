@@ -19,54 +19,77 @@ import java.awt.*;
 import static gq.vapulite.Vapu.utils.RenderUtil.drawRoundedRect;
 import static gq.vapulite.Vapu.utils.RenderUtils.drawRoundRect;
 
+/**
+ * 带背景的文本输入框控件，继承自 Minecraft 的 {@link Gui}。
+ * <p>
+ * 与 {@link EmptyInputBox} 的区别在于此输入框会绘制圆角背景矩形。
+ * 支持文本输入、光标移动、选择、复制粘贴、Ctrl+A/C/V/X 等标准操作。
+ * <p>
+ * 相比于 EmptyInputBox，额外支持设置文字颜色和启用/禁用背景绘制的开关。
+ */
 public class InputBox extends Gui
 {
+    /** 控件 ID */
     private final int id;
+    /** 字体渲染器实例 */
     private final FontRenderer fontRendererInstance;
+    /** 控件 X 坐标 */
     public int xPosition;
+    /** 控件 Y 坐标 */
     public int yPosition;
 
-    /** The width of this text field. */
+    /** 输入框宽度 */
     private final int width;
+    /** 输入框高度 */
     private final int height;
 
-    /** Has the current text being edited on the textbox. */
+    /** 当前编辑中的文本 */
     private String text = "";
+    /** 最大允许输入字符数 */
     private int maxStringLength = 32;
+    /** 光标闪烁计数器 */
     private int cursorCounter;
+    /** 是否绘制背景（默认开启） */
     private boolean enableBackgroundDrawing = true;
 
-    /**
-     * if true the textbox can lose focus by clicking elsewhere on the screen
-     */
+    /** 是否允许点击其他地方失去焦点 */
     private boolean canLoseFocus = true;
 
-    /**
-     * If this value is true along with isEnabled, keyTyped will process the keys.
-     */
+    /** 是否为聚焦状态 */
     private boolean isFocused;
 
-    /**
-     * If this value is true along with isFocused, keyTyped will process the keys.
-     */
+    /** 是否启用 */
     private boolean isEnabled = true;
 
-    /**
-     * The current character index that should be used as start of the rendered text.
-     */
+    /** 渲染文本时的行滚动偏移量 */
     private int lineScrollOffset;
+    /** 当前光标位置 */
     private int cursorPosition;
 
-    /** other selection position, maybe the same as the cursor */
+    /** 选择结束位置 */
     private int selectionEnd;
+    /** 启用状态下的文字颜色 */
     private int enabledColor = 14737632;
+    /** 禁用状态下的文字颜色 */
     private int disabledColor = 7368816;
 
-    /** True if this textbox is visible */
+    /** 输入框是否可见 */
     private boolean visible = true;
+    /** GUI 响应器 */
     private GuiPageButtonList.GuiResponder field_175210_x;
+    /** 输入验证器 */
     private Predicate<String> validator = Predicates.alwaysTrue();
 
+    /**
+     * 构造一个输入框。
+     *
+     * @param componentId   控件 ID
+     * @param fontrendererObj 字体渲染器
+     * @param x             X 坐标
+     * @param y             Y 坐标
+     * @param par5Width     宽度
+     * @param par6Height    高度
+     */
     public InputBox(int componentId, FontRenderer fontrendererObj, int x, int y, int par5Width, int par6Height)
     {
         this.id = componentId;
@@ -77,22 +100,19 @@ public class InputBox extends Gui
         this.height = par6Height;
     }
 
+    /** 设置 GUI 响应器 */
     public void func_175207_a(GuiPageButtonList.GuiResponder p_175207_1_)
     {
         this.field_175210_x = p_175207_1_;
     }
 
-    /**
-     * Increments the cursor counter
-     */
+    /** 增加光标计数器 */
     public void updateCursorCounter()
     {
         ++this.cursorCounter;
     }
 
-    /**
-     * Sets the text of the textbox
-     */
+    /** 设置输入框文本 */
     public void setText(String p_146180_1_)
     {
         if (this.validator.apply(p_146180_1_))
@@ -110,17 +130,13 @@ public class InputBox extends Gui
         }
     }
 
-    /**
-     * Returns the contents of the textbox
-     */
+    /** @return 输入框文本内容 */
     public String getText()
     {
         return this.text;
     }
 
-    /**
-     * returns the text between the cursor and selectionEnd
-     */
+    /** @return 当前选中的文本 */
     public String getSelectedText()
     {
         int i = this.cursorPosition < this.selectionEnd ? this.cursorPosition : this.selectionEnd;
@@ -128,14 +144,13 @@ public class InputBox extends Gui
         return this.text.substring(i, j);
     }
 
+    /** 设置输入验证器 */
     public void setValidator(Predicate<String> theValidator)
     {
         this.validator = theValidator;
     }
 
-    /**
-     * replaces selected text, or inserts text at the position on the cursor
-     */
+    /** 在光标位置写入文本 */
     public void writeText(String p_146191_1_)
     {
         String s = "";
@@ -178,10 +193,7 @@ public class InputBox extends Gui
         }
     }
 
-    /**
-     * Deletes the specified number of words starting at the cursor position. Negative numbers will delete words left of
-     * the cursor.
-     */
+    /** 删除从光标开始的指定数量单词 */
     public void deleteWords(int p_146177_1_)
     {
         if (this.text.length() != 0)
@@ -197,9 +209,7 @@ public class InputBox extends Gui
         }
     }
 
-    /**
-     * delete the selected text, otherwsie deletes characters from either side of the cursor. params: delete num
-     */
+    /** 从光标位置删除指定数量字符 */
     public void deleteFromCursor(int p_146175_1_)
     {
         if (this.text.length() != 0)
@@ -243,27 +253,25 @@ public class InputBox extends Gui
         }
     }
 
+    /** @return 控件 ID */
     public int getId()
     {
         return this.id;
     }
 
-    /**
-     * see @getNthNextWordFromPos() params: N, position
-     */
+    /** 获取从光标开始第 N 个单词的位置 */
     public int getNthWordFromCursor(int p_146187_1_)
     {
         return this.getNthWordFromPos(p_146187_1_, this.getCursorPosition());
     }
 
-    /**
-     * gets the position of the nth word. N may be negative, then it looks backwards. params: N, position
-     */
+    /** 获取从指定位置第 N 个单词的位置 */
     public int getNthWordFromPos(int p_146183_1_, int p_146183_2_)
     {
         return this.func_146197_a(p_146183_1_, p_146183_2_, true);
     }
 
+    /** 计算第 N 个单词的位置 */
     public int func_146197_a(int p_146197_1_, int p_146197_2_, boolean p_146197_3_)
     {
         int i = p_146197_2_;
@@ -306,17 +314,13 @@ public class InputBox extends Gui
         return i;
     }
 
-    /**
-     * Moves the text cursor by a specified number of characters and clears the selection
-     */
+    /** 移动光标偏移量并清除选择 */
     public void moveCursorBy(int p_146182_1_)
     {
         this.setCursorPosition(this.selectionEnd + p_146182_1_);
     }
 
-    /**
-     * sets the position of the cursor to the provided index
-     */
+    /** 设置光标位置 */
     public void setCursorPosition(int p_146190_1_)
     {
         this.cursorPosition = p_146190_1_;
@@ -325,24 +329,21 @@ public class InputBox extends Gui
         this.setSelectionPos(this.cursorPosition);
     }
 
-    /**
-     * sets the cursors position to the beginning
-     */
+    /** 光标移到开头 */
     public void setCursorPositionZero()
     {
         this.setCursorPosition(0);
     }
 
-    /**
-     * sets the cursors position to after the text
-     */
+    /** 光标移到末尾 */
     public void setCursorPositionEnd()
     {
         this.setCursorPosition(this.text.length());
     }
 
     /**
-     * Call this method from your GuiScreen to process the keys into the textbox
+     * 处理键盘输入。
+     * 支持 Home/End/Delete/Backspace/方向键 以及 Ctrl+A/C/V/X 快捷键。
      */
     public boolean textboxKeyTyped(char p_146201_1_, int p_146201_2_)
     {
@@ -503,9 +504,7 @@ public class InputBox extends Gui
         }
     }
 
-    /**
-     * Args: x, y, buttonClicked
-     */
+    /** 处理鼠标点击 */
     public void mouseClicked(int p_146192_1_, int p_146192_2_, int p_146192_3_)
     {
         boolean flag = p_146192_1_ >= this.xPosition && p_146192_1_ < this.xPosition + this.width && p_146192_2_ >= this.yPosition && p_146192_2_ < this.yPosition + this.height;
@@ -529,14 +528,18 @@ public class InputBox extends Gui
         }
     }
 
-
+    /**
+     * 绘制输入框。
+     * <p>
+     * 与 {@link EmptyInputBox} 的区别：会先绘制一个圆角背景矩形。
+     */
     public void drawTextBox()
     {
         if (this.getVisible())
         {
+            // 绘制圆角背景
             if (this.getEnableBackgroundDrawing())
             {
-                //drawRect(this.xPosition - 1, this.yPosition - 1, this.xPosition + this.width + 1, this.yPosition + this.height + 1, -6250336);
                 drawRoundRect(this.xPosition, this.yPosition, this.xPosition + this.width, this.yPosition + this.height, new Color(240, 240, 240).getRGB());
             }
 
@@ -579,6 +582,7 @@ public class InputBox extends Gui
                 j1 = (int) FontLoaders.F16.drawString(s.substring(j), (float)j1, (float)i1, i);
             }
 
+            // 绘制闪烁光标
             if (flag1)
             {
                 if (flag2)
@@ -591,6 +595,7 @@ public class InputBox extends Gui
                 }
             }
 
+            // 绘制选择高亮
             if (k != j)
             {
                 int l1 = l + this.fontRendererInstance.getStringWidth(s.substring(0, k));
@@ -599,9 +604,7 @@ public class InputBox extends Gui
         }
     }
 
-    /**
-     * draws the vertical line cursor in the textbox
-     */
+    /** 绘制选择区域的反转色高亮 */
     private void drawCursorVertical(int p_146188_1_, int p_146188_2_, int p_146188_3_, int p_146188_4_)
     {
         if (p_146188_1_ < p_146188_3_)
@@ -644,6 +647,7 @@ public class InputBox extends Gui
         GlStateManager.enableTexture2D();
     }
 
+    /** 设置最大输入长度 */
     public void setMaxStringLength(int p_146203_1_)
     {
         this.maxStringLength = p_146203_1_;
@@ -654,54 +658,43 @@ public class InputBox extends Gui
         }
     }
 
-    /**
-     * returns the maximum number of character that can be contained in this textbox
-     */
+    /** @return 最大输入长度 */
     public int getMaxStringLength()
     {
         return this.maxStringLength;
     }
 
-    /**
-     * returns the current position of the cursor
-     */
+    /** @return 当前光标位置 */
     public int getCursorPosition()
     {
         return this.cursorPosition;
     }
 
-    /**
-     * get enable drawing background and outline
-     */
+    /** @return 是否启用背景绘制 */
     public boolean getEnableBackgroundDrawing()
     {
         return this.enableBackgroundDrawing;
     }
 
-    /**
-     * enable drawing background and outline
-     */
+    /** 设置是否启用背景绘制 */
     public void setEnableBackgroundDrawing(boolean p_146185_1_)
     {
         this.enableBackgroundDrawing = p_146185_1_;
     }
 
-    /**
-     * Sets the text colour for this textbox (disabled text will not use this colour)
-     */
+    /** 设置启用状态下的文字颜色 */
     public void setTextColor(int p_146193_1_)
     {
         this.enabledColor = p_146193_1_;
     }
 
+    /** 设置禁用状态下的文字颜色 */
     public void setDisabledTextColour(int p_146204_1_)
     {
         this.disabledColor = p_146204_1_;
     }
 
-    /**
-     * Sets focus to this gui element
-     */
+    /** 设置聚焦状态 */
     public void setFocused(boolean p_146195_1_)
     {
         if (p_146195_1_ && !this.isFocused)
@@ -712,38 +705,31 @@ public class InputBox extends Gui
         this.isFocused = p_146195_1_;
     }
 
-    /**
-     * Getter for the focused field
-     */
+    /** @return 是否聚焦 */
     public boolean isFocused()
     {
         return this.isFocused;
     }
 
+    /** 设置启用状态 */
     public void setEnabled(boolean p_146184_1_)
     {
         this.isEnabled = p_146184_1_;
     }
 
-    /**
-     * the side of the selection that is not the cursor, may be the same as the cursor
-     */
+    /** @return 选择结束位置 */
     public int getSelectionEnd()
     {
         return this.selectionEnd;
     }
 
-    /**
-     * returns the width of the textbox depending on if background drawing is enabled
-     */
+    /** @return 输入框有效宽度 */
     public int getWidth()
     {
         return this.getEnableBackgroundDrawing() ? this.width - 8 : this.width;
     }
 
-    /**
-     * Sets the position of the selection anchor (i.e. position the selection was started at)
-     */
+    /** 设置选择锚点位置 */
     public void setSelectionPos(int p_146199_1_)
     {
         int i = this.text.length();
@@ -789,25 +775,19 @@ public class InputBox extends Gui
         }
     }
 
-    /**
-     * if true the textbox can lose focus by clicking elsewhere on the screen
-     */
+    /** 设置是否允许失去焦点 */
     public void setCanLoseFocus(boolean p_146205_1_)
     {
         this.canLoseFocus = p_146205_1_;
     }
 
-    /**
-     * returns true if this textbox is visible
-     */
+    /** @return 是否可见 */
     public boolean getVisible()
     {
         return this.visible;
     }
 
-    /**
-     * Sets whether or not this textbox is visible
-     */
+    /** 设置可见性 */
     public void setVisible(boolean p_146189_1_)
     {
         this.visible = p_146189_1_;

@@ -35,7 +35,28 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * VapuLite ClickGUI 主界面类，继承 Minecraft 的 {@link GuiScreen}。
+ * <p>
+ * 实现了一个 Material Design 3 风格的模块配置界面，包含以下主要区域：
+ * <ul>
+ *   <li><b>导航栏</b>：顶部标签页（Combat/Movement/Visual/Utility/World/Misc/Profiles）</li>
+ *   <li><b>搜索栏</b>：支持模块名称和描述的关键词搜索</li>
+ *   <li><b>模块列表</b>：左侧可滚动的模块卡片列表</li>
+ *   <li><b>详情面板</b>：中央选中模块的设置项编辑区</li>
+ *   <li><b>侧边面板</b>：右侧用户信息、系统状态和模块摘要</li>
+ *   <li><b>底部栏</b>：用户配置和快捷键提示</li>
+ * </ul>
+ * <p>
+ * 支持三种主题配色：Dark（暗色）、Light（浅色）、Sakura（粉色）。
+ * GUI 状态（标签页、选中模块、滚动位置、展开下拉栏等）可通过 JSON 持久化。
+ */
 public class VapeClickGui extends GuiScreen {
+    /**
+     * 配色板内部类，封装了 GUI 所有组件的颜色常量。
+     * <p>
+     * 包含三种预设主题：{@link #DARK}、{@link #LIGHT}、{@link #SAKURA}。
+     */
     static final class GuiPalette {
         final int backdrop, topBar, card, cardHover, cardOpen;
         final int text, muted, faint, accent, red;
@@ -66,6 +87,7 @@ public class VapeClickGui extends GuiScreen {
             this.dropdownShadow = dropdownShadow; this.shadowDim = shadowDim;
         }
 
+        /** 暗色主题配色（默认） */
         static final GuiPalette DARK = new GuiPalette(
                 new Color(9, 13, 18, 164).getRGB(),
                 new Color(12, 15, 20, 232).getRGB(),
@@ -93,6 +115,7 @@ public class VapeClickGui extends GuiScreen {
                 new Color(0, 0, 0, 200).getRGB(),
                 new Color(0, 0, 0, 210).getRGB());
 
+        /** 浅色主题配色 */
         static final GuiPalette LIGHT = new GuiPalette(
                 new Color(230, 235, 242, 148).getRGB(),
                 new Color(220, 225, 234, 220).getRGB(),
@@ -120,6 +143,7 @@ public class VapeClickGui extends GuiScreen {
                 new Color(255, 255, 255, 120).getRGB(),
                 new Color(255, 255, 255, 140).getRGB());
 
+        /** 樱花/粉色主题配色 */
         static final GuiPalette SAKURA = new GuiPalette(
                 new Color(240, 230, 236, 148).getRGB(),
                 new Color(235, 225, 234, 220).getRGB(),
@@ -148,6 +172,7 @@ public class VapeClickGui extends GuiScreen {
                 new Color(255, 255, 255, 140).getRGB());
     }
 
+    /** 根据 HUD 模块设置获取当前 GUI 配色 */
     GuiPalette guiColors() {
         try {
             if (gq.vapulite.Vapu.modules.render.HUD.getTheme() == gq.vapulite.Vapu.modules.render.HUD.Theme.SAKURA) {
@@ -159,6 +184,7 @@ public class VapeClickGui extends GuiScreen {
         }
     }
 
+    /** 获取阴影颜色（浅色主题用白色半透明阴影，暗色用黑色阴影） */
     int shadowColor(int alpha) {
         try {
             return gq.vapulite.Vapu.modules.render.HUD.isLightTheme()
@@ -169,6 +195,11 @@ public class VapeClickGui extends GuiScreen {
         }
     }
 
+    /**
+     * 绘制主题自适应毛玻璃效果。
+     * <p>
+     * 浅色主题使用简单的圆角边框矩形，暗色主题使用毛玻璃（Frosted Glass）效果。
+     */
     void drawThemedGlass(float x, float y, float x2, float y2, float radius, float strength, int fill, int border) {
         if (gq.vapulite.Vapu.modules.render.HUD.isLightTheme()) {
             RenderUtil.drawRoundedBorderedRect(x, y, x2, y2, radius, strength, fill, border);
@@ -177,34 +208,41 @@ public class VapeClickGui extends GuiScreen {
         }
     }
 
-    static final float NAV_H = 28.0f;
-    static final float CARD_W = 222.0f;
-    static final float CARD_H = 50.0f;
-    static final float GAP = 10.0f;
-    static final float SEARCH_H = 38.0f;
-    static final float PANEL_RADIUS = 8.0f;
-    static final float CARD_RADIUS = 7.0f;
-    static final float DETAIL_MIN_W = 350.0f;
-    static final float DETAIL_MAX_W = 560.0f;
-    static final float SIDE_W = 170.0f;
-    static final float DETAIL_HEADER_H = 98.0f;
-    static final float VALUE_ROW_H = 26.0f;
-    static final float NUMBER_ROW_H = 40.0f;
-    static final float RANGE_ROW_H = 44.0f;
-    static final float MODE_ROW_H = 30.0f;
-    static final float COLOR_ROW_H = 64.0f;
-    static final float SWITCH_W = 28.0f;
-    static final float SWITCH_H = 14.0f;
-    static final float SWITCH_HIT_PAD = 5.0f;
-    static final float CLOSE_END_PROGRESS = 0.22f;
-    static final float CLOSING_TEXT_CUTOFF = 0.36f;
-    static final int FPS_GRAPH_SAMPLES = 44;
+    // ==================== 布局常量 ====================
+    static final float NAV_H = 28.0f;            // 导航栏高度
+    static final float CARD_W = 222.0f;          // 模块卡片宽度
+    static final float CARD_H = 50.0f;           // 模块卡片高度
+    static final float GAP = 10.0f;              // 面板间距
+    static final float SEARCH_H = 38.0f;         // 搜索栏高度
+    static final float PANEL_RADIUS = 8.0f;      // 面板圆角半径
+    static final float CARD_RADIUS = 7.0f;       // 卡片圆角半径
+    static final float DETAIL_MIN_W = 350.0f;    // 详情面板最小宽度
+    static final float DETAIL_MAX_W = 560.0f;    // 详情面板最大宽度
+    static final float SIDE_W = 170.0f;          // 侧边面板宽度
+    static final float DETAIL_HEADER_H = 98.0f;  // 详情面板头部高度
+    static final float VALUE_ROW_H = 26.0f;      // 普通值行高度
+    static final float NUMBER_ROW_H = 40.0f;     // 数字滑块行高度
+    static final float RANGE_ROW_H = 44.0f;      // 范围滑块行高度
+    static final float MODE_ROW_H = 30.0f;       // 模式选择行高度
+    static final float COLOR_ROW_H = 64.0f;      // 颜色选择行高度
+    static final float SWITCH_W = 28.0f;         // 开关宽度
+    static final float SWITCH_H = 14.0f;         // 开关高度
+    static final float SWITCH_HIT_PAD = 5.0f;    // 开关点击区域的额外内边距
+    static final float CLOSE_END_PROGRESS = 0.22f; // 关闭动画结束阈值
+    static final float CLOSING_TEXT_CUTOFF = 0.36f; // 关闭动画中文字消失阈值
+    static final int FPS_GRAPH_SAMPLES = 44;     // FPS 波形图采样数
 
-    static GuiTab currentTab = GuiTab.COMBAT;
-    static Module selectedModule;
-    static final Map<String, Float> detailScrollByModule = new HashMap<>(); // 每个module记住各自的scroll
+    // ==================== 全局状态 ====================
+    static GuiTab currentTab = GuiTab.COMBAT;         // 当前导航标签页
+    static Module selectedModule;                      // 当前选中的模块
+    static final Map<String, Float> detailScrollByModule = new HashMap<>(); // 每个 module 记住各自的 scroll
 
-    /** 切换选中module时保留/恢复detail panel滚动位置 */
+    /**
+     * 切换选中模块时保留/恢复 detail 面板滚动位置。
+     * <p>
+     * 每个模块独立记忆其在详情面板中的滚动位置，
+     * 切换回来时自动恢复。
+     */
     static void selectModule(Module m) {
         if (selectedModule != null) {
             detailScrollByModule.put(selectedModule.getName(), settingsScroll);
@@ -218,83 +256,90 @@ public class VapeClickGui extends GuiScreen {
             targetSettingsScroll = 0;
         }
     }
-    Value draggingNumber;
-    Numbers draggingColorRed;
-    Numbers draggingColorGreen;
-    Numbers draggingColorBlue;
-    Module bindingModule;
-    final Map<Module, Float> hoverProgress = new HashMap<Module, Float>();
-    final Map<Module, Float> clickProgress = new HashMap<Module, Float>();
-    final Map<Module, Float> toggleProgress = new HashMap<Module, Float>();
-    final Map<GuiTab, Float> tabHoverProgress = new HashMap<GuiTab, Float>();
-    final Map<Value, Float> valueToggleProgress = new HashMap<Value, Float>();
-    final Map<Value, Float> valueActiveProgress = new HashMap<Value, Float>();
-    final Set<Module> favoriteModules = new HashSet<Module>();
-    float draggingNumberX;
-    float draggingNumberW;
-    boolean draggingNumberCustomRange;
-    double draggingNumberMin;
-    double draggingNumberMax;
-    Numbers draggingNumberPair;
-    boolean draggingNumberLowerBound;
-    float draggingColorX;
-    float draggingColorY;
-    float draggingColorW;
-    float draggingColorH;
-    static float listScroll;
-    static float targetListScroll;
-    static float settingsScroll;
-    static float targetSettingsScroll;
-    static String savedExpandedModeKeys = ""; // 游戏重启后恢复展开的mode下拉栏
-    float scrollbarAlpha;
-    boolean draggingScrollbar;
-    float scrollbarDragOffset;
-    float openProgress;
-    float guiAlpha;
-    float navIndicatorX;
-    float contentFade;
-    float searchFocusProgress;
-    float navX;
-    float navY;
-    float navW;
-    float contentX;
-    float contentY;
-    float detailX;
-    float detailW;
-    float sideX;
-    float sideW;
-    float windowW;
-    float panelH;
-    boolean sidePanelVisible;
-    static int detailTabIndex;
-    String searchQuery = "";
-    boolean searchFocused;
-    long searchCursorTime;
-    String toastText;
-    long toastStarted;
-    boolean closing;
-    boolean savedOnClose;
-    long lastPaletteClickMS;
-    String lastPaletteClickKey;
-    long lastFrameNanos;
-    long fpsSampleStarted;
-    int fpsSampleFrames;
-    int liveFps;
-    final float[] fpsGraphSamples = new float[FPS_GRAPH_SAMPLES];
-    int fpsGraphCursor;
-    int fpsGraphSize;
-    long fpsGraphLastSample;
-    float fpsGraphSmoothed;
-    float frameScale = 1.0f;
-    final UiTheme uiTheme = UiTheme.current();
-    final UiToggle reusableToggle = new UiToggle().setTheme(uiTheme);
-    final UiTextField searchField = new UiTextField().setTheme(uiTheme).placeholder("Search modules...").maxLength(32);
-    final ClickGuiSearchBar searchBar = new ClickGuiSearchBar(this);
-    final ClickGuiModuleList moduleList = new ClickGuiModuleList(this);
-    final ClickGuiDetailPanel detailPanel = new ClickGuiDetailPanel(this);
-    final ClickGuiSidePanel sidePanel = new ClickGuiSidePanel(this);
-    final ClickGuiBottomBar bottomBar = new ClickGuiBottomBar(this);
 
+    // ==================== 交互状态 ====================
+    Value draggingNumber;               // 当前拖拽的数值
+    Numbers draggingColorRed;           // 当前拖拽的颜色-Red
+    Numbers draggingColorGreen;         // 当前拖拽的颜色-Green
+    Numbers draggingColorBlue;          // 当前拖拽的颜色-Blue
+    Module bindingModule;               // 当前正在绑定的模块
+    final Map<Module, Float> hoverProgress = new HashMap<Module, Float>();     // 模块悬停动画进度
+    final Map<Module, Float> clickProgress = new HashMap<Module, Float>();     // 模块点击动画进度
+    final Map<Module, Float> toggleProgress = new HashMap<Module, Float>();    // 模块开关动画进度
+    final Map<GuiTab, Float> tabHoverProgress = new HashMap<GuiTab, Float>();  // 标签页悬停动画进度
+    final Map<Value, Float> valueToggleProgress = new HashMap<Value, Float>(); // 设置值开关动画进度
+    final Map<Value, Float> valueActiveProgress = new HashMap<Value, Float>(); // 设置值激活动画进度
+    final Set<Module> favoriteModules = new HashSet<Module>();                 // 收藏的模块集合
+    float draggingNumberX;              // 拖拽滑块起始 X
+    float draggingNumberW;              // 拖拽滑块宽度
+    boolean draggingNumberCustomRange;  // 是否在拖拽自定义范围滑块
+    double draggingNumberMin;           // 自定义范围下限
+    double draggingNumberMax;           // 自定义范围上限
+    Numbers draggingNumberPair;         // 自定义范围滑块的配对值
+    boolean draggingNumberLowerBound;   // 是否拖拽的是下界
+    float draggingColorX;              // 颜色面板拖拽 X
+    float draggingColorY;              // 颜色面板拖拽 Y
+    float draggingColorW;              // 颜色面板拖拽宽度
+    float draggingColorH;              // 颜色面板拖拽高度
+    static float listScroll;           // 模块列表当前滚动偏移
+    static float targetListScroll;     // 模块列表目标滚动偏移
+    static float settingsScroll;       // 设置面板当前滚动偏移
+    static float targetSettingsScroll; // 设置面板目标滚动偏移
+    static String savedExpandedModeKeys = ""; // 游戏重启后恢复展开的 mode 下拉栏
+    float scrollbarAlpha;             // 滚动条透明度
+    boolean draggingScrollbar;        // 是否正在拖拽滚动条
+    float scrollbarDragOffset;        // 滚动条拖拽偏移
+    float openProgress;              // GUI 打开动画进度 0→1
+    float guiAlpha;                  // 全局 GUI 透明度
+    float navIndicatorX;             // 导航栏指示器 X 坐标
+    float contentFade;               // 内容淡入动画进度
+    float searchFocusProgress;       // 搜索栏聚焦动画进度
+    float navX;                      // 导航栏 X
+    float navY;                      // 导航栏 Y
+    float navW;                      // 导航栏宽度
+    float contentX;                  // 内容区域 X
+    float contentY;                  // 内容区域 Y
+    float detailX;                   // 详情面板 X
+    float detailW;                   // 详情面板宽度
+    float sideX;                     // 侧边面板 X
+    float sideW;                     // 侧边面板宽度
+    float windowW;                   // 窗口总宽度
+    float panelH;                    // 面板高度
+    boolean sidePanelVisible;        // 侧边面板是否可见（屏幕宽度 >= 900px）
+    static int detailTabIndex;       // 详情面板当前标签页索引
+    String searchQuery = "";         // 搜索查询文本
+    boolean searchFocused;           // 搜索栏是否聚焦
+    long searchCursorTime;           // 搜索光标最后活跃时间
+    String toastText;                // Toast 消息文本
+    long toastStarted;               // Toast 开始时间
+    boolean closing;                 // 是否正在关闭
+    boolean savedOnClose;            // 关闭时是否已保存
+    long lastPaletteClickMS;         // 颜色面板上次点击时间（用于双击检测）
+    String lastPaletteClickKey;      // 颜色面板上次点击标识
+    long lastFrameNanos;             // 上一帧时间（纳秒）
+    long fpsSampleStarted;           // FPS 采样开始时间
+    int fpsSampleFrames;             // FPS 采样帧数
+    int liveFps;                     // 实时 FPS 值
+    final float[] fpsGraphSamples = new float[FPS_GRAPH_SAMPLES]; // FPS 波形图采样缓冲区
+    int fpsGraphCursor;              // FPS 波形图写入位置
+    int fpsGraphSize;                // FPS 波形图当前有效采样数
+    long fpsGraphLastSample;         // FPS 波形图上次采样时间
+    float fpsGraphSmoothed;          // FPS 平滑值
+    float frameScale = 1.0f;         // 帧缩放因子（用于帧率无关动画）
+    final UiTheme uiTheme = UiTheme.current();                    // UI 主题
+    final UiToggle reusableToggle = new UiToggle().setTheme(uiTheme); // 可复用的开关控件
+    final UiTextField searchField = new UiTextField().setTheme(uiTheme).placeholder("Search modules...").maxLength(32); // 搜索文本框
+    final ClickGuiSearchBar searchBar = new ClickGuiSearchBar(this);      // 搜索栏组件
+    final ClickGuiModuleList moduleList = new ClickGuiModuleList(this);    // 模块列表组件
+    final ClickGuiDetailPanel detailPanel = new ClickGuiDetailPanel(this); // 详情面板组件
+    final ClickGuiSidePanel sidePanel = new ClickGuiSidePanel(this);      // 侧边面板组件
+    final ClickGuiBottomBar bottomBar = new ClickGuiBottomBar(this);      // 底部栏组件
+
+    /**
+     * 初始化 GUI 界面。
+     * <p>
+     * 重置所有动画状态、滚动位置和交互状态到初始值。
+     */
     @Override
     public void initGui() {
         super.initGui();
@@ -329,17 +374,24 @@ public class VapeClickGui extends GuiScreen {
         frameScale = 1.0f;
     }
 
+    /**
+     * 每帧渲染 GUI。
+     * <p>
+     * 渲染顺序：背景 → 导航栏 → 模块列表 → 搜索栏 → 详情面板 → 侧边面板 → 底部栏 → 按键绑定覆盖层 → Toast。
+     */
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         updateFrameScale();
         ScaledResolution sr = new ScaledResolution(mc);
         updateLayout(sr);
+        // 同步 UI 主题
         UiTheme currentTheme = UiTheme.current();
         searchField.setTheme(currentTheme);
         reusableToggle.setTheme(currentTheme);
         detailPanel.updateTheme(currentTheme);
         moduleList.updateTheme(currentTheme);
         ensureSelectedModule();
+        // 打开/关闭动画
         openProgress = animate(openProgress, closing ? 0.0f : 1.0f, closing ? 0.20f : 0.16f);
         guiAlpha = openProgress * gq.vapulite.Vapu.modules.render.ClickGUI.clickGuiAlpha.getValue().floatValue();
         contentFade = animate(contentFade, closing ? 0.0f : 1.0f, closing ? 0.18f : 0.14f);
@@ -349,15 +401,18 @@ public class VapeClickGui extends GuiScreen {
         }
         drawBackdrop(sr);
         ShaderRenderer.invalidateFrostedGlass();
+        // 更新交互状态
         if (!closing) {
             moduleList.updateScrollbarDrag(mouseY);
             updateScroll(mouseX, mouseY);
         }
+        // 颜色拖拽持续更新
         if (!closing && draggingColorRed != null && Mouse.isButtonDown(0)) {
             detailPanel.updateColorValue(mouseX, mouseY);
         } else if (!Mouse.isButtonDown(0)) {
             clearDraggingColor();
         }
+        // 数字拖拽持续更新
         if (!closing && draggingNumber instanceof Numbers && Mouse.isButtonDown(0)) {
             detailPanel.updateNumberValue((Numbers) draggingNumber, mouseX, draggingNumberX, draggingNumberW);
         } else {
@@ -366,6 +421,7 @@ public class VapeClickGui extends GuiScreen {
             draggingNumberPair = null;
         }
 
+        // 渲染各区域（introY 用于打开/关闭动画的位移效果）
         float introY = (1.0f - easeOut(openProgress)) * (closing ? 18.0f : -10.0f);
         drawBrand(introY);
         drawNavigation(mouseX, mouseY, introY);
@@ -379,11 +435,19 @@ public class VapeClickGui extends GuiScreen {
         drawToast(sr);
     }
 
+    /**
+     * 更新布局参数。
+     * <p>
+     * 根据屏幕分辨率和窗口位置配置计算各面板的坐标和尺寸。
+     * 支持通过 ClickGUI 模块的 windowX/windowY 值自定义窗口位置。
+     */
     void updateLayout(ScaledResolution sr) {
         float screenW = sr.getScaledWidth();
         float screenH = sr.getScaledHeight();
+        // 侧边面板在窄屏幕上隐藏
         sidePanelVisible = screenW >= 900.0f;
         sideW = sidePanelVisible ? SIDE_W : 0.0f;
+        // 计算详情面板宽度（自适应）
         float available = Math.max(360.0f, screenW - 24.0f);
         detailW = Math.min(DETAIL_MAX_W, Math.max(DETAIL_MIN_W, available - CARD_W - GAP - (sidePanelVisible ? sideW + GAP : 0.0f)));
         float totalW = CARD_W + GAP + detailW + (sidePanelVisible ? GAP + sideW : 0.0f);
@@ -392,6 +456,7 @@ public class VapeClickGui extends GuiScreen {
             totalW = CARD_W + GAP + detailW + (sidePanelVisible ? GAP + sideW : 0.0f);
         }
         windowW = totalW;
+        // 居中布局（可被 windowX 覆盖）
         contentX = Math.max(10.0f, screenW / 2.0f - totalW / 2.0f);
         if (ClickGUI.windowX.getValue() >= 0.0D) {
             contentX = clamp(ClickGUI.windowX.getValue().floatValue(), 10.0f, Math.max(10.0f, screenW - totalW - 10.0f));
@@ -408,6 +473,11 @@ public class VapeClickGui extends GuiScreen {
         panelH = Math.max(220.0f, screenH - contentY - 48.0f);
     }
 
+    /**
+     * 绘制全屏半透明背景。
+     * <p>
+     * 包含三层：实色底色 + 顶部到中间渐变 + 中间到底部渐变（底部加深）。
+     */
     void drawBackdrop(ScaledResolution sr) {
         RenderUtil.drawRect(0, 0, sr.getScaledWidth(), sr.getScaledHeight(), withAlpha(guiColors().backdrop, 94.0f * guiAlpha));
         RenderUtil.drawGradientRect(0, 0, sr.getScaledWidth(), sr.getScaledHeight(),
@@ -418,6 +488,9 @@ public class VapeClickGui extends GuiScreen {
                 withAlpha(new Color(0, 0, 0, 130).getRGB(), 92.0f * guiAlpha));
     }
 
+    /**
+     * 绘制左上角品牌标识（VAPE + V4 标签 + 副标题）。
+     */
     void drawBrand(float introY) {
         float x = contentX + 4.0f;
         float y = navY + 1.0f + introY * 0.35f;
@@ -429,30 +502,42 @@ public class VapeClickGui extends GuiScreen {
         drawFont("Material 3 x VapuLite", x, y + 18.0f, withAlpha(guiColors().muted, 190.0f * guiAlpha));
     }
 
+    /**
+     * 绘制顶部导航栏。
+     * <p>
+     * 导航栏包含等宽的标签页按钮，激活标签页有高亮指示器和背景。
+     * 悬停时显示半透明高亮效果。
+     */
     void drawNavigation(int mouseX, int mouseY, float introY) {
         float y = navY + introY;
+        // 导航栏背景
         RenderUtil.drawSoftShadow(navX, y, navX + navW, y + NAV_H, 9.0f,
                 withAlpha(shadowColor(210), 70.0f * guiAlpha), 7, 5.0f);
         drawThemedGlass(navX, y, navX + navW, y + NAV_H, 9.0f, 1.0f,
                 withAlpha(guiColors().glassFillSoft, 186.0f * guiAlpha),
                 withAlpha(guiColors().glassBorder, 52.0f * guiAlpha));
+        // 指示器平滑移动动画
         float tabW = navW / GuiTab.values().length;
         float targetX = navX + currentTab.ordinal() * tabW + 2.0f;
         navIndicatorX = animate(navIndicatorX, targetX, 0.18f);
+        // 激活标签页的背景指示器
         RenderUtil.drawSoftShadow(navIndicatorX, y + 4.0f, navIndicatorX + tabW - 4.0f, y + NAV_H - 4.0f, 7.0f,
                 withAlpha(guiColors().accent, 85.0f * guiAlpha), 5, 4.0f);
         RenderUtil.drawRoundedBorderedRect(navIndicatorX, y + 4.0f, navIndicatorX + tabW - 4.0f, y + NAV_H - 4.0f, 7.0f, 0.8f,
                 withAlpha(guiColors().detailSelectedFill, 232.0f * guiAlpha),
                 withAlpha(guiColors().detailSelectedBorder, 80.0f * guiAlpha));
+        // 逐个绘制标签页
         for (int i = 0; i < GuiTab.values().length; i++) {
             GuiTab tab = GuiTab.values()[i];
             float x = navX + i * tabW;
             boolean hovered = isHovered(x, y, x + tabW, y + NAV_H, mouseX, mouseY);
             float hover = animateTabMap(tab, hovered && tab != currentTab && !closing ? 1.0f : 0.0f, 0.18f);
+            // 悬停高亮
             if (hover > 0.01f) {
                 drawSoftRect(x + 3.0f, y + 4.0f, x + tabW - 3.0f, y + NAV_H - 4.0f, 7.0f,
                         withAlpha(guiColors().navDefaultHover, 190.0f * hover * guiAlpha));
             }
+            // 图标 + 文字（水平居中排列）
             int textColor = tab == currentTab ? guiColors().text : guiColors().muted;
             int color = withAlpha(textColor, 245.0f * guiAlpha);
             CFontRenderer navIconFont = FontLoaders.I16;
@@ -467,6 +552,10 @@ public class VapeClickGui extends GuiScreen {
         }
     }
 
+    /**
+     * 获取模块分类的简称标记。
+     * @return C=Combat, M=Movement, V=Visual(render), P=Player, W=World, U=Config, O=Other
+     */
     String getCategoryMark(Module module) {
         if (module.getCategory() == ModuleType.Combat) {
             return "C";
@@ -489,6 +578,9 @@ public class VapeClickGui extends GuiScreen {
         return "O";
     }
 
+    /**
+     * 获取模块分类的主题色。
+     */
     int getCategoryAccent(Module module) {
         if (module.getCategory() == ModuleType.Combat) return 0xFF8B7CFF;
         if (module.getCategory() == ModuleType.Movement) return 0xFF70C1DC;
@@ -499,6 +591,7 @@ public class VapeClickGui extends GuiScreen {
         return 0xFFD4DAE3;
     }
 
+    /** @return 当前玩家的 Ping 值显示文本 */
     String getPingText() {
         try {
             if (mc.thePlayer != null && mc.getNetHandler() != null && mc.getNetHandler().getPlayerInfo(mc.thePlayer.getUniqueID()) != null) {
@@ -509,6 +602,7 @@ public class VapeClickGui extends GuiScreen {
         return "-- ms";
     }
 
+    /** @return 实时 FPS 文本（优先使用平滑值） */
     String getLiveFpsText() {
         if (fpsGraphSmoothed > 0.0f) {
             return String.valueOf(Math.max(1, Math.round(fpsGraphSmoothed)));
@@ -516,10 +610,16 @@ public class VapeClickGui extends GuiScreen {
         return liveFps <= 0 ? "--" : String.valueOf(liveFps);
     }
 
+    /** @return FPS 波形图有效采样数 */
     int getFpsGraphSize() {
         return fpsGraphSize;
     }
 
+    /**
+     * 获取 FPS 波形图中指定索引的采样值。
+     * <p>
+     * 环形缓冲区索引计算：从最旧的数据开始读取。
+     */
     float getFpsGraphSample(int index) {
         if (fpsGraphSize <= 0) {
             return fpsGraphSmoothed > 0.0f ? fpsGraphSmoothed : liveFps;
@@ -529,6 +629,7 @@ public class VapeClickGui extends GuiScreen {
         return fpsGraphSamples[(start + clamped) % fpsGraphSamples.length];
     }
 
+    /** @return 已启用模块数量 */
     int getEnabledModules() {
         int enabled = 0;
         for (Module module : ModuleManager.getModules()) {
@@ -539,22 +640,29 @@ public class VapeClickGui extends GuiScreen {
         return enabled;
     }
 
+    // ==================== 布局计算辅助方法 ====================
+
+    /** @return 设置值区域的 X 坐标 */
     float getDetailValuesX() {
         return detailX + 20.0f;
     }
 
+    /** @return 设置值区域的 Y 坐标 */
     float getDetailValuesY(float panelY) {
         return panelY + DETAIL_HEADER_H + 8.0f;
     }
 
+    /** @return 设置值区域的宽度 */
     float getDetailValuesWidth() {
         return detailW - 40.0f;
     }
 
+    /** @return 设置值区域的高度 */
     float getDetailValuesHeight() {
         return panelH - DETAIL_HEADER_H - 18.0f;
     }
 
+    /** @return 模块设置项的总内容高度（用于计算滚动范围） */
     float getSettingsContentHeight(Module module) {
         if (module == null || module.getValues().isEmpty()) {
             return 0.0f;
@@ -568,6 +676,7 @@ public class VapeClickGui extends GuiScreen {
         return height;
     }
 
+    /** 格式化设置值的显示文本 */
     String getValueText(Value value) {
         if (value instanceof Option) {
             return Boolean.TRUE.equals(value.getValue()) ? "On" : "Off";
@@ -581,6 +690,13 @@ public class VapeClickGui extends GuiScreen {
         return String.valueOf(value.getValue());
     }
 
+    /**
+     * 绘制开关控件。
+     * <p>
+     * 使用可复用的 UiToggle 实例，支持平滑动画过渡。
+     *
+     * @param owner   动画绑定对象（Module 或 Value），用于独立追踪动画进度
+     */
     void drawSwitch(float x, float y, boolean enabled, float alpha, Object owner) {
         float progress;
         if (owner instanceof Module) {
@@ -597,6 +713,11 @@ public class VapeClickGui extends GuiScreen {
                 .render(0, 0, 0.0f);
     }
 
+    /**
+     * 更新鼠标滚轮滚动。
+     * <p>
+     * 优先传递给详情面板（设置区域），如果不在详情区域内则传递给模块列表。
+     */
     void updateScroll(int mouseX, int mouseY) {
         int wheel = Mouse.getDWheel();
         if (draggingScrollbar || wheel == 0) {
@@ -608,6 +729,11 @@ public class VapeClickGui extends GuiScreen {
         moduleList.updateScroll(mouseX, mouseY, wheel);
     }
 
+    /**
+     * 处理鼠标点击事件。
+     * <p>
+     * 事件分发优先级：搜索栏 > 导航栏 > 滚动条 > 详情面板 > 侧边面板 > 模块列表。
+     */
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int mouseButton) throws IOException {
         if (bindingModule != null) {
@@ -625,6 +751,11 @@ public class VapeClickGui extends GuiScreen {
         super.mouseClicked(mouseX, mouseY, mouseButton);
     }
 
+    /**
+     * 处理导航栏点击。
+     * <p>
+     * 点击标签页时切换当前标签、清空搜索、重置滚动。
+     */
     boolean handleNavClick(int mouseX, int mouseY) {
         if (!isHovered(navX, navY, navX + navW, navY + NAV_H, mouseX, mouseY)) {
             return false;
@@ -645,6 +776,7 @@ public class VapeClickGui extends GuiScreen {
         return true;
     }
 
+    /** 鼠标释放时清除所有拖拽状态 */
     @Override
     protected void mouseReleased(int mouseX, int mouseY, int state) {
         draggingNumber = null;
@@ -655,6 +787,12 @@ public class VapeClickGui extends GuiScreen {
         super.mouseReleased(mouseX, mouseY, state);
     }
 
+    /**
+     * 获取当前可见的模块列表。
+     * <p>
+     * 如果有搜索查询，按关键词过滤；否则按当前标签页过滤。
+     * 结果按名称字母顺序排序。
+     */
     List<Module> getVisibleModules() {
         ArrayList<Module> modules = new ArrayList<Module>();
         String query = searchQuery == null ? "" : searchQuery.trim().toLowerCase(Locale.ROOT);
@@ -672,6 +810,7 @@ public class VapeClickGui extends GuiScreen {
         return modules;
     }
 
+    /** 检查模块是否匹配搜索查询（名称、描述或类型名） */
     boolean matchesSearch(Module module, String query) {
         if (module.getName().toLowerCase(Locale.ROOT).contains(query)) {
             return true;
@@ -682,10 +821,12 @@ public class VapeClickGui extends GuiScreen {
         return module.getCategory() != null && module.getCategory().name().toLowerCase(Locale.ROOT).contains(query);
     }
 
+    /** @return 模块卡片高度（固定） */
     float getCardHeight(Module module) {
         return CARD_H;
     }
 
+    /** @return 所有可见模块的总内容高度 */
     float getContentHeight() {
         List<Module> modules = getVisibleModules();
         if (modules.isEmpty()) {
@@ -694,14 +835,17 @@ public class VapeClickGui extends GuiScreen {
         return modules.size() * (CARD_H + 6.0f) - 6.0f;
     }
 
+    /** @return 列表可视区域高度 */
     float getListHeight() {
         return Math.max(120.0f, panelH - SEARCH_H - 52.0f);
     }
 
+    /** @return 模块列表起始 Y 坐标 */
     float getModuleListY() {
         return contentY + SEARCH_H + 22.0f;
     }
 
+    /** @return 单个设置值行的默认高度 */
     float getValueHeight(Value value) {
         if (value instanceof Numbers) {
             return NUMBER_ROW_H;
@@ -712,6 +856,11 @@ public class VapeClickGui extends GuiScreen {
         return VALUE_ROW_H;
     }
 
+    /**
+     * 获取指定索引的设置值行高度。
+     * <p>
+     * 考虑值可见性、颜色组、范围滑块的合并行高度。
+     */
     float getValueHeight(Module module, int index) {
         if (module != null && index >= 0 && index < module.getValues().size()
                 && (!module.getValues().get(index).isVisible()
@@ -733,6 +882,9 @@ public class VapeClickGui extends GuiScreen {
         return getValueHeight(module.getValues().get(index));
     }
 
+    /**
+     * 检查从指定索引开始是否为一个颜色组（连续三个 Numbers: Red, Green, Blue）。
+     */
     boolean isColorStart(Module module, int index) {
         if (module == null || index < 0 || index + 2 >= module.getValues().size()) {
             return false;
@@ -743,10 +895,14 @@ public class VapeClickGui extends GuiScreen {
                 && isNumberNamed(values.get(index + 2), "blue");
     }
 
+    /** 检查是否为颜色组的延续行（Green/Blue 部分），应合并到颜色行中 */
     boolean isColorContinuation(Module module, int index) {
         return isColorStart(module, index - 1) || isColorStart(module, index - 2);
     }
 
+    /**
+     * 检查从指定索引开始是否为一个范围滑块组（两个 Numbers: min 和 max 共享相同基本名称）。
+     */
     boolean isRangeStart(Module module, int index) {
         if (module == null || index < 0 || index + 1 >= module.getValues().size()) {
             return false;
@@ -761,15 +917,22 @@ public class VapeClickGui extends GuiScreen {
         return firstBase.length() > 0 && firstBase.equals(secondBase);
     }
 
+    /** 检查是否为范围滑块的延续行 */
     boolean isRangeContinuation(Module module, int index) {
         return isRangeStart(module, index - 1);
     }
 
+    /** 获取范围设置项的基础显示名称 */
     String getRangeDisplayName(Value value) {
         String base = rangeDisplayBase(value, "min");
         return base.length() == 0 ? getDisplayName(value) : base;
     }
 
+    /**
+     * 检查某个值是否为隐藏的调色板值。
+     * <p>
+     * 例如 ESP 模块的 "rainbow" 和 "paletteRainbow" 选项不显示为独立行。
+     */
     boolean isHiddenPaletteValue(Module module, Value value) {
         if (module == null || value == null || !(value instanceof Option)) {
             return false;
@@ -779,6 +942,7 @@ public class VapeClickGui extends GuiScreen {
         return moduleName.equals("esp") && (valueName.equals("rainbow") || valueName.equals("paletterainbow"));
     }
 
+    /** @return 当前标签页中可见的设置值数量 */
     int getVisibleValueCount(Module module) {
         if (module == null || module.getValues().isEmpty()) {
             return 0;
@@ -792,6 +956,7 @@ public class VapeClickGui extends GuiScreen {
         return count;
     }
 
+    /** 检查指定索引的设置值是否在当前标签页中可见 */
     boolean isDetailValueVisible(Module module, int index) {
         if (module == null || index < 0 || index >= module.getValues().size()) {
             return false;
@@ -804,6 +969,18 @@ public class VapeClickGui extends GuiScreen {
         return getDetailValueTab(module, index) == detailTabIndex;
     }
 
+    /**
+     * 根据设置值的名称关键词自动归类到详情标签页。
+     * <p>
+     * 归类规则：
+     * <ul>
+     *   <li>0 = General（默认）</li>
+     *   <li>1 = Targets（目标选择相关）</li>
+     *   <li>2 = Extra（武器/按键条件相关）</li>
+     *   <li>3 = Rotation（旋转/瞄准相关）</li>
+     *   <li>4 = Visuals（渲染/颜色相关）</li>
+     * </ul>
+     */
     int getDetailValueTab(Module module, int index) {
         if (module == null || index < 0 || index >= module.getValues().size()) {
             return 0;
@@ -816,14 +993,17 @@ public class VapeClickGui extends GuiScreen {
         String raw = normalizeValueText(value);
         String name = normalizeValueName(value);
 
+        // 旋转/瞄准
         if (containsAny(raw, "yaw", "pitch", "rotate", "rotation", "aim", "aimpoint",
                 "prediction", "freezone", "reaction", "lock", "randomize")) {
             return 3;
         }
+        // 目标
         if (containsAny(raw, "player", "mob", "animal", "invisible", "target", "priority",
                 "throughwall", "wallcheck", "range", "reach", "fov", "hurt", "hitbox", "expand")) {
             return 1;
         }
+        // 视觉
         if (containsAny(raw, "render", "visual", "shader", "trail", "color", "alpha", "radius",
                 "height", "line", "pulse", "background", "watermark", "arraylist", "notification",
                 "potion", "inventory", "scale", "xposition", "yposition", "xoffset", "yoffset",
@@ -833,6 +1013,7 @@ public class VapeClickGui extends GuiScreen {
         if (name.equals("x") || name.equals("y")) {
             return 4;
         }
+        // 额外条件
         if (containsAny(raw, "weapon", "sword", "mouse", "moving", "sprint", "rightclick",
                 "auto", "swap", "restore", "block", "sneak", "ground", "scope", "release",
                 "break", "require", "only", "hold", "key")) {
@@ -841,6 +1022,7 @@ public class VapeClickGui extends GuiScreen {
         return 0;
     }
 
+    /** 检查文本是否包含任意一个关键词 */
     private boolean containsAny(String text, String... needles) {
         for (String needle : needles) {
             if (text.contains(needle)) {
@@ -850,12 +1032,14 @@ public class VapeClickGui extends GuiScreen {
         return false;
     }
 
+    /** 标准化值文本（去除空格、下划线、横线，转小写）用于分类匹配 */
     private String normalizeValueText(Value value) {
         String display = value == null || value.getDisplayName() == null ? "" : value.getDisplayName();
         String name = value == null || value.getName() == null ? "" : value.getName();
         return (display + " " + name).replace(" ", "").replace("_", "").replace("-", "").toLowerCase(Locale.ROOT);
     }
 
+    /** 获取设置值的显示名称 */
     String getDisplayName(Value value) {
         String display = value == null ? "" : value.getDisplayName();
         if (display == null || display.trim().length() == 0) {
@@ -864,6 +1048,11 @@ public class VapeClickGui extends GuiScreen {
         return display == null ? "" : display;
     }
 
+    /**
+     * 格式化 Mode 的原始字符串为可读标签。
+     * <p>
+     * 例如 "FAST_PLACE" → "Fast Place"。
+     */
     String formatModeLabel(String raw) {
         if (raw == null || raw.length() == 0) {
             return "";
@@ -884,6 +1073,7 @@ public class VapeClickGui extends GuiScreen {
         return builder.toString();
     }
 
+    /** 提取范围滑块的基本名称（去除 min/max 前缀） */
     private String rangeBase(Value value, String prefix) {
         return rangeDisplayBase(value, prefix)
                 .replace(" ", "")
@@ -904,10 +1094,12 @@ public class VapeClickGui extends GuiScreen {
         return "";
     }
 
+    /** 检查值是否为指定名称的 Numbers 类型 */
     private boolean isNumberNamed(Value value, String name) {
         return value instanceof Numbers && normalizeValueName(value).equals(name);
     }
 
+    /** 标准化值名称 */
     String normalizeValueName(Value value) {
         String raw = value == null ? "" : value.getName();
         if (raw == null || raw.length() == 0) {
@@ -916,6 +1108,7 @@ public class VapeClickGui extends GuiScreen {
         return raw == null ? "" : raw.replace(" ", "").replace("_", "").replace("-", "").toLowerCase(Locale.ROOT);
     }
 
+    /** 开始拖拽颜色面板 */
     void beginDraggingColor(Numbers red, Numbers green, Numbers blue, float x, float y, float w, float h) {
         draggingColorRed = red;
         draggingColorGreen = green;
@@ -929,12 +1122,14 @@ public class VapeClickGui extends GuiScreen {
         draggingNumberPair = null;
     }
 
+    /** 清除颜色拖拽状态 */
     void clearDraggingColor() {
         draggingColorRed = null;
         draggingColorGreen = null;
         draggingColorBlue = null;
     }
 
+    /** 确保始终有一个模块被选中 */
     void ensureSelectedModule() {
         List<Module> modules = getVisibleModules();
         if (selectedModule != null && modules.contains(selectedModule)) {
@@ -942,6 +1137,8 @@ public class VapeClickGui extends GuiScreen {
         }
         selectModule(modules.isEmpty() ? null : modules.get(0));
     }
+
+    // ==================== 布局位置辅助方法 ====================
 
     float getSliderBarX(float x, float width) {
         float labelW = getDetailLabelWidth(width);
@@ -985,11 +1182,13 @@ public class VapeClickGui extends GuiScreen {
         return rowY + 7.0f;
     }
 
+    /** 检查鼠标是否点击了开关（包含额外的点击内边距） */
     boolean isSwitchHit(float switchX, float switchY, int mouseX, int mouseY) {
         return isHovered(switchX - SWITCH_HIT_PAD, switchY - SWITCH_HIT_PAD,
                 switchX + SWITCH_W + SWITCH_HIT_PAD, switchY + SWITCH_H + SWITCH_HIT_PAD, mouseX, mouseY);
     }
 
+    /** 获取模块描述文本，无描述时返回默认文本 */
     String getDescription(Module module) {
         if (module.Descript == null || module.Descript.trim().length() == 0) {
             return "Configure this module.";
@@ -997,6 +1196,7 @@ public class VapeClickGui extends GuiScreen {
         return module.Descript;
     }
 
+    /** 获取模块绑定按键的显示名称 */
     String getKeyName(Module module) {
         if (module.getKey() == Keyboard.KEY_NONE) {
             return "NONE";
@@ -1005,6 +1205,7 @@ public class VapeClickGui extends GuiScreen {
         return keyName == null ? "NONE" : keyName;
     }
 
+    /** 格式化数字（整数不带小数，浮点数保留两位） */
     String formatNumber(double value) {
         if (Math.abs(value - Math.round(value)) < 0.0001D) {
             return String.valueOf((long) Math.round(value));
@@ -1012,6 +1213,10 @@ public class VapeClickGui extends GuiScreen {
         return String.format(Locale.ROOT, "%.2f", value);
     }
 
+    /**
+     * 截断文本使其适应指定宽度。
+     * @return 如果文本过长则添加 "..." 后缀
+     */
     String trim(String text, CFontRenderer font, float maxWidth) {
         if (text == null) {
             return "";
@@ -1026,6 +1231,9 @@ public class VapeClickGui extends GuiScreen {
         return result + "...";
     }
 
+    // ==================== 基础绘制方法 ====================
+
+    /** 绘制普通文字（检查透明度阈值和关闭动画状态） */
     void drawFont(String text, float x, float y, int color) {
         if (shouldDrawText(color)) {
             FontLoaders.F14.drawString(text, x, y, color);
@@ -1038,6 +1246,7 @@ public class VapeClickGui extends GuiScreen {
         }
     }
 
+    /** 检查是否应该绘制文字（透明度 >= 18 且未超过关闭动画文字截断点） */
     boolean shouldDrawText(int color) {
         if (getAlpha(color) < 18) {
             return false;
@@ -1045,12 +1254,14 @@ public class VapeClickGui extends GuiScreen {
         return !closing || openProgress > CLOSING_TEXT_CUTOFF;
     }
 
+    /** 在矩形区域内居中绘制文字 */
     void drawCenteredText(String text, float x, float y, float x2, float y2, int color) {
         float textX = x + (x2 - x - FontLoaders.F14.getStringWidth(text)) / 2.0f;
         float textY = y + (y2 - y - FontLoaders.F14.getStringHeight(text)) / 2.0f + 0.5f;
         drawFont(text, textX, textY, color);
     }
 
+    /** 在指定中心点绘制图标（考虑视觉偏移） */
     void drawCenteredIcon(String icon, CFontRenderer font, float centerX, float centerY, int color) {
         if (shouldDrawText(color)) {
             font.drawString(icon, centerX - font.getStringWidth(icon) / 2.0f + ClickGuiIcons.visualOffsetX(icon),
@@ -1058,6 +1269,13 @@ public class VapeClickGui extends GuiScreen {
         }
     }
 
+    // ==================== 动画辅助方法 ====================
+
+    /**
+     * 平滑动画插值（Map 版本，绑定 Module）。
+     * <p>
+     * 使用帧缩放因子确保动画在不同帧率下保持一致速度。
+     */
     float animateMap(Map<Module, Float> map, Module module, float target, float speed) {
         Float current = map.get(module);
         float value = current == null ? target : current.floatValue();
@@ -1069,6 +1287,7 @@ public class VapeClickGui extends GuiScreen {
         return value;
     }
 
+    /** 平滑动画插值（Map 版本，绑定 Value） */
     float animateValueMap(Map<Value, Float> map, Value valueKey, float target, float speed) {
         Float current = map.get(valueKey);
         float value = current == null ? target : current.floatValue();
@@ -1080,6 +1299,7 @@ public class VapeClickGui extends GuiScreen {
         return value;
     }
 
+    /** 平滑动画插值（Map 版本，绑定 GuiTab） */
     float animateTabMap(GuiTab tab, float target, float speed) {
         Float current = tabHoverProgress.get(tab);
         float value = current == null ? target : current.floatValue();
@@ -1091,6 +1311,16 @@ public class VapeClickGui extends GuiScreen {
         return value;
     }
 
+    /**
+     * 核心平滑动画插值函数。
+     * <p>
+     * 使用帧缩放因子（frameScale）进行帧率补偿，确保动画在不同帧率下保持一致。
+     *
+     * @param current 当前值
+     * @param target  目标值
+     * @param speed   插值速度（0.01~1.0）
+     * @return 插值后的新值
+     */
     float animate(float current, float target, float speed) {
         float adjustedSpeed = 1.0f - (float) Math.pow(1.0f - clamp(speed, 0.01f, 1.0f), frameScale);
         float value = current + (target - current) * adjustedSpeed;
@@ -1100,16 +1330,21 @@ public class VapeClickGui extends GuiScreen {
         return value;
     }
 
+    /** Ease-out 缓出函数（四次方） */
     float easeOut(float value) {
         value = clamp(value, 0.0f, 1.0f);
         return 1.0f - (float) Math.pow(1.0f - value, 4.0D);
     }
 
+    /** Ease-smooth 平滑缓动函数（Hermite 插值） */
     float easeSmooth(float value) {
         value = clamp(value, 0.0f, 1.0f);
         return value * value * (3.0f - 2.0f * value);
     }
 
+    // ==================== 颜色工具方法 ====================
+
+    /** 在两个颜色之间线性插值 */
     int blendColor(int from, int to, float progress) {
         progress = clamp(progress, 0.0f, 1.0f);
         int a = (int) (getAlpha(from) + (getAlpha(to) - getAlpha(from)) * progress);
@@ -1119,17 +1354,21 @@ public class VapeClickGui extends GuiScreen {
         return ((a & 255) << 24) | ((r & 255) << 16) | ((g & 255) << 8) | (b & 255);
     }
 
+    /** 替换颜色的 Alpha 分量 */
     int withAlpha(int color, float alpha) {
         int a = (int) clamp(alpha, 0.0f, 255.0f);
         return (color & 0x00FFFFFF) | (a << 24);
     }
 
+    /** 绘制圆角矩形（透明度为 0 时跳过） */
     void drawSoftRect(float x, float y, float x2, float y2, float radius, int color) {
         if (getAlpha(color) <= 0) {
             return;
         }
         RenderUtil.drawRoundedRect(x, y, x2, y2, radius, color);
     }
+
+    // ==================== 颜色分量提取 ====================
 
     int getAlpha(int color) {
         return color >>> 24 & 255;
@@ -1147,10 +1386,17 @@ public class VapeClickGui extends GuiScreen {
         return color & 255;
     }
 
+    // ==================== 搜索相关 ====================
+
     float getSearchY() {
         return contentY + 10.0f;
     }
 
+    /**
+     * 设置搜索查询并重置相关状态。
+     * <p>
+     * 清空选中的模块、重置列表滚动、触发内容淡入动画。
+     */
     void setSearchQuery(String query) {
         searchQuery = query == null ? "" : query;
         searchCursorTime = System.currentTimeMillis();
@@ -1163,6 +1409,9 @@ public class VapeClickGui extends GuiScreen {
         contentFade = 0.0f;
     }
 
+    // ==================== 按键绑定 ====================
+
+    /** 开始为指定模块绑定按键 */
     void startBinding(Module module) {
         bindingModule = module;
         draggingNumber = null;
@@ -1172,6 +1421,11 @@ public class VapeClickGui extends GuiScreen {
         addToast("Binding " + module.getName());
     }
 
+    /**
+     * 完成按键绑定。
+     * <p>
+     * 支持：Delete/Backspace 清除绑定，Escape 取消绑定，其他键设置绑定。
+     */
     void finishBinding(int keyCode) {
         if (bindingModule == null) {
             return;
@@ -1194,6 +1448,11 @@ public class VapeClickGui extends GuiScreen {
         }
     }
 
+    /**
+     * 计算滚动条的各项指标。
+     *
+     * @return ScrollbarMetrics 包含可见性、位置、大小等信息
+     */
     ScrollbarMetrics getScrollbarMetrics(float drawContentY, float listHeight) {
         float contentHeight = getContentHeight();
         boolean visible = contentHeight > listHeight + 1.0f;
@@ -1205,28 +1464,40 @@ public class VapeClickGui extends GuiScreen {
         return new ScrollbarMetrics(visible, trackX, drawContentY, listHeight, thumbY, thumbH, maxScroll);
     }
 
+    /**
+     * 绘制按键绑定覆盖层。
+     * <p>
+     * 在绑定过程中显示半透明背景和提示信息。
+     */
     void drawKeybindOverlay(ScaledResolution sr) {
         if (bindingModule == null) {
             return;
         }
+        // 半透明遮罩
         RenderUtil.drawRect(0.0f, 0.0f, sr.getScaledWidth(), sr.getScaledHeight(), withAlpha(new Color(0, 0, 0).getRGB(), 92.0f));
         float boxW = 210.0f;
         float boxH = 84.0f;
         float x = sr.getScaledWidth() / 2.0f - boxW / 2.0f;
         float y = sr.getScaledHeight() / 2.0f - boxH / 2.0f;
+        // 对话框背景
         drawThemedGlass(x, y, x + boxW, y + boxH, 8.0f, 1.0f,
                 withAlpha(guiColors().glassFill, 218.0f), withAlpha(guiColors().accent, 130.0f));
+        // 提示信息
         drawCenteredText("KEYBIND", x, y + 14.0f, x + boxW, y + 25.0f, guiColors().text);
         drawCenteredText(bindingModule.getName(), x, y + 34.0f, x + boxW, y + 45.0f, withAlpha(guiColors().text, 220.0f));
         drawCenteredText("Current: " + getKeyName(bindingModule), x, y + 49.0f, x + boxW, y + 60.0f, withAlpha(guiColors().muted, 215.0f));
         drawCenteredText("Press key, DEL clears, ESC cancels", x, y + 66.0f, x + boxW, y + 77.0f, withAlpha(guiColors().muted, 185.0f));
     }
 
+    // ==================== Toast 消息 ====================
+
+    /** 添加 Toast 消息（显示 2.5 秒，最后 0.7 秒渐隐） */
     void addToast(String message) {
         toastText = message;
         toastStarted = System.currentTimeMillis();
     }
 
+    /** 绘制 Toast 消息 */
     void drawToast(ScaledResolution sr) {
         if (toastText == null) {
             return;
@@ -1246,6 +1517,11 @@ public class VapeClickGui extends GuiScreen {
         drawCenteredText(toastText, x, y + 4.0f, x + w, y + 14.0f, withAlpha(guiColors().text, 230.0f * alpha));
     }
 
+    /**
+     * 处理键盘输入。
+     * <p>
+     * 支持：Ctrl+F 聚焦搜索、Escape/RightShift 关闭 GUI。
+     */
     @Override
     protected void keyTyped(char typedChar, int keyCode) throws IOException {
         if (bindingModule != null) {
@@ -1266,29 +1542,40 @@ public class VapeClickGui extends GuiScreen {
         super.keyTyped(typedChar, keyCode);
     }
 
+    /** GUI 不暂停游戏 */
     @Override
     public boolean doesGuiPauseGame() {
         return false;
     }
 
+    /** GUI 关闭时保存配置 */
     @Override
     public void onGuiClosed() {
         saveConfigOnClose();
         super.onGuiClosed();
     }
 
+    /** 检查鼠标是否在矩形区域内 */
     static boolean isHovered(float x, float y, float x2, float y2, int mouseX, int mouseY) {
         return mouseX >= x && mouseX <= x2 && mouseY >= y && mouseY <= y2;
     }
 
+    /** 限制值在 [min, max] 范围内（float 版本） */
     static float clamp(float value, float min, float max) {
         return Math.max(min, Math.min(max, value));
     }
 
+    /** 限制值在 [min, max] 范围内（double 版本） */
     static double clamp(double value, double min, double max) {
         return Math.max(min, Math.min(max, value));
     }
 
+    /**
+     * 更新帧缩放因子和 FPS 统计。
+     * <p>
+     * 帧缩放因子 = 实际帧间隔 / 目标帧间隔（60fps = 16.67ms），
+     * 用于帧率无关的动画速度补偿。
+     */
     void updateFrameScale() {
         long now = System.nanoTime();
         long elapsed = now - lastFrameNanos;
@@ -1300,6 +1587,7 @@ public class VapeClickGui extends GuiScreen {
         float measuredScale = clamp(elapsed / 16666666.0f, 0.55f, 1.75f);
         frameScale += (measuredScale - frameScale) * 0.18f;
         updateFpsGraph(now, 1000000000.0f / elapsed);
+        // 每 250ms 更新一次实时 FPS
         fpsSampleFrames++;
         long sampleElapsed = now - fpsSampleStarted;
         if (sampleElapsed >= 250000000L) {
@@ -1309,13 +1597,20 @@ public class VapeClickGui extends GuiScreen {
         }
     }
 
+    /**
+     * 更新 FPS 波形图采样数据。
+     * <p>
+     * 每 ~90ms 采样一次，存入环形缓冲区用于侧边面板的 FPS 折线图。
+     */
     private void updateFpsGraph(long now, float instantFps) {
         float fps = clamp(instantFps, 1.0f, 999.0f);
+        // 平滑 FPS 值
         if (fpsGraphSmoothed <= 0.0f) {
             fpsGraphSmoothed = fps;
         } else {
             fpsGraphSmoothed += (fps - fpsGraphSmoothed) * 0.22f;
         }
+        // 每 90ms 采样
         if (fpsGraphLastSample != 0L && now - fpsGraphLastSample < 90000000L) {
             return;
         }
@@ -1327,6 +1622,7 @@ public class VapeClickGui extends GuiScreen {
         }
     }
 
+    /** 开始关闭 GUI（触发关闭动画并保存配置） */
     void startClose() {
         saveConfigOnClose();
         closing = true;
@@ -1335,12 +1631,18 @@ public class VapeClickGui extends GuiScreen {
         draggingNumberPair = null;
     }
 
+    /**
+     * 关闭时保存配置。
+     * <p>
+     * 保存所有已展开的 Mode 下拉栏状态到静态字段，
+     * 以便在下次游戏启动时恢复。
+     */
     void saveConfigOnClose() {
         if (savedOnClose || Client.instance == null) {
             return;
         }
         savedOnClose = true;
-        // 保存所有module的展开下拉栏（moduleName:valueName格式，分号分隔）
+        // 保存所有 module 的展开下拉栏（moduleName:valueName 格式，分号分隔）
         StringBuilder expanded = new StringBuilder();
         for (Module m : ModuleManager.getModules()) {
             for (Value v : m.getValues()) {
@@ -1362,7 +1664,9 @@ public class VapeClickGui extends GuiScreen {
     // ==================== GUI 状态持久化 ====================
 
     /**
-     * 将GUI状态序列化为JsonObject，由FileManager写入config JSON的_gui段
+     * 将 GUI 状态序列化为 JsonObject，由 FileManager 写入 config JSON 的 _gui 段。
+     * <p>
+     * 保存内容：当前标签页、选中模块、详情标签页索引、滚动位置、展开的 Mode 下拉栏。
      */
     public static JsonObject saveGuiState() {
         JsonObject obj = new JsonObject();
@@ -1371,13 +1675,16 @@ public class VapeClickGui extends GuiScreen {
         obj.addProperty("detailTab", detailTabIndex);
         obj.addProperty("listScroll", listScroll);
         obj.addProperty("settingsScroll", settingsScroll);
-        // 保存展开的mode下拉栏（由saveConfigOnClose提前写入静态字段）
+        // 保存展开的 mode 下拉栏（由 saveConfigOnClose 提前写入静态字段）
         obj.addProperty("expandedModes", savedExpandedModeKeys);
         return obj;
     }
 
     /**
-     * 从config JSON的_gui段恢复GUI状态（游戏启动时调用）
+     * 从 config JSON 的 _gui 段恢复 GUI 状态（游戏启动时调用）。
+     * <p>
+     * 恢复内容：标签页、选中模块、详情标签页、滚动位置、展开的 Mode 下拉栏。
+     * 所有字段均为可选，缺失时保持默认值。
      */
     public static void loadGuiState(JsonObject obj) {
         try {
@@ -1412,14 +1719,21 @@ public class VapeClickGui extends GuiScreen {
         } catch (Exception ignored) {}
     }
 
+    // ==================== Scissor 裁剪 ====================
+
+    /** 开始 OpenGL 裁剪区域（限制渲染范围） */
     void beginScissor(float x, float y, float w, float h) {
         RenderState.pushScissor(x, y, w, h);
     }
 
+    /** 结束 OpenGL 裁剪区域 */
     void endScissor() {
         RenderState.popScissor();
     }
 
+    /**
+     * 滚动条指标数据类，封装滚动条的所有计算参数。
+     */
     static class ScrollbarMetrics {
         final boolean visible;
         final float trackX;

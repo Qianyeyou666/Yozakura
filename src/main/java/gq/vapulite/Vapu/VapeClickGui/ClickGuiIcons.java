@@ -4,14 +4,33 @@ import gq.vapulite.Vapu.ModuleType;
 import gq.vapulite.Vapu.modules.Module;
 import gq.vapulite.font.FontLoaders;
 
+/**
+ * ClickGUI 模块图标映射工具类。
+ * <p>
+ * 根据模块名称关键词或模块类型，返回对应的图标字符。
+ * 同时提供图标视觉偏移量，用于微调图标在界面中的渲染位置。
+ * <p>
+ * 此类为纯静态工具类，不可实例化。
+ */
 public final class ClickGuiIcons {
+    /** 私有构造器，防止实例化 */
     private ClickGuiIcons() {
     }
 
+    /**
+     * 根据模块名称获取对应的图标。
+     * <p>
+     * 优先通过模块名称的关键词匹配返回特定图标，
+     * 若未匹配到则回退到按模块类型获取图标。
+     *
+     * @param module 目标模块，可为 null
+     * @return 对应的图标字符；若 module 为 null 则返回默认列表图标
+     */
     public static String forModule(Module module) {
         if (module == null) {
             return FontLoaders.ICON_LIST;
         }
+        // 标准化模块名称（去除空格、横线、下划线，转小写）后进行关键词匹配
         String name = normalize(module.getName());
 
         if (name.contains("clickgui")) {
@@ -139,9 +158,16 @@ public final class ClickGuiIcons {
         if (name.contains("config") || name.contains("save") || name.contains("load")) {
             return FontLoaders.ICON_SETTINGS;
         }
+        // 无匹配时，按模块类型返回默认图标
         return forType(module.getCategory());
     }
 
+    /**
+     * 根据模块类型获取默认图标。
+     *
+     * @param type 模块类型
+     * @return 对应的图标字符
+     */
     public static String forType(ModuleType type) {
         if (type == ModuleType.Combat) {
             return FontLoaders.ICON_SWORDS;
@@ -164,6 +190,12 @@ public final class ClickGuiIcons {
         return FontLoaders.ICON_LIST;
     }
 
+    /**
+     * 获取图标在 X 轴上的视觉偏移量，用于微调居中效果。
+     *
+     * @param icon 图标字符
+     * @return X 轴偏移像素值
+     */
     public static float visualOffsetX(String icon) {
         if (FontLoaders.ICON_BOMB.equals(icon)) {
             return -0.5f;
@@ -174,6 +206,12 @@ public final class ClickGuiIcons {
         return 0.0f;
     }
 
+    /**
+     * 获取图标在 Y 轴上的视觉偏移量，用于微调居中效果。
+     *
+     * @param icon 图标字符
+     * @return Y 轴偏移像素值
+     */
     public static float visualOffsetY(String icon) {
         if (FontLoaders.ICON_INFO.equals(icon) || FontLoaders.ICON_CHECKMARK.equals(icon)
                 || FontLoaders.ICON_XMARK.equals(icon)) {
@@ -185,6 +223,12 @@ public final class ClickGuiIcons {
         return 0.0f;
     }
 
+    /**
+     * 标准化名称字符串：去除空格、横线和下划线，转为小写。
+     *
+     * @param name 原始名称
+     * @return 标准化后的字符串
+     */
     private static String normalize(String name) {
         return name == null ? "" : name.replace(" ", "").replace("-", "").replace("_", "").toLowerCase();
     }
