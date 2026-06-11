@@ -4,28 +4,36 @@ Free Forge-based Minecraft 1.8.9 client mod.
 
 ## Requirements
 
-- Windows
-- JDK 8: `C:\Users\qiany\.jdks\corretto-1.8.0_492`
+- JDK 8, selected through `JAVA_HOME`, IntelliJ Gradle JVM, or a user-local Gradle property.
 - Gradle wrapper from this repository. Do not upgrade this project to Gradle 9; ForgeGradle 2.1 requires the old wrapper.
-- Visual Studio C++ build tools, only for native DLL builds.
+- Visual Studio C++ build tools, only for Windows native DLL builds.
 
 ## Build
+
+Linux/macOS:
+
+```sh
+./gradlew build
+```
+
+Windows:
 
 ```bat
 gradlew.bat build
 ```
 
-The main Java artifact is written to `build\libs\VapuLite.jar`.
+The main Java artifact is written to `build/libs/VapuLite.jar`.
 
 ## IntelliJ IDEA
 
 Use the project Gradle wrapper and JDK 8:
 
 - Gradle distribution: `Wrapper`
-- Gradle JVM: `corretto-1.8`
+- Gradle JVM: `JAVA_HOME` or any configured JDK 8 SDK
 - Run configuration: `Minecraft Client`
 
-If ForgeGradle reports asset download errors, repair the local Minecraft 1.8 asset cache:
+The Gradle `getAssets` task is patched to use HTTPS for Mojang asset downloads.
+If the cache still contains corrupt partial files, repair it manually:
 
 ```bat
 powershell -ExecutionPolicy Bypass -File tools\download-mc-assets.ps1

@@ -1,44 +1,36 @@
 # Eclipse
-eclipse
-bin
+/eclipse/
+/bin/
 *.launch
-.settings
-.metadata
-.classpath
-.project
+/.settings/
+/.metadata/
+/.classpath
+/.project
 
 # IntelliJ IDEA
-out
-classes
+/out/
+/classes/
 *.ipr
 *.iws
 *.iml
-.idea/*
-!.idea/
-!.idea/gradle.xml
-!.idea/misc.xml
-!.idea/runConfigurations/
-!.idea/runConfigurations/*.xml
+/.idea/
 
 # Gradle
-build
-.gradle
+/build/
+/.gradle/
 
 # Minecraft dev runtime
-run
+/run/
 
 # NetBeans
-.nb-gradle
-.nb-gradle-properties
+/.nb-gradle/
+/.nb-gradle-properties
 
 # OS/editor noise
 .DS_Store
 Thumbs.db
 *.log
 *.tmp
-.idea/gradle.xml
-.idea/misc.xml
-.idea/runConfigurations/Minecraft_Client_IDEA.xml
-.idea/runConfigurations/Minecraft_Server_IDEA.xml
-build.gradle
-gradle.properties
+
+# Local agent/tool metadata
+/.serena/
