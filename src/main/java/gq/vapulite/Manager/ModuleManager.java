@@ -46,7 +46,13 @@ public class ModuleManager {
             if (m.getCategory() != t) continue;
             output.add(m);
         }
-        output.sort(Comparator.comparingInt((Module o) -> Character.toLowerCase(o.getName().charAt(0))).thenComparingInt(o -> o.getName().charAt(0)));
+        output.sort(Comparator.comparingInt((Module o) -> {
+            String name = o.getName();
+            return name == null || name.isEmpty() ? 0 : Character.toLowerCase(name.charAt(0));
+        }).thenComparingInt(o -> {
+            String name = o.getName();
+            return name == null || name.isEmpty() ? 0 : name.charAt(0);
+        }));
         return output;
     }
 
@@ -57,7 +63,13 @@ public class ModuleManager {
                 output.add(module);
             }
         }
-        output.sort(Comparator.comparingInt((Module o) -> Character.toLowerCase(o.getName().charAt(0))).thenComparingInt(o -> o.getName().charAt(0)));
+        output.sort(Comparator.comparingInt((Module o) -> {
+            String name = o.getName();
+            return name == null || name.isEmpty() ? 0 : Character.toLowerCase(name.charAt(0));
+        }).thenComparingInt(o -> {
+            String name = o.getName();
+            return name == null || name.isEmpty() ? 0 : name.charAt(0);
+        }));
         return output;
     }
 
@@ -148,11 +160,11 @@ public class ModuleManager {
         addModule("StorageESP", new ModuleFactory() { public Module create() { return new StorageESP(); } });
         addModule("Chams", new ModuleFactory() { public Module create() { return new Chams(); } });
         addModule("ESP", new ModuleFactory() { public Module create() { return new ESP(); } });
-        addModule("Test", new ModuleFactory() {
-            @Override
-            public Module create() {
-                return new Test();
-            }
-        });
+//        addModule("Test", new ModuleFactory() {
+//            @Override
+//            public Module create() {
+//                return new Test();
+//            }
+//        });
     }
 }

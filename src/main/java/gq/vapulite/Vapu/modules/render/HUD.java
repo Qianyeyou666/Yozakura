@@ -31,6 +31,7 @@ import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.lwjgl.input.Keyboard;
 
+import java.awt.*;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -169,6 +170,9 @@ public class HUD extends Module {
         if (Boolean.TRUE.equals(notifications.getValue())) {
             NotificationManager.doRender(width, height);
         }
+//        if (ModuleManager.getModule("Test").state) {
+//            FontLoaders.C16.drawString("this is a test font", 0f, 5f, new Color(255,255,255).getRGB());
+//        }
     }
 
     @Override
