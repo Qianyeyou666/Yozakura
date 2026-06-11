@@ -752,7 +752,7 @@ public class HUD extends Module {
         if (isLightTheme()) {
             RenderUtil.drawRoundedBorderedRect(x, y, x2, y2, radius, 0.8f, fillColor, borderColor);
         } else {
-            drawThemedFrostedGlass(x, y, x2, y2, radius, strength, fillColor, borderColor);
+            RenderUtil.drawFrostedGlassRect(x, y, x2, y2, radius, strength, fillColor, borderColor);
         }
     }
 

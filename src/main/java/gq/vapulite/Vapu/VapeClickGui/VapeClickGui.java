@@ -143,7 +143,7 @@ public class VapeClickGui extends GuiScreen {
         if (gq.vapulite.Vapu.modules.render.HUD.isLightTheme()) {
             RenderUtil.drawRoundedBorderedRect(x, y, x2, y2, radius, strength, fill, border);
         } else {
-            drawThemedGlass(x, y, x2, y2, radius, strength, fill, border);
+            RenderUtil.drawFrostedGlassRect(x, y, x2, y2, radius, strength, fill, border);
         }
     }
 
