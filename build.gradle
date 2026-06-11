@@ -18,7 +18,6 @@ buildscript {
             url = 'https://repo.spongepowered.org/maven'
         }
 
-        jcenter()
     }
 
     dependencies {
@@ -41,7 +40,6 @@ repositories {
         url = 'https://repo.spongepowered.org/maven/'
     }
 
-    jcenter()
 }
 
 version = "1.5.0"
@@ -89,6 +87,162 @@ apply plugin: "idea"
 idea {
     module {
         inheritOutputDirs = true
+    }
+}
+
+wrapper {
+    gradleVersion = "4.9"
+    distributionType = Wrapper.DistributionType.ALL
+}
+
+ext.minecraftAssetBaseUrl = "https://resources.download.minecraft.net"
+
+ext.sha1Of = { File file ->
+    def digest = java.security.MessageDigest.getInstance("SHA-1")
+    file.withInputStream { input ->
+        byte[] buffer = new byte[8192]
+        int read
+        while ((read = input.read(buffer)) > 0) {
+            digest.update(buffer, 0, read)
+        }
+    }
+    digest.digest().collect { String.format("%02x", it & 0xff) }.join()
+}
+
+ext.assetInvalid = { File file, long size, String hash ->
+    !file.isFile() || file.length() != size || !sha1Of(file).equalsIgnoreCase(hash)
+}
+
+ext.copyCheckedAsset = { File source, File target, long size ->
+    if (!target.parentFile.isDirectory()) {
+        target.parentFile.mkdirs()
+    }
+    source.withInputStream { input ->
+        target.withOutputStream { output ->
+            output << input
+        }
+    }
+    if (target.length() != size) {
+        target.delete()
+        throw new IOException("Size mismatch for ${target}: expected ${size}, got ${target.length()}")
+    }
+}
+
+ext.downloadCheckedAsset = { String name, String path, String hash, long size, File target ->
+    if (!target.parentFile.isDirectory()) {
+        target.parentFile.mkdirs()
+    }
+
+    File tmp = new File(target.parentFile, "${target.name}.tmp")
+    if (tmp.exists()) {
+        tmp.delete()
+    }
+
+    new URL("${minecraftAssetBaseUrl}/${path}").withInputStream { input ->
+        tmp.withOutputStream { output ->
+            output << input
+        }
+    }
+
+    if (tmp.length() != size) {
+        tmp.delete()
+        throw new IOException("Size mismatch for ${name}: expected ${size}, got ${tmp.length()}")
+    }
+
+    String actualHash = sha1Of(tmp)
+    if (!actualHash.equalsIgnoreCase(hash)) {
+        tmp.delete()
+        throw new IOException("SHA1 mismatch for ${name}: expected ${hash}, got ${actualHash}")
+    }
+
+    if (target.exists()) {
+        target.delete()
+    }
+    if (!tmp.renameTo(target)) {
+        copyCheckedAsset(tmp, target, size)
+        tmp.delete()
+    }
+}
+
+tasks.matching { it.name == "getAssets" }.all { task ->
+    task.actions.clear()
+    task.doLast {
+        File assetsDir = task.getAssetsDir()
+        File objectsDir = new File(assetsDir, "objects")
+        File indexFile = task.getAssetsIndex()
+        File vanillaObjectsDir = new File(
+            net.minecraftforge.gradle.common.Constants.getMinecraftDirectory(),
+            "assets/objects"
+        )
+
+        if (!objectsDir.isDirectory()) {
+            objectsDir.mkdirs()
+        }
+        if (!indexFile.isFile()) {
+            throw new GradleException("Asset index not found: ${indexFile}")
+        }
+
+        def assetIndex = new groovy.json.JsonSlurper().parse(indexFile)
+        boolean virtualAssets = assetIndex.virtual == true
+        File virtualRoot = null
+        if (virtualAssets) {
+            String indexName = indexFile.name.replaceFirst(/\.[^.]+$/, "")
+            virtualRoot = new File(assetsDir, "virtual/${indexName}")
+            virtualRoot.mkdirs()
+        }
+
+        def assets = assetIndex.objects.collect { name, entry ->
+            String hash = entry.hash
+            String path = "${hash.substring(0, 2)}/${hash}"
+            [
+                name: name,
+                hash: hash,
+                size: (entry.size as Number).longValue(),
+                path: path,
+                target: new File(objectsDir, path)
+            ]
+        }
+
+        logger.lifecycle("Assets in index: ${assets.size()}")
+
+        int completed = 0
+        assets.each { asset ->
+            File target = asset.target
+            if (assetInvalid(target, asset.size, asset.hash)) {
+                File vanillaAsset = new File(vanillaObjectsDir, asset.path)
+                if (!assetInvalid(vanillaAsset, asset.size, asset.hash)) {
+                    copyCheckedAsset(vanillaAsset, target, asset.size)
+                } else {
+                    boolean downloaded = false
+                    for (int attempt = 1; attempt <= 5 && !downloaded; attempt++) {
+                        try {
+                            downloadCheckedAsset(asset.name, asset.path, asset.hash, asset.size, target)
+                            downloaded = true
+                        } catch (Exception ex) {
+                            logger.error("Error downloading asset (try {}) : {}", attempt, asset.name)
+                            if (attempt == 5) {
+                                throw ex
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (virtualRoot != null) {
+                File virtualTarget = new File(virtualRoot, asset.name)
+                if (assetInvalid(virtualTarget, asset.size, asset.hash)) {
+                    if (virtualTarget.exists()) {
+                        virtualTarget.delete()
+                    }
+                    copyCheckedAsset(target, virtualTarget, asset.size)
+                }
+            }
+
+            completed++
+            if (completed == 1 || completed == assets.size() || completed % 64 == 0) {
+                logger.lifecycle("Current status: ${completed}/${assets.size()}   ${(int) (completed * 100 / assets.size())}%")
+            }
+        }
     }
 }
 
