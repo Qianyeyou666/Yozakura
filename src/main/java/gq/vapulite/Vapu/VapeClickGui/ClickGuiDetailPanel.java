@@ -9,6 +9,7 @@ import gq.vapulite.Vapu.value.Option;
 import gq.vapulite.Vapu.value.Value;
 import gq.vapulite.font.FontLoaders;
 import gq.vapulite.ui.UiPanel;
+import gq.vapulite.ui.UiTheme;
 
 import java.awt.Color;
 import java.util.HashMap;
@@ -38,6 +39,10 @@ final class ClickGuiDetailPanel {
     ClickGuiDetailPanel(VapeClickGui gui) {
         this.gui = gui;
         this.panel = new UiPanel().setTheme(gui.uiTheme);
+    }
+
+    void updateTheme(UiTheme theme) {
+        panel.setTheme(theme);
     }
 
     void render(int mouseX, int mouseY, float introY) {

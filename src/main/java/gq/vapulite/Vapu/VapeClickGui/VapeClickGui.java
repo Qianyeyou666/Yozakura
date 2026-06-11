@@ -119,10 +119,40 @@ public class VapeClickGui extends GuiScreen {
                 new Color(218, 224, 238, 228).getRGB(),
                 new Color(255, 255, 255, 120).getRGB(),
                 new Color(255, 255, 255, 140).getRGB());
+
+        static final GuiPalette SAKURA = new GuiPalette(
+                new Color(240, 230, 236, 148).getRGB(),
+                new Color(235, 225, 234, 220).getRGB(),
+                new Color(248, 240, 245, 210).getRGB(),
+                new Color(238, 228, 238, 218).getRGB(),
+                new Color(230, 205, 222, 225).getRGB(),
+                new Color(28, 30, 36).getRGB(),
+                new Color(105, 110, 120).getRGB(),
+                new Color(155, 162, 175).getRGB(),
+                new Color(220, 130, 160).getRGB(),
+                new Color(195, 60, 68).getRGB(),
+                new Color(245, 235, 240, 148).getRGB(),
+                new Color(238, 225, 234, 118).getRGB(),
+                new Color(195, 165, 182, 54).getRGB(),
+                new Color(225, 210, 222, 170).getRGB(),
+                new Color(228, 185, 205, 200).getRGB(),
+                new Color(210, 120, 158).getRGB(),
+                new Color(220, 130, 160).getRGB(),
+                new Color(215, 200, 212, 170).getRGB(),
+                new Color(210, 120, 158, 215).getRGB(),
+                new Color(230, 215, 225, 190).getRGB(),
+                new Color(220, 195, 212, 148).getRGB(),
+                new Color(215, 205, 215, 132).getRGB(),
+                new Color(235, 225, 234, 228).getRGB(),
+                new Color(255, 255, 255, 120).getRGB(),
+                new Color(255, 255, 255, 140).getRGB());
     }
 
     GuiPalette guiColors() {
         try {
+            if (gq.vapulite.Vapu.modules.render.HUD.getTheme() == gq.vapulite.Vapu.modules.render.HUD.Theme.SAKURA) {
+                return GuiPalette.SAKURA;
+            }
             return gq.vapulite.Vapu.modules.render.HUD.isLightTheme() ? GuiPalette.LIGHT : GuiPalette.DARK;
         } catch (Exception e) {
             return GuiPalette.DARK;
@@ -304,6 +334,11 @@ public class VapeClickGui extends GuiScreen {
         updateFrameScale();
         ScaledResolution sr = new ScaledResolution(mc);
         updateLayout(sr);
+        UiTheme currentTheme = UiTheme.current();
+        searchField.setTheme(currentTheme);
+        reusableToggle.setTheme(currentTheme);
+        detailPanel.updateTheme(currentTheme);
+        moduleList.updateTheme(currentTheme);
         ensureSelectedModule();
         openProgress = animate(openProgress, closing ? 0.0f : 1.0f, closing ? 0.20f : 0.16f);
         guiAlpha = openProgress * gq.vapulite.Vapu.modules.render.ClickGUI.clickGuiAlpha.getValue().floatValue();

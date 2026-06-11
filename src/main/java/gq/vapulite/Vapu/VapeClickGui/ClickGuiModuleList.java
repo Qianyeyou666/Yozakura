@@ -5,6 +5,7 @@ import gq.vapulite.Vapu.modules.Module;
 import gq.vapulite.Vapu.utils.RenderUtil;
 import gq.vapulite.font.FontLoaders;
 import gq.vapulite.ui.UiPanel;
+import gq.vapulite.ui.UiTheme;
 import org.lwjgl.input.Mouse;
 
 import java.awt.Color;
@@ -17,6 +18,10 @@ final class ClickGuiModuleList {
     ClickGuiModuleList(VapeClickGui gui) {
         this.gui = gui;
         this.panel = new UiPanel().setTheme(gui.uiTheme);
+    }
+
+    void updateTheme(UiTheme theme) {
+        panel.setTheme(theme);
     }
 
     void render(int mouseX, int mouseY, float introY) {

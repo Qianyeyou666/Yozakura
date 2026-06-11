@@ -95,9 +95,31 @@ public final class UiTheme {
                 new Color(100, 108, 130).getRGB());     // selectBorder
     }
 
+    private static UiTheme vapeSakura() {
+        return new UiTheme(
+                new Color(28, 30, 36).getRGB(),        // text
+                new Color(96, 100, 108).getRGB(),       // muted
+                new Color(148, 155, 168).getRGB(),      // faint
+                new Color(225, 135, 162).getRGB(),      // accent — sakura pink
+                new Color(200, 70, 78).getRGB(),        // danger
+                new Color(248, 232, 238, 148).getRGB(), // panel — pink tint
+                new Color(210, 175, 190, 54).getRGB(),  // panelBorder
+                new Color(240, 225, 234, 158).getRGB(), // control
+                new Color(228, 210, 222, 182).getRGB(), // controlHover
+                new Color(218, 205, 216, 225).getRGB(), // toggleOff
+                new Color(215, 118, 152, 225).getRGB(), // toggleOn — sakura pink
+                new Color(145, 140, 150).getRGB(),      // toggleKnobOff
+                new Color(248, 238, 242).getRGB(),      // toggleKnobOn
+                new Color(236, 222, 230, 156).getRGB(), // fieldFill
+                new Color(190, 130, 155).getRGB(),      // fieldBorder
+                new Color(170, 110, 138).getRGB(),      // fieldInnerBorder
+                new Color(220, 205, 215, 220).getRGB(), // sliderTrack
+                new Color(150, 120, 140).getRGB());     // selectBorder
+    }
+
     public static UiTheme current() {
         try {
-            return HUD.isLightTheme() ? vapeLight() : vapeDark();
+            return HUD.isLightTheme() ? (HUD.getTheme() == HUD.Theme.SAKURA ? vapeSakura() : vapeLight()) : vapeDark();
         } catch (Exception e) {
             return vapeDark();
         }

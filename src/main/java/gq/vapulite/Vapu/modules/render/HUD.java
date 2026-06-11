@@ -46,7 +46,8 @@ public class HUD extends Module {
 
     public enum Theme {
         DARK,
-        LIGHT
+        LIGHT,
+        SAKURA
     }
 
     private static final class HudPalette {
@@ -80,10 +81,19 @@ public class HUD extends Module {
                 0xFF6090E0, 0xFF6888E0, 0xFF20AAD4,
                 0xFFE8EBF0, 0xFFDCE0E8, 0xFF181A20, 0xFF505560,
                 0xFFFFFFFF);
+
+        static final HudPalette SAKURA = new HudPalette(
+                0xFF1C1E22, 0xFF606468, 0xFFF5EEF2, 0xFFEBE0E6, 0xFFD0A8B8,
+                0xFFE890A8, 0xFFE87898,
+                0xFFE090A8, 0xFFD88098, 0xFFF0B0C0,
+                0xFFF0E8EC, 0xFFE8DCE2, 0xFF181A20, 0xFF505560,
+                0xFFFFFFFF);
     }
 
     private static HudPalette palette() {
-        return isLightTheme() ? HudPalette.LIGHT : HudPalette.DARK;
+        Theme t = getTheme();
+        if (t == Theme.SAKURA) return HudPalette.SAKURA;
+        return t == Theme.LIGHT ? HudPalette.LIGHT : HudPalette.DARK;
     }
 
     private static HUD instance;
@@ -1098,7 +1108,8 @@ public class HUD extends Module {
     }
 
     public static boolean isLightTheme() {
-        return getTheme() == Theme.LIGHT;
+        Theme t = getTheme();
+        return t == Theme.LIGHT || t == Theme.SAKURA;
     }
 
     private void beginScaled(float x, float y, float scale) {
