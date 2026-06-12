@@ -87,6 +87,7 @@ public class KeyboardDisplay extends Module {
         }
         HudDrag.drawHint("keyboard_display", drawX, drawY, layout.width, layout.height,
                 Math.max(2.0f, 5.0f * scale.getValue().floatValue()));
+        HudDrag.handleScroll("keyboard_display", scale, drawX, drawY, layout.width, layout.height, 0.6f, 1.8f);
     }
 
     @Override

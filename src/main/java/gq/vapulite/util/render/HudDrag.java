@@ -14,7 +14,6 @@ public final class HudDrag {
     private static String selectedId;
     private static float dragOffsetX;
     private static float dragOffsetY;
-
     private HudDrag() {
     }
 
@@ -108,6 +107,34 @@ public final class HudDrag {
 
     public static boolean isSelected(String id) {
         return id != null && id.equals(selectedId);
+    }
+
+    /**
+     * 在编辑模式下，当鼠标悬停在 HUD 元素上时，通过滚轮调整缩放值。
+     * 步进自动读取 scaleValue 的 increment。
+     */
+    public static void handleScroll(String id, Numbers<Double> scaleValue,
+                                    float x, float y, float width, float height,
+                                    float minScale, float maxScale) {
+        if (!isEditMode() || isClickGuiOpen() || scaleValue == null) {
+            return;
+        }
+        ScaledResolution sr = new ScaledResolution(MC);
+        if (!isHovered(mouseX(sr), mouseY(sr), x, y, width, height)) {
+            return;
+        }
+        int wheel = Mouse.getDWheel();
+        if (wheel == 0) {
+            return;
+        }
+        double current = scaleValue.getValue();
+        double step = scaleValue.getIncrement().doubleValue();
+        double delta = wheel > 0 ? step : -step;
+        double next = Math.max(minScale, Math.min(maxScale, current + delta));
+        next = Math.round(next * 100.0) / 100.0;
+        if (Math.abs(next - current) > 0.0001) {
+            scaleValue.setValue(next);
+        }
     }
 
     private static boolean isClickGuiOpen() {

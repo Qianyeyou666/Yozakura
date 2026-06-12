@@ -13,6 +13,7 @@ import gq.vapulite.engine.render.ui.RenderServices;
 import gq.vapulite.ui.click.ClickGuiIcons;
 import gq.vapulite.ui.UiPanel;
 import gq.vapulite.ui.UiTheme;
+import gq.vapulite.util.animation.AnimUtil;
 import net.minecraft.util.ResourceLocation;
 
 import java.awt.Color;
@@ -56,6 +57,10 @@ final class ClickGuiDetailPanel {
     private static final Set<Mode> expandedModes = new HashSet<>();
     /** 下拉栏展开动画进度 0→1 */
     private static final Map<Mode, Float> dropdownAnim = new HashMap<>();
+    /** 标签页摇晃动画（基于真实时间，约 260ms 衰减完毕） */
+    private final AnimUtil tabShake = new AnimUtil(260f);
+    /** 标签页弹跳动画（基于真实时间，约 280ms 衰减完毕） */
+    private final AnimUtil tabBounce = new AnimUtil(280f);
     /** 当前帧的 introY，下拉栏需要用它对齐 detail 面板 */
     private float currentIntroY;
 
@@ -165,6 +170,9 @@ final class ClickGuiDetailPanel {
                 }
             }
         }
+        // 更新标签页动画
+        tabShake.tick();
+        tabBounce.tick();
         // 绘制所有有动画进度的下拉栏
         for (Mode mode : dropdownAnim.keySet()) {
             if (gui.selectedModule != null && gui.selectedModule.getValues().contains(mode) && isModeVisible(mode)) {
@@ -480,8 +488,14 @@ final class ClickGuiDetailPanel {
                     : active ? gui.guiColors().text : gui.guiColors().muted;
             float textAlpha = !hasValues ? 120.0f
                     : active ? 238.0f : 224.0f;
-            // 标签文字
-            gui.drawCenteredText(DETAIL_TABS[i], x, tabY + 10.0f, x + each, tabY + 22.0f,
+            // 计算摇晃和弹跳偏移
+            float shakeOffset = AnimUtil.shakeX(tabShake.get(i));
+            float bounceOffsetY = AnimUtil.bounceY(tabBounce.get(i));
+            float bounceScale = AnimUtil.bounceScale(tabBounce.get(i));
+            // 标签文字（应用摇晃和弹跳偏移）
+            float textTop = tabY + 10.0f + bounceOffsetY;
+            float textBottom = tabY + 22.0f + bounceOffsetY;
+            gui.drawCenteredText(DETAIL_TABS[i], x + shakeOffset, textTop, x + each + shakeOffset, textBottom,
                     gui.withAlpha(textColor, textAlpha * gui.guiAlpha));
             // 激活标签页的底部指示线（仅当有值时显示）
             if (active && hasValues) {
@@ -510,12 +524,15 @@ final class ClickGuiDetailPanel {
         }
         int index = (int) ((mouseX - tabX) / (tabW / DETAIL_TABS.length));
         int next = Math.max(0, Math.min(DETAIL_TABS.length - 1, index));
-        // 如果目标标签页没有值，不切换
+        // 如果目标标签页没有值，触发摇晃动画并阻止切换
         if (!tabHasValues(next)) {
+            tabShake.trigger(next);
             return false;
         }
         if (gui.detailTabIndex != next) {
             gui.detailTabIndex = next;
+            // 触发选中标签页的弹跳动画
+            tabBounce.trigger(next);
             // 切换标签页时重置滚动和拖拽状态
             gui.settingsScroll = 0.0f;
             gui.targetSettingsScroll = 0.0f;

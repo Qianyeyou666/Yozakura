@@ -242,6 +242,7 @@ public class HUD extends Module {
             endScaled();
         }
         HudDrag.drawHint("hud_watermark", x, y, boxW * uiScale, boxH * uiScale, round * uiScale);
+        HudDrag.handleScroll("hud_watermark", watermarkScale, x, y, boxW * uiScale, boxH * uiScale, 0.65f, 1.8f);
     }
 
     private void drawVapeWatermark() {
@@ -281,6 +282,7 @@ public class HUD extends Module {
             endScaled();
         }
         HudDrag.drawHint("hud_watermark", x, y, boxW * uiScale, boxH * uiScale, 7.0f * uiScale);
+        HudDrag.handleScroll("hud_watermark", watermarkScale, x, y, boxW * uiScale, boxH * uiScale, 0.65f, 1.8f);
     }
 
     private void drawVapeTextChip(String text, float x, float y, float width, int accent) {
@@ -346,6 +348,7 @@ public class HUD extends Module {
             endScaled();
         }
         HudDrag.drawHint("hud_potions", x, y, width * uiScale, height * uiScale, 6.0f * uiScale);
+        HudDrag.handleScroll("hud_potions", potionScale, x, y, width * uiScale, height * uiScale, 0.65f, 1.8f);
     }
 
     private void drawInventory(int screenWidth, int screenHeight) {
@@ -397,6 +400,7 @@ public class HUD extends Module {
             endScaled();
         }
         HudDrag.drawHint("hud_inventory", x, y, width * uiScale, height * uiScale, getRadius() * uiScale);
+        HudDrag.handleScroll("hud_inventory", inventoryScale, x, y, width * uiScale, height * uiScale, 0.65f, 1.8f);
     }
 
     private void drawVapeInventory(int screenWidth, int screenHeight) {
@@ -449,6 +453,7 @@ public class HUD extends Module {
             endScaled();
         }
         HudDrag.drawHint("hud_inventory", x, y, width * uiScale, height * uiScale, 6.0f * uiScale);
+        HudDrag.handleScroll("hud_inventory", inventoryScale, x, y, width * uiScale, height * uiScale, 0.65f, 1.8f);
     }
 
     private void drawModuleList(int screenWidth, int screenHeight, float factor) {
@@ -500,6 +505,7 @@ public class HUD extends Module {
                 endScaled();
             }
             HudDrag.drawHint("hud_module_list", pos[0], y, listW * uiScale, listH * uiScale, round * uiScale);
+            HudDrag.handleScroll("hud_module_list", moduleListScale, pos[0], y, listW * uiScale, listH * uiScale, 0.65f, 1.8f);
             return;
         }
         beginScaled(pos[0], y, uiScale);
@@ -548,6 +554,7 @@ public class HUD extends Module {
             endScaled();
         }
         HudDrag.drawHint("hud_module_list", pos[0], pos[1], listW * uiScale, listH * uiScale, round * uiScale);
+        HudDrag.handleScroll("hud_module_list", moduleListScale, pos[0], pos[1], listW * uiScale, listH * uiScale, 0.65f, 1.8f);
     }
 
     private void drawVapeModuleList(int screenWidth, int screenHeight, float factor, List<Module> modules) {
@@ -646,6 +653,7 @@ public class HUD extends Module {
             endScaled();
         }
         HudDrag.drawHint("hud_module_list", pos[0], pos[1], listW * uiScale, listH * uiScale, 6.0f * uiScale);
+        HudDrag.handleScroll("hud_module_list", moduleListScale, pos[0], pos[1], listW * uiScale, listH * uiScale, 0.65f, 1.8f);
     }
 
     private void drawPotionEffects() {
@@ -715,6 +723,7 @@ public class HUD extends Module {
             endScaled();
         }
         HudDrag.drawHint("hud_potions", x, y, width * uiScale, height * uiScale, getRadius() * uiScale);
+        HudDrag.handleScroll("hud_potions", potionScale, x, y, width * uiScale, height * uiScale, 0.65f, 1.8f);
     }
 
     private void drawItemStack(ItemStack stack, float x, float y) {
