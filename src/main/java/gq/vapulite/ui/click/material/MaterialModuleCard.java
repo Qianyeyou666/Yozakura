@@ -3,6 +3,7 @@ package gq.vapulite.ui.click.material;
 import gq.vapulite.engine.font.FontLoaders;
 import gq.vapulite.engine.render.ui.RenderServices;
 import gq.vapulite.module.Module;
+import gq.vapulite.util.animation.AnimationUtil;
 
 /**
  * 单个模块卡片。
@@ -21,9 +22,21 @@ final class MaterialModuleCard {
     private final float y;
     private final float w;
     private final float h;
+    private final float reveal;
+    private final float valueHeight;
 
     MaterialModuleCard(MaterialClickGui gui, MaterialValueRenderer values, Module module,
                        float x, float y, float w, float h) {
+        this(gui, values, module, x, y, w, h, 1.0f, -1.0f);
+    }
+
+    MaterialModuleCard(MaterialClickGui gui, MaterialValueRenderer values, Module module,
+                       float x, float y, float w, float h, float reveal) {
+        this(gui, values, module, x, y, w, h, reveal, -1.0f);
+    }
+
+    MaterialModuleCard(MaterialClickGui gui, MaterialValueRenderer values, Module module,
+                       float x, float y, float w, float h, float reveal, float valueHeight) {
         this.gui = gui;
         this.values = values;
         this.module = module;
@@ -31,44 +44,70 @@ final class MaterialModuleCard {
         this.y = y;
         this.w = w;
         this.h = h;
+        this.reveal = MaterialClickTheme.clamp(reveal, 0.0f, 1.0f);
+        this.valueHeight = valueHeight;
     }
 
     static float measure(MaterialClickGui gui, MaterialValueRenderer values, Module module, float w) {
         float s = gui.layout().scale;
-        float valueH = values.measure(module, w - 40.0f * s);
+        return measure(gui, module, w, values.measure(module, w - 40.0f * s));
+    }
+
+    static float measure(MaterialClickGui gui, Module module, float w, float valueH) {
+        float s = gui.layout().scale;
+        float collapsed = COLLAPSED_H * s;
         if (!gui.isModuleExpanded(module) || valueH <= 0.0f) {
-            return COLLAPSED_H * s;
+            float expand = AnimationUtil.ease(gui.moduleExpandProgress(module), AnimationUtil.Ease.IN_OUT_CUBIC);
+            if (valueH <= 0.0f || expand <= 0.01f) {
+                return collapsed;
+            }
         }
         float min = 120.0f * s;
-        return Math.max(min, 70.0f * s + valueH + (valueH > 0.0f ? 18.0f * s : 20.0f * s));
+        float expanded = Math.max(min, 70.0f * s + valueH + (valueH > 0.0f ? 18.0f * s : 20.0f * s));
+        float expand = AnimationUtil.ease(gui.moduleExpandProgress(module), AnimationUtil.Ease.IN_OUT_CUBIC);
+        return AnimationUtil.lerp(collapsed, expanded, expand);
     }
 
     void render(int mouseX, int mouseY) {
+        if (reveal <= 0.01f) {
+            return;
+        }
         MaterialClickTheme theme = gui.theme();
         MaterialClickLayout layout = gui.layout();
         float s = layout.scale;
         boolean active = module.getState();
         boolean hovered = MaterialClickLayout.contains(x, y, x + w, y + h, mouseX, mouseY);
-        float hover = hovered ? 1.0f : 0.0f;
+        String key = gui.animationKey(module);
+        float hover = gui.easedAnimation("module.hover." + key, hovered ? 1.0f : 0.0f,
+                0.26f, 0.0f, AnimationUtil.Ease.OUT_CUBIC);
+        float activeProgress = gui.easedAnimation("module.active." + key, active ? 1.0f : 0.0f,
+                0.24f, active ? 1.0f : 0.0f, AnimationUtil.Ease.OUT_CUBIC);
+        float expand = AnimationUtil.ease(gui.moduleExpandProgress(module), AnimationUtil.Ease.IN_OUT_CUBIC);
 
-        float borderW = (active ? ACTIVE_BORDER_W : INACTIVE_BORDER_W) * s;
+        float borderW = AnimationUtil.lerp(INACTIVE_BORDER_W, ACTIVE_BORDER_W, activeProgress) * s;
         RenderServices.shapes().roundedBorder(x, y, x + w, y + h, 20.0f * s, borderW,
-                theme.cardFill(active, hover), theme.cardBorder(active, hover));
+                alpha(theme.cardFill(activeProgress, hover), reveal), alpha(theme.cardBorder(activeProgress, hover), reveal));
 
-        drawHeader(mouseX, mouseY);
-        if (gui.isModuleExpanded(module) && hasSettings()) {
+        drawHeader(mouseX, mouseY, activeProgress);
+        if (hasSettings() && expand > 0.01f) {
             float valueY = y + 70.0f * s;
-            values.render(module, x + 20.0f * s, valueY, w - 40.0f * s, mouseX, mouseY);
+            gui.beginScissor(x, y + 64.0f * s, w, Math.max(0.0f, h - 64.0f * s));
+            try {
+                values.render(module, x + 20.0f * s, valueY, w - 40.0f * s, mouseX, mouseY);
+            } finally {
+                gui.endScissor();
+            }
         }
     }
 
-    private void drawHeader(int mouseX, int mouseY) {
+    private void drawHeader(int mouseX, int mouseY, float activeProgress) {
         MaterialClickTheme theme = gui.theme();
         MaterialClickLayout layout = gui.layout();
         float s = layout.scale;
-        FontLoaders.TB16.drawString(gui.displayName(module), x + 20.0f * s, y + 18.0f * s, theme.text());
+        FontLoaders.TB16.drawString(gui.displayName(module), x + 20.0f * s, y + 18.0f * s,
+                alpha(theme.text(), reveal));
         drawKeyPill(mouseX, mouseY);
-        drawSwitch(x + w - 64.0f * s, y + 22.0f * s, module.getState());
+        drawSwitch(x + w - 64.0f * s, y + 22.0f * s, activeProgress);
     }
 
     private void drawKeyPill(int mouseX, int mouseY) {
@@ -79,25 +118,31 @@ final class MaterialModuleCard {
         float pillX = x + 20.0f * s;
         float pillY = y + 43.0f * s;
         float pillW = Math.max(42.0f * s, FontLoaders.C14.getStringWidth(key) + 12.0f * s);
+        boolean hovered = MaterialClickLayout.contains(pillX, pillY, pillX + pillW, pillY + 18.0f * s, mouseX, mouseY);
+        float focus = gui.easedAnimation("module.key." + gui.animationKey(module),
+                hovered || gui.isBinding(module) ? 1.0f : 0.0f, 0.28f, 0.0f, AnimationUtil.Ease.OUT_CUBIC);
         RenderServices.shapes().rounded(pillX, pillY, pillX + pillW, pillY + 18.0f * s, 6.0f * s,
-                theme.keybindFill());
-        FontLoaders.C14.drawCenteredString(key, pillX + pillW / 2.0f, pillY + 4.0f * s, theme.muted());
+                alpha(theme.withAlpha(theme.blend(MaterialClickTheme.OUTLINE, MaterialClickTheme.PRIMARY_CONTAINER, focus),
+                        (22.0f + 38.0f * focus) * theme.alpha()), reveal));
+        FontLoaders.C14.drawCenteredString(key, pillX + pillW / 2.0f, pillY + 4.0f * s,
+                alpha(theme.withAlpha(theme.blend(MaterialClickTheme.MUTED, MaterialClickTheme.ON_PRIMARY_CONTAINER, focus),
+                        255.0f * theme.alpha()), reveal));
     }
 
-    private void drawSwitch(float x, float y, boolean active) {
+    private void drawSwitch(float x, float y, float activeProgress) {
         MaterialClickTheme theme = gui.theme();
         MaterialClickLayout layout = gui.layout();
         float s = layout.scale;
         float w = 44.0f * s;
         float h = 24.0f * s;
-        int track = active ? theme.withAlpha(MaterialClickTheme.PRIMARY, 255.0f * theme.alpha())
-                : theme.withAlpha(0xFFFFFFFF, 26.0f * theme.alpha());
-        int thumb = active ? theme.withAlpha(MaterialClickTheme.ON_PRIMARY, 255.0f * theme.alpha())
-                : theme.withAlpha(MaterialClickTheme.MUTED, 230.0f * theme.alpha());
-        int border = active ? 0 : theme.withAlpha(0xFFFFFFFF, 13.0f * theme.alpha());
+        int track = theme.blend(theme.withAlpha(0xFFFFFFFF, 26.0f * theme.alpha() * reveal),
+                theme.withAlpha(MaterialClickTheme.PRIMARY, 255.0f * theme.alpha() * reveal), activeProgress);
+        int thumb = theme.blend(theme.withAlpha(MaterialClickTheme.MUTED, 230.0f * theme.alpha() * reveal),
+                theme.withAlpha(MaterialClickTheme.ON_PRIMARY, 255.0f * theme.alpha() * reveal), activeProgress);
+        int border = theme.withAlpha(0xFFFFFFFF, 13.0f * theme.alpha() * reveal * (1.0f - activeProgress));
         RenderServices.shapes().roundedBorder(x, y, x + w, y + h, h / 2.0f, 1.0f, track, border);
         float knob = 16.0f * s;
-        float knobX = x + (active ? 22.0f : 4.0f) * s;
+        float knobX = x + AnimationUtil.lerp(4.0f, 22.0f, activeProgress) * s;
         RenderServices.shapes().rounded(knobX, y + 4.0f * s, knobX + knob, y + 4.0f * s + knob, knob / 2.0f, thumb);
     }
 
@@ -137,8 +182,18 @@ final class MaterialModuleCard {
     }
 
     private boolean hasSettings() {
-        float s = gui.layout().scale;
-        return values.measure(module, w - 40.0f * s) > 0.0f;
+        return measuredValueHeight() > 0.0f;
     }
 
+    private float measuredValueHeight() {
+        if (valueHeight >= 0.0f) {
+            return valueHeight;
+        }
+        float s = gui.layout().scale;
+        return values.measure(module, w - 40.0f * s);
+    }
+
+    private int alpha(int color, float alpha) {
+        return gui.theme().withAlpha(color, ((color >>> 24) & 255) * MaterialClickTheme.clamp(alpha, 0.0f, 1.0f));
+    }
 }

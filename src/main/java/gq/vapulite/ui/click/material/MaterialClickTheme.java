@@ -1,5 +1,7 @@
 package gq.vapulite.ui.click.material;
 
+import gq.vapulite.util.animation.AnimationUtil;
+
 /**
  * MaterialClickGui 的颜色与透明度工具。
  *
@@ -40,20 +42,29 @@ final class MaterialClickTheme {
     }
 
     int cardFill(boolean active, float hover) {
-        if (active) {
-            return withAlpha(blend(ACTIVE_CARD, PRIMARY, hover * 0.08f), (118.0f + hover * 16.0f) * alpha);
-        }
-        if (hover > 0.0f) {
-            return withAlpha(CARD_HOVER, 112.0f * alpha);
-        }
-        return withAlpha(CARD_SURFACE, 104.0f * alpha);
+        return cardFill(active ? 1.0f : 0.0f, hover);
+    }
+
+    int cardFill(float active, float hover) {
+        float h = clamp(hover, 0.0f, 1.0f);
+        float a = clamp(active, 0.0f, 1.0f);
+        int inactiveFill = blend(CARD_SURFACE, CARD_HOVER, h);
+        int activeFill = blend(ACTIVE_CARD, PRIMARY, h * 0.08f);
+        float inactiveAlpha = 104.0f + h * 8.0f;
+        float activeAlpha = 118.0f + h * 16.0f;
+        return withAlpha(blend(inactiveFill, activeFill, a), AnimationUtil.lerp(inactiveAlpha, activeAlpha, a) * alpha);
     }
 
     int cardBorder(boolean active, float hover) {
-        if (active) {
-            return withAlpha(PRIMARY, 78.0f * alpha);
-        }
-        return withAlpha(hover > 0.0f ? PRIMARY : OUTLINE, (hover > 0.0f ? 32.0f : 12.0f) * alpha);
+        return cardBorder(active ? 1.0f : 0.0f, hover);
+    }
+
+    int cardBorder(float active, float hover) {
+        float h = clamp(hover, 0.0f, 1.0f);
+        float a = clamp(active, 0.0f, 1.0f);
+        int inactiveBorder = blend(OUTLINE, PRIMARY, h);
+        float inactiveAlpha = 12.0f + h * 20.0f;
+        return withAlpha(blend(inactiveBorder, PRIMARY, a), AnimationUtil.lerp(inactiveAlpha, 78.0f, a) * alpha);
     }
 
     int keybindFill() {

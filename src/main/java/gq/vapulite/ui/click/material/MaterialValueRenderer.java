@@ -3,6 +3,7 @@ package gq.vapulite.ui.click.material;
 import gq.vapulite.engine.font.FontLoaders;
 import gq.vapulite.engine.render.ui.RenderServices;
 import gq.vapulite.module.Module;
+import gq.vapulite.util.animation.AnimationUtil;
 import gq.vapulite.value.Mode;
 import gq.vapulite.value.Numbers;
 import gq.vapulite.value.Option;
@@ -88,7 +89,7 @@ final class MaterialValueRenderer {
                 drawNumber((Numbers) value, x, y, width);
                 y += 54.0f * gui.layout().scale;
             } else if (value instanceof Option) {
-                drawOption((Option) value, x, y, width);
+                drawOption((Option) value, x, y, width, mouseX, mouseY);
                 y += 40.0f * gui.layout().scale;
             } else {
                 drawTextValue(value, x, y, width);
@@ -192,18 +193,30 @@ final class MaterialValueRenderer {
         releaseDrag();
     }
 
-    private void drawOption(Option value, float x, float y, float width) {
+    private void drawOption(Option value, float x, float y, float width, int mouseX, int mouseY) {
         MaterialClickTheme theme = gui.theme();
         float s = gui.layout().scale;
         boolean active = Boolean.TRUE.equals(value.getValue());
-        FontLoaders.C14.drawString(gui.displayName(value), x, y + 8.0f * s, theme.muted());
+        String key = gui.animationKey(value);
+        float activeProgress = gui.easedAnimation("value.option." + key, active ? 1.0f : 0.0f,
+                0.26f, active ? 1.0f : 0.0f, AnimationUtil.Ease.OUT_CUBIC);
+        float hover = gui.easedAnimation("value.hover." + key,
+                MaterialClickLayout.contains(x, y, x + width, y + 32.0f * s, mouseX, mouseY) ? 1.0f : 0.0f,
+                0.28f, 0.0f, AnimationUtil.Ease.OUT_CUBIC);
+        FontLoaders.C14.drawString(gui.displayName(value), x + 2.0f * hover * s, y + 8.0f * s,
+                theme.withAlpha(theme.blend(MaterialClickTheme.MUTED, MaterialClickTheme.TEXT, hover * 0.35f),
+                        255.0f * theme.alpha()));
         float swX = x + width - 38.0f * s;
         float swY = y + 7.0f * s;
+        int offTrack = theme.softFill(28.0f + 18.0f * hover);
+        int onTrack = theme.withAlpha(MaterialClickTheme.PRIMARY, (220.0f + 35.0f * hover) * theme.alpha());
         RenderServices.shapes().rounded(swX, swY, swX + 34.0f * s, swY + 18.0f * s, 9.0f * s,
-                active ? theme.withAlpha(MaterialClickTheme.PRIMARY, 220.0f * theme.alpha()) : theme.softFill(28.0f));
-        float knobX = swX + (active ? 18.0f : 3.0f) * s;
+                theme.blend(offTrack, onTrack, activeProgress));
+        float knobX = swX + AnimationUtil.lerp(3.0f, 18.0f, activeProgress) * s;
+        int knob = theme.blend(theme.muted(), theme.withAlpha(MaterialClickTheme.ON_PRIMARY, 255.0f * theme.alpha()),
+                activeProgress);
         RenderServices.shapes().rounded(knobX, swY + 3.0f * s, knobX + 12.0f * s, swY + 15.0f * s,
-                6.0f * s, active ? theme.withAlpha(MaterialClickTheme.ON_PRIMARY, 255.0f * theme.alpha()) : theme.muted());
+                6.0f * s, knob);
     }
 
     private void drawNumber(Numbers value, float x, float y, float width) {
@@ -212,7 +225,11 @@ final class MaterialValueRenderer {
         FontLoaders.C14.drawString(gui.displayName(value), x, y, theme.muted());
         FontLoaders.C14.drawString(formatNumber(numberValue(value)), x + width - FontLoaders.C14.getStringWidth(formatNumber(numberValue(value))),
                 y, theme.muted());
-        drawSlider(sliderX(x, width), y + 24.0f * s, sliderW(width), pct(value), theme);
+        String key = gui.animationKey(value);
+        float shownPct = gui.animation("value.number." + key, pct(value),
+                draggingNumber == value ? 0.62f : 0.26f, pct(value));
+        drawSlider(sliderX(x, width), y + 24.0f * s, sliderW(width), shownPct, theme,
+                "value.slider." + key, draggingNumber == value);
     }
 
     private void drawRange(Numbers min, Numbers max, float x, float y, float width) {
@@ -220,8 +237,12 @@ final class MaterialValueRenderer {
         float s = gui.layout().scale;
         double rangeMin = Math.min(min.getMinimum().doubleValue(), max.getMinimum().doubleValue());
         double rangeMax = Math.max(min.getMaximum().doubleValue(), max.getMaximum().doubleValue());
-        float minPct = pct(min, rangeMin, rangeMax);
-        float maxPct = pct(max, rangeMin, rangeMax);
+        String minKey = gui.animationKey(min);
+        String maxKey = gui.animationKey(max);
+        float minPct = gui.animation("value.range.min." + minKey, pct(min, rangeMin, rangeMax),
+                draggingNumber == min ? 0.62f : 0.26f, pct(min, rangeMin, rangeMax));
+        float maxPct = gui.animation("value.range.max." + maxKey, pct(max, rangeMin, rangeMax),
+                draggingNumber == max ? 0.62f : 0.26f, pct(max, rangeMin, rangeMax));
         String label = rangeLabel(min);
         String values = formatNumber(numberValue(min)) + " - " + formatNumber(numberValue(max));
         FontLoaders.C14.drawString(label, x, y, theme.muted());
@@ -233,8 +254,8 @@ final class MaterialValueRenderer {
         RenderServices.shapes().rounded(sx, sy, sx + sw, sy + 4.0f * s, 2.0f * s, theme.softFill(24.0f));
         RenderServices.shapes().rounded(sx + sw * minPct, sy, sx + sw * maxPct, sy + 4.0f * s, 2.0f * s,
                 theme.withAlpha(MaterialClickTheme.PRIMARY, 210.0f * theme.alpha()));
-        drawKnob(sx + sw * minPct, sy + 2.0f * s, theme);
-        drawKnob(sx + sw * maxPct, sy + 2.0f * s, theme);
+        drawKnob(sx + sw * minPct, sy + 2.0f * s, theme, "value.slider." + minKey, draggingNumber == min);
+        drawKnob(sx + sw * maxPct, sy + 2.0f * s, theme, "value.slider." + maxKey, draggingNumber == max);
     }
 
     private void drawColor(Module module, int index, float x, float y, float width, int mouseX, int mouseY) {
@@ -259,36 +280,45 @@ final class MaterialValueRenderer {
         MaterialClickTheme theme = gui.theme();
         float s = gui.layout().scale;
         FontLoaders.C14.drawString(label, x, y - 5.0f * s, theme.faint());
-        drawSlider(x + 18.0f * s, y, width - 18.0f * s, pct(value), theme);
+        String key = gui.animationKey(value);
+        float shownPct = gui.animation("value.color." + key, pct(value),
+                draggingNumber == value ? 0.62f : 0.26f, pct(value));
+        drawSlider(x + 18.0f * s, y, width - 18.0f * s, shownPct, theme,
+                "value.slider." + key, draggingNumber == value);
     }
 
     private void drawMode(Mode mode, float x, float y, float width, int mouseX, int mouseY) {
         MaterialClickTheme theme = gui.theme();
         float s = gui.layout().scale;
-        boolean expanded = expandedModes.contains(mode);
+        float expand = modeProgress(mode);
+        float hover = gui.easedAnimation("value.mode.hover." + gui.animationKey(mode),
+                MaterialClickLayout.contains(x, y, x + width, y + 32.0f * s, mouseX, mouseY) ? 1.0f : 0.0f,
+                0.28f, 0.0f, AnimationUtil.Ease.OUT_CUBIC);
         FontLoaders.C14.drawString(gui.displayName(mode), x, y + 8.0f * s, theme.muted());
 
         String current = modeLabel(mode.getModeAsString());
         float pillW = Math.max(68.0f * s, FontLoaders.C14.getStringWidth(current) + 22.0f * s);
         float pillX = x + width - pillW;
         RenderServices.shapes().rounded(pillX, y + 5.0f * s, pillX + pillW, y + 27.0f * s,
-                8.0f * s, theme.withAlpha(expanded ? MaterialClickTheme.PRIMARY_CONTAINER : 0xFFFFFFFF,
-                        (expanded ? 138.0f : 26.0f) * theme.alpha()));
+                8.0f * s, theme.withAlpha(theme.blend(0xFFFFFFFF, MaterialClickTheme.PRIMARY_CONTAINER, expand),
+                        (26.0f + 112.0f * expand + 18.0f * hover) * theme.alpha()));
         FontLoaders.C14.drawCenteredString(current, pillX + pillW / 2.0f, y + 10.0f * s,
-                expanded ? theme.withAlpha(MaterialClickTheme.ON_PRIMARY_CONTAINER, 245.0f * theme.alpha()) : theme.muted());
+                theme.withAlpha(theme.blend(MaterialClickTheme.MUTED, MaterialClickTheme.ON_PRIMARY_CONTAINER, expand),
+                        255.0f * theme.alpha()));
 
-        if (!expanded) {
+        if (expand <= 0.01f) {
             return;
         }
-        float optionY = y + 34.0f * s;
+        float optionY = y + (34.0f - 5.0f * (1.0f - expand)) * s;
         Enum[] modes = mode.getModes();
         for (Enum option : modes) {
             boolean active = option.name().equalsIgnoreCase(mode.getModeAsString());
             RenderServices.shapes().rounded(x, optionY, x + width, optionY + 20.0f * s, 7.0f * s,
                     theme.withAlpha(active ? MaterialClickTheme.PRIMARY_CONTAINER : 0xFFFFFFFF,
-                            (active ? 120.0f : 16.0f) * theme.alpha()));
+                            (active ? 120.0f : 16.0f) * theme.alpha() * expand));
             FontLoaders.C14.drawString(modeLabel(option.name()), x + 9.0f * s, optionY + 5.0f * s,
-                    active ? theme.withAlpha(MaterialClickTheme.ON_PRIMARY_CONTAINER, 255.0f * theme.alpha()) : theme.muted());
+                    active ? theme.withAlpha(MaterialClickTheme.ON_PRIMARY_CONTAINER, 255.0f * theme.alpha() * expand)
+                            : theme.withAlpha(MaterialClickTheme.MUTED, 255.0f * theme.alpha() * expand));
             optionY += 23.0f * s;
         }
     }
@@ -300,18 +330,25 @@ final class MaterialValueRenderer {
         FontLoaders.C14.drawString(text, x + width - FontLoaders.C14.getStringWidth(text), y + 7.0f * gui.layout().scale, theme.muted());
     }
 
-    private void drawSlider(float x, float y, float width, float pct, MaterialClickTheme theme) {
+    private void drawSlider(float x, float y, float width, float pct, MaterialClickTheme theme, String key, boolean active) {
         float s = gui.layout().scale;
         RenderServices.shapes().rounded(x, y, x + width, y + 4.0f * s, 2.0f * s, theme.softFill(24.0f));
         RenderServices.shapes().rounded(x, y, x + width * pct, y + 4.0f * s, 2.0f * s,
                 theme.withAlpha(MaterialClickTheme.PRIMARY, 210.0f * theme.alpha()));
-        drawKnob(x + width * pct, y + 2.0f * s, theme);
+        drawKnob(x + width * pct, y + 2.0f * s, theme, key, active);
     }
 
-    private void drawKnob(float centerX, float centerY, MaterialClickTheme theme) {
+    private void drawKnob(float centerX, float centerY, MaterialClickTheme theme, String key, boolean active) {
         float s = gui.layout().scale;
-        RenderServices.shapes().rounded(centerX - 6.0f * s, centerY - 6.0f * s,
-                centerX + 6.0f * s, centerY + 6.0f * s, 6.0f * s,
+        float focus = gui.easedAnimation(key + ".focus", active ? 1.0f : 0.0f,
+                0.30f, 0.0f, AnimationUtil.Ease.OUT_CUBIC);
+        float radius = (6.0f + 2.0f * focus) * s;
+        if (focus > 0.01f) {
+            RenderServices.shapes().shadow(centerX - radius, centerY - radius, centerX + radius, centerY + radius,
+                    radius, theme.withAlpha(MaterialClickTheme.PRIMARY, 70.0f * theme.alpha() * focus), 4, 2.0f * s);
+        }
+        RenderServices.shapes().rounded(centerX - radius, centerY - radius,
+                centerX + radius, centerY + radius, radius,
                 theme.withAlpha(MaterialClickTheme.PRIMARY, 255.0f * theme.alpha()));
     }
 
@@ -377,10 +414,14 @@ final class MaterialValueRenderer {
 
     private float modeHeight(Mode mode) {
         float s = gui.layout().scale;
-        if (!expandedModes.contains(mode)) {
-            return 32.0f * s;
-        }
-        return (34.0f + mode.getModes().length * 23.0f) * s;
+        float collapsed = 32.0f * s;
+        float expanded = (34.0f + mode.getModes().length * 23.0f) * s;
+        return AnimationUtil.lerp(collapsed, expanded, modeProgress(mode));
+    }
+
+    private float modeProgress(Mode mode) {
+        return gui.easedAnimation("value.mode.expand." + gui.animationKey(mode),
+                expandedModes.contains(mode) ? 1.0f : 0.0f, 0.28f, 0.0f, AnimationUtil.Ease.OUT_CUBIC);
     }
 
     private float sliderX(float x, float width) {
