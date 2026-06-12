@@ -1,0 +1,218 @@
+{
+  "H": {
+    "id": 9603704,
+    "name": "双剑交叉",
+    "query": "双剑交叉",
+    "glyph": "tenacity-crossed-swords",
+    "bbox": [
+      80,
+      -91,
+      1000,
+      791
+    ]
+  },
+  "I": {
+    "id": 5387618,
+    "name": "盾牌保卫",
+    "query": "盾牌",
+    "glyph": "tenacity-shield-outline",
+    "bbox": [
+      161,
+      -110,
+      919,
+      810
+    ]
+  },
+  "J": {
+    "id": 5679718,
+    "name": "准星",
+    "query": "准星",
+    "glyph": "tenacity-crosshair-plus",
+    "bbox": [
+      80,
+      -110,
+      1000,
+      810
+    ]
+  },
+  "K": {
+    "id": 145435,
+    "name": "时钟",
+    "query": "时钟",
+    "glyph": "tenacity-clock-outline",
+    "bbox": [
+      80,
+      -110,
+      1000,
+      810
+    ]
+  },
+  "L": {
+    "id": 1727483,
+    "name": "239扫描",
+    "query": "扫描",
+    "glyph": "tenacity-scan-corners",
+    "bbox": [
+      80,
+      -110,
+      1000,
+      810
+    ]
+  },
+  "M": {
+    "id": 5203299,
+    "name": "太阳",
+    "query": "太阳",
+    "glyph": "tenacity-sun-outline",
+    "bbox": [
+      80,
+      -110,
+      1000,
+      810
+    ]
+  },
+  "N": {
+    "id": 924462,
+    "name": "cursor",
+    "query": "cursor",
+    "glyph": "tenacity-cursor-arrow",
+    "bbox": [
+      80,
+      -104,
+      1000,
+      804
+    ]
+  },
+  "O": {
+    "id": 24704770,
+    "name": "奔跑",
+    "query": "奔跑",
+    "glyph": "tenacity-runner",
+    "bbox": [
+      92,
+      -110,
+      988,
+      810
+    ]
+  },
+  "P": {
+    "id": 17597791,
+    "name": "心跳",
+    "query": "心跳线",
+    "glyph": "tenacity-pulse-line",
+    "bbox": [
+      80,
+      -23,
+      1000,
+      723
+    ]
+  },
+  "Q": {
+    "id": 47658775,
+    "name": "pickaxe",
+    "query": "pickaxe",
+    "glyph": "tenacity-pickaxe-outline",
+    "bbox": [
+      80,
+      -102,
+      1000,
+      802
+    ]
+  },
+  "R": {
+    "id": 689263,
+    "name": "立方体 立体 多面体 方块",
+    "query": "立方体",
+    "glyph": "tenacity-cube-outline",
+    "bbox": [
+      97,
+      -110,
+      983,
+      810
+    ]
+  },
+  "S": {
+    "id": 5388029,
+    "name": "地图_地球_o",
+    "query": "地球",
+    "glyph": "tenacity-globe-outline",
+    "bbox": [
+      80,
+      -110,
+      1000,
+      810
+    ]
+  },
+  "T": {
+    "id": 145442,
+    "name": "用户",
+    "query": "用户",
+    "glyph": "tenacity-user-outline-new",
+    "bbox": [
+      106,
+      -110,
+      974,
+      810
+    ]
+  },
+  "U": {
+    "id": 1382583,
+    "name": "齿轮",
+    "query": "齿轮",
+    "glyph": "tenacity-gear-outline",
+    "bbox": [
+      80,
+      -89,
+      1000,
+      789
+    ]
+  },
+  "V": {
+    "id": 4893191,
+    "name": "文件夹",
+    "query": "文件夹",
+    "glyph": "tenacity-folder-outline",
+    "bbox": [
+      80,
+      -79,
+      1000,
+      779
+    ]
+  },
+  "W": {
+    "id": 6337464,
+    "name": "字体代码",
+    "query": "代码",
+    "glyph": "tenacity-code-brackets",
+    "bbox": [
+      80,
+      57,
+      1000,
+      643
+    ]
+  },
+  "X": {
+    "id": 145497,
+    "name": "下载",
+    "query": "下载",
+    "glyph": "tenacity-download-line-new",
+    "bbox": [
+      171,
+      -110,
+      909,
+      810
+    ]
+  },
+  "Y": {
+    "id": 11372659,
+    "name": "更多",
+    "query": "更多",
+    "glyph": "tenacity-ellipsis",
+    "bbox": [
+      80,
+      230,
+      1000,
+      470
+    ]
+  }
+}

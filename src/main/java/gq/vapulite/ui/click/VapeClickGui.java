@@ -427,6 +427,7 @@ public class VapeClickGui extends GuiScreen {
         frameScale = 1.0f;
         lastTheme = gq.vapulite.module.render.HUD.getTheme();
         themeFadeProgress = 0.0f;
+        themeRenderer.resetGlassAnimation();
     }
 
     /**
@@ -457,6 +458,7 @@ public class VapeClickGui extends GuiScreen {
             return;
         }
         updateThemeTransition();
+        themeRenderer.updateGlassAnimation();
         drawBackdrop(sr);
         ShaderRenderer.invalidateFrostedGlass();
         // 更新交互状态
@@ -962,6 +964,9 @@ public class VapeClickGui extends GuiScreen {
         }
         String moduleName = module.getName() == null ? "" : module.getName().replace(" ", "").toLowerCase(Locale.ROOT);
         String valueName = normalizeValueName(value);
+        if (moduleName.equals("clickgui") && valueName.equals("glass")) {
+            return true;
+        }
         return moduleName.equals("esp") && (valueName.equals("rainbow") || valueName.equals("paletterainbow"));
     }
 

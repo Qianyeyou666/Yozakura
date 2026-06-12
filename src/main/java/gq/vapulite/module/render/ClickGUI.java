@@ -6,6 +6,7 @@ import org.lwjgl.input.Keyboard;
 import gq.vapulite.module.ModuleType;
 import gq.vapulite.module.Module;
 import gq.vapulite.value.Numbers;
+import gq.vapulite.value.Option;
 
 public class ClickGUI extends Module {
 	public static final Numbers<Double> windowX = new Numbers<Double>("Window X", "WindowX", -1.0, -1.0, 2000.0, 1.0);
@@ -17,12 +18,14 @@ public class ClickGUI extends Module {
 	public static final Numbers<Double> sideDesignOffsetX = new Numbers<Double>("Design X", "DesignX", 0.0, -600.0, 600.0, 1.0);
 	public static final Numbers<Double> sideDesignOffsetY = new Numbers<Double>("Design Y", "DesignY", 0.0, -600.0, 600.0, 1.0);
 	public static final Numbers<Double> clickGuiAlpha = new Numbers<Double>("Alpha", "Alpha", 1.0, 0.3, 1.0, 0.05);
+	public static final Option<Boolean> glassBackground = new Option<Boolean>("Glass", "Glass", true);
 
 	public ClickGUI() {
 		super("ClickGUI", Keyboard.KEY_RSHIFT, ModuleType.Render,"Open ClickGui");
 		Chinese="点击GUI";
 		this.addValues(windowX, windowY, sideStatsOffsetX, sideStatsOffsetY,
-				sideSummaryOffsetX, sideSummaryOffsetY, sideDesignOffsetX, sideDesignOffsetY, clickGuiAlpha);
+				sideSummaryOffsetX, sideSummaryOffsetY, sideDesignOffsetX, sideDesignOffsetY, clickGuiAlpha,
+				glassBackground);
 		// TODO Auto-generated constructor stub
 	}
 

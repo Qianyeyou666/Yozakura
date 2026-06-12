@@ -8,7 +8,6 @@ import gq.vapulite.value.Option;
 import gq.vapulite.value.Value;
 import gq.vapulite.engine.font.FontLoaders;
 import gq.vapulite.engine.render.ui.RenderServices;
-import gq.vapulite.ui.UiPanel;
 import gq.vapulite.ui.UiTheme;
 
 import java.awt.Color;
@@ -44,8 +43,6 @@ final class ClickGuiDetailPanel {
     private static final float PALETTE_MARKER_RADIUS = 4.8f;
     /** 关联的主 GUI 实例 */
     private final VapeClickGui gui;
-    /** UI 面板渲染器 */
-    private final UiPanel panel;
     /** 记录每个 Red 值对应的色相（用于颜色面板标记定位） */
     private final Map<Numbers, Float> paletteHueByRed = new HashMap<Numbers, Float>();
     /** 记录每个 Red 值对应的当前颜色值（用于检测颜色是否被外部改变） */
@@ -66,12 +63,10 @@ final class ClickGuiDetailPanel {
 
     ClickGuiDetailPanel(VapeClickGui gui) {
         this.gui = gui;
-        this.panel = new UiPanel().setTheme(gui.uiTheme);
     }
 
     /** 更新 UI 主题 */
     void updateTheme(UiTheme theme) {
-        panel.setTheme(theme);
     }
 
     /**
@@ -115,13 +110,12 @@ final class ClickGuiDetailPanel {
         float y = gui.contentY + introY;
         gui.settingsScroll = gui.animate(gui.settingsScroll, gui.targetSettingsScroll, 0.14f);
         // 绘制面板背景
-        panel.setBounds(gui.detailX, y, gui.detailW, gui.panelH)
-                .radius(VapeClickGui.PANEL_RADIUS)
-                .fill(detailPanelFill())
-                .border(gui.guiColors().glassBorder)
-                .shadow(gui.shadowColor(230), 92.0f, 10, 7.0f)
-                .setAlpha(gui.guiAlpha)
-                .render(mouseX, mouseY, 0.0f);
+        RenderServices.shapes().shadow(gui.detailX, y, gui.detailX + gui.detailW, y + gui.panelH,
+                VapeClickGui.PANEL_RADIUS, gui.withAlpha(gui.shadowColor(230), 92.0f * gui.guiAlpha), 10, 7.0f);
+        gui.drawPanelGlass(gui.detailX, y, gui.detailX + gui.detailW, y + gui.panelH,
+                VapeClickGui.PANEL_RADIUS, 1.0f,
+                gui.withAlpha(detailPanelFill(), gui.getAlpha(detailPanelFill()) * gui.guiAlpha),
+                gui.withAlpha(gui.guiColors().glassBorder, gui.getAlpha(gui.guiColors().glassBorder) * gui.guiAlpha));
         drawPanelSurfaces(y);
 
         // 未选中模块时的空状态提示
