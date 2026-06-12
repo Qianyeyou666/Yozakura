@@ -20,7 +20,7 @@ public class Vapuloader {
                         // TODO Auto-generated catch block
                         e.printStackTrace();
                     }
-                    Class<?> clazz = classLoader.loadClass("gq.vapulite.Vapu.Client");
+                    Class<?> clazz = classLoader.loadClass("gq.vapulite.core.Client");
                     clazz.newInstance();
                     break;
                 }

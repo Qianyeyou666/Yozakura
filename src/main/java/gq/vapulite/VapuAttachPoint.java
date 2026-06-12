@@ -1,6 +1,6 @@
 package gq.vapulite;
 
-import gq.vapulite.Vapu.Client;
+import gq.vapulite.core.Client;
 import net.minecraft.launchwrapper.LaunchClassLoader;
 
 import java.lang.instrument.Instrumentation;

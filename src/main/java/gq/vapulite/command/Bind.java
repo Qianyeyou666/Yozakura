@@ -2,10 +2,10 @@ package gq.vapulite.command;
 
 import com.google.common.collect.ComparisonChain;
 import com.google.common.collect.Ordering;
-import gq.vapulite.Vapu.Client;
-import gq.vapulite.Vapu.modules.Module;
-import gq.vapulite.Manager.ModuleManager;
-import gq.vapulite.Vapu.utils.Helper;
+import gq.vapulite.core.Client;
+import gq.vapulite.module.Module;
+import gq.vapulite.manager.ModuleManager;
+import gq.vapulite.util.minecraft.Helper;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.network.NetworkPlayerInfo;
 import net.minecraft.command.CommandBase;
@@ -29,8 +29,8 @@ public class Bind implements ICommand {
 	public Bind(Client vapuClient) {
 		this.vapuClient = vapuClient;
 	}
-	
-	
+
+
 	@Override
 	public String getCommandName() {
 		return "bind";
@@ -68,7 +68,7 @@ public class Bind implements ICommand {
 		}
 		Helper.sendMessage(getCommandUsage(sender));
 	}
-	
+
 
 	@Override
 	public boolean canCommandSenderUseCommand(ICommandSender sender) {

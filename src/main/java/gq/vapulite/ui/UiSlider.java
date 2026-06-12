@@ -1,7 +1,7 @@
 package gq.vapulite.ui;
 
-import gq.vapulite.Vapu.utils.RenderUtil;
-import gq.vapulite.font.FontLoaders;
+import gq.vapulite.util.render.RenderUtil;
+import gq.vapulite.engine.font.FontLoaders;
 
 import java.awt.Color;
 

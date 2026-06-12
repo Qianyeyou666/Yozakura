@@ -11,8 +11,8 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.ComparisonChain;
 import com.google.common.collect.Ordering;
 
-import gq.vapulite.Vapu.Client;
-import gq.vapulite.Vapu.utils.Helper;
+import gq.vapulite.core.Client;
+import gq.vapulite.util.minecraft.Helper;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.network.NetworkPlayerInfo;
@@ -31,11 +31,11 @@ import net.minecraftforge.fml.relauncher.ReflectionHelper;
 public class ChatBypassCommand implements ICommand {
 
 	private Minecraft mc = Minecraft.getMinecraft();
-	
+
 	public int width = 240;
 	public int height = 16;
 	public Client vapuClient =null;
-	
+
 	public byte[][] data = new byte[height][width];
 	public int width_index = 0;
 	public byte[][] encode = new byte[][] {
@@ -44,11 +44,11 @@ public class ChatBypassCommand implements ICommand {
 		new byte[] { 3, 6 },
 		new byte[] { 7, 8 },
 	};
-	
+
 	public ChatBypassCommand(Client vapuClient) {
 		this.vapuClient = vapuClient;
 	}
-	
+
 	public void reset() {
 		for (int i=0;i<data.length;i++) {
 			for(int j=0;j<data[i].length;j++) {
@@ -57,7 +57,7 @@ public class ChatBypassCommand implements ICommand {
 		}
 		width_index = 0;
 	}
-	
+
 	public void put(int[] datas, int w) {
 		for(int i=0; i<=datas.length; i++) {
 			int x,y;
@@ -68,10 +68,10 @@ public class ChatBypassCommand implements ICommand {
 				continue;
 			this.data[y][x] = (byte)(datas[i] >> 24 == 0 ? 1 : 0);
 		}
-		
+
 		this.width_index += w;
 	}
-	
+
 	public char genChar(int x, int y) {
 		int c = 0x2800;
 		for(int dx=0; dx<2; dx++) {
@@ -86,10 +86,10 @@ public class ChatBypassCommand implements ICommand {
 					c += format;
 			}
 		}
-		
+
 		return (char)c;
 	}
-	
+
 	public List<String> toStringList() {
 		List<String> list = new ArrayList<String>();
 		for(int y=0; y<this.height; y+=4) {
@@ -101,14 +101,14 @@ public class ChatBypassCommand implements ICommand {
 		}
 		return list;
 	}
-	
+
 	public void send() {
 		for (String s : this.toStringList()) {
 			this.vapuClient.faList.add(s);
 			//mc.thePlayer.sendChatMessage(s);
 		}
 	}
-	
+
 	@Override
 	public String getCommandName() {
 		return "cp";
@@ -135,13 +135,13 @@ public class ChatBypassCommand implements ICommand {
 			Helper.sendMessage("ChatBypass未开启");
 		}
 	}
-	
+
 	public void FA(String msg) {
 		//this.exampleMod.displayChatMessage(msg);
 		FontRenderer fontRenderer = mc.fontRendererObj;
 		boolean unicodeFlag = fontRenderer.getUnicodeFlag();
 		byte[] glyphWidth = (byte[])(ReflectionHelper.getPrivateValue(FontRenderer.class, fontRenderer, new String[] {"glyphWidth", "field_78287_e"}));
-		
+
 		this.reset();
 		for (int i = 0; i < msg.length(); ++i)
 		{
@@ -164,7 +164,7 @@ public class ChatBypassCommand implements ICommand {
 			int index = "\u00c0\u00c1\u00c2\u00c8\u00ca\u00cb\u00cd\u00d3\u00d4\u00d5\u00da\u00df\u00e3\u00f5\u011f\u0130\u0131\u0152\u0153\u015e\u015f\u0174\u0175\u017e\u0207\u0000\u0000\u0000\u0000\u0000\u0000\u0000 !\"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~\u0000\u00c7\u00fc\u00e9\u00e2\u00e4\u00e0\u00e5\u00e7\u00ea\u00eb\u00e8\u00ef\u00ee\u00ec\u00c4\u00c5\u00c9\u00e6\u00c6\u00f4\u00f6\u00f2\u00fb\u00f9\u00ff\u00d6\u00dc\u00f8\u00a3\u00d8\u00d7\u0192\u00e1\u00ed\u00f3\u00fa\u00f1\u00d1\u00aa\u00ba\u00bf\u00ae\u00ac\u00bd\u00bc\u00a1\u00ab\u00bb\u2591\u2592\u2593\u2502\u2524\u2561\u2562\u2556\u2555\u2563\u2551\u2557\u255d\u255c\u255b\u2510\u2514\u2534\u252c\u251c\u2500\u253c\u255e\u255f\u255a\u2554\u2569\u2566\u2560\u2550\u256c\u2567\u2568\u2564\u2565\u2559\u2558\u2552\u2553\u256b\u256a\u2518\u250c\u2588\u2584\u258c\u2590\u2580\u03b1\u03b2\u0393\u03c0\u03a3\u03c3\u03bc\u03c4\u03a6\u0398\u03a9\u03b4\u221e\u2205\u2208\u2229\u2261\u00b1\u2265\u2264\u2320\u2321\u00f7\u2248\u00b0\u2219\u00b7\u221a\u207f\u00b2\u25a0\u0000".indexOf(character);
 			int x = character % 16 * bufferImage.getWidth()/16;
 			int width = (int)((fontRenderer.getCharWidth(character)-1)*2);
-			
+
 			x = (int)(width<=1 ? x+4 : (width<=bufferImage.getHeight()/16/8 ? x+2 : (width<=bufferImage.getHeight()/16/4 ? x+1 : (width<=bufferImage.getHeight()/16/2 ? x : x))));
 			width = (int)(width<=1 ? width+2 : (width<=bufferImage.getHeight()/16/8 ? width * 3 : (width<=bufferImage.getHeight()/16/4 ? width*2 : (width<=bufferImage.getHeight()/16/2 ? width*1.5 : width))));
 			if (character == ' ')
@@ -174,7 +174,7 @@ public class ChatBypassCommand implements ICommand {
 			if (glyphWidth[character]==0 || width==0) {
 				continue;
 			}
-			
+
 
 
 			int right = k;
@@ -213,7 +213,7 @@ public class ChatBypassCommand implements ICommand {
 		List<String> list = new ArrayList<String>();
 		try {
 			//this.exampleMod.log(MinecraftServer.getServer().getConfigurationManager().toString());
-			
+
 			Ordering<NetworkPlayerInfo> field_175252_a = Ordering.from(new Comparator<NetworkPlayerInfo>()
 	        {
 	            private void PlayerComparator()
@@ -238,9 +238,9 @@ public class ChatBypassCommand implements ICommand {
 		catch(Exception e) {
 			e.printStackTrace();
 		}
-		
-		
-		
+
+
+
         String[] astring = new String[list.size()];
 
         for (int i = 0; i < list.size(); ++i)

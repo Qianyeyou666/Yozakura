@@ -21,6 +21,11 @@
 
 # Minecraft dev runtime
 /run/
+/crash-reports/
+/logs/
+
+# Local binary jars
+/libs/
 
 # NetBeans
 /.nb-gradle/
@@ -31,6 +36,14 @@
 Thumbs.db
 *.log
 *.tmp
+*.bak
+
+# Native/compiler outputs
+*.obj
+*.pdb
+*.ilk
+*.dll
+*.exe
 
 # Local agent/tool metadata
 /.serena/

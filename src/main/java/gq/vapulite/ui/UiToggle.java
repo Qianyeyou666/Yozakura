@@ -1,6 +1,6 @@
 package gq.vapulite.ui;
 
-import gq.vapulite.Vapu.utils.RenderUtil;
+import gq.vapulite.util.render.RenderUtil;
 
 import java.awt.Color;
 

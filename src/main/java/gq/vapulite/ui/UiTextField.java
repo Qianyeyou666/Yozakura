@@ -1,8 +1,8 @@
 package gq.vapulite.ui;
 
-import gq.vapulite.Vapu.modules.render.HUD;
-import gq.vapulite.Vapu.utils.RenderUtil;
-import gq.vapulite.font.FontLoaders;
+import gq.vapulite.module.render.HUD;
+import gq.vapulite.util.render.RenderUtil;
+import gq.vapulite.engine.font.FontLoaders;
 import org.lwjgl.input.Keyboard;
 
 import java.awt.Color;

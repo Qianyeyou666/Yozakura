@@ -2,7 +2,7 @@ package gq.vapulite.command;
 
 import com.google.common.collect.ComparisonChain;
 import com.google.common.collect.Ordering;
-import gq.vapulite.Vapu.Client;
+import gq.vapulite.core.Client;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.network.NetworkPlayerInfo;
 import net.minecraft.command.CommandBase;
@@ -28,8 +28,8 @@ public class WaterMark implements ICommand {
 	public WaterMark(Client vapuClient) {
 		this.vapuClient = vapuClient;
 	}
-	
-	
+
+
 	@Override
 	public String getCommandName() {
 		return "watermark";
@@ -51,12 +51,12 @@ public class WaterMark implements ICommand {
 				builder.append(args[i]);
 			}
 			Client.name = builder.toString();
-			gq.vapulite.Vapu.utils.Helper.sendMessage("Watermark set to " + Client.name);
+			gq.vapulite.util.minecraft.Helper.sendMessage("Watermark set to " + Client.name);
 			return;
 		}
-		gq.vapulite.Vapu.utils.Helper.sendMessage(getCommandUsage(sender));
+		gq.vapulite.util.minecraft.Helper.sendMessage(getCommandUsage(sender));
 	}
-	
+
 
 	@Override
 	public boolean canCommandSenderUseCommand(ICommandSender sender) {
@@ -73,7 +73,7 @@ public class WaterMark implements ICommand {
 		List<String> list = new ArrayList<String>();
 		try {
 			//this.exampleMod.log(MinecraftServer.getServer().getConfigurationManager().toString());
-			
+
 			Ordering<NetworkPlayerInfo> field_175252_a = Ordering.from(new Comparator<NetworkPlayerInfo>()
 	        {
 	            private void PlayerComparator()
@@ -98,9 +98,9 @@ public class WaterMark implements ICommand {
 		catch(Exception e) {
 			e.printStackTrace();
 		}
-		
-		
-		
+
+
+
         String[] astring = new String[list.size()];
 
         for (int i = 0; i < list.size(); ++i)

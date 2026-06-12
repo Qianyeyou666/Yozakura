@@ -1,6 +1,6 @@
 package gq.vapulite.ui;
 
-import gq.vapulite.Vapu.utils.RenderUtil;
+import gq.vapulite.util.render.RenderUtil;
 
 import java.awt.Color;
 
@@ -71,7 +71,7 @@ public class UiPanel extends UiComponent {
         }
         int f = theme.withAlpha(fillColor, ((fillColor >>> 24) & 255) * alpha);
         int b = theme.withAlpha(borderColor, ((borderColor >>> 24) & 255) * alpha);
-        if (gq.vapulite.Vapu.modules.render.HUD.isLightTheme()) {
+        if (gq.vapulite.module.render.HUD.isLightTheme()) {
             RenderUtil.drawRoundedBorderedRect(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, borderWidth, f, b);
         } else {
             RenderUtil.drawFrostedGlassRect(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, borderWidth, f, b);
