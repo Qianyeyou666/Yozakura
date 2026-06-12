@@ -27,13 +27,13 @@ const float U_A = 0.7;
 const float U_B = 2.3;
 const float U_C = 5.2;
 const float U_D = 6.9;
-const float U_F_POWER = 3.0;
-const float U_POWER_FACTOR = 4.0;
-const float U_NOISE = 0.1;
-const float U_GLOW_WEIGHT = 0.3;
+const float U_F_POWER = 1.0;
+const float U_POWER_FACTOR = 3.0;
+const float U_NOISE = 0.06;
+const float U_GLOW_WEIGHT = 0.25;
 const float U_GLOW_BIAS = 0.0;
-const float U_GLOW_EDGE0 = 0.06;
-const float U_GLOW_EDGE1 = 0.0;
+const float U_GLOW_EDGE0 = 0.5;
+const float U_GLOW_EDGE1 = -0.5;
 
 float sdSuperellipse(vec2 p, float n, float r) {
     vec2 pAbs = abs(p);
@@ -89,12 +89,14 @@ void main() {
     vec2 centerUv = screenUv - p * quadScale;
     vec2 sourceUv = safeUv(centerUv + mix(p, sampleP, refraction) * quadScale);
 
-    vec4 noise = vec4(vec3(rand(gl_FragCoord.xy * 0.001 + vec2(time * 0.017)) - 0.5), 0.0);
-    vec4 color = texture2D(screenTex, sourceUv) + noise * U_NOISE * max(grainStrength, 0.0);
+    vec3 noise = vec3(rand(gl_FragCoord.xy * 0.001 + vec2(time * 0.017)) - 0.5);
+    vec3 blurred = texture2D(screenTex, sourceUv).rgb + noise * U_NOISE * max(grainStrength, 0.0);
+    float tintWeight = clamp(fillColor.a * 0.10, 0.0, 0.10);
+    vec3 color = mix(blurred, fillColor.rgb, tintWeight);
     float mul = glow(st) * U_GLOW_WEIGHT * highlight * smoothstep(U_GLOW_EDGE0, U_GLOW_EDGE1, dist)
             + 1.0 + U_GLOW_BIAS;
 
-    vec4 liquidGlass = color * vec4(vec3(mul), 1.0);
-    liquidGlass.a *= max(fillColor.a, borderColor.a) * mask;
-    gl_FragColor = liquidGlass;
+    float visibility = clamp(max(fillColor.a, borderColor.a) / 0.65, 0.0, 1.0);
+    float glassAlpha = 0.96 * visibility * mask;
+    gl_FragColor = vec4(color * mul, glassAlpha);
 }

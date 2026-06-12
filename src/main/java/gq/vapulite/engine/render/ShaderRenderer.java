@@ -14,7 +14,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.HashMap;
 import java.util.Map;
@@ -22,6 +21,9 @@ import java.util.Map;
 public final class ShaderRenderer {
     private static final float EDGE_SOFTNESS = 0.75f;
     private static final float EDGE_PADDING = 1.0f;
+    private static final float MAX_LIQUID_GLASS_BLUR_RADIUS = 64.0f;
+    private static final float MAX_GAUSSIAN_PASS_RADIUS = 10.0f;
+    private static final int MAX_GAUSSIAN_ITERATIONS = 8;
     private static final int SHADER_ATTRIB_MASK = GL11.GL_ENABLE_BIT
             | GL11.GL_COLOR_BUFFER_BIT
             | GL11.GL_CURRENT_BIT
@@ -42,12 +44,10 @@ public final class ShaderRenderer {
     private static Program circleBadgeProgram;
     private static Program frostedGlassProgram;
     private static Program liquidGlassProgram;
-    private static Program copyProgram;
     private static Program gaussianBlurProgram;
     private static final String LIQUID_GLASS_FRAGMENT_RESOURCE =
             "/assets/minecraft/vapulite/shaders/liquid_glass.frag";
     private static final IntBuffer VIEWPORT_BUFFER = BufferUtils.createIntBuffer(16);
-    private static final FloatBuffer GAUSSIAN_WEIGHT_BUFFER = BufferUtils.createFloatBuffer(256);
     private static int screenTexture;
     private static int blurTextureA;
     private static int blurTextureB;
@@ -57,9 +57,9 @@ public final class ShaderRenderer {
     private static int capturedHeight;
     private static int blurWidth;
     private static int blurHeight;
+    private static float frostedBlurRadius = -1.0f;
     private static boolean frostedBlurReady;
     private static boolean frostedGlassDirty = true;
-    private static boolean disabled;
     private static boolean loggedFailure;
 
     private ShaderRenderer() {
@@ -211,7 +211,7 @@ public final class ShaderRenderer {
     public static boolean drawFrostedGlass(float left, float top, float right, float bottom, float radius,
                                            float borderWidth, int fillColor, int borderColor) {
         Program program = getFrostedGlassProgram();
-        if (program == null || right <= left || bottom <= top || !ensureFrostedGlassTexture()) {
+        if (program == null || right <= left || bottom <= top || !ensureFrostedGlassTexture(10.0f)) {
             return false;
         }
 
@@ -247,7 +247,9 @@ public final class ShaderRenderer {
                                           float blurRadius, float refraction, float highlight,
                                           float grainStrength) {
         Program program = getLiquidGlassProgram();
-        if (program == null || right <= left || bottom <= top || !ensureFrostedGlassTexture() || !frostedBlurReady) {
+        float clampedBlurRadius = clampLiquidGlassBlurRadius(blurRadius);
+        if (program == null || right <= left || bottom <= top
+                || !ensureFrostedGlassTexture(clampedBlurRadius) || !frostedBlurReady) {
             return false;
         }
 
@@ -264,7 +266,7 @@ public final class ShaderRenderer {
             GL11.glBindTexture(GL11.GL_TEXTURE_2D, sourceTexture);
             setRoundedUniforms(program, width, height, radius);
             program.set1f("borderWidth", clampedBorder);
-            program.set1f("blurRadius", Math.max(4.0f, Math.min(36.0f, blurRadius)));
+            program.set1f("blurRadius", clampedBlurRadius);
             program.set1f("refraction", Math.max(0.0f, Math.min(1.4f, refraction)));
             program.set1f("highlight", Math.max(0.0f, Math.min(1.35f, highlight)));
             program.set1f("grainStrength", Math.max(0.0f, Math.min(1.0f, grainStrength)));
@@ -402,7 +404,7 @@ public final class ShaderRenderer {
         return true;
     }
 
-    private static boolean ensureFrostedGlassTexture() {
+    private static boolean ensureFrostedGlassTexture(float requestedBlurRadius) {
         if (!supportsShaders()) {
             return false;
         }
@@ -435,9 +437,15 @@ public final class ShaderRenderer {
                 frostedGlassDirty = true;
                 frostedBlurReady = false;
             }
+            float blurRadius = clampLiquidGlassBlurRadius(requestedBlurRadius);
+            if (Math.abs(frostedBlurRadius - blurRadius) > 0.01f) {
+                frostedGlassDirty = true;
+                frostedBlurReady = false;
+            }
             if (frostedGlassDirty) {
                 GL11.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, viewportX, viewportY, viewportW, viewportH);
-                frostedBlurReady = buildFrostedBlur(viewportW, viewportH);
+                frostedBlurReady = buildFrostedBlur(viewportW, viewportH, blurRadius);
+                frostedBlurRadius = blurRadius;
                 frostedGlassDirty = false;
             }
             return true;
@@ -446,9 +454,8 @@ public final class ShaderRenderer {
         }
     }
 
-    private static boolean buildFrostedBlur(int width, int height) {
-        if (!supportsFramebufferBlur() || width <= 0 || height <= 0
-                || getCopyProgram() == null || getGaussianBlurProgram() == null) {
+    private static boolean buildFrostedBlur(int width, int height, float blurRadius) {
+        if (!supportsFramebufferBlur() || width <= 0 || height <= 0 || getGaussianBlurProgram() == null) {
             return false;
         }
         int targetWidth = Math.max(1, width / 2);
@@ -466,11 +473,20 @@ public final class ShaderRenderer {
             }
             blurWidth = targetWidth;
             blurHeight = targetHeight;
-            copyTextureToTarget(screenTexture, blurFramebufferA, targetWidth, targetHeight);
-            runBlurPass(blurTextureA, blurFramebufferB, targetWidth, targetHeight, 1.0f, 0.0f);
-            runBlurPass(blurTextureB, blurFramebufferA, targetWidth, targetHeight, 0.0f, 1.0f);
-            runBlurPass(blurTextureA, blurFramebufferB, targetWidth, targetHeight, 1.0f, 0.0f);
-            runBlurPass(blurTextureB, blurFramebufferA, targetWidth, targetHeight, 0.0f, 1.0f);
+            int iterations = gaussianIterationCount(blurRadius);
+            float passRadius = gaussianPassRadius(blurRadius, iterations);
+            int sourceTexture = screenTexture;
+            int sourceWidth = width;
+            int sourceHeight = height;
+            for (int i = 0; i < iterations; i++) {
+                runBlurPass(sourceTexture, blurFramebufferA, targetWidth, targetHeight,
+                        sourceWidth, sourceHeight, passRadius, 1.0f, 0.0f);
+                runBlurPass(blurTextureA, blurFramebufferB, targetWidth, targetHeight,
+                        targetWidth, targetHeight, passRadius, 0.0f, 1.0f);
+                sourceTexture = blurTextureB;
+                sourceWidth = targetWidth;
+                sourceHeight = targetHeight;
+            }
             return true;
         } catch (Throwable throwable) {
             logFailure(throwable);
@@ -515,23 +531,8 @@ public final class ShaderRenderer {
         return GL30.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER) == GL30.GL_FRAMEBUFFER_COMPLETE;
     }
 
-    private static void copyTextureToTarget(int sourceTexture, int framebuffer, int width, int height) {
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, framebuffer);
-        GL11.glViewport(0, 0, width, height);
-        Program program = getCopyProgram();
-        ShaderState shaderState = beginProgram(program);
-        try {
-            GL13.glActiveTexture(GL13.GL_TEXTURE0);
-            GL11.glEnable(GL11.GL_TEXTURE_2D);
-            GL11.glBindTexture(GL11.GL_TEXTURE_2D, sourceTexture);
-            program.set1i("screenTex", 0);
-            drawFullscreenPassQuad();
-        } finally {
-            endProgram(shaderState);
-        }
-    }
-
-    private static void runBlurPass(int sourceTexture, int framebuffer, int width, int height, float dirX, float dirY) {
+    private static void runBlurPass(int sourceTexture, int framebuffer, int width, int height,
+                                    int sourceWidth, int sourceHeight, float blurRadius, float dirX, float dirY) {
         GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, framebuffer);
         GL11.glViewport(0, 0, width, height);
         Program program = getGaussianBlurProgram();
@@ -541,15 +542,33 @@ public final class ShaderRenderer {
             GL11.glEnable(GL11.GL_TEXTURE_2D);
             GL11.glBindTexture(GL11.GL_TEXTURE_2D, sourceTexture);
             program.set1i("screenTex", 0);
-            float radius = 18.0f;
-            program.set2f("texelSize", 1.0f / Math.max(1.0f, width), 1.0f / Math.max(1.0f, height));
-            program.set2f("direction", dirX * 2.0f, dirY * 2.0f);
-            program.set1f("radius", radius);
-            setGaussianWeights(program, radius);
+            program.set2f("u_resolution", Math.max(1.0f, sourceWidth), Math.max(1.0f, sourceHeight));
+            program.set2f("u_direction", dirX, dirY);
+            program.set1f("u_radius", clampGaussianPassRadius(blurRadius));
             drawFullscreenPassQuad();
         } finally {
             endProgram(shaderState);
         }
+    }
+
+    private static float clampLiquidGlassBlurRadius(float blurRadius) {
+        return Math.max(0.0f, Math.min(MAX_LIQUID_GLASS_BLUR_RADIUS, blurRadius));
+    }
+
+    private static int gaussianIterationCount(float blurRadius) {
+        if (blurRadius <= 0.0f) {
+            return 1;
+        }
+        return Math.max(1, Math.min(MAX_GAUSSIAN_ITERATIONS,
+                (int) Math.ceil(blurRadius / MAX_GAUSSIAN_PASS_RADIUS)));
+    }
+
+    private static float gaussianPassRadius(float blurRadius, int iterations) {
+        return clampGaussianPassRadius(blurRadius / Math.max(1, iterations));
+    }
+
+    private static float clampGaussianPassRadius(float blurRadius) {
+        return Math.max(0.0f, Math.min(MAX_GAUSSIAN_PASS_RADIUS, blurRadius));
     }
 
     private static boolean supportsFramebufferBlur() {
@@ -558,22 +577,6 @@ public final class ShaderRenderer {
         } catch (Throwable ignored) {
             return false;
         }
-    }
-
-    private static void setGaussianWeights(Program program, float radius) {
-        float sigma = Math.max(radius / 2.0f, 0.001f);
-        GAUSSIAN_WEIGHT_BUFFER.clear();
-        for (int i = 0; i < 256; i++) {
-            float weight = i <= radius ? calculateGaussianValue(i, sigma) : 0.0f;
-            GAUSSIAN_WEIGHT_BUFFER.put(weight);
-        }
-        GAUSSIAN_WEIGHT_BUFFER.flip();
-        GL20.glUniform1(program.uniform("weights"), GAUSSIAN_WEIGHT_BUFFER);
-    }
-
-    private static float calculateGaussianValue(float x, float sigma) {
-        double output = 1.0D / Math.sqrt(2.0D * Math.PI * sigma * sigma);
-        return (float) (output * Math.exp(-(x * x) / (2.0D * sigma * sigma)));
     }
 
     private static void setRoundedUniforms(Program program, float width, float height, float radius) {
@@ -675,13 +678,6 @@ public final class ShaderRenderer {
         return liquidGlassProgram;
     }
 
-    private static Program getCopyProgram() {
-        if (copyProgram == null) {
-            copyProgram = createProgram(TEXTURE_COPY_FRAGMENT);
-        }
-        return copyProgram;
-    }
-
     private static Program getGaussianBlurProgram() {
         if (gaussianBlurProgram == null) {
             gaussianBlurProgram = createProgram(GAUSSIAN_BLUR_FRAGMENT);
@@ -694,7 +690,7 @@ public final class ShaderRenderer {
         if (fragmentSource == null) {
             return null;
         }
-        return createProgram(fragmentSource);
+        return createProgram(fragmentResource, fragmentSource);
     }
 
     private static String loadShaderResource(String resourcePath) {
@@ -723,7 +719,11 @@ public final class ShaderRenderer {
     }
 
     private static Program createProgram(String fragmentSource) {
-        if (disabled || !supportsShaders()) {
+        return createProgram("inline shader", fragmentSource);
+    }
+
+    private static Program createProgram(String label, String fragmentSource) {
+        if (!supportsShaders()) {
             return null;
         }
 
@@ -731,8 +731,8 @@ public final class ShaderRenderer {
         int fragmentShader = 0;
         int program = 0;
         try {
-            vertexShader = compileShader(GL20.GL_VERTEX_SHADER, VERTEX_SHADER);
-            fragmentShader = compileShader(GL20.GL_FRAGMENT_SHADER, fragmentSource);
+            vertexShader = compileShader(GL20.GL_VERTEX_SHADER, VERTEX_SHADER, label + " vertex");
+            fragmentShader = compileShader(GL20.GL_FRAGMENT_SHADER, fragmentSource, label + " fragment");
             program = GL20.glCreateProgram();
             GL20.glAttachShader(program, vertexShader);
             GL20.glAttachShader(program, fragmentShader);
@@ -742,7 +742,6 @@ public final class ShaderRenderer {
             }
             return new Program(program);
         } catch (Throwable throwable) {
-            disabled = true;
             logFailure(throwable);
             if (program != 0) {
                 GL20.glDeleteProgram(program);
@@ -764,16 +763,24 @@ public final class ShaderRenderer {
         }
     }
 
-    private static int compileShader(int type, String source) {
+    private static int compileShader(int type, String source, String label) {
         int shader = GL20.glCreateShader(type);
         GL20.glShaderSource(shader, source);
         GL20.glCompileShader(shader);
         if (GL20.glGetShaderi(shader, GL20.GL_COMPILE_STATUS) == 0) {
             String log = GL20.glGetShaderInfoLog(shader, 4096);
             GL20.glDeleteShader(shader);
-            throw new IllegalStateException(log);
+            throw new IllegalStateException(label + ": " + log + " sourceTail=" + sourceTail(source));
         }
         return shader;
+    }
+
+    private static String sourceTail(String source) {
+        if (source == null) {
+            return "<null>";
+        }
+        int start = Math.max(0, source.length() - 220);
+        return source.substring(start).replace('\n', ' ').replace('\r', ' ');
     }
 
     private static boolean supportsShaders() {
@@ -789,7 +796,7 @@ public final class ShaderRenderer {
             return;
         }
         loggedFailure = true;
-        System.err.println("[VapuLite] Shader renderer disabled: " + throwable.getMessage());
+        System.err.println("[VapuLite] Shader program failed: " + throwable.getMessage());
     }
 
     private static void logResourceFailure(Throwable throwable) {
@@ -1253,34 +1260,28 @@ public final class ShaderRenderer {
             "    gl_FragColor = vec4(rgb, alpha);\n" +
             "}\n";
 
-    private static final String TEXTURE_COPY_FRAGMENT =
-            "#version 120\n" +
-            "uniform sampler2D screenTex;\n" +
-            "void main() {\n" +
-            "    gl_FragColor = texture2D(screenTex, gl_TexCoord[0].st);\n" +
-            "}\n";
-
     private static final String GAUSSIAN_BLUR_FRAGMENT =
             "#version 120\n" +
             "uniform sampler2D screenTex;\n" +
-            "uniform vec2 texelSize, direction;\n" +
-            "uniform float radius;\n" +
-            "uniform float weights[256];\n" +
-            "#define offset texelSize * direction\n" +
-            "vec2 safeUv(vec2 uv) {\n" +
-            "    return clamp(uv, vec2(0.0015), vec2(0.9985));\n" +
+            "uniform vec2 u_direction;\n" +
+            "uniform vec2 u_resolution;\n" +
+            "uniform float u_radius;\n" +
+            "vec4 blur13(vec2 uv, vec2 resolution, vec2 direction) {\n" +
+            "    vec4 color = vec4(0.0);\n" +
+            "    vec2 off1 = vec2(1.411764705882353) * direction;\n" +
+            "    vec2 off2 = vec2(3.2941176470588234) * direction;\n" +
+            "    vec2 off3 = vec2(5.176470588235294) * direction;\n" +
+            "    color += texture2D(screenTex, uv) * 0.1964825501511404;\n" +
+            "    color += texture2D(screenTex, uv + (off1 / resolution)) * 0.2969069646728344;\n" +
+            "    color += texture2D(screenTex, uv - (off1 / resolution)) * 0.2969069646728344;\n" +
+            "    color += texture2D(screenTex, uv + (off2 / resolution)) * 0.09447039785044732;\n" +
+            "    color += texture2D(screenTex, uv - (off2 / resolution)) * 0.09447039785044732;\n" +
+            "    color += texture2D(screenTex, uv + (off3 / resolution)) * 0.010381362401148057;\n" +
+            "    color += texture2D(screenTex, uv - (off3 / resolution)) * 0.010381362401148057;\n" +
+            "    return color;\n" +
             "}\n" +
             "void main() {\n" +
-            "    vec2 uv = gl_TexCoord[0].st;\n" +
-            "    vec3 color = texture2D(screenTex, safeUv(uv)).rgb * weights[0];\n" +
-            "    float totalWeight = weights[0];\n" +
-            "    for (float f = 1.0; f <= radius; f++) {\n" +
-            "        float weight = weights[int(abs(f))];\n" +
-            "        color += texture2D(screenTex, safeUv(uv + f * offset)).rgb * weight;\n" +
-            "        color += texture2D(screenTex, safeUv(uv - f * offset)).rgb * weight;\n" +
-            "        totalWeight += weight * 2.0;\n" +
-            "    }\n" +
-            "    gl_FragColor = vec4(color / max(totalWeight, 0.0001), 1.0);\n" +
+            "    gl_FragColor = blur13(gl_TexCoord[0].st, u_resolution, u_direction * u_radius);\n" +
             "}\n";
 
     private static final String FROSTED_GLASS_FRAGMENT =
