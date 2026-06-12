@@ -194,6 +194,7 @@ public class TargetHUD extends Module {
         drawText(target, x, y, w, uiScale, easedAlpha);
         drawHealth(target, x, y, w, uiScale, easedAlpha);
         HudDrag.drawHint("target_hud", x, y, w, h, radius);
+        HudDrag.handleScroll("target_hud", scale, x, y, w, h, 0.65f, 1.8f);
         GlStateManager.popMatrix();
     }
 

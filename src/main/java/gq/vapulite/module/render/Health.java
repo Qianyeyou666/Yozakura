@@ -68,6 +68,7 @@ public class Health extends Module {
             GlStateManager.popMatrix();
         }
         HudDrag.drawHint("health_display", pos[0], pos[1], boxW * uiScale, boxH * uiScale, 3.0f * uiScale);
+        HudDrag.handleScroll("health_display", scale, pos[0], pos[1], boxW * uiScale, boxH * uiScale, 0.65f, 2.0f);
     }
 
     private void drawVapeHealth(ScaledResolution sr) {
@@ -105,5 +106,6 @@ public class Health extends Module {
             GlStateManager.popMatrix();
         }
         HudDrag.drawHint("health_display", pos[0], pos[1], boxW * uiScale, boxH * uiScale, 2.0f * uiScale);
+        HudDrag.handleScroll("health_display", scale, pos[0], pos[1], boxW * uiScale, boxH * uiScale, 0.65f, 2.0f);
     }
 }
