@@ -16,7 +16,7 @@ final class HudRenderSupport {
 
     static void drawThemedFrostedGlass(float x, float y, float x2, float y2, float radius,
                                        float strength, int fillColor, int borderColor) {
-        if (HUD.isLightTheme()) {
+        if (HUD.isLightTheme() || HUD.isSakuraTheme()) {
             RenderServices.shapes().roundedBorder(x, y, x2, y2, radius, 0.8f, fillColor, borderColor);
         } else if (HUD.isGrayTheme()) {
             if (!ShaderRenderer.drawFrostedGlass(x, y, x2, y2, radius, strength, fillColor, borderColor)) {
