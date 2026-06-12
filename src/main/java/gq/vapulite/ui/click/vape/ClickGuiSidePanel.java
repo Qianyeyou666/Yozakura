@@ -27,7 +27,7 @@ import java.awt.Color;
  */
 final class ClickGuiSidePanel {
     private static final float STATS_H = 82.0f;
-    private static final float SUMMARY_MIN_H = 126.0f;
+    private static final float SUMMARY_MIN_H = 110.0f;
     private static final float DESIGN_H = 172.0f;
     private static final float DRAG_H = 28.0f;
 
@@ -128,9 +128,7 @@ final class ClickGuiSidePanel {
         float chipX = summaryX + 16.0f;
         float chipY = summaryY + summaryH - 30.0f;
         // 检查是否点击了按键绑定区域
-        if (VapeClickGui.isHovered(chipX, chipY, chipX + gui.sideW - 32.0f, chipY + 18.0f, mouseX, mouseY)
-                || VapeClickGui.isHovered(summaryX + 12.0f, summaryY + 100.0f,
-                summaryX + gui.sideW - 12.0f, summaryY + 120.0f, mouseX, mouseY)) {
+        if (VapeClickGui.isHovered(chipX, chipY, chipX + gui.sideW - 32.0f, chipY + 18.0f, mouseX, mouseY)) {
             gui.keyChipClickProgress.put(gui.selectedModule, 1.0f);
             gui.startBinding(gui.selectedModule);
             return true;
@@ -249,7 +247,7 @@ final class ClickGuiSidePanel {
     }
 
     /**
-     * 绘制模块摘要面板（图标、名称、描述、状态行、按键绑定）。
+     * 绘制模块摘要面板（图标、名称、描述、按键绑定）。
      */
     private void drawModuleSummary(float y, float h) {
         RenderServices.shapes().shadow(gui.sideX, y, gui.sideX + gui.sideW, y + h, VapeClickGui.PANEL_RADIUS,
@@ -277,14 +275,7 @@ final class ClickGuiSidePanel {
         // 模块描述
         gui.drawFont(gui.trim(gui.getDescription(gui.selectedModule), FontLoaders.F14, gui.sideW - 32.0f),
                 gui.sideX + 16.0f, y + 63.0f, gui.withAlpha(gui.guiColors().muted, 205.0f * gui.guiAlpha));
-        // 分隔线 → 状态信息行
-        RenderServices.shapes().line(gui.sideX + 16.0f, y + 91.0f, gui.sideX + gui.sideW - 16.0f, y + 91.0f, 0.6f,
-                gui.withAlpha(new Color(95, 101, 118).getRGB(), 36.0f * gui.guiAlpha));
-        drawSummaryRows(y + 103.0f);
-        // 分隔线 → 按键绑定
-        RenderServices.shapes().line(gui.sideX + 16.0f, y + h - 42.0f,
-                gui.sideX + gui.sideW - 16.0f, y + h - 42.0f, 0.6f,
-                gui.withAlpha(new Color(95, 101, 118).getRGB(), 36.0f * gui.guiAlpha));
+        // 按键绑定（贴近面板底部）
         drawKeyChip(gui.sideX + 16.0f, y + h - 30.0f, gui.sideW - 32.0f, 18.0f, gui.selectedModule);
     }
 
@@ -294,27 +285,6 @@ final class ClickGuiSidePanel {
     private void drawStat(String label, String value, float x, float y, int valueColor) {
         gui.drawFont(label, x, y, gui.withAlpha(gui.guiColors().muted, 175.0f * gui.guiAlpha));
         gui.drawFont(value, x, y + 15.0f, gui.withAlpha(valueColor, 235.0f * gui.guiAlpha));
-    }
-
-    /**
-     * 绘制模块状态摘要行（启用状态、绑定按键、选项数量）。
-     */
-    private void drawSummaryRows(float y) {
-        if (gui.selectedModule == null) {
-            return;
-        }
-        String[][] rows = new String[][]{
-                new String[]{"State", gui.selectedModule.getState() ? "Enabled" : "Disabled"},
-                new String[]{"Key", gui.getKeyName(gui.selectedModule)},
-//                new String[]{"Options", String.valueOf(gui.getVisibleValueCount(gui.selectedModule))}
-        };
-        for (int i = 0; i < rows.length; i++) {
-            float rowY = y + i * 20.0f;
-            gui.drawFont(rows[i][0], gui.sideX + 16.0f, rowY, gui.withAlpha(gui.guiColors().muted, 178.0f * gui.guiAlpha));
-            gui.drawFont(rows[i][1], gui.sideX + gui.sideW - 16.0f - FontLoaders.F14.getStringWidth(rows[i][1]), rowY,
-                    gui.withAlpha(i == 0 && gui.selectedModule.getState() ? gui.guiColors().accent : gui.guiColors().text,
-                            220.0f * gui.guiAlpha));
-        }
     }
 
     /**
