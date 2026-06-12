@@ -196,7 +196,7 @@ final class MaterialValueRenderer {
         MaterialClickTheme theme = gui.theme();
         float s = gui.layout().scale;
         boolean active = Boolean.TRUE.equals(value.getValue());
-        FontLoaders.C12.drawString(gui.displayName(value), x, y + 9.0f * s, theme.muted());
+        FontLoaders.C14.drawString(gui.displayName(value), x, y + 8.0f * s, theme.muted());
         float swX = x + width - 38.0f * s;
         float swY = y + 7.0f * s;
         RenderServices.shapes().rounded(swX, swY, swX + 34.0f * s, swY + 18.0f * s, 9.0f * s,
@@ -209,9 +209,9 @@ final class MaterialValueRenderer {
     private void drawNumber(Numbers value, float x, float y, float width) {
         MaterialClickTheme theme = gui.theme();
         float s = gui.layout().scale;
-        FontLoaders.C12.drawString(gui.displayName(value), x, y, theme.muted());
-        FontLoaders.C12.drawString(formatNumber(numberValue(value)), x + width - FontLoaders.C12.getStringWidth(formatNumber(numberValue(value))),
-                y, theme.faint());
+        FontLoaders.C14.drawString(gui.displayName(value), x, y, theme.muted());
+        FontLoaders.C14.drawString(formatNumber(numberValue(value)), x + width - FontLoaders.C14.getStringWidth(formatNumber(numberValue(value))),
+                y, theme.muted());
         drawSlider(sliderX(x, width), y + 24.0f * s, sliderW(width), pct(value), theme);
     }
 
@@ -224,8 +224,8 @@ final class MaterialValueRenderer {
         float maxPct = pct(max, rangeMin, rangeMax);
         String label = rangeLabel(min);
         String values = formatNumber(numberValue(min)) + " - " + formatNumber(numberValue(max));
-        FontLoaders.C12.drawString(label, x, y, theme.muted());
-        FontLoaders.C12.drawString(values, x + width - FontLoaders.C12.getStringWidth(values), y, theme.faint());
+        FontLoaders.C14.drawString(label, x, y, theme.muted());
+        FontLoaders.C14.drawString(values, x + width - FontLoaders.C14.getStringWidth(values), y, theme.muted());
 
         float sx = sliderX(x, width);
         float sy = y + 24.0f * s;
@@ -247,7 +247,7 @@ final class MaterialValueRenderer {
         String label = colorLabel(red);
         int color = 0xFF000000 | (clampColor(numberValue(red)) << 16) | (clampColor(numberValue(green)) << 8) | clampColor(numberValue(blue));
 
-        FontLoaders.C12.drawString(label, x, y, theme.muted());
+        FontLoaders.C14.drawString(label, x, y, theme.muted());
         RenderServices.shapes().rounded(x + width - 22.0f * s, y - 2.0f * s, x + width, y + 20.0f * s,
                 7.0f * s, color);
         drawColorSlider("R", red, x, y + 25.0f * s, width);
@@ -258,7 +258,7 @@ final class MaterialValueRenderer {
     private void drawColorSlider(String label, Numbers value, float x, float y, float width) {
         MaterialClickTheme theme = gui.theme();
         float s = gui.layout().scale;
-        FontLoaders.C12.drawString(label, x, y - 4.0f * s, theme.faint());
+        FontLoaders.C14.drawString(label, x, y - 5.0f * s, theme.faint());
         drawSlider(x + 18.0f * s, y, width - 18.0f * s, pct(value), theme);
     }
 
@@ -266,15 +266,15 @@ final class MaterialValueRenderer {
         MaterialClickTheme theme = gui.theme();
         float s = gui.layout().scale;
         boolean expanded = expandedModes.contains(mode);
-        FontLoaders.C12.drawString(gui.displayName(mode), x, y + 9.0f * s, theme.muted());
+        FontLoaders.C14.drawString(gui.displayName(mode), x, y + 8.0f * s, theme.muted());
 
         String current = modeLabel(mode.getModeAsString());
-        float pillW = Math.max(62.0f * s, FontLoaders.C12.getStringWidth(current) + 22.0f * s);
+        float pillW = Math.max(68.0f * s, FontLoaders.C14.getStringWidth(current) + 22.0f * s);
         float pillX = x + width - pillW;
         RenderServices.shapes().rounded(pillX, y + 5.0f * s, pillX + pillW, y + 27.0f * s,
                 8.0f * s, theme.withAlpha(expanded ? MaterialClickTheme.PRIMARY_CONTAINER : 0xFFFFFFFF,
                         (expanded ? 138.0f : 26.0f) * theme.alpha()));
-        FontLoaders.C12.drawCenteredString(current, pillX + pillW / 2.0f, y + 11.0f * s,
+        FontLoaders.C14.drawCenteredString(current, pillX + pillW / 2.0f, y + 10.0f * s,
                 expanded ? theme.withAlpha(MaterialClickTheme.ON_PRIMARY_CONTAINER, 245.0f * theme.alpha()) : theme.muted());
 
         if (!expanded) {
@@ -287,7 +287,7 @@ final class MaterialValueRenderer {
             RenderServices.shapes().rounded(x, optionY, x + width, optionY + 20.0f * s, 7.0f * s,
                     theme.withAlpha(active ? MaterialClickTheme.PRIMARY_CONTAINER : 0xFFFFFFFF,
                             (active ? 120.0f : 16.0f) * theme.alpha()));
-            FontLoaders.C12.drawString(modeLabel(option.name()), x + 9.0f * s, optionY + 6.0f * s,
+            FontLoaders.C14.drawString(modeLabel(option.name()), x + 9.0f * s, optionY + 5.0f * s,
                     active ? theme.withAlpha(MaterialClickTheme.ON_PRIMARY_CONTAINER, 255.0f * theme.alpha()) : theme.muted());
             optionY += 23.0f * s;
         }
@@ -296,8 +296,8 @@ final class MaterialValueRenderer {
     private void drawTextValue(Value value, float x, float y, float width) {
         MaterialClickTheme theme = gui.theme();
         String text = String.valueOf(value.getValue());
-        FontLoaders.C12.drawString(gui.displayName(value), x, y + 8.0f * gui.layout().scale, theme.muted());
-        FontLoaders.C12.drawString(text, x + width - FontLoaders.C12.getStringWidth(text), y + 8.0f * gui.layout().scale, theme.faint());
+        FontLoaders.C14.drawString(gui.displayName(value), x, y + 7.0f * gui.layout().scale, theme.muted());
+        FontLoaders.C14.drawString(text, x + width - FontLoaders.C14.getStringWidth(text), y + 7.0f * gui.layout().scale, theme.muted());
     }
 
     private void drawSlider(float x, float y, float width, float pct, MaterialClickTheme theme) {
@@ -372,16 +372,7 @@ final class MaterialValueRenderer {
     }
 
     private void setNumberValue(Numbers value, double result) {
-        Object current = value.getValue();
-        if (current instanceof Float) {
-            value.setValue(Float.valueOf((float) result));
-        } else if (current instanceof Integer) {
-            value.setValue(Integer.valueOf((int) Math.round(result)));
-        } else if (current instanceof Long) {
-            value.setValue(Long.valueOf(Math.round(result)));
-        } else {
-            value.setValue(Double.valueOf(result));
-        }
+        value.setNumberValue(result);
     }
 
     private float modeHeight(Mode mode) {

@@ -53,6 +53,7 @@ public final class ShaderRenderer {
     private static Program circleBadgeProgram;
     private static Program frostedGlassProgram;
     private static Program liquidGlassProgram;
+    private static Program viewportFeatherBlurProgram;
     private static Program killShatterProgram;
     private static Program gaussianBlurProgram;
     private static final String LIQUID_GLASS_FRAGMENT_RESOURCE =
@@ -298,6 +299,41 @@ public final class ShaderRenderer {
             setColor(program, "borderColor", borderColor);
             drawQuad(left, top, right, bottom, EDGE_PADDING);
         } finally {
+            endProgram(shaderState);
+        }
+        return true;
+    }
+
+    public static boolean drawViewportFeatherBlur(float left, float top, float right, float bottom,
+                                                  boolean topEdge, float opacity) {
+        Program program = getViewportFeatherBlurProgram();
+        LiquidGlassSettings settings = LIQUID_GLASS_PRESET.withBlurIterations(2)
+                .withBlurRadius(5.0f)
+                .withBlurDownscale(0.90f);
+        if (program == null || right <= left || bottom <= top || opacity <= 0.0f
+                || !ensureFrostedGlassTexture(settings) || !frostedBlurReady) {
+            return false;
+        }
+
+        ShaderState shaderState = beginProgram(program);
+        try {
+            setActiveTexture(GL13.GL_TEXTURE0);
+            GL11.glEnable(GL11.GL_TEXTURE_2D);
+            bindTexture(blurTextureB);
+            program.set1i("screenTex", 0);
+            setActiveTexture(GL13.GL_TEXTURE1);
+            GL11.glEnable(GL11.GL_TEXTURE_2D);
+            bindTexture(screenTexture);
+            program.set1i("sourceTex", 1);
+            setActiveTexture(GL13.GL_TEXTURE0);
+            program.set2f("screenSize", Math.max(1.0f, blurWidth), Math.max(1.0f, blurHeight));
+            program.set2f("viewportSize", Math.max(1.0f, capturedWidth), Math.max(1.0f, capturedHeight));
+            program.set1f("topEdge", topEdge ? 1.0f : 0.0f);
+            program.set1f("opacity", Math.max(0.0f, Math.min(1.0f, opacity)));
+            drawQuad(left, top, right, bottom, 0.0f);
+        } finally {
+            setActiveTexture(GL13.GL_TEXTURE1);
+            bindTexture(0);
             endProgram(shaderState);
         }
         return true;
@@ -794,6 +830,13 @@ public final class ShaderRenderer {
             liquidGlassProgram = createProgramFromResource(LIQUID_GLASS_FRAGMENT_RESOURCE);
         }
         return liquidGlassProgram;
+    }
+
+    private static Program getViewportFeatherBlurProgram() {
+        if (viewportFeatherBlurProgram == null) {
+            viewportFeatherBlurProgram = createProgram(VIEWPORT_FEATHER_BLUR_FRAGMENT);
+        }
+        return viewportFeatherBlurProgram;
     }
 
     private static Program getKillShatterProgram() {
@@ -1533,5 +1576,32 @@ public final class ShaderRenderer {
             "    float totalAlpha = max(fillAlpha, borderAlpha);\n" +
             "    vec3 rgb = mix(glass, edge, borderMask);\n" +
             "    gl_FragColor = vec4(clamp(rgb, 0.0, 1.0), totalAlpha);\n" +
+            "}\n";
+
+    private static final String VIEWPORT_FEATHER_BLUR_FRAGMENT =
+            "#version 120\n" +
+            "uniform sampler2D screenTex;\n" +
+            "uniform sampler2D sourceTex;\n" +
+            "uniform vec2 screenSize;\n" +
+            "uniform vec2 viewportSize;\n" +
+            "uniform float topEdge;\n" +
+            "uniform float opacity;\n" +
+            "vec2 safeUv(vec2 uv) {\n" +
+            "    return clamp(uv, vec2(0.0015), vec2(0.9985));\n" +
+            "}\n" +
+            "float smoother(float x) {\n" +
+            "    x = clamp(x, 0.0, 1.0);\n" +
+            "    return x * x * x * (x * (x * 6.0 - 15.0) + 10.0);\n" +
+            "}\n" +
+            "void main() {\n" +
+            "    vec2 st = clamp(gl_TexCoord[0].st, vec2(0.0), vec2(1.0));\n" +
+            "    float topMask = smoother(1.0 - st.y);\n" +
+            "    float bottomMask = smoother(st.y);\n" +
+            "    float transition = mix(bottomMask, topMask, clamp(topEdge, 0.0, 1.0));\n" +
+            "    float mask = pow(clamp(transition, 0.0, 1.0), 0.92) * clamp(opacity, 0.0, 1.0);\n" +
+            "    vec2 uv = safeUv(gl_FragCoord.xy / max(viewportSize, vec2(1.0)));\n" +
+            "    vec3 source = texture2D(sourceTex, uv).rgb;\n" +
+            "    vec3 blurred = texture2D(screenTex, uv).rgb;\n" +
+            "    gl_FragColor = vec4(mix(source, blurred, clamp(transition, 0.0, 1.0)), mask);\n" +
             "}\n";
 }

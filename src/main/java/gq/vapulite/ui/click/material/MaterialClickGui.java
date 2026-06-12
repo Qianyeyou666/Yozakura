@@ -16,8 +16,10 @@ import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * 全新的 MD3 x Liquid Glass ClickGUI。
@@ -31,6 +33,7 @@ public final class MaterialClickGui extends GuiScreen {
     private final MaterialClickTheme theme = new MaterialClickTheme();
     private final MaterialClickSidebar sidebar = new MaterialClickSidebar(this);
     private final MaterialModuleGrid grid = new MaterialModuleGrid(this);
+    private final Set<Module> expandedModules = new HashSet<Module>();
 
     private MaterialClickLayout layout;
     private Module bindingModule;
@@ -71,6 +74,7 @@ public final class MaterialClickGui extends GuiScreen {
         layout = MaterialClickLayout.calculate(new ScaledResolution(mc));
         openProgress = 0.0f;
         savedOnClose = false;
+        expandedModules.clear();
         grid.resetScroll();
         super.initGui();
     }
@@ -97,9 +101,13 @@ public final class MaterialClickGui extends GuiScreen {
     private void drawWindowShell() {
         RenderServices.liquidGlass().roundedBorder(layout.x, layout.y, layout.x + layout.w, layout.y + layout.h,
                 layout.radius, 0.0f, theme.windowFill(), 0);
-        RenderServices.shapes().line(layout.x + layout.sidebarW, layout.y + 18.0f * layout.scale,
-                layout.x + layout.sidebarW, layout.y + layout.h - 18.0f * layout.scale,
-                0.8f * layout.scale, theme.withAlpha(MaterialClickTheme.OUTLINE, 18.0f * theme.alpha()));
+        RenderServices.shapes().rounded(layout.x, layout.y, layout.x + layout.w, layout.y + layout.h,
+                layout.radius, theme.windowScrim());
+        RenderServices.shapes().roundedBorder(layout.x, layout.y, layout.x + layout.w, layout.y + layout.h,
+                layout.radius, 0.45f * layout.scale, 0, theme.withAlpha(MaterialClickTheme.OUTLINE, 18.0f * theme.alpha()));
+        RenderServices.shapes().line(layout.x + layout.sidebarW, layout.y,
+                layout.x + layout.sidebarW, layout.y + layout.h,
+                0.38f * layout.scale, theme.withAlpha(MaterialClickTheme.OUTLINE, 34.0f * theme.alpha()));
     }
 
     private void updateWindowDrag(int mouseX, int mouseY, ScaledResolution sr) {
@@ -197,6 +205,21 @@ public final class MaterialClickGui extends GuiScreen {
         return bindingModule == module;
     }
 
+    boolean isModuleExpanded(Module module) {
+        return expandedModules.contains(module);
+    }
+
+    void toggleModuleExpanded(Module module) {
+        if (module == null) {
+            return;
+        }
+        if (expandedModules.contains(module)) {
+            expandedModules.remove(module);
+            return;
+        }
+        expandedModules.add(module);
+    }
+
     private void finishBinding(int keyCode) {
         if (keyCode == Keyboard.KEY_ESCAPE) {
             bindingModule = null;
@@ -219,8 +242,8 @@ public final class MaterialClickGui extends GuiScreen {
         RenderServices.liquidGlass().roundedBorder(x, y, x + boxW, y + boxH, 18.0f * layout.scale,
                 1.0f, theme.withAlpha(MaterialClickTheme.SURFACE, 220.0f * theme.alpha()),
                 theme.withAlpha(MaterialClickTheme.PRIMARY, 78.0f * theme.alpha()));
-        FontLoaders.F18.drawCenteredString("Press a key", x + boxW / 2.0f, y + 21.0f * layout.scale, theme.text());
-        FontLoaders.F14.drawCenteredString(displayName(bindingModule) + "  |  DEL 清除",
+        FontLoaders.F20.drawCenteredString("Press a key", x + boxW / 2.0f, y + 20.0f * layout.scale, theme.text());
+        FontLoaders.F16.drawCenteredString(displayName(bindingModule) + "  |  DEL 清除",
                 x + boxW / 2.0f, y + 51.0f * layout.scale, theme.muted());
     }
 

@@ -25,20 +25,18 @@ final class MaterialClickSidebar {
         MaterialClickLayout layout = gui.layout();
         MaterialClickTheme theme = gui.theme();
         float s = layout.scale;
-        float x = layout.x + 16.0f * s;
-        float y = layout.y + 32.0f * s;
+        float navX = layout.x + 16.0f * s;
+        float brandX = layout.x + 32.0f * s;
+        float brandY = layout.y + 32.0f * s;
 
-        RenderServices.shapes().rounded(x, y + 3.0f * s, x + 8.0f * s, y + 11.0f * s,
+        RenderServices.shapes().rounded(brandX, brandY + 4.0f * s, brandX + 8.0f * s, brandY + 12.0f * s,
                 4.0f * s, theme.withAlpha(MaterialClickTheme.PRIMARY, 255.0f * theme.alpha()));
-        RenderServices.shapes().shadow(x, y + 3.0f * s, x + 8.0f * s, y + 11.0f * s,
-                4.0f * s, theme.withAlpha(MaterialClickTheme.PRIMARY, 120.0f * theme.alpha()), 5, 3.0f);
-        FontLoaders.F16.drawString("VapuLite", x + 17.0f * s, y, theme.text());
-        FontLoaders.C12.drawString("Liquid Glass", x + 17.0f * s, y + 18.0f * s, theme.faint());
+        FontLoaders.F30.drawString("VapuLite", brandX + 17.0f * s, brandY - 3.0f * s, theme.text());
 
-        float itemY = layout.y + 90.0f * s;
+        float itemY = layout.y + 92.0f * s;
         float itemW = layout.sidebarW - 32.0f * s;
         for (ModuleType type : TABS) {
-            drawTab(type, x, itemY, itemW, 44.0f * s, mouseX, mouseY);
+            drawTab(type, navX, itemY, itemW, 44.0f * s, mouseX, mouseY);
             itemY += 50.0f * s;
         }
     }
@@ -52,14 +50,21 @@ final class MaterialClickSidebar {
 
         if (active) {
             RenderServices.shapes().rounded(x, y, x + w, y + h, h / 2.0f,
-                    theme.withAlpha(MaterialClickTheme.PRIMARY_CONTAINER, 226.0f * theme.alpha()));
+                    theme.withAlpha(MaterialClickTheme.PRIMARY_CONTAINER, 255.0f * theme.alpha()));
         } else if (hover > 0.0f) {
             RenderServices.shapes().rounded(x, y, x + w, y + h, h / 2.0f,
-                    theme.withAlpha(0xFFFFFFFF, 18.0f * theme.alpha()));
+                    theme.withAlpha(0xFFFFFFFF, 10.0f * theme.alpha()));
         }
 
+        String label = type.toString();
         int color = active ? theme.withAlpha(MaterialClickTheme.ON_PRIMARY_CONTAINER, 255.0f * theme.alpha()) : theme.muted();
-        FontLoaders.F14.drawString(type.toString(), x + 18.0f * layout.scale, y + 14.0f * layout.scale, color);
+        if (active) {
+            float textY = y + Math.max(0.0f, h - FontLoaders.TB18.getStringHeight(label)) / 2.0f + 1.0f * layout.scale;
+            FontLoaders.TB18.drawString(label, x + 18.0f * layout.scale, textY, color);
+        } else {
+            float textY = y + Math.max(0.0f, h - FontLoaders.F18.getStringHeight(label)) / 2.0f + 1.0f * layout.scale;
+            FontLoaders.F18.drawString(label, x + 18.0f * layout.scale, textY, color);
+        }
     }
 
     boolean mouseClicked(int mouseX, int mouseY, int button) {
@@ -69,7 +74,7 @@ final class MaterialClickSidebar {
         MaterialClickLayout layout = gui.layout();
         float s = layout.scale;
         float x = layout.x + 16.0f * s;
-        float y = layout.y + 90.0f * s;
+        float y = layout.y + 92.0f * s;
         float w = layout.sidebarW - 32.0f * s;
         for (ModuleType type : TABS) {
             if (MaterialClickLayout.contains(x, y, x + w, y + 44.0f * s, mouseX, mouseY)) {

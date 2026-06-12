@@ -116,7 +116,7 @@ public class FileManager {
                         } else if (value instanceof Mode) {
                             ((Mode) value).setMode(moduleJson.get(value.getName()).getAsString());
                         } else if (value instanceof Numbers) {
-                            value.setValue(moduleJson.get(value.getName()).getAsDouble());
+                            ((Numbers) value).setNumberValue(moduleJson.get(value.getName()).getAsDouble());
                         }
                     } catch (Exception ignored) {
                     }
