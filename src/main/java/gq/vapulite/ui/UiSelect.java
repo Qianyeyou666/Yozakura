@@ -1,7 +1,7 @@
 package gq.vapulite.ui;
 
-import gq.vapulite.util.render.RenderUtil;
 import gq.vapulite.engine.font.FontLoaders;
+import gq.vapulite.engine.render.ui.RenderServices;
 
 import java.awt.Color;
 
@@ -43,7 +43,7 @@ public class UiSelect extends UiComponent {
                 theme.withAlpha(theme.text, 255.0f * alpha));
         float pillX = bounds.x + labelW;
         float pillW = bounds.width - labelW;
-        RenderUtil.drawRoundedBorderedRect(pillX, bounds.y + 4.0f, pillX + pillW, bounds.y + 22.0f, 7.0f, 0.8f,
+        RenderServices.shapes().roundedBorder(pillX, bounds.y + 4.0f, pillX + pillW, bounds.y + 22.0f, 7.0f, 0.8f,
                 theme.withAlpha(theme.control, 230.0f * alpha),
                 theme.withAlpha(theme.selectBorder, 42.0f * alpha));
         FontLoaders.F14.drawString(trim(value, pillW - 26.0f), pillX + 12.0f, bounds.y + 10.0f,

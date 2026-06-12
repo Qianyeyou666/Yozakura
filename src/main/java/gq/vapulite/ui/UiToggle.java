@@ -1,6 +1,6 @@
 package gq.vapulite.ui;
 
-import gq.vapulite.util.render.RenderUtil;
+import gq.vapulite.engine.render.ui.RenderServices;
 
 import java.awt.Color;
 
@@ -53,15 +53,15 @@ public class UiToggle extends UiComponent {
         explicitProgress = false;
         int track = blend(theme.toggleOff, theme.toggleOn, progress);
         if (progress > 0.04f) {
-            RenderUtil.drawSoftShadow(bounds.x, bounds.y, bounds.right(), bounds.bottom(), bounds.height / 2.0f,
+            RenderServices.shapes().shadow(bounds.x, bounds.y, bounds.right(), bounds.bottom(), bounds.height / 2.0f,
                     theme.withAlpha(theme.accent, 45.0f * progress * alpha), 4, 2.2f);
         }
-        RenderUtil.drawRoundedRect(bounds.x, bounds.y, bounds.right(), bounds.bottom(), bounds.height / 2.0f,
+        RenderServices.shapes().rounded(bounds.x, bounds.y, bounds.right(), bounds.bottom(), bounds.height / 2.0f,
                 theme.withAlpha(track, ((track >>> 24) & 255) * alpha));
         float knobSize = Math.max(4.0f, bounds.height - 4.0f);
         float knobX = bounds.x + 2.0f + (bounds.width - knobSize - 4.0f) * progress;
         int knob = blend(theme.toggleKnobOff, theme.toggleKnobOn, progress);
-        RenderUtil.drawRoundedRect(knobX, bounds.y + 2.0f, knobX + knobSize, bounds.y + bounds.height - 2.0f,
+        RenderServices.shapes().rounded(knobX, bounds.y + 2.0f, knobX + knobSize, bounds.y + bounds.height - 2.0f,
                 knobSize / 2.0f, theme.withAlpha(knob, 245.0f * alpha));
     }
 

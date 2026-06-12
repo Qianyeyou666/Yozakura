@@ -1,8 +1,8 @@
 package gq.vapulite.ui;
 
 import gq.vapulite.module.render.HUD;
-import gq.vapulite.util.render.RenderUtil;
 import gq.vapulite.engine.font.FontLoaders;
+import gq.vapulite.engine.render.ui.RenderServices;
 import org.lwjgl.input.Keyboard;
 
 import java.awt.Color;
@@ -72,12 +72,12 @@ public class UiTextField extends UiComponent {
         HUD.drawThemedFrostedGlass(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, 1.15f,
                 theme.withAlpha(theme.fieldFill, 156.0f * alpha),
                 theme.withAlpha(border, borderAlpha * alpha));
-        RenderUtil.drawRoundedBorderedRect(bounds.x + 1.8f, bounds.y + 1.8f, bounds.right() - 1.8f,
+        RenderServices.shapes().roundedBorder(bounds.x + 1.8f, bounds.y + 1.8f, bounds.right() - 1.8f,
                 bounds.bottom() - 1.8f, Math.max(0.0f, radius - 1.8f), 0.6f,
                 theme.withAlpha(new Color(255, 255, 255).getRGB(), 0.0f),
                 theme.withAlpha(theme.fieldInnerBorder, 42.0f * alpha));
         if (focused || hovered) {
-            RenderUtil.drawSoftShadow(bounds.x + 2.0f, bounds.y + 2.0f, bounds.right() - 2.0f, bounds.bottom() - 2.0f,
+            RenderServices.shapes().shadow(bounds.x + 2.0f, bounds.y + 2.0f, bounds.right() - 2.0f, bounds.bottom() - 2.0f,
                     Math.max(0.0f, radius - 2.0f), theme.withAlpha(theme.accent, (focused ? 30.0f : 18.0f) * alpha), 4, 2.2f);
         }
         String shown = text.length() == 0 ? placeholder : text;
@@ -92,7 +92,7 @@ public class UiTextField extends UiComponent {
                         (focused ? 225.0f : hovered ? 198.0f : 176.0f) * alpha));
         if (focused && (System.currentTimeMillis() - cursorTime) / 360L % 2L == 0L) {
             float cursorX = textX + (text.length() == 0 ? 0.0f : FontLoaders.F14.getStringWidth(trim(text, bounds.width - 72.0f)) + 2.0f);
-            RenderUtil.drawRect(cursorX, bounds.y + 10.0f, cursorX + 0.8f, bounds.bottom() - 10.0f,
+            RenderServices.shapes().rect(cursorX, bounds.y + 10.0f, cursorX + 0.8f, bounds.bottom() - 10.0f,
                     theme.withAlpha(theme.text, 190.0f * alpha));
         }
     }

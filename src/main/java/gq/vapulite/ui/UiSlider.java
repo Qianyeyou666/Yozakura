@@ -1,7 +1,7 @@
 package gq.vapulite.ui;
 
-import gq.vapulite.util.render.RenderUtil;
 import gq.vapulite.engine.font.FontLoaders;
+import gq.vapulite.engine.render.ui.RenderServices;
 
 import java.awt.Color;
 
@@ -51,15 +51,15 @@ public class UiSlider extends UiComponent {
         FontLoaders.F14.drawString(valueText, bounds.right() - FontLoaders.F14.getStringWidth(valueText), bounds.y + 8.0f,
                 theme.withAlpha(theme.muted, 210.0f * alpha));
         if (active > 0.02f) {
-            RenderUtil.drawSoftShadow(barX + barW * value - 3.0f, bounds.y + 12.0f, barX + barW * value + 3.0f, bounds.y + 20.0f,
+            RenderServices.shapes().shadow(barX + barW * value - 3.0f, bounds.y + 12.0f, barX + barW * value + 3.0f, bounds.y + 20.0f,
                     3.0f, theme.withAlpha(theme.accent, 90.0f * active * alpha), 4, 2.5f);
         }
-        RenderUtil.drawRoundedRect(barX, bounds.y + 15.0f, barX + barW, bounds.y + 17.0f, 2.0f,
+        RenderServices.shapes().rounded(barX, bounds.y + 15.0f, barX + barW, bounds.y + 17.0f, 2.0f,
                 theme.withAlpha(theme.sliderTrack, 220.0f * alpha));
-        RenderUtil.drawProgressBar(barX, bounds.y + 15.0f, barX + barW, bounds.y + 17.0f, 2.0f, value,
+        RenderServices.shapes().progressBar(barX, bounds.y + 15.0f, barX + barW, bounds.y + 17.0f, 2.0f, value,
                 0x00000000, theme.withAlpha(theme.accent, (220.0f + active * 35.0f) * alpha));
         float knobHalf = 2.2f + active * 1.1f;
-        RenderUtil.drawRoundedRect(barX + barW * value - knobHalf, bounds.y + 12.0f - active,
+        RenderServices.shapes().rounded(barX + barW * value - knobHalf, bounds.y + 12.0f - active,
                 barX + barW * value + knobHalf, bounds.y + 20.0f + active, 3.0f,
                 theme.withAlpha(theme.accent, 255.0f * alpha));
     }

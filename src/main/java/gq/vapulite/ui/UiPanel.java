@@ -1,6 +1,6 @@
 package gq.vapulite.ui;
 
-import gq.vapulite.util.render.RenderUtil;
+import gq.vapulite.engine.render.ui.RenderServices;
 
 import java.awt.Color;
 
@@ -66,15 +66,17 @@ public class UiPanel extends UiComponent {
             return;
         }
         if (shadowAlpha > 0.0f && shadowSpread > 0.0f && shadowLayers > 0) {
-            RenderUtil.drawSoftShadow(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius,
+            RenderServices.panels().shadow(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius,
                     theme.withAlpha(shadowColor, shadowAlpha * alpha), shadowLayers, shadowSpread);
         }
         int f = theme.withAlpha(fillColor, ((fillColor >>> 24) & 255) * alpha);
         int b = theme.withAlpha(borderColor, ((borderColor >>> 24) & 255) * alpha);
-        if (gq.vapulite.module.render.HUD.isLightTheme()) {
-            RenderUtil.drawRoundedBorderedRect(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, borderWidth, f, b);
-        } else {
-            RenderUtil.drawFrostedGlassRect(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, borderWidth, f, b);
+        if (gq.vapulite.module.render.HUD.isSakuraTheme()) {
+            f = theme.withAlpha(theme.panel, Math.max((theme.panel >>> 24) & 255, 238) * alpha);
+            b = theme.withAlpha(theme.panelBorder, Math.max((theme.panelBorder >>> 24) & 255, 58) * alpha);
+            RenderServices.panels().panel(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, borderWidth, f, b);
+            return;
         }
+        RenderServices.panels().panel(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, borderWidth, f, b);
     }
 }
