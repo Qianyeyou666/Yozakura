@@ -8,9 +8,11 @@ import gq.vapulite.util.time.TimerUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.ScaledResolution;
+import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.BlockPos;
 import net.minecraft.util.ResourceLocation;
+import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
 
 import java.awt.Color;
@@ -31,6 +33,10 @@ public class RenderUtil {
     public static TimerUtil splashTimer = new TimerUtil();
     public static int splashTickPos = 0;
     public static boolean isSplash = false;
+
+    // --- Scissor state (merged from GuiRenderUtils) ---
+    private static float scissorX, scissorY, scissorWidth, scissorHeight, scissorSF;
+    private static boolean isScissoring;
 
     // ==================== Color & State Utilities ====================
 
@@ -930,6 +936,405 @@ public class RenderUtil {
 
     public static int height() {
         return new ScaledResolution(mc).getScaledHeight();
+    }
+
+    // ==================== Scissor / Crop (merged from GuiRenderUtils) ====================
+
+    /**
+     * Gets current scissor data
+     * @return float[] of scissorX,scissorY,scissorWidth,scissorHeight,scissorSF or -1 for none
+     */
+    public static float[] getScissor() {
+        if (isScissoring) {
+            return new float[]{scissorX, scissorY, scissorWidth, scissorHeight, scissorSF};
+        }
+        return new float[]{-1};
+    }
+
+    public static void beginCrop(float x, float y, float width, float height) {
+        float scaleFactor = getScaleFactor();
+        beginCrop(x, y, width, height, scaleFactor);
+    }
+
+    public static void beginCropFixed(float x, float y, float width, float height) {
+        float scaleFactor = getScaleFactor();
+        beginCrop(x, y, width, height, scaleFactor);
+    }
+
+    public static void beginCrop(float x, float y, float width, float height, float scaleFactor) {
+        GL11.glEnable(GL11.GL_SCISSOR_TEST);
+        GL11.glScissor((int) (x * scaleFactor), (int) (Display.getHeight() - (y + height) * scaleFactor), (int) (width * scaleFactor), (int) (height * scaleFactor));
+        isScissoring = true;
+        scissorX = x;
+        scissorY = y;
+        scissorWidth = width;
+        scissorHeight = height;
+        scissorSF = scaleFactor;
+    }
+
+    public static void endCrop() {
+        GL11.glDisable(GL11.GL_SCISSOR_TEST);
+        isScissoring = false;
+    }
+
+    // ==================== 3D Render Enable/Disable (merged from GuiRenderUtils) ====================
+
+    public static void enableRender3D(boolean disableDepth) {
+        if (disableDepth) {
+            GL11.glDepthMask(false);
+            GL11.glDisable(2929);
+        }
+        GL11.glDisable(3008);
+        GL11.glEnable(3042);
+        GL11.glDisable(3553);
+        GL11.glBlendFunc(770, 771);
+        GL11.glEnable(2848);
+        GL11.glHint(3154, 4354);
+        GL11.glLineWidth(1.0F);
+    }
+
+    public static void disableRender3D(boolean enableDepth) {
+        if (enableDepth) {
+            GL11.glDepthMask(true);
+            GL11.glEnable(2929);
+        }
+        GL11.glEnable(3553);
+        GL11.glDisable(3042);
+        GL11.glEnable(3008);
+        GL11.glDisable(2848);
+        GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+    }
+
+    public static void enableRender2D() {
+        RenderServices.context().start2D();
+        GL11.glLineWidth(1.0F);
+    }
+
+    public static void disableRender2D() {
+        GlStateManager.shadeModel(GL11.GL_FLAT);
+        RenderServices.context().stop2D();
+    }
+
+    // ==================== 2D Primitives (merged from GuiRenderUtils) ====================
+
+    public static void setColor(int colorHex) {
+        float alpha = (float) (colorHex >> 24 & 255) / 255.0F;
+        float red = (float) (colorHex >> 16 & 255) / 255.0F;
+        float green = (float) (colorHex >> 8 & 255) / 255.0F;
+        float blue = (float) (colorHex & 255) / 255.0F;
+        GL11.glColor4f(red, green, blue, alpha);
+    }
+
+    /**
+     * Draws a filled rect defined by width/height (not right/bottom coords).
+     * Renamed from drawRect to avoid collision with RenderUtil's coordinate-based drawRect.
+     */
+    public static void drawRectWH(float x, float y, float width, float height, int color) {
+        RenderServices.shapes().rectWH(x, y, width, height, color);
+    }
+
+    public static void drawRect(float x, float y, float width, float height, Color color) {
+        drawRectWH(x, y, width, height, color.getRGB());
+    }
+
+    public static void drawBorderedRect(float x, float y, float width, float height, float borderWidth, Color rectColor, Color borderColor) {
+        drawBorderedRect(x, y, width, height, borderWidth, rectColor.getRGB(), borderColor.getRGB());
+    }
+
+    public static void drawBorderedRect(float x, float y, float width, float height, float borderWidth, int rectColor, int borderColor) {
+        drawRectWH(x + borderWidth, y + borderWidth, width - borderWidth * 2.0F, height - borderWidth * 2.0F, rectColor);
+        drawRectWH(x, y, width, borderWidth, borderColor);
+        drawRectWH(x, y + borderWidth, borderWidth, height - borderWidth, borderColor);
+        drawRectWH(x + width - borderWidth, y + borderWidth, borderWidth, height - borderWidth, borderColor);
+        drawRectWH(x + borderWidth, y + height - borderWidth, width - borderWidth * 2.0F, borderWidth, borderColor);
+    }
+
+    public static void drawBorder(float x, float y, float width, float height, float borderWidth, int borderColor) {
+        drawRectWH(x + borderWidth, y + borderWidth, width - borderWidth * 2.0F, borderWidth, borderColor);
+        drawRectWH(x, y + borderWidth, borderWidth, height - borderWidth, borderColor);
+        drawRectWH(x + width - borderWidth, y + borderWidth, borderWidth, height - borderWidth, borderColor);
+        drawRectWH(x + borderWidth, y + height - borderWidth, width - borderWidth * 2.0F, borderWidth, borderColor);
+    }
+
+    public static void drawRoundedRect(float x, float y, float width, float height, float edgeRadius, int color, float borderWidth, int borderColor) {
+        if (color == 16777215) color = 0xFFF;
+        if (borderColor == 16777215) borderColor = 0xFFF;
+        RenderServices.shapes().roundedBorderWH(x, y, width, height, edgeRadius, borderWidth, color, borderColor);
+    }
+
+    public static void drawImageSpread(ResourceLocation image, float x, float y, float width, float height, float alpha) {
+        GLStateManager.beginTextured2D(alpha);
+        try {
+            mc.getTextureManager().bindTexture(image);
+            Gui.drawModalRectWithCustomSizedTexture((int) x, (int) y, 0.0f, 0.0f, (int) width, (int) height, 25, 25);
+        } finally {
+            GLStateManager.endTextured2D();
+        }
+    }
+
+    // ==================== Circle Drawing Variants (merged from GuiRenderUtils) ====================
+
+    /** Draws a circle outline with configurable line width. */
+    public static void drawCircle(float x, float y, float radius, float lineWidth, int color) {
+        enableRender2D();
+        setColor(color);
+        GL11.glLineWidth(lineWidth);
+        int vertices = (int) Math.min(Math.max(radius, 45.0F), 360.0F);
+        GL11.glBegin(2);
+        for (int i = 0; i < vertices; ++i) {
+            double angleRadians = 6.283185307179586D * (double) i / (double) vertices;
+            GL11.glVertex2d((double) x + Math.sin(angleRadians) * (double) radius, (double) y + Math.cos(angleRadians) * (double) radius);
+        }
+        GL11.glEnd();
+        disableRender2D();
+    }
+
+    public static void drawFilledCircle(float x, float y, float radius, int color) {
+        enableRender2D();
+        setColor(color);
+        int vertices = (int) Math.min(Math.max(radius, 45.0F), 360.0F);
+        GL11.glBegin(9);
+        for (int i = 0; i < vertices; ++i) {
+            double angleRadians = 6.283185307179586D * (double) i / (double) vertices;
+            GL11.glVertex2d((double) x + Math.sin(angleRadians) * (double) radius, (double) y + Math.cos(angleRadians) * (double) radius);
+        }
+        GL11.glEnd();
+        disableRender2D();
+        drawCircle(x, y, radius, 1.5F, 16777215);
+    }
+
+    public static void drawFilledCircleNoBorder(float x, float y, float radius, int color) {
+        enableRender2D();
+        setColor(color);
+        int vertices = (int) Math.min(Math.max(radius, 45.0F), 360.0F);
+        GL11.glBegin(9);
+        for (int i = 0; i < vertices; ++i) {
+            double angleRadians = 6.283185307179586D * (double) i / (double) vertices;
+            GL11.glVertex2d((double) x + Math.sin(angleRadians) * (double) radius, (double) y + Math.cos(angleRadians) * (double) radius);
+        }
+        GL11.glEnd();
+        disableRender2D();
+    }
+
+    // ==================== 3D Line Drawing (merged from GuiRenderUtils) ====================
+
+    public static void drawLine3D(double x1, double y1, double z1, double x2, double y2, double z2, int color) {
+        drawLine3D(x1, y1, z1, x2, y2, z2, color, true);
+    }
+
+    public static void drawLine3D(double x1, double y1, double z1, double x2, double y2, double z2, int color, boolean disableDepth) {
+        enableRender3D(disableDepth);
+        setColor(color);
+        GL11.glBegin(1);
+        GL11.glVertex3d(x1, y1, z1);
+        GL11.glVertex3d(x2, y2, z2);
+        GL11.glEnd();
+        disableRender3D(disableDepth);
+    }
+
+    public static void drawLine2D(double x1, double y1, double x2, double y2, float width, int color) {
+        enableRender2D();
+        setColor(color);
+        GL11.glLineWidth(width);
+        GL11.glBegin(1);
+        GL11.glVertex2d(x1, y1);
+        GL11.glVertex2d(x2, y2);
+        GL11.glEnd();
+        disableRender2D();
+    }
+
+    public static void drawPoint(int x, int y, float size, int color) {
+        enableRender2D();
+        setColor(color);
+        GL11.glPointSize(size);
+        GL11.glEnable(2832);
+        GL11.glBegin(0);
+        GL11.glVertex2d((double) x, (double) y);
+        GL11.glEnd();
+        GL11.glDisable(2832);
+        disableRender2D();
+    }
+
+    // ==================== 3D Box Drawing (merged from GuiRenderUtils) ====================
+
+    public static void drawOutlinedBox(AxisAlignedBB boundingBox, int color) {
+        drawOutlinedBox(boundingBox, color, true);
+    }
+
+    public static void drawOutlinedBox(AxisAlignedBB boundingBox, int color, boolean disableDepth) {
+        if (boundingBox != null) {
+            enableRender3D(disableDepth);
+            setColor(color);
+            GL11.glBegin(3);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.minZ);
+            GL11.glEnd();
+            GL11.glBegin(3);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glEnd();
+            GL11.glBegin(1);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glEnd();
+            disableRender3D(disableDepth);
+        }
+    }
+
+    public static void drawBox(AxisAlignedBB boundingBox, int color) {
+        drawBox(boundingBox, color, true);
+    }
+
+    public static void drawBox(AxisAlignedBB boundingBox, int color, boolean disableDepth) {
+        if (boundingBox != null) {
+            enableRender3D(disableDepth);
+            setColor(color);
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glEnd();
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glEnd();
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glEnd();
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glEnd();
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glEnd();
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glEnd();
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glEnd();
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glEnd();
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glEnd();
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glEnd();
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glEnd();
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glEnd();
+            disableRender3D(disableDepth);
+        }
+    }
+
+    // ==================== Glow & Color Utilities (merged from GuiRenderUtils) ====================
+
+    /**
+     * Draws a soft glow behind a rounded-rect area using multi-layer alpha falloff.
+     * @param x        left edge of the glow source rect
+     * @param y        top edge of the glow source rect
+     * @param x2       right edge of the glow source rect
+     * @param y2       bottom edge of the glow source rect
+     * @param radius   corner radius of the glow source rect
+     * @param glowColor ARGB glow colour (alpha channel controls overall intensity)
+     * @param intensity 0.0 = invisible, 1.0 = full spread — clamped to [0.1, 1.0]
+     */
+    public static void drawGlowAround(float x, float y, float x2, float y2, float radius, int glowColor, float intensity) {
+        if (intensity <= 0.0f) return;
+        int baseAlpha = (glowColor >>> 24);
+        if (baseAlpha <= 0) return;
+
+        float clampedIntensity = Math.min(1.0f, Math.max(0.1f, intensity));
+        int layers = 8;
+        float spread = 7.0f * clampedIntensity;
+        RenderServices.shapes().shadow(x, y, x2, y2, radius,
+                (glowColor & 0x00FFFFFF) | (Math.round(baseAlpha * 0.6f) << 24),
+                layers, spread);
+    }
+
+    public static int darker(int hexColor, int factor) {
+        float alpha = (float) (hexColor >> 24 & 255);
+        float red = Math.max((float) (hexColor >> 16 & 255) - (float) (hexColor >> 16 & 255) / (100.0F / (float) factor), 0.0F);
+        float green = Math.max((float) (hexColor >> 8 & 255) - (float) (hexColor >> 8 & 255) / (100.0F / (float) factor), 0.0F);
+        float blue = Math.max((float) (hexColor & 255) - (float) (hexColor & 255) / (100.0F / (float) factor), 0.0F);
+        return (int) ((float) (((int) alpha << 24) + ((int) red << 16) + ((int) green << 8)) + blue);
+    }
+
+    public static int opacity(int hexColor, int factor) {
+        float alpha = Math.max((float) (hexColor >> 24 & 255) - (float) (hexColor >> 24 & 255) / (100.0F / (float) factor), 0.0F);
+        float red = (float) (hexColor >> 16 & 255);
+        float green = (float) (hexColor >> 8 & 255);
+        float blue = (float) (hexColor & 255);
+        return (int) ((float) (((int) alpha << 24) + ((int) red << 16) + ((int) green << 8)) + blue);
+    }
+
+    // ==================== Display Helpers (merged from GuiRenderUtils) ====================
+
+    public static float getScaleFactor() {
+        ScaledResolution scaledResolution = new ScaledResolution(mc);
+        return scaledResolution.getScaleFactor();
+    }
+
+    public static int getDisplayWidth() {
+        ScaledResolution scaledResolution = new ScaledResolution(mc);
+        int displayWidth = scaledResolution.getScaledWidth();
+        return displayWidth;
+    }
+
+    public static int getDisplayHeight() {
+        ScaledResolution scaledResolution = new ScaledResolution(mc);
+        int displayHeight = scaledResolution.getScaledHeight();
+        return displayHeight;
     }
 
     // ==================== R2DUtils Inner Class ====================

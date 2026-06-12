@@ -4,7 +4,7 @@ import gq.vapulite.ui.click.ClickGuiIcons;
 import gq.vapulite.module.Module;
 import gq.vapulite.module.render.HUD;
 import gq.vapulite.util.color.ColorUtils;
-import gq.vapulite.util.render.GuiRenderUtils;
+import gq.vapulite.util.render.RenderUtil;
 import gq.vapulite.util.time.TimerUtil;
 import gq.vapulite.engine.font.CFontRenderer;
 import gq.vapulite.engine.font.FontLoaders;
@@ -100,7 +100,7 @@ public class Notification {
         }
 
         if (HUD.isGlowEnabled()) {
-            GuiRenderUtils.drawGlowAround(x1, y1, x2, y2, 8.0f,
+            RenderUtil.drawGlowAround(x1, y1, x2, y2, 8.0f,
                     withAlpha(accent, Math.round(220.0f * bodyAlpha)), 1.0f);
         }
         RenderServices.shapes().shadow(x1, y1, x2, y2, 8.0f,
@@ -137,7 +137,7 @@ public class Notification {
     private void drawVape(float x1, float y1, float x2, float y2, float bodyAlpha, int accent, float progress) {
         float radius = 7.0f;
         if (HUD.isGlowEnabled()) {
-            GuiRenderUtils.drawGlowAround(x1, y1, x2, y2, radius,
+            RenderUtil.drawGlowAround(x1, y1, x2, y2, radius,
                     withAlpha(accent, Math.round(220.0f * bodyAlpha)), 1.0f);
         }
         RenderServices.shapes().shadow(x1, y1, x2, y2, radius,

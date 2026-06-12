@@ -16,7 +16,7 @@ import gq.vapulite.engine.font.CFontRenderer;
 import gq.vapulite.engine.font.FontLoaders;
 import gq.vapulite.engine.render.ShaderRenderer;
 import gq.vapulite.engine.render.ui.RenderServices;
-import gq.vapulite.util.render.GuiRenderUtils;
+import gq.vapulite.util.render.RenderUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.client.gui.ScaledResolution;
@@ -781,7 +781,7 @@ public class HUD extends Module {
 
     private void drawGlowIfEnabled(float x, float y, float x2, float y2, float radius, int glowColor) {
         if (Boolean.TRUE.equals(glow.getValue()) && Boolean.TRUE.equals(backgrounds.getValue())) {
-            GuiRenderUtils.drawGlowAround(x, y, x2, y2, radius, glowColor, 1.0f);
+            RenderUtil.drawGlowAround(x, y, x2, y2, radius, glowColor, 1.0f);
         }
     }
 
