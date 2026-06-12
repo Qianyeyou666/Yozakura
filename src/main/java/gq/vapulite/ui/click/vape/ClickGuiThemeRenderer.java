@@ -32,7 +32,7 @@ final class ClickGuiThemeRenderer {
         }
         if (HUD.isSakuraTheme()) {
             int solidFill = gui.withAlpha(gui.guiColors().glassFill, Math.max(gui.getAlpha(fill), 238.0f));
-            int solidBorder = gui.withAlpha(gui.guiColors().glassBorder, Math.max(gui.getAlpha(border), 54.0f));
+            int solidBorder = gui.withAlpha(border, Math.max(gui.getAlpha(border), 72.0f));
             drawSolidGlass(x, y, x2, y2, radius, strength, solidFill, solidBorder);
             return;
         }
