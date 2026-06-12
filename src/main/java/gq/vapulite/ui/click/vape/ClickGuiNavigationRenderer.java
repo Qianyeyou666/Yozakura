@@ -3,6 +3,7 @@ package gq.vapulite.ui.click.vape;
 import gq.vapulite.engine.font.CFontRenderer;
 import gq.vapulite.engine.font.FontLoaders;
 import gq.vapulite.engine.render.ui.RenderServices;
+import gq.vapulite.util.animation.AnimUtil;
 
 final class ClickGuiNavigationRenderer {
     private final VapeClickGui gui;
@@ -66,9 +67,12 @@ final class ClickGuiNavigationRenderer {
         float groupX = x + (tabW - iconW - gap - titleW) / 2.0f;
         float titleOffsetX = -1.5f;
         float titleOffsetY = 1.5f;
-        float textY = y + 10.0f + titleOffsetY - hover * 0.4f;
-        gui.drawCenteredIcon(tab.icon, navIconFont, groupX + iconW / 2.0f,
-                y + VapeClickGui.NAV_H / 2.0f - hover * 0.4f, color);
+        // 选中标签页文字弹跳
+        boolean isSelected = tab == VapeClickGui.currentTab;
+        float bounceY = isSelected ? AnimUtil.bounceY(gui.navBounce.get(index)) : 0f;
+        float textY = y + 10.0f + titleOffsetY - hover * 0.4f + bounceY;
+        float iconY = y + VapeClickGui.NAV_H / 2.0f - hover * 0.4f + bounceY;
+        gui.drawCenteredIcon(tab.icon, navIconFont, groupX + iconW / 2.0f, iconY, color);
         gui.drawFont(title, groupX + iconW + gap + titleOffsetX, textY + 2.0f, color);
     }
 }

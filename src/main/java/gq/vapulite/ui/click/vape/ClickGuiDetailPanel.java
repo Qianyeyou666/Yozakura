@@ -61,6 +61,8 @@ final class ClickGuiDetailPanel {
     private final AnimUtil tabShake = new AnimUtil(260f);
     /** 标签页弹跳动画（基于真实时间，约 280ms 衰减完毕） */
     private final AnimUtil tabBounce = new AnimUtil(280f);
+    /** 标签页底部指示线 X 动画位置（-1 表示未初始化） */
+    private float tabIndicatorX = -1f;
     /** 当前帧的 introY，下拉栏需要用它对齐 detail 面板 */
     private float currentIntroY;
 
@@ -479,6 +481,10 @@ final class ClickGuiDetailPanel {
                     gui.withAlpha(gui.guiColors().glassBorder, 34.0f * gui.guiAlpha));
         }
         float each = tabW / DETAIL_TABS.length;
+        // 底部指示线目标位置
+        float targetIndicatorX = tabX + each * gui.detailTabIndex + 9.0f;
+        if (tabIndicatorX < 0f) tabIndicatorX = targetIndicatorX;
+        tabIndicatorX = gui.animate(tabIndicatorX, targetIndicatorX, 0.14f);
         for (int i = 0; i < DETAIL_TABS.length; i++) {
             float x = tabX + each * i;
             boolean active = i == gui.detailTabIndex;
@@ -497,14 +503,14 @@ final class ClickGuiDetailPanel {
             float textBottom = tabY + 22.0f + bounceOffsetY;
             gui.drawCenteredText(DETAIL_TABS[i], x + shakeOffset, textTop, x + each + shakeOffset, textBottom,
                     gui.withAlpha(textColor, textAlpha * gui.guiAlpha));
-            // 激活标签页的底部指示线（仅当有值时显示）
-            if (active && hasValues) {
-                RenderServices.shapes().shadow(x + 9.0f, tabY + tabH - 2.0f, x + each - 9.0f, tabY + tabH,
-                        2.0f, gui.withAlpha(gui.guiColors().accent, 100.0f * gui.guiAlpha), 4, 2.0f);
-                RenderServices.shapes().horizontalGradient(x + 9.0f, tabY + tabH - 1.4f, x + each - 9.0f, tabY + tabH - 0.4f,
-                        gui.withAlpha(gui.guiColors().accent, 215.0f * gui.guiAlpha),
-                        gui.withAlpha(new Color(152, 135, 255).getRGB(), 215.0f * gui.guiAlpha));
-            }
+        }
+        // 底部指示线（使用动画位置）
+        if (tabHasValues(gui.detailTabIndex)) {
+            RenderServices.shapes().shadow(tabIndicatorX, tabY + tabH - 2.0f, tabIndicatorX + each - 18.0f, tabY + tabH,
+                    2.0f, gui.withAlpha(gui.guiColors().accent, 100.0f * gui.guiAlpha), 4, 2.0f);
+            RenderServices.shapes().horizontalGradient(tabIndicatorX, tabY + tabH - 1.4f, tabIndicatorX + each - 18.0f, tabY + tabH - 0.4f,
+                    gui.withAlpha(gui.guiColors().accent, 215.0f * gui.guiAlpha),
+                    gui.withAlpha(new Color(152, 135, 255).getRGB(), 215.0f * gui.guiAlpha));
         }
     }
 
@@ -540,6 +546,14 @@ final class ClickGuiDetailPanel {
             gui.draggingNumberCustomRange = false;
             gui.draggingNumberPair = null;
             gui.clearDraggingColor();
+            // 重置可见滑条的 animX，触发入场动画
+            if (gui.selectedModule != null) {
+                for (int vi = 0; vi < gui.selectedModule.getValues().size(); vi++) {
+                    if (gui.isDetailValueVisible(gui.selectedModule, vi)) {
+                        gui.selectedModule.getValues().get(vi).animX = 0f;
+                    }
+                }
+            }
         }
         return true;
     }
@@ -810,8 +824,6 @@ final class ClickGuiDetailPanel {
                 float rowAlpha = Math.max(0.0f, Math.min(1.0f, 1.0f - index * 0.015f));
                 // 视口裁剪优化：仅绘制可见行
                 if (valueY + valueH >= y - 2.0f && valueY <= y + h + 2.0f) {
-                    float active = gui.animateValueMap(gui.valueActiveProgress, value,
-                            gui.draggingNumber == value ? 1.0f : 0.0f, 0.18f);
                     // 根据值类型分发绘制
                     if (gui.isColorStart(module, i)) {
                         drawColorPalette(module, (Numbers) values.get(i), (Numbers) values.get(i + 1),

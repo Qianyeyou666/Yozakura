@@ -18,6 +18,7 @@ import gq.vapulite.ui.click.ClickGuiIcons;
 import gq.vapulite.ui.UiTextField;
 import gq.vapulite.ui.UiTheme;
 import gq.vapulite.ui.UiToggle;
+import gq.vapulite.util.animation.AnimUtil;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
 import org.lwjgl.input.Keyboard;
@@ -281,6 +282,11 @@ public class VapeClickGui extends GuiScreen {
             detailScrollByModule.put(selectedModule.getName(), settingsScroll);
         }
         selectedModule = m;
+        if (m != null) {
+            for (Value v : m.getValues()) {
+                v.animX = 0f;
+            }
+        }
         if (m != null && detailScrollByModule.containsKey(m.getName())) {
             settingsScroll = detailScrollByModule.get(m.getName());
             targetSettingsScroll = settingsScroll;
@@ -368,6 +374,7 @@ public class VapeClickGui extends GuiScreen {
     long fpsGraphLastSample;         // FPS 波形图上次采样时间
     float fpsGraphSmoothed;          // FPS 平滑值
     float frameScale = 1.0f;         // 帧缩放因子（用于帧率无关动画）
+    final AnimUtil navBounce = new AnimUtil(280f);  // 导航栏选中指示器弹跳动画
     gq.vapulite.module.render.HUD.Theme lastTheme = gq.vapulite.module.render.HUD.Theme.DARK;
     float themeFadeProgress = 0.0f;
     final Map<gq.vapulite.module.render.HUD.Theme, Float> themeSwatchProgress = new HashMap<gq.vapulite.module.render.HUD.Theme, Float>();
@@ -441,6 +448,7 @@ public class VapeClickGui extends GuiScreen {
         currentMouseX = mouseX;
         currentMouseY = mouseY;
         updateFrameScale();
+        navBounce.tick();
         ScaledResolution sr = new ScaledResolution(mc);
         updateLayout(sr);
         // 同步 UI 主题
@@ -772,7 +780,10 @@ public class VapeClickGui extends GuiScreen {
             return true;
         }
         GuiTab tab = GuiTab.values()[index];
-        currentTab = tab;
+        if (tab != currentTab) {
+            currentTab = tab;
+            navBounce.trigger(tab.ordinal());
+        }
         selectModule(null);
         searchFocused = false;
         setSearchQuery("");
