@@ -233,60 +233,38 @@ public class TargetESP extends Module {
 
     private void drawAurora(EntityLivingBase target, float radius, float height, float alpha, float time) {
         boolean bloom = Boolean.TRUE.equals(auroraBloom.getValue());
-        float bloomSize = bloom ? 1.82f : 1.38f;
         float bloomAlpha = bloom ? 2.15f : 1.45f;
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
-        drawAuroraCore(radius * bloomSize, height, alpha * 0.18f * bloomAlpha, time);
         drawAuroraOrbs(radius, height, Math.min(1.0f, alpha * bloomAlpha), time, bloom);
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
     }
 
     private void drawSakuraPetals(float radius, float height, float alpha, float time) {
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
-        drawSakuraGroundGlow(radius, alpha, time);
         int petals = 12;
-        float orbit = radius * 1.34f;
+        float crossSpan = radius * 1.18f;
         for (int i = 0; i < petals; i++) {
             float phase = (float) (Math.PI * 2.0D * i / petals);
             int color = i % 3 == 0 ? 0xFFFF74B2 : i % 3 == 1 ? 0xFFFF9DCA : 0xFFFFC1DC;
-            float size = 0.082f + 0.030f * (float) Math.sin(time * 2.6f + i * 0.9f);
-            drawSakuraPetalTrail(orbit, height, alpha, time, phase, color, size);
-            float[] p = sakuraPetalPosition(orbit, height, time, phase, 0.0f, i);
-            float spin = time * 132.0f + i * 37.0f;
+            float size = 0.082f + 0.030f * (float) Math.sin(time * 1.65f + i * 0.9f);
+            drawSakuraPetalTrail(crossSpan, height, alpha, time, phase, color, size, i);
+            float[] p = sakuraPetalPosition(crossSpan, height, time, phase, 0.0f, i);
+            float spin = time * 78.0f + i * 37.0f;
             drawSakuraFlower(p[0], p[1], p[2], size, spin, color, Math.min(1.0f, alpha * 1.35f), false);
         }
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
     }
 
-    private void drawSakuraGroundGlow(float radius, float alpha, float time) {
-        int segments = 80;
-        float r = radius * (1.48f + 0.05f * (float) Math.sin(time * 1.8f));
-        GL11.glBegin(GL11.GL_QUAD_STRIP);
-        for (int i = 0; i <= segments; i++) {
-            double angle = Math.PI * 2.0D * i / segments;
-            double cos = Math.cos(angle);
-            double sin = Math.sin(angle);
-            float u = i / (float) segments;
-            float wave = 0.72f + 0.28f * (float) Math.sin(time * 3.8f + u * Math.PI * 2.0D);
-            setColor(0xFFFF77B5, alpha * 0.16f * wave);
-            GL11.glTexCoord2f(u, 0.0f);
-            GL11.glVertex3d(cos * (r - 0.10f), 0.035D, sin * (r - 0.10f));
-            setColor(0xFFFFB9D7, alpha * 0.30f * wave);
-            GL11.glTexCoord2f(u, 1.0f);
-            GL11.glVertex3d(cos * (r + 0.10f), 0.035D, sin * (r + 0.10f));
-        }
-        GL11.glEnd();
-    }
-
-    private void drawSakuraPetalTrail(float orbit, float height, float alpha, float time, float phase, int color, float size) {
+    private void drawSakuraPetalTrail(float orbit, float height, float alpha, float time, float phase, int color,
+                                      float size, int petalIndex) {
         int samples = 9;
         for (int i = samples; i >= 1; i--) {
             float trail = i / (float) samples;
-            float[] p = sakuraPetalPosition(orbit, height, time, phase, trail, i);
+            float[] p = sakuraPetalPosition(orbit, height, time, phase, trail, petalIndex);
             float fade = 1.0f - trail;
             fade *= fade;
             drawSakuraFlower(p[0], p[1], p[2], size * (0.52f + 0.38f * fade),
-                    time * 118.0f + phase * 57.0f - trail * 95.0f,
+                    time * 70.0f + phase * 57.0f - trail * 95.0f,
                     color, alpha * fade * 0.42f, true);
         }
 
@@ -294,7 +272,7 @@ public class TargetESP extends Module {
         GL11.glBegin(GL11.GL_LINE_STRIP);
         for (int i = samples; i >= 0; i--) {
             float trail = i / (float) samples;
-            float[] p = sakuraPetalPosition(orbit, height, time, phase, trail, i);
+            float[] p = sakuraPetalPosition(orbit, height, time, phase, trail, petalIndex);
             float fade = 1.0f - trail;
             fade *= fade;
             setColor(0xFFFF7DB8, alpha * fade * 0.32f);
@@ -305,16 +283,18 @@ public class TargetESP extends Module {
     }
 
     private float[] sakuraPetalPosition(float orbit, float height, float time, float phase, float trail, int index) {
-        float localTime = time - trail * 0.52f;
-        double angle = localTime * 1.25D + phase + Math.sin(localTime * 0.8f + phase) * 0.20D;
-        float vertical = (localTime * 0.19f + phase * 0.159f + index * 0.037f) % 1.0f;
-        if (vertical < 0.0f) {
-            vertical += 1.0f;
-        }
-        float y = 0.08f + vertical * Math.max(0.65f, height + 0.18f);
-        float drift = 0.10f * (float) Math.sin(localTime * 2.2f + phase * 1.7f);
-        float r = orbit * (0.84f + 0.22f * (float) Math.sin(localTime * 1.4f + phase)) + drift;
-        return new float[]{(float) Math.cos(angle) * r, y, (float) Math.sin(angle) * r};
+        float localTime = time * 0.25f + index * 0.071f + phase * 0.018f - trail * 0.11f;
+        float progress = localTime - (float) Math.floor(localTime);
+        float diagonal = (index & 1) == 0 ? progress : 1.0f - progress;
+        float side = (index % 4) < 2 ? 1.0f : -1.0f;
+        float center = Math.abs(progress * 2.0f - 1.0f);
+        float tunnel = 0.18f + 0.82f * center;
+        double angle = phase + side * (localTime * Math.PI * 3.65D + trail * 0.85D);
+        float r = orbit * tunnel + 0.035f * (float) Math.sin(time * 1.45f + phase);
+        float x = (float) Math.cos(angle) * r;
+        float y = 0.10f + diagonal * Math.max(0.72f, height + 0.05f);
+        float z = (float) Math.sin(angle) * r * 0.72f;
+        return new float[]{x, y, z};
     }
 
     private void drawSakuraFlower(float x, float y, float z, float size, float spin, int color, float alpha, boolean trail) {
@@ -508,24 +488,6 @@ public class TargetESP extends Module {
             setColor(0xFFFFFFFF, alpha * edge * 0.58f);
             GL11.glTexCoord2f(u, edge);
             GL11.glVertex3d(Math.cos(angle) * radius, y + 0.010D, Math.sin(angle) * radius);
-        }
-        GL11.glEnd();
-    }
-
-    private void drawAuroraCore(float radius, float height, float alpha, float time) {
-        int segments = 72;
-        float coreRadius = radius * (0.86f + 0.04f * (float) Math.sin(time * 3.0f));
-        GL11.glBegin(GL11.GL_QUAD_STRIP);
-        for (int i = 0; i <= segments; i++) {
-            double angle = Math.PI * 2.0D * i / segments;
-            float u = i / (float) segments;
-            float pulse = 0.56f + 0.44f * (float) Math.sin(time * 4.4f + angle * 2.0D);
-            setColor(0xFF36D7FF, alpha * (0.08f + pulse * 0.08f));
-            GL11.glTexCoord2f(u, 0.0f);
-            GL11.glVertex3d(Math.cos(angle) * coreRadius, 0.05D, Math.sin(angle) * coreRadius);
-            setColor(0xFFFFFFFF, alpha * (0.18f + pulse * 0.12f));
-            GL11.glTexCoord2f(u, 1.0f);
-            GL11.glVertex3d(Math.cos(angle) * (coreRadius * 0.92f), height * 0.96f, Math.sin(angle) * (coreRadius * 0.92f));
         }
         GL11.glEnd();
     }

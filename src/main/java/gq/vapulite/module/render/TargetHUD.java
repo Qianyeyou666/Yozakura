@@ -18,8 +18,15 @@ import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.network.NetworkPlayerInfo;
 import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.entity.Render;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.monster.EntityMob;
+import net.minecraft.entity.monster.EntitySlime;
+import net.minecraft.entity.monster.IMob;
+import net.minecraft.entity.passive.EntityAmbientCreature;
+import net.minecraft.entity.passive.EntityAnimal;
+import net.minecraft.entity.passive.EntityWaterMob;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.MovingObjectPosition;
 import net.minecraft.util.ResourceLocation;
@@ -28,6 +35,8 @@ import net.minecraftforge.event.entity.player.AttackEntityEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.GL11;
+
+import java.lang.reflect.Method;
 
 public class TargetHUD extends Module {
     private static final int TEXT = 0xFFF5F0F5;
@@ -158,6 +167,7 @@ public class TargetHUD extends Module {
         float easedAlpha = smoothStep(rawAlpha);
         float x = pos[0];
         boolean editMode = HudDrag.isEditMode();
+        float contentAlpha = editMode ? easedAlpha : foregroundAlpha(rawAlpha);
         float y = pos[1] + (editMode ? 0.0f : (1.0f - rawAlpha) * 10.0f);
         float w = width * uiScale;
         float h = height * uiScale;
@@ -190,9 +200,9 @@ public class TargetHUD extends Module {
                 fill, border, settings);
         drawBackgroundAccent(x, y, w, h, radius, uiScale, easedAlpha);
 
-        drawAvatar(target, x + 14.0f * uiScale, y + 8.0f * uiScale, 26.0f * uiScale, uiScale, easedAlpha);
-        drawText(target, x, y, w, uiScale, easedAlpha);
-        drawHealth(target, x, y, w, uiScale, easedAlpha);
+        drawAvatar(target, x + 14.0f * uiScale, y + 8.0f * uiScale, 26.0f * uiScale, uiScale, contentAlpha);
+        drawText(target, x, y, w, uiScale, contentAlpha);
+        drawHealth(target, x, y, w, uiScale, contentAlpha);
         HudDrag.drawHint("target_hud", x, y, w, h, radius);
         GlStateManager.popMatrix();
     }
@@ -202,16 +212,15 @@ public class TargetHUD extends Module {
         RenderServices.shapes().shadow(x + 16.0f * uiScale, y + 5.0f * uiScale,
                 x + width - 18.0f * uiScale, y + height - 5.0f * uiScale,
                 radius, withAlpha(SAKURA, Math.round(24.0f * alpha)), 3, 1.8f * uiScale);
-        RenderServices.shapes().horizontalGradient(x + 2.0f * uiScale, y + 1.0f * uiScale,
-                x + width - 2.0f * uiScale, y + 12.0f * uiScale,
-                withAlpha(0xFFFFC2D8, Math.round(26.0f * alpha)),
-                withAlpha(0x00FFC2D8, 0));
         RenderServices.shapes().rounded(x + 8.0f * uiScale, y + height - 9.0f * uiScale,
                 x + 72.0f * uiScale, y + height - 4.0f * uiScale,
                 3.0f * uiScale, withAlpha(SAKURA, Math.round(14.0f * alpha)));
     }
 
     private void drawText(EntityLivingBase target, float x, float y, float width, float uiScale, float alpha) {
+        if (alpha <= 0.018f) {
+            return;
+        }
         CFontRenderer nameFont = FontLoaders.regular(Math.max(12, Math.round(18.0f * uiScale)));
         CFontRenderer smallFont = FontLoaders.regular(Math.max(9, Math.round(11.0f * uiScale)));
         CFontRenderer percentFont = FontLoaders.regular(Math.max(12, Math.round(16.0f * uiScale)));
@@ -236,6 +245,9 @@ public class TargetHUD extends Module {
     }
 
     private void drawTextGlow(CFontRenderer font, String text, float x, float y, float uiScale, float alpha) {
+        if (alpha <= 0.018f) {
+            return;
+        }
         int wideGlow = withAlpha(SAKURA, Math.round(28.0f * alpha));
         int nearGlow = withAlpha(0xFFFFBED8, Math.round(48.0f * alpha));
         float wide = Math.max(0.72f, 0.88f * uiScale);
@@ -351,7 +363,7 @@ public class TargetHUD extends Module {
     }
 
     private void drawAvatar(EntityLivingBase target, float x, float y, float size, float uiScale, float alpha) {
-        if (!Boolean.TRUE.equals(showAvatar.getValue())) {
+        if (!Boolean.TRUE.equals(showAvatar.getValue()) || alpha <= 0.018f) {
             return;
         }
         float frameRadius = 7.0f * uiScale;
@@ -366,37 +378,71 @@ public class TargetHUD extends Module {
             float pad = 2.5f * uiScale;
             drawRoundedHead(skin, x + pad, y + pad, size - pad * 2.0f, 5.0f * uiScale, alpha);
         } else {
-            CFontRenderer iconFont = FontLoaders.icon(Math.max(12, Math.round(15.0f * uiScale)));
-            String icon = FontLoaders.ICON_USER;
-            iconFont.drawString(icon, x + size / 2.0f - iconFont.getStringWidth(icon) / 2.0f,
-                    y + size / 2.0f - iconFont.getHeight() / 2.0f + 1.5f * uiScale,
-                    withAlpha(SAKURA, Math.round(230.0f * alpha)));
+            ResourceLocation entityTexture = entityTexture(target);
+            if (entityTexture != null) {
+                float pad = 2.5f * uiScale;
+                drawRoundedHead(entityTexture, x + pad, y + pad, size - pad * 2.0f,
+                        5.0f * uiScale, alpha, 64.0f, 64.0f, false);
+            } else {
+                drawEntityBadge(target, x, y, size, uiScale, alpha);
+            }
         }
         resetTextRenderState();
     }
 
     private void drawRoundedHead(ResourceLocation skin, float x, float y, float size, float radius, float alpha) {
+        drawRoundedHead(skin, x, y, size, radius, alpha, 64.0f, 64.0f, true);
+    }
+
+    private void drawRoundedHead(ResourceLocation skin, float x, float y, float size, float radius, float alpha,
+                                 float textureWidth, float textureHeight, boolean overlay) {
         int ix = Math.round(x);
         int iy = Math.round(y);
         int is = Math.max(1, Math.round(size));
         float fx = ix;
         float fy = iy;
         float fs = is;
-        RenderServices.stencil().initWrite();
-        RenderServices.shapes().rounded(fx, fy, fx + fs, fy + fs, radius, 0xFFFFFFFF);
-        RenderServices.stencil().read(1);
+        GlStateManager.pushMatrix();
         try {
+            RenderServices.stencil().initWrite();
+            RenderServices.shapes().rounded(fx, fy, fx + fs, fy + fs, radius, 0xFFFFFFFF);
+            RenderServices.stencil().read(1);
             GlStateManager.enableBlend();
+            GlStateManager.enableTexture2D();
             GlStateManager.color(1.0f, 1.0f, 1.0f, alpha);
             mc.getTextureManager().bindTexture(skin);
             Gui.drawScaledCustomSizeModalRect(ix, iy, 8.0f, 8.0f, 8, 8,
-                    is, is, 64.0f, 64.0f);
-            Gui.drawScaledCustomSizeModalRect(ix, iy, 40.0f, 8.0f, 8, 8,
-                    is, is, 64.0f, 64.0f);
+                    is, is, textureWidth, textureHeight);
+            if (overlay) {
+                Gui.drawScaledCustomSizeModalRect(ix, iy, 40.0f, 8.0f, 8, 8,
+                        is, is, textureWidth, textureHeight);
+            }
         } finally {
             RenderServices.stencil().end();
+            GlStateManager.popMatrix();
             resetTextRenderState();
         }
+    }
+
+    private void drawEntityBadge(EntityLivingBase target, float x, float y, float size, float uiScale, float alpha) {
+        float pad = 2.5f * uiScale;
+        float ix = x + pad;
+        float iy = y + pad;
+        float inner = size - pad * 2.0f;
+        RenderServices.shapes().rounded(ix, iy, ix + inner, iy + inner, 5.0f * uiScale,
+                withAlpha(0xFF160F15, Math.round(150.0f * alpha)));
+        RenderServices.shapes().shadow(ix + 2.0f * uiScale, iy + 2.0f * uiScale,
+                ix + inner - 2.0f * uiScale, iy + inner - 2.0f * uiScale, 4.0f * uiScale,
+                withAlpha(SAKURA, Math.round(34.0f * alpha)), 3, 1.2f * uiScale);
+        CFontRenderer iconFont = FontLoaders.icon(Math.max(13, Math.round(16.0f * uiScale)));
+        String icon = target instanceof EntityPlayer ? FontLoaders.ICON_USER
+                : target instanceof EntityAnimal || target instanceof EntityWaterMob || target instanceof EntityAmbientCreature
+                ? FontLoaders.ICON_HEARTBEAT
+                : target instanceof EntityMob || target instanceof EntitySlime || target instanceof IMob
+                ? FontLoaders.ICON_WARNING : FontLoaders.ICON_CUBE;
+        iconFont.drawString(icon, x + size / 2.0f - iconFont.getStringWidth(icon) / 2.0f,
+                y + size / 2.0f - iconFont.getHeight() / 2.0f + 1.3f * uiScale,
+                withAlpha(SAKURA, Math.round(232.0f * alpha)));
     }
 
     private void drawSakuraFlower(float centerX, float centerY, float size, float alpha) {
@@ -464,8 +510,43 @@ public class TargetHUD extends Module {
         if (target instanceof AbstractClientPlayer) {
             return ((AbstractClientPlayer) target).getLocationSkin();
         }
-        if (mc.thePlayer != null) {
-            return mc.thePlayer.getLocationSkin();
+        return null;
+    }
+
+    private ResourceLocation entityTexture(EntityLivingBase target) {
+        if (target == null || mc.getRenderManager() == null) {
+            return null;
+        }
+        try {
+            Render render = mc.getRenderManager().getEntityRenderObject(target);
+            Method method = findEntityTextureMethod(render.getClass());
+            if (method == null) {
+                return null;
+            }
+            method.setAccessible(true);
+            Object texture = method.invoke(render, target);
+            return texture instanceof ResourceLocation ? (ResourceLocation) texture : null;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private Method findEntityTextureMethod(Class<?> type) {
+        Class<?> current = type;
+        while (current != null) {
+            try {
+                return current.getDeclaredMethod("getEntityTexture", Entity.class);
+            } catch (NoSuchMethodException ignored) {
+                Method[] methods = current.getDeclaredMethods();
+                for (Method method : methods) {
+                    if ("getEntityTexture".equals(method.getName())
+                            && method.getParameterTypes().length == 1
+                            && Entity.class.isAssignableFrom(method.getParameterTypes()[0])) {
+                        return method;
+                    }
+                }
+                current = current.getSuperclass();
+            }
         }
         return null;
     }
@@ -577,6 +658,10 @@ public class TargetHUD extends Module {
     private float smoothStep(float value) {
         float t = clamp01(value);
         return t * t * (3.0f - 2.0f * t);
+    }
+
+    private float foregroundAlpha(float value) {
+        return smoothStep((clamp01(value) - 0.055f) / 0.945f);
     }
 
     private float easeOutBack(float value) {
