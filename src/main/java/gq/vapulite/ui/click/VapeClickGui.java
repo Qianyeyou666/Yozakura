@@ -234,6 +234,10 @@ public class VapeClickGui extends GuiScreen {
         themeRenderer.drawThemedGlass(x, y, x2, y2, radius, strength, fill, border);
     }
 
+    void drawPanelGlass(float x, float y, float x2, float y2, float radius, float strength, int fill, int border) {
+        themeRenderer.drawPanelGlass(x, y, x2, y2, radius, strength, fill, border);
+    }
+
     // ==================== 布局常量 ====================
     static final float NAV_H = 28.0f;            // 导航栏高度
     static final float CARD_W = 194.0f;          // 模块卡片宽度

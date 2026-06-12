@@ -9,7 +9,11 @@ import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GLContext;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.HashMap;
@@ -37,8 +41,11 @@ public final class ShaderRenderer {
     private static Program lineProgram;
     private static Program circleBadgeProgram;
     private static Program frostedGlassProgram;
+    private static Program liquidGlassProgram;
     private static Program copyProgram;
     private static Program gaussianBlurProgram;
+    private static final String LIQUID_GLASS_FRAGMENT_RESOURCE =
+            "/assets/minecraft/vapulite/shaders/liquid_glass.frag";
     private static final IntBuffer VIEWPORT_BUFFER = BufferUtils.createIntBuffer(16);
     private static final FloatBuffer GAUSSIAN_WEIGHT_BUFFER = BufferUtils.createFloatBuffer(256);
     private static int screenTexture;
@@ -223,6 +230,45 @@ public final class ShaderRenderer {
             program.set1f("borderWidth", clampedBorder);
             program.set1f("grainStrength", 0.0f);
             program.set1f("blurRadius", 13.5f);
+            program.set2f("screenSize", sourceWidth, sourceHeight);
+            program.set2f("viewportSize", capturedWidth, capturedHeight);
+            program.set1i("screenTex", 0);
+            setColor(program, "fillColor", fillColor);
+            setColor(program, "borderColor", borderColor);
+            drawQuad(left, top, right, bottom, EDGE_PADDING);
+        } finally {
+            endProgram(shaderState);
+        }
+        return true;
+    }
+
+    public static boolean drawLiquidGlass(float left, float top, float right, float bottom, float radius,
+                                          float borderWidth, int fillColor, int borderColor,
+                                          float blurRadius, float refraction, float highlight,
+                                          float grainStrength) {
+        Program program = getLiquidGlassProgram();
+        if (program == null || right <= left || bottom <= top || !ensureFrostedGlassTexture() || !frostedBlurReady) {
+            return false;
+        }
+
+        float width = right - left;
+        float height = bottom - top;
+        float clampedBorder = Math.max(0.0f, Math.min(borderWidth, Math.min(width, height) / 2.0f));
+        ShaderState shaderState = beginProgram(program);
+        try {
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            GL11.glEnable(GL11.GL_TEXTURE_2D);
+            int sourceTexture = blurTextureB;
+            int sourceWidth = blurWidth;
+            int sourceHeight = blurHeight;
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, sourceTexture);
+            setRoundedUniforms(program, width, height, radius);
+            program.set1f("borderWidth", clampedBorder);
+            program.set1f("blurRadius", Math.max(4.0f, Math.min(36.0f, blurRadius)));
+            program.set1f("refraction", Math.max(0.0f, Math.min(1.4f, refraction)));
+            program.set1f("highlight", Math.max(0.0f, Math.min(1.35f, highlight)));
+            program.set1f("grainStrength", Math.max(0.0f, Math.min(1.0f, grainStrength)));
+            program.set1f("time", (System.nanoTime() % 60000000000L) / 1000000000.0f);
             program.set2f("screenSize", sourceWidth, sourceHeight);
             program.set2f("viewportSize", capturedWidth, capturedHeight);
             program.set1i("screenTex", 0);
@@ -622,6 +668,13 @@ public final class ShaderRenderer {
         return frostedGlassProgram;
     }
 
+    private static Program getLiquidGlassProgram() {
+        if (liquidGlassProgram == null) {
+            liquidGlassProgram = createProgramFromResource(LIQUID_GLASS_FRAGMENT_RESOURCE);
+        }
+        return liquidGlassProgram;
+    }
+
     private static Program getCopyProgram() {
         if (copyProgram == null) {
             copyProgram = createProgram(TEXTURE_COPY_FRAGMENT);
@@ -634,6 +687,39 @@ public final class ShaderRenderer {
             gaussianBlurProgram = createProgram(GAUSSIAN_BLUR_FRAGMENT);
         }
         return gaussianBlurProgram;
+    }
+
+    private static Program createProgramFromResource(String fragmentResource) {
+        String fragmentSource = loadShaderResource(fragmentResource);
+        if (fragmentSource == null) {
+            return null;
+        }
+        return createProgram(fragmentSource);
+    }
+
+    private static String loadShaderResource(String resourcePath) {
+        InputStream stream = ShaderRenderer.class.getResourceAsStream(resourcePath);
+        if (stream == null) {
+            logResourceFailure(new IllegalStateException("Missing shader resource " + resourcePath));
+            return null;
+        }
+        try {
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            int read;
+            while ((read = stream.read(buffer)) != -1) {
+                output.write(buffer, 0, read);
+            }
+            return new String(output.toByteArray(), StandardCharsets.UTF_8);
+        } catch (IOException exception) {
+            logResourceFailure(exception);
+            return null;
+        } finally {
+            try {
+                stream.close();
+            } catch (IOException ignored) {
+            }
+        }
     }
 
     private static Program createProgram(String fragmentSource) {
@@ -703,7 +789,15 @@ public final class ShaderRenderer {
             return;
         }
         loggedFailure = true;
-        System.err.println("[VapuLite] Shader renderer disabled, falling back to GL11: " + throwable.getMessage());
+        System.err.println("[VapuLite] Shader renderer disabled: " + throwable.getMessage());
+    }
+
+    private static void logResourceFailure(Throwable throwable) {
+        if (loggedFailure) {
+            return;
+        }
+        loggedFailure = true;
+        System.err.println("[VapuLite] Shader resource unavailable: " + throwable.getMessage());
     }
 
     private static void setColor(Program program, String uniform, int color) {

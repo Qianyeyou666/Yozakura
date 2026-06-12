@@ -147,7 +147,7 @@ final class ClickGuiSidePanel {
         RenderServices.shapes().shadow(x, y, x + w, y + VapeClickGui.NAV_H,
                 VapeClickGui.PANEL_RADIUS, gui.withAlpha(gui.shadowColor(220),
                         70.0f * gui.guiAlpha), 8, 5.0f);
-        gui.drawThemedGlass(x, y, x + w, y + VapeClickGui.NAV_H,
+        gui.drawPanelGlass(x, y, x + w, y + VapeClickGui.NAV_H,
                 VapeClickGui.PANEL_RADIUS, 1.0f,
                 gui.withAlpha(gui.guiColors().glassFill, 206.0f * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, 50.0f * gui.guiAlpha));
@@ -169,7 +169,7 @@ final class ClickGuiSidePanel {
     private void drawStatsPanel(float y) {
         RenderServices.shapes().shadow(gui.sideX, y, gui.sideX + gui.sideW, y + STATS_H, VapeClickGui.PANEL_RADIUS,
                 gui.withAlpha(gui.shadowColor(220), 70.0f * gui.guiAlpha), 8, 5.0f);
-        gui.drawThemedGlass(gui.sideX, y, gui.sideX + gui.sideW, y + STATS_H, VapeClickGui.PANEL_RADIUS, 1.0f,
+        gui.drawPanelGlass(gui.sideX, y, gui.sideX + gui.sideW, y + STATS_H, VapeClickGui.PANEL_RADIUS, 1.0f,
                 gui.withAlpha(gui.guiColors().glassFill, 204.0f * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, 48.0f * gui.guiAlpha));
         drawPanelTitle(FontLoaders.ICON_INFO, "Statistics", y + 13.0f);
@@ -253,7 +253,7 @@ final class ClickGuiSidePanel {
     private void drawModuleSummary(float y, float h) {
         RenderServices.shapes().shadow(gui.sideX, y, gui.sideX + gui.sideW, y + h, VapeClickGui.PANEL_RADIUS,
                 gui.withAlpha(gui.shadowColor(230), 78.0f * gui.guiAlpha), 9, 6.0f);
-        gui.drawThemedGlass(gui.sideX, y, gui.sideX + gui.sideW, y + h, VapeClickGui.PANEL_RADIUS, 1.0f,
+        gui.drawPanelGlass(gui.sideX, y, gui.sideX + gui.sideW, y + h, VapeClickGui.PANEL_RADIUS, 1.0f,
                 gui.withAlpha(gui.guiColors().glassFill, 210.0f * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, 48.0f * gui.guiAlpha));
         drawPanelTitle(FontLoaders.ICON_SETTINGS, "Module Info", y + 17.0f);
@@ -343,7 +343,7 @@ final class ClickGuiSidePanel {
     private void drawDesignPanel(float y, int mouseX, int mouseY) {
         RenderServices.shapes().shadow(gui.sideX, y, gui.sideX + gui.sideW, y + DESIGN_H, VapeClickGui.PANEL_RADIUS,
                 gui.withAlpha(gui.shadowColor(230), 72.0f * gui.guiAlpha), 8, 5.0f);
-        gui.drawThemedGlass(gui.sideX, y, gui.sideX + gui.sideW, y + DESIGN_H, VapeClickGui.PANEL_RADIUS, 1.0f,
+        gui.drawPanelGlass(gui.sideX, y, gui.sideX + gui.sideW, y + DESIGN_H, VapeClickGui.PANEL_RADIUS, 1.0f,
                 gui.withAlpha(gui.guiColors().glassFill, 214.0f * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, 54.0f * gui.guiAlpha));
         drawPanelTitle(FontLoaders.ICON_SUN_ALT, "Design", y + 17.0f);

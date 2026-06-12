@@ -17,7 +17,7 @@ final class ClickGuiNavigationRenderer {
         float right = gui.navX + gui.navW;
         RenderServices.shapes().shadow(x, y, right, y + VapeClickGui.NAV_H, 9.0f,
                 gui.withAlpha(gui.shadowColor(210), 70.0f * gui.guiAlpha), 7, 5.0f);
-        gui.drawThemedGlass(x, y, right, y + VapeClickGui.NAV_H, 9.0f, 1.0f,
+        gui.drawPanelGlass(x, y, right, y + VapeClickGui.NAV_H, 9.0f, 1.0f,
                 gui.withAlpha(gui.guiColors().glassFillSoft, 186.0f * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, 52.0f * gui.guiAlpha));
     }
@@ -26,7 +26,7 @@ final class ClickGuiNavigationRenderer {
         float y = gui.navY + introY;
         RenderServices.shapes().shadow(gui.navX, y, gui.navX + gui.navW, y + VapeClickGui.NAV_H, 9.0f,
                 gui.withAlpha(gui.shadowColor(210), 70.0f * gui.guiAlpha), 7, 5.0f);
-        gui.drawThemedGlass(gui.navX, y, gui.navX + gui.navW, y + VapeClickGui.NAV_H, 9.0f, 1.0f,
+        gui.drawPanelGlass(gui.navX, y, gui.navX + gui.navW, y + VapeClickGui.NAV_H, 9.0f, 1.0f,
                 gui.withAlpha(gui.guiColors().glassFillSoft, 186.0f * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, 52.0f * gui.guiAlpha));
 

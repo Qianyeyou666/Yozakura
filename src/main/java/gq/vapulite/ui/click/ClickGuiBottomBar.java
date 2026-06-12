@@ -36,7 +36,7 @@ final class ClickGuiBottomBar {
 
         RenderServices.shapes().shadow(x, y, x + w, y + h, VapeClickGui.PANEL_RADIUS,
                 gui.withAlpha(gui.shadowColor(230), 76.0f * gui.guiAlpha), 9, 5.5f);
-        gui.drawThemedGlass(x, y, x + w, y + h, VapeClickGui.PANEL_RADIUS, 1.0f,
+        gui.drawPanelGlass(x, y, x + w, y + h, VapeClickGui.PANEL_RADIUS, 1.0f,
                 gui.withAlpha(gui.guiColors().glassFill, 218.0f * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, 54.0f * gui.guiAlpha));
 

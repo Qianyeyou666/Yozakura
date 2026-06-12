@@ -74,9 +74,9 @@ public class UiPanel extends UiComponent {
         if (gq.vapulite.module.render.HUD.isSakuraTheme()) {
             f = theme.withAlpha(theme.panel, Math.max((theme.panel >>> 24) & 255, 238) * alpha);
             b = theme.withAlpha(theme.panelBorder, Math.max((theme.panelBorder >>> 24) & 255, 58) * alpha);
-            RenderServices.panels().panel(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, borderWidth, f, b);
+            RenderServices.liquidGlass().roundedBorder(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, borderWidth, f, b);
             return;
         }
-        RenderServices.panels().panel(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, borderWidth, f, b);
+        RenderServices.liquidGlass().roundedBorder(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, borderWidth, f, b);
     }
 }

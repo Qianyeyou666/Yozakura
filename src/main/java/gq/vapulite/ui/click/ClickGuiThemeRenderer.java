@@ -21,29 +21,46 @@ final class ClickGuiThemeRenderer {
             RenderServices.shapes().roundedBorder(x, y, x2, y2, radius, strength, solidFill, solidBorder);
             return;
         }
-        if (HUD.isLightTheme()) {
-            RenderServices.shapes().roundedBorder(x, y, x2, y2, radius, strength, fill, border);
-            return;
-        }
-        RenderServices.blur().glass(x, y, x2, y2, radius, strength, fill, border);
+        RenderServices.shapes().roundedBorder(x, y, x2, y2, radius, strength, fill, border);
+    }
+
+    void drawPanelGlass(float x, float y, float x2, float y2, float radius,
+                        float strength, int fill, int border) {
+        float blurRadius = HUD.isSakuraTheme() ? 24.0f : HUD.isLightTheme() ? 26.0f : 30.0f;
+        float refraction = 0.76f + Math.min(strength, 1.25f) * 0.20f;
+        float highlight = HUD.isLightTheme() || HUD.isSakuraTheme() ? 1.08f : 0.96f;
+        float grain = HUD.isSakuraTheme() ? 0.08f : 0.13f;
+        RenderServices.liquidGlass().roundedBorder(x, y, x2, y2, radius, strength, fill, border,
+                blurRadius, refraction, highlight, grain);
     }
 
     void drawBackdrop(ScaledResolution sr) {
-        RenderServices.shapes().rect(0, 0, sr.getScaledWidth(), sr.getScaledHeight(),
+        float width = sr.getScaledWidth();
+        float height = sr.getScaledHeight();
+        RenderServices.shapes().rect(0, 0, width, height,
                 gui.withAlpha(gui.guiColors().backdrop, 86.0f * gui.guiAlpha));
         if (HUD.isSakuraTheme()) {
-            RenderServices.shapes().gradient(0, 0, sr.getScaledWidth(), sr.getScaledHeight(),
+            RenderServices.shapes().gradient(0, 0, width, height,
                     gui.withAlpha(new Color(255, 234, 244, 56).getRGB(), 56.0f * gui.guiAlpha),
                     gui.withAlpha(new Color(232, 198, 218, 34).getRGB(), 34.0f * gui.guiAlpha));
-            RenderServices.shapes().gradient(0, sr.getScaledHeight() * 0.58f, sr.getScaledWidth(), sr.getScaledHeight(),
+            RenderServices.shapes().gradient(0, height * 0.58f, width, height,
                     gui.withAlpha(new Color(255, 255, 255, 0).getRGB(), 0.0f),
                     gui.withAlpha(new Color(248, 223, 236, 70).getRGB(), 62.0f * gui.guiAlpha));
             return;
         }
-        RenderServices.shapes().gradient(0, 0, sr.getScaledWidth(), sr.getScaledHeight(),
+        if (HUD.isLightTheme()) {
+            RenderServices.shapes().gradient(0, 0, width, height,
+                    gui.withAlpha(new Color(255, 255, 255, 72).getRGB(), 64.0f * gui.guiAlpha),
+                    gui.withAlpha(new Color(210, 225, 242, 42).getRGB(), 38.0f * gui.guiAlpha));
+            RenderServices.shapes().gradient(0, height * 0.62f, width, height,
+                    gui.withAlpha(new Color(255, 255, 255, 0).getRGB(), 0.0f),
+                    gui.withAlpha(new Color(194, 205, 218, 66).getRGB(), 58.0f * gui.guiAlpha));
+            return;
+        }
+        RenderServices.shapes().gradient(0, 0, width, height,
                 gui.withAlpha(new Color(51, 73, 99, 44).getRGB(), 44.0f * gui.guiAlpha),
                 gui.withAlpha(new Color(6, 8, 10, 92).getRGB(), 92.0f * gui.guiAlpha));
-        RenderServices.shapes().gradient(0, sr.getScaledHeight() * 0.62f, sr.getScaledWidth(), sr.getScaledHeight(),
+        RenderServices.shapes().gradient(0, height * 0.62f, width, height,
                 gui.withAlpha(new Color(0, 0, 0, 0).getRGB(), 0.0f),
                 gui.withAlpha(new Color(0, 0, 0, 130).getRGB(), 92.0f * gui.guiAlpha));
     }
