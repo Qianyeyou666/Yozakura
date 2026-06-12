@@ -5,7 +5,6 @@ import gq.vapulite.Vapu.Client;
 import gq.vapulite.Vapu.ModuleType;
 import gq.vapulite.Vapu.modules.Module;
 import gq.vapulite.Vapu.modules.render.ClickGUI;
-import gq.vapulite.Vapu.utils.RenderUtil;
 import gq.vapulite.Vapu.value.Mode;
 import gq.vapulite.Vapu.value.Numbers;
 import gq.vapulite.Vapu.value.Option;
@@ -14,6 +13,7 @@ import gq.vapulite.font.CFontRenderer;
 import gq.vapulite.font.FontLoaders;
 import gq.vapulite.render.RenderState;
 import gq.vapulite.render.ShaderRenderer;
+import gq.vapulite.render.ui.RenderServices;
 import gq.vapulite.ui.UiTextField;
 import gq.vapulite.ui.UiTheme;
 import gq.vapulite.ui.UiToggle;
@@ -231,21 +231,7 @@ public class VapeClickGui extends GuiScreen {
      * 浅色主题使用简单的圆角边框矩形，暗色主题使用毛玻璃（Frosted Glass）效果。
      */
     void drawThemedGlass(float x, float y, float x2, float y2, float radius, float strength, int fill, int border) {
-        if (gq.vapulite.Vapu.modules.render.HUD.isSakuraTheme()) {
-            int solidFill = withAlpha(guiColors().glassFill, Math.max(getAlpha(fill), 238.0f));
-            int solidBorder = withAlpha(guiColors().glassBorder, Math.max(getAlpha(border), 54.0f));
-            RenderUtil.drawRoundedBorderedRect(x, y, x2, y2, radius, strength, solidFill, solidBorder);
-            return;
-        }
-        if (gq.vapulite.Vapu.modules.render.HUD.isLightTheme()) {
-            RenderUtil.drawRoundedBorderedRect(x, y, x2, y2, radius, strength, fill, border);
-        } else if (gq.vapulite.Vapu.modules.render.HUD.isGrayTheme()) {
-            if (!ShaderRenderer.drawFrostedGlass(x, y, x2, y2, radius, strength, fill, border)) {
-                RenderUtil.drawRoundedBorderedRect(x, y, x2, y2, radius, strength, fill, border);
-            }
-        } else {
-            RenderUtil.drawFrostedGlassRect(x, y, x2, y2, radius, strength, fill, border);
-        }
+        themeRenderer.drawThemedGlass(x, y, x2, y2, radius, strength, fill, border);
     }
 
     // ==================== 布局常量 ====================
@@ -388,6 +374,9 @@ public class VapeClickGui extends GuiScreen {
     final UiTheme uiTheme = UiTheme.current();                    // UI 主题
     final UiToggle reusableToggle = new UiToggle().setTheme(uiTheme); // 可复用的开关控件
     final UiTextField searchField = new UiTextField().setTheme(uiTheme).placeholder("Search modules...").maxLength(32); // 搜索文本框
+    final ClickGuiThemeRenderer themeRenderer = new ClickGuiThemeRenderer(this);
+    final ClickGuiNavigationRenderer navigationRenderer = new ClickGuiNavigationRenderer(this);
+    final ClickGuiOverlayRenderer overlayRenderer = new ClickGuiOverlayRenderer(this);
     final ClickGuiSearchBar searchBar = new ClickGuiSearchBar(this);      // 搜索栏组件
     final ClickGuiModuleList moduleList = new ClickGuiModuleList(this);    // 模块列表组件
     final ClickGuiDetailPanel detailPanel = new ClickGuiDetailPanel(this); // 详情面板组件
@@ -507,35 +496,19 @@ public class VapeClickGui extends GuiScreen {
      * 支持通过 ClickGUI 模块的 windowX/windowY 值自定义窗口位置。
      */
     void updateLayout(ScaledResolution sr) {
-        float screenW = sr.getScaledWidth();
-        float screenH = sr.getScaledHeight();
-        // 侧边面板在窄屏幕上隐藏
-        sidePanelVisible = screenW >= 900.0f;
-        sideW = sidePanelVisible ? SIDE_W : 0.0f;
-        // 计算详情面板宽度（自适应）
-        float available = Math.max(360.0f, screenW - 24.0f);
-        detailW = Math.min(DETAIL_MAX_W, Math.max(DETAIL_MIN_W, available - CARD_W - GAP - (sidePanelVisible ? sideW + GAP : 0.0f)));
-        float totalW = CARD_W + GAP + detailW + (sidePanelVisible ? GAP + sideW : 0.0f);
-        if (totalW > available) {
-            detailW = Math.max(DETAIL_MIN_W, available - CARD_W - GAP - (sidePanelVisible ? sideW + GAP : 0.0f));
-            totalW = CARD_W + GAP + detailW + (sidePanelVisible ? GAP + sideW : 0.0f);
-        }
-        windowW = totalW;
-        // 居中布局（可被 windowX 覆盖）
-        contentX = Math.max(10.0f, screenW / 2.0f - totalW / 2.0f);
-        if (ClickGUI.windowX.getValue() >= 0.0D) {
-            contentX = clamp(ClickGUI.windowX.getValue().floatValue(), 10.0f, Math.max(10.0f, screenW - totalW - 10.0f));
-        }
-        navY = 12.0f;
-        if (ClickGUI.windowY.getValue() >= 0.0D) {
-            navY = clamp(ClickGUI.windowY.getValue().floatValue(), 6.0f, Math.max(6.0f, screenH - 260.0f));
-        }
-        detailX = contentX + CARD_W + GAP;
-        sideX = detailX + detailW + GAP;
-        navX = detailX;
-        navW = detailW + (sidePanelVisible ? GAP + sideW : 0.0f);
-        contentY = navY + NAV_H + 12.0f;
-        panelH = Math.max(280.0f, screenH - contentY - 12.0f);
+        ClickGuiLayout layout = ClickGuiLayout.calculate(sr);
+        contentX = layout.contentX;
+        contentY = layout.contentY;
+        navX = layout.navX;
+        navY = layout.navY;
+        navW = layout.navW;
+        detailX = layout.detailX;
+        detailW = layout.detailW;
+        sideX = layout.sideX;
+        sideW = layout.sideW;
+        windowW = layout.windowW;
+        panelH = layout.panelH;
+        sidePanelVisible = layout.sidePanelVisible;
     }
 
     /**
@@ -544,22 +517,7 @@ public class VapeClickGui extends GuiScreen {
      * 包含三层：实色底色 + 顶部到中间渐变 + 中间到底部渐变（底部加深）。
      */
     void drawBackdrop(ScaledResolution sr) {
-        RenderUtil.drawRect(0, 0, sr.getScaledWidth(), sr.getScaledHeight(), withAlpha(guiColors().backdrop, 86.0f * guiAlpha));
-        if (gq.vapulite.Vapu.modules.render.HUD.isSakuraTheme()) {
-            RenderUtil.drawGradientRect(0, 0, sr.getScaledWidth(), sr.getScaledHeight(),
-                    withAlpha(new Color(255, 234, 244, 56).getRGB(), 56.0f * guiAlpha),
-                    withAlpha(new Color(232, 198, 218, 34).getRGB(), 34.0f * guiAlpha));
-            RenderUtil.drawGradientRect(0, sr.getScaledHeight() * 0.58f, sr.getScaledWidth(), sr.getScaledHeight(),
-                    withAlpha(new Color(255, 255, 255, 0).getRGB(), 0.0f),
-                    withAlpha(new Color(248, 223, 236, 70).getRGB(), 62.0f * guiAlpha));
-            return;
-        }
-        RenderUtil.drawGradientRect(0, 0, sr.getScaledWidth(), sr.getScaledHeight(),
-                withAlpha(new Color(51, 73, 99, 44).getRGB(), 44.0f * guiAlpha),
-                withAlpha(new Color(6, 8, 10, 92).getRGB(), 92.0f * guiAlpha));
-        RenderUtil.drawGradientRect(0, sr.getScaledHeight() * 0.62f, sr.getScaledWidth(), sr.getScaledHeight(),
-                withAlpha(new Color(0, 0, 0, 0).getRGB(), 0.0f),
-                withAlpha(new Color(0, 0, 0, 130).getRGB(), 92.0f * guiAlpha));
+        themeRenderer.drawBackdrop(sr);
     }
 
     void updateThemeTransition() {
@@ -572,31 +530,14 @@ public class VapeClickGui extends GuiScreen {
     }
 
     void drawThemeFade(ScaledResolution sr) {
-        if (themeFadeProgress <= 0.01f) {
-            return;
-        }
-        float eased = easeOut(themeFadeProgress);
-        int color = gq.vapulite.Vapu.modules.render.HUD.isSakuraTheme()
-                ? new Color(255, 226, 240).getRGB()
-                : gq.vapulite.Vapu.modules.render.HUD.isLightTheme()
-                ? new Color(230, 238, 248).getRGB()
-                : new Color(20, 24, 32).getRGB();
-        RenderUtil.drawRect(0, 0, sr.getScaledWidth(), sr.getScaledHeight(),
-                withAlpha(color, 34.0f * eased * guiAlpha));
+        themeRenderer.drawThemeFade(sr);
     }
 
     /**
      * 绘制顶部用户区和分类导航共用的连体背景。
      */
     void drawTopBarBackground(float introY) {
-        float x = contentX;
-        float y = navY + introY;
-        float right = navX + navW;
-        RenderUtil.drawSoftShadow(x, y, right, y + NAV_H, 9.0f,
-                withAlpha(shadowColor(210), 70.0f * guiAlpha), 7, 5.0f);
-        drawThemedGlass(x, y, right, y + NAV_H, 9.0f, 1.0f,
-                withAlpha(guiColors().glassFillSoft, 186.0f * guiAlpha),
-                withAlpha(guiColors().glassBorder, 52.0f * guiAlpha));
+        navigationRenderer.drawTopBarBackground(introY);
     }
 
     /**
@@ -606,46 +547,7 @@ public class VapeClickGui extends GuiScreen {
      * 悬停时显示半透明高亮效果。
      */
     void drawNavigation(int mouseX, int mouseY, float introY) {
-        float y = navY + introY;
-        RenderUtil.drawSoftShadow(navX, y, navX + navW, y + NAV_H, 9.0f,
-                withAlpha(shadowColor(210), 70.0f * guiAlpha), 7, 5.0f);
-        drawThemedGlass(navX, y, navX + navW, y + NAV_H, 9.0f, 1.0f,
-                withAlpha(guiColors().glassFillSoft, 186.0f * guiAlpha),
-                withAlpha(guiColors().glassBorder, 52.0f * guiAlpha));
-        // 指示器平滑移动动画
-        float tabW = navW / GuiTab.values().length;
-        float targetX = navX + currentTab.ordinal() * tabW + 2.0f;
-        navIndicatorX = animate(navIndicatorX, targetX, 0.18f);
-        // 激活标签页的背景指示器
-        RenderUtil.drawSoftShadow(navIndicatorX, y + 4.0f, navIndicatorX + tabW - 4.0f, y + NAV_H - 4.0f, 7.0f,
-                withAlpha(guiColors().accent, 85.0f * guiAlpha), 5, 4.0f);
-        RenderUtil.drawRoundedBorderedRect(navIndicatorX, y + 4.0f, navIndicatorX + tabW - 4.0f, y + NAV_H - 4.0f, 7.0f, 0.8f,
-                withAlpha(guiColors().detailSelectedFill, 232.0f * guiAlpha),
-                withAlpha(guiColors().detailSelectedBorder, 80.0f * guiAlpha));
-        // 逐个绘制标签页
-        for (int i = 0; i < GuiTab.values().length; i++) {
-            GuiTab tab = GuiTab.values()[i];
-            float x = navX + i * tabW;
-            boolean hovered = isHovered(x, y, x + tabW, y + NAV_H, mouseX, mouseY);
-            float hover = animateTabMap(tab, hovered && tab != currentTab && !closing ? 1.0f : 0.0f, 0.18f);
-            // 悬停高亮
-            if (hover > 0.01f) {
-                drawSoftRect(x + 3.0f, y + 4.0f, x + tabW - 3.0f, y + NAV_H - 4.0f, 7.0f,
-                        withAlpha(guiColors().navDefaultHover, 190.0f * hover * guiAlpha));
-            }
-            // 图标 + 文字（水平居中排列）
-            int textColor = tab == currentTab ? guiColors().text : guiColors().muted;
-            int color = withAlpha(textColor, 245.0f * guiAlpha);
-            CFontRenderer navIconFont = FontLoaders.I16;
-            String title = trim(tab.title, FontLoaders.F14, Math.max(18.0f, tabW - 42.0f));
-            float iconW = navIconFont.getStringWidth(tab.icon);
-            float titleW = FontLoaders.F14.getStringWidth(title);
-            float gap = 10.0f;
-            float groupX = x + (tabW - iconW - gap - titleW) / 2.0f;
-            float textY = y + 10.0f - hover * 0.4f;
-            drawCenteredIcon(tab.icon, navIconFont, groupX + iconW / 2.0f, y + NAV_H / 2.0f - hover * 0.4f, color);
-            drawFont(title, groupX + iconW + gap, textY, color);
-        }
+        navigationRenderer.drawNavigation(mouseX, mouseY, introY);
     }
 
     /**
@@ -1482,7 +1384,7 @@ public class VapeClickGui extends GuiScreen {
         if (getAlpha(color) <= 0) {
             return;
         }
-        RenderUtil.drawRoundedRect(x, y, x2, y2, radius, color);
+        RenderServices.shapes().rounded(x, y, x2, y2, radius, color);
     }
 
     // ==================== 颜色分量提取 ====================
@@ -1587,23 +1489,7 @@ public class VapeClickGui extends GuiScreen {
      * 在绑定过程中显示半透明背景和提示信息。
      */
     void drawKeybindOverlay(ScaledResolution sr) {
-        if (bindingModule == null) {
-            return;
-        }
-        // 半透明遮罩
-        RenderUtil.drawRect(0.0f, 0.0f, sr.getScaledWidth(), sr.getScaledHeight(), withAlpha(new Color(0, 0, 0).getRGB(), 92.0f));
-        float boxW = 210.0f;
-        float boxH = 84.0f;
-        float x = sr.getScaledWidth() / 2.0f - boxW / 2.0f;
-        float y = sr.getScaledHeight() / 2.0f - boxH / 2.0f;
-        // 对话框背景
-        drawThemedGlass(x, y, x + boxW, y + boxH, 8.0f, 1.0f,
-                withAlpha(guiColors().glassFill, 218.0f), withAlpha(guiColors().accent, 130.0f));
-        // 提示信息
-        drawCenteredText("KEYBIND", x, y + 14.0f, x + boxW, y + 25.0f, guiColors().text);
-        drawCenteredText(bindingModule.getName(), x, y + 34.0f, x + boxW, y + 45.0f, withAlpha(guiColors().text, 220.0f));
-        drawCenteredText("Current: " + getKeyName(bindingModule), x, y + 49.0f, x + boxW, y + 60.0f, withAlpha(guiColors().muted, 215.0f));
-        drawCenteredText("Press key, DEL clears, ESC cancels", x, y + 66.0f, x + boxW, y + 77.0f, withAlpha(guiColors().muted, 185.0f));
+        overlayRenderer.drawKeybindOverlay(sr);
     }
 
     // ==================== Toast 消息 ====================
@@ -1616,22 +1502,7 @@ public class VapeClickGui extends GuiScreen {
 
     /** 绘制 Toast 消息 */
     void drawToast(ScaledResolution sr) {
-        if (toastText == null) {
-            return;
-        }
-        long elapsed = System.currentTimeMillis() - toastStarted;
-        if (elapsed > 2500L) {
-            toastText = null;
-            return;
-        }
-        float alpha = elapsed < 1800L ? 1.0f : 1.0f - (elapsed - 1800L) / 700.0f;
-        float w = FontLoaders.F14.getStringWidth(toastText) + 20.0f;
-        float x = sr.getScaledWidth() / 2.0f - w / 2.0f;
-        float y = navY + NAV_H + SEARCH_H + 12.0f;
-        drawThemedGlass(x, y, x + w, y + 17.0f, 6.0f, 0.8f,
-                withAlpha(guiColors().glassFillSoft, 194.0f * alpha),
-                withAlpha(guiColors().accent, 75.0f * alpha));
-        drawCenteredText(toastText, x, y + 4.0f, x + w, y + 14.0f, withAlpha(guiColors().text, 230.0f * alpha));
+        overlayRenderer.drawToast(sr);
     }
 
     /**

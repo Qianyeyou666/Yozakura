@@ -1,5 +1,7 @@
 package gq.vapulite.font;
 
+import gq.vapulite.font.api.FontFamilyId;
+import gq.vapulite.font.api.FontRepository;
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.ResourceLocation;
 
@@ -58,6 +60,7 @@ public abstract class FontLoaders {
     public static final String ICON_DOWNLOAD_ALT = "X";
     public static final String ICON_MORE = "Y";
 
+    private static final FontRepository FONT_REPOSITORY = new FontRepository();
     private static final Map<String, Font> FONT_DATA = new HashMap<String, Font>();
     private static final Font SYSTEM_FALLBACK = new Font("Dialog", Font.PLAIN, 16);
     private static final Map<String, CFontRenderer> RENDERERS = new HashMap<String, CFontRenderer>();
@@ -106,7 +109,23 @@ public abstract class FontLoaders {
     }
 
     public static CFontRenderer regular(int size) {
-        return renderer(FontFamily.INTER, size);
+        return renderer(FontFamily.SF, size);
+    }
+
+    public static CFontRenderer circular(int size) {
+        return renderer(FontFamily.CIRCULAR, size);
+    }
+
+    public static CFontRenderer circularMedium(int size) {
+        return renderer(FontFamily.CIRCULAR_MEDIUM, size);
+    }
+
+    public static CFontRenderer productSans(int size) {
+        return renderer(FontFamily.PRODUCT_SANS, size);
+    }
+
+    public static CFontRenderer badCache(int size) {
+        return renderer(FontFamily.BAD_CACHE, size);
     }
 
     public static CFontRenderer icon(int size) {
@@ -118,11 +137,11 @@ public abstract class FontLoaders {
     }
 
     public static Font getFont(int size) {
-        return derive(FontFamily.INTER, Font.PLAIN, size);
+        return derive(FontFamily.SF, Font.PLAIN, size);
     }
 
     public static Font getComfortaa(int size) {
-        return derive(FontFamily.INTER, Font.PLAIN, size);
+        return derive(FontFamily.CIRCULAR, Font.PLAIN, size);
     }
 
     public static Font getNovo(int size) {
@@ -136,16 +155,37 @@ public abstract class FontLoaders {
         if (cached != null) {
             return cached;
         }
-        CFontRenderer renderer = new CFontRenderer(
-                derive(family, Font.PLAIN, clampedSize),
-                derive(family, Font.BOLD, clampedSize),
-                derive(family, Font.ITALIC, clampedSize),
-                derive(family, Font.BOLD | Font.ITALIC, clampedSize),
-                true,
-                true,
-                fallbacks(family, clampedSize));
+        CFontRenderer renderer = FONT_REPOSITORY.renderer(toId(family), clampedSize);
         RENDERERS.put(key, renderer);
         return renderer;
+    }
+
+    private static FontFamilyId toId(FontFamily family) {
+        if (family == FontFamily.ICON) {
+            return FontFamilyId.ICON;
+        }
+        if (family == FontFamily.TENACITY_BOLD) {
+            return FontFamilyId.TENACITY_BOLD;
+        }
+        if (family == FontFamily.SF) {
+            return FontFamilyId.SF;
+        }
+        if (family == FontFamily.CIRCULAR) {
+            return FontFamilyId.CIRCULAR;
+        }
+        if (family == FontFamily.CIRCULAR_MEDIUM) {
+            return FontFamilyId.CIRCULAR_MEDIUM;
+        }
+        if (family == FontFamily.PRODUCT_SANS) {
+            return FontFamilyId.PRODUCT_SANS;
+        }
+        if (family == FontFamily.BAD_CACHE) {
+            return FontFamilyId.BAD_CACHE;
+        }
+        if (family == FontFamily.ALIBABA) {
+            return FontFamilyId.ALIBABA;
+        }
+        return FontFamilyId.SF;
     }
 
     private static Font derive(FontFamily family, int style, int size) {
@@ -192,6 +232,11 @@ public abstract class FontLoaders {
     }
 
     private enum FontFamily {
+        SF(new ResourceLocation("novo/fonts/SF.ttf"), null),
+        CIRCULAR(new ResourceLocation("novo/fonts/CircularStd-Book.ttf"), null),
+        CIRCULAR_MEDIUM(new ResourceLocation("novo/fonts/CircularStd-Medium.ttf"), null),
+        PRODUCT_SANS(new ResourceLocation("novo/fonts/Product Sans Regular.ttf"), null),
+        BAD_CACHE(new ResourceLocation("novo/fonts/badcache.ttf"), null),
         INTER(new ResourceLocation("font/Inter.ttf"), new ResourceLocation("font/Inter-Italic.ttf")),
         ALIBABA(new ResourceLocation("font/AlibabaSans-Regular.otf"), null),
         TENACITY_BOLD(new ResourceLocation("font/tenacity-bold.ttf"), null),

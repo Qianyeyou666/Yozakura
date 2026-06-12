@@ -4,9 +4,9 @@ import gq.vapulite.Manager.ModuleManager;
 import gq.vapulite.Vapu.modules.Module;
 import gq.vapulite.Vapu.modules.render.ClickGUI;
 import gq.vapulite.Vapu.modules.render.HUD;
-import gq.vapulite.Vapu.utils.RenderUtil;
 import gq.vapulite.Vapu.value.Numbers;
 import gq.vapulite.font.FontLoaders;
+import gq.vapulite.render.ui.RenderServices;
 import net.minecraft.client.gui.ScaledResolution;
 import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.GL11;
@@ -144,7 +144,7 @@ final class ClickGuiSidePanel {
         float x = gui.contentX;
         float y = gui.navY + introY;
         float w = VapeClickGui.CARD_W;
-        RenderUtil.drawSoftShadow(x, y, x + w, y + VapeClickGui.NAV_H,
+        RenderServices.shapes().shadow(x, y, x + w, y + VapeClickGui.NAV_H,
                 VapeClickGui.PANEL_RADIUS, gui.withAlpha(gui.shadowColor(220),
                         70.0f * gui.guiAlpha), 8, 5.0f);
         gui.drawThemedGlass(x, y, x + w, y + VapeClickGui.NAV_H,
@@ -167,7 +167,7 @@ final class ClickGuiSidePanel {
      * 绘制状态面板（FPS、Ping、已启用模块数及 FPS 波形图）。
      */
     private void drawStatsPanel(float y) {
-        RenderUtil.drawSoftShadow(gui.sideX, y, gui.sideX + gui.sideW, y + STATS_H, VapeClickGui.PANEL_RADIUS,
+        RenderServices.shapes().shadow(gui.sideX, y, gui.sideX + gui.sideW, y + STATS_H, VapeClickGui.PANEL_RADIUS,
                 gui.withAlpha(gui.shadowColor(220), 70.0f * gui.guiAlpha), 8, 5.0f);
         gui.drawThemedGlass(gui.sideX, y, gui.sideX + gui.sideW, y + STATS_H, VapeClickGui.PANEL_RADIUS, 1.0f,
                 gui.withAlpha(gui.guiColors().glassFill, 204.0f * gui.guiAlpha),
@@ -197,12 +197,12 @@ final class ClickGuiSidePanel {
         int count = gui.getFpsGraphSize();
 
         // 绘制基线
-        RenderUtil.drawLine(graphX, graphBottom, graphX + graphW, graphBottom, 0.55f,
+        RenderServices.shapes().line(graphX, graphBottom, graphX + graphW, graphBottom, 0.55f,
                 gui.withAlpha(new Color(105, 128, 148).getRGB(), 32.0f * gui.guiAlpha));
         // 采样不足时绘制水平线
         if (count < 2) {
             float yMid = graphBottom - graphH * 0.48f;
-            RenderUtil.drawLine(graphX, yMid, graphX + graphW, yMid, 0.7f,
+            RenderServices.shapes().line(graphX, yMid, graphX + graphW, yMid, 0.7f,
                     gui.withAlpha(gui.guiColors().accent, 70.0f * gui.guiAlpha));
             return;
         }
@@ -228,15 +228,15 @@ final class ClickGuiSidePanel {
         for (int i = 1; i < count; i++) {
             float px = graphX + step * i;
             float py = graphBottom - normalizedFps(gui.getFpsGraphSample(i), min, max) * graphH;
-            RenderUtil.drawLine(previousX, previousY, px, py, 2.0f,
+            RenderServices.shapes().line(previousX, previousY, px, py, 2.0f,
                     gui.withAlpha(gui.guiColors().accent, 28.0f * gui.guiAlpha));
-            RenderUtil.drawLine(previousX, previousY, px, py, 0.85f,
+            RenderServices.shapes().line(previousX, previousY, px, py, 0.85f,
                     gui.withAlpha(gui.guiColors().accent, 145.0f * gui.guiAlpha));
             previousX = px;
             previousY = py;
         }
         // 最新数据点高亮圆点
-        RenderUtil.drawCircle(previousX, previousY, 0, 360, 1.7f,
+        RenderServices.shapes().circle(previousX, previousY, 0, 360, 1.7f,
                 gui.withAlpha(gui.guiColors().accent, 190.0f * gui.guiAlpha));
     }
 
@@ -251,7 +251,7 @@ final class ClickGuiSidePanel {
      * 绘制模块摘要面板（图标、名称、描述、状态行、按键绑定）。
      */
     private void drawModuleSummary(float y, float h) {
-        RenderUtil.drawSoftShadow(gui.sideX, y, gui.sideX + gui.sideW, y + h, VapeClickGui.PANEL_RADIUS,
+        RenderServices.shapes().shadow(gui.sideX, y, gui.sideX + gui.sideW, y + h, VapeClickGui.PANEL_RADIUS,
                 gui.withAlpha(gui.shadowColor(230), 78.0f * gui.guiAlpha), 9, 6.0f);
         gui.drawThemedGlass(gui.sideX, y, gui.sideX + gui.sideW, y + h, VapeClickGui.PANEL_RADIUS, 1.0f,
                 gui.withAlpha(gui.guiColors().glassFill, 210.0f * gui.guiAlpha),
@@ -277,11 +277,11 @@ final class ClickGuiSidePanel {
         gui.drawFont(gui.trim(gui.getDescription(gui.selectedModule), FontLoaders.F14, gui.sideW - 32.0f),
                 gui.sideX + 16.0f, y + 63.0f, gui.withAlpha(gui.guiColors().muted, 205.0f * gui.guiAlpha));
         // 分隔线 → 状态信息行
-        RenderUtil.drawLine(gui.sideX + 16.0f, y + 91.0f, gui.sideX + gui.sideW - 16.0f, y + 91.0f, 0.6f,
+        RenderServices.shapes().line(gui.sideX + 16.0f, y + 91.0f, gui.sideX + gui.sideW - 16.0f, y + 91.0f, 0.6f,
                 gui.withAlpha(new Color(95, 101, 118).getRGB(), 36.0f * gui.guiAlpha));
         drawSummaryRows(y + 103.0f);
         // 分隔线 → 按键绑定
-        RenderUtil.drawLine(gui.sideX + 16.0f, y + h - 42.0f,
+        RenderServices.shapes().line(gui.sideX + 16.0f, y + h - 42.0f,
                 gui.sideX + gui.sideW - 16.0f, y + h - 42.0f, 0.6f,
                 gui.withAlpha(new Color(95, 101, 118).getRGB(), 36.0f * gui.guiAlpha));
         drawKeyChip(gui.sideX + 16.0f, y + h - 30.0f, gui.sideW - 32.0f, 18.0f, gui.selectedModule);
@@ -326,7 +326,7 @@ final class ClickGuiSidePanel {
         float inset = click * 1.2f;
         float lift = hover * 0.8f - click * 0.5f;
         if (hover > 0.02f || click > 0.02f) {
-            RenderUtil.drawSoftShadow(x, y, x + w, y + h, 6.0f,
+            RenderServices.shapes().shadow(x, y, x + w, y + h, 6.0f,
                     gui.withAlpha(gui.guiColors().accent, (18.0f + hover * 36.0f + click * 54.0f) * gui.guiAlpha),
                     5, 2.4f);
         }
@@ -341,7 +341,7 @@ final class ClickGuiSidePanel {
     }
 
     private void drawDesignPanel(float y, int mouseX, int mouseY) {
-        RenderUtil.drawSoftShadow(gui.sideX, y, gui.sideX + gui.sideW, y + DESIGN_H, VapeClickGui.PANEL_RADIUS,
+        RenderServices.shapes().shadow(gui.sideX, y, gui.sideX + gui.sideW, y + DESIGN_H, VapeClickGui.PANEL_RADIUS,
                 gui.withAlpha(gui.shadowColor(230), 72.0f * gui.guiAlpha), 8, 5.0f);
         gui.drawThemedGlass(gui.sideX, y, gui.sideX + gui.sideW, y + DESIGN_H, VapeClickGui.PANEL_RADIUS, 1.0f,
                 gui.withAlpha(gui.guiColors().glassFill, 214.0f * gui.guiAlpha),
@@ -359,13 +359,13 @@ final class ClickGuiSidePanel {
         float previewX = gui.sideX + 15.0f;
         float previewY = y + 64.0f;
         float previewW = gui.sideW - 30.0f;
-        RenderUtil.drawRoundedRect(previewX, previewY, previewX + previewW, previewY + 34.0f, 6.0f,
+        RenderServices.shapes().rounded(previewX, previewY, previewX + previewW, previewY + 34.0f, 6.0f,
                 gui.withAlpha(new Color(255, 235, 245).getRGB(), 230.0f * gui.guiAlpha));
-        RenderUtil.drawHorizontalGradientRect(previewX + 2.0f, previewY + 2.0f,
+        RenderServices.shapes().horizontalGradient(previewX + 2.0f, previewY + 2.0f,
                 previewX + previewW - 2.0f, previewY + 32.0f,
                 gui.withAlpha(new Color(255, 210, 230).getRGB(), 158.0f * gui.guiAlpha),
                 gui.withAlpha(new Color(190, 222, 252).getRGB(), 138.0f * gui.guiAlpha));
-        RenderUtil.drawCircle(previewX + previewW * 0.72f, previewY + 16.0f, 0, 360, 16.0f,
+        RenderServices.shapes().circle(previewX + previewW * 0.72f, previewY + 16.0f, 0, 360, 16.0f,
                 gui.withAlpha(new Color(255, 255, 255).getRGB(), 52.0f * gui.guiAlpha));
 
         float buttonY = y + 105.0f;
@@ -380,7 +380,7 @@ final class ClickGuiSidePanel {
                 gui.withAlpha(buttonHovered ? gui.guiColors().accent : gui.guiColors().glassBorder,
                         (44.0f + 52.0f * buttonHover) * gui.guiAlpha));
         if (buttonHover > 0.02f) {
-            RenderUtil.drawSoftShadow(gui.sideX + 15.0f, buttonY, gui.sideX + gui.sideW - 15.0f, buttonY + 15.0f,
+            RenderServices.shapes().shadow(gui.sideX + 15.0f, buttonY, gui.sideX + gui.sideW - 15.0f, buttonY + 15.0f,
                     5.0f, gui.withAlpha(gui.guiColors().accent, 22.0f * buttonHover * gui.guiAlpha), 4, 2.0f);
         }
         gui.drawCenteredText("Theme  " + formatTheme(HUD.getTheme()), gui.sideX + 18.0f, buttonY + 3.0f + textShift,
@@ -403,7 +403,7 @@ final class ClickGuiSidePanel {
                 gui.withAlpha(resetHovered ? gui.guiColors().accent : gui.guiColors().glassBorder,
                         (42.0f + 56.0f * resetHover) * gui.guiAlpha));
         if (resetHover > 0.02f || resetPress > 0.02f) {
-            RenderUtil.drawSoftShadow(gui.sideX + 15.0f, resetY, gui.sideX + gui.sideW - 15.0f, resetY + 16.0f,
+            RenderServices.shapes().shadow(gui.sideX + 15.0f, resetY, gui.sideX + gui.sideW - 15.0f, resetY + 16.0f,
                     5.0f, gui.withAlpha(gui.guiColors().accent,
                             (20.0f * resetHover + 34.0f * resetPress) * gui.guiAlpha), 4, 2.0f);
         }
@@ -432,22 +432,22 @@ final class ClickGuiSidePanel {
         float px = x - lift;
         float py = y - lift;
         if (progress > 0.02f || hover > 0.02f) {
-            RenderUtil.drawSoftShadow(px - 2.0f, py - 2.0f, px + size + 2.0f, py + size + 2.0f, 5.0f,
+            RenderServices.shapes().shadow(px - 2.0f, py - 2.0f, px + size + 2.0f, py + size + 2.0f, 5.0f,
                     gui.withAlpha(gui.guiColors().accent, (24.0f + 76.0f * progress + 38.0f * hover) * gui.guiAlpha), 5, 3.0f);
         }
-        RenderUtil.drawRoundedBorderedRect(px, py, px + size, py + size, 4.0f, 1.0f,
+        RenderServices.shapes().roundedBorder(px, py, px + size, py + size, 4.0f, 1.0f,
                 gui.withAlpha(color, (210.0f + 35.0f * progress + 18.0f * hover) * gui.guiAlpha),
                 gui.withAlpha(selected ? gui.guiColors().accent : gui.guiColors().glassBorder,
                         (70.0f + 120.0f * progress + 48.0f * hover) * gui.guiAlpha));
         if (theme == HUD.Theme.LIGHT || theme == HUD.Theme.GRAY) {
-            RenderUtil.drawRoundedBorderedRect(px + 1.0f, py + 1.0f, px + size - 1.0f, py + size - 1.0f, 3.0f, 0.5f,
+            RenderServices.shapes().roundedBorder(px + 1.0f, py + 1.0f, px + size - 1.0f, py + size - 1.0f, 3.0f, 0.5f,
                     gui.withAlpha(0x00FFFFFF, 0.0f),
                     gui.withAlpha(0xFFB8C0CC, 80.0f * gui.guiAlpha));
         }
     }
 
     private void drawDecorSwatch(float x, float y, int color) {
-        RenderUtil.drawRoundedRect(x, y, x + 14.0f, y + 14.0f, 4.0f,
+        RenderServices.shapes().rounded(x, y, x + 14.0f, y + 14.0f, 4.0f,
                 gui.withAlpha(color, 220.0f * gui.guiAlpha));
     }
 

@@ -8,6 +8,7 @@ import gq.vapulite.Vapu.utils.RenderUtil;
 import gq.vapulite.Vapu.value.Numbers;
 import gq.vapulite.font.CFontRenderer;
 import gq.vapulite.font.FontLoaders;
+import gq.vapulite.render.ui.RenderServices;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.util.MathHelper;
@@ -86,18 +87,18 @@ public class Health extends Module {
             GlStateManager.translate(pos[0], pos[1], 0.0f);
             GlStateManager.scale(uiScale, uiScale, 1.0f);
             GlStateManager.translate(-pos[0], -pos[1], 0.0f);
-            RenderUtil.drawRect(pos[0], pos[1], pos[0] + boxW, pos[1] + boxH, RenderUtil.applyAlpha(0xFF050505, 142));
-            RenderUtil.drawHorizontalGradientRect(pos[0], pos[1], pos[0] + boxW, pos[1] + 7.0f,
+            RenderServices.shapes().rect(pos[0], pos[1], pos[0] + boxW, pos[1] + boxH, RenderUtil.applyAlpha(0xFF050505, 142));
+            RenderServices.shapes().horizontalGradient(pos[0], pos[1], pos[0] + boxW, pos[1] + 7.0f,
                     RenderUtil.applyAlpha(0xFFFFFFFF, 16), RenderUtil.applyAlpha(0xFF000000, 0));
-            RenderUtil.drawRect(pos[0], pos[1], pos[0] + 2.0f, pos[1] + boxH, RenderUtil.applyAlpha(accent, 190));
-            RenderUtil.drawRect(pos[0] + 7.0f, pos[1] + 5.0f, pos[0] + 21.0f, pos[1] + 17.0f,
+            RenderServices.shapes().rect(pos[0], pos[1], pos[0] + 2.0f, pos[1] + boxH, RenderUtil.applyAlpha(accent, 190));
+            RenderServices.shapes().rect(pos[0] + 7.0f, pos[1] + 5.0f, pos[0] + 21.0f, pos[1] + 17.0f,
                     RenderUtil.applyAlpha(0xFF111111, 170));
             FontLoaders.I14.drawString(FontLoaders.ICON_HEARTBEAT, pos[0] + 10.0f, pos[1] + 7.0f,
                     RenderUtil.applyAlpha(accent, 245));
             FontLoaders.C14.drawString(value, pos[0] + 27.0f, pos[1] + 4.0f, 0xFFFFFFFF);
-            RenderUtil.drawRect(pos[0] + 27.0f, pos[1] + 16.0f, pos[0] + boxW - 6.0f, pos[1] + 18.0f,
+            RenderServices.shapes().rect(pos[0] + 27.0f, pos[1] + 16.0f, pos[0] + boxW - 6.0f, pos[1] + 18.0f,
                     RenderUtil.applyAlpha(0xFF242424, 170));
-            RenderUtil.drawRect(pos[0] + 27.0f, pos[1] + 16.0f,
+            RenderServices.shapes().rect(pos[0] + 27.0f, pos[1] + 16.0f,
                     pos[0] + 27.0f + (boxW - 33.0f) * healthRatio, pos[1] + 18.0f,
                     RenderUtil.applyAlpha(accent, 210));
         } finally {

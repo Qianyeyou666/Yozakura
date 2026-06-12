@@ -4,10 +4,10 @@ import gq.vapulite.Vapu.VapeClickGui.ClickGuiIcons;
 import gq.vapulite.Vapu.modules.Module;
 import gq.vapulite.Vapu.modules.render.HUD;
 import gq.vapulite.Vapu.utils.ColorUtils;
-import gq.vapulite.Vapu.utils.RenderUtil;
 import gq.vapulite.Vapu.utils.TimerUtil;
 import gq.vapulite.font.CFontRenderer;
 import gq.vapulite.font.FontLoaders;
+import gq.vapulite.render.ui.RenderServices;
 import net.minecraft.client.Minecraft;
 
 public class Notification {
@@ -102,12 +102,12 @@ public class Notification {
             GuiRenderUtils.drawGlowAround(x1, y1, x2, y2, 8.0f,
                     withAlpha(accent, Math.round(220.0f * bodyAlpha)), 1.0f);
         }
-        RenderUtil.drawSoftShadow(x1, y1, x2, y2, 8.0f,
+        RenderServices.shapes().shadow(x1, y1, x2, y2, 8.0f,
                 withAlpha(shadowColor(), Math.round(58.0f * bodyAlpha)), 7, 3.4f);
         HUD.drawThemedFrostedGlass(x1, y1, x2, y2, 8.0f, 1.0f,
                 withAlpha(GLASS(), Math.round(146.0f * bodyAlpha)),
                 withAlpha(BORDER(), Math.round(56.0f * bodyAlpha)));
-        RenderUtil.drawHorizontalGradientRect(x1 + 10.0f, y1 + 4.0f, x2 - 10.0f, y1 + 5.1f,
+        RenderServices.shapes().horizontalGradient(x1 + 10.0f, y1 + 4.0f, x2 - 10.0f, y1 + 5.1f,
                 withAlpha(accent, Math.round(120.0f * bodyAlpha)),
                 withAlpha(ACCENT_ALT(), Math.round(72.0f * bodyAlpha)));
 
@@ -116,7 +116,7 @@ public class Notification {
         HUD.drawThemedFrostedGlass(iconX, iconY, iconX + 24.0f, iconY + 24.0f, 7.0f, 0.8f,
                 withAlpha(GLASS_SOFT(), Math.round(154.0f * bodyAlpha)),
                 withAlpha(accent, Math.round(76.0f * bodyAlpha)));
-        RenderUtil.drawSoftShadow(iconX, iconY, iconX + 24.0f, iconY + 24.0f, 7.0f,
+        RenderServices.shapes().shadow(iconX, iconY, iconX + 24.0f, iconY + 24.0f, 7.0f,
                 withAlpha(accent, Math.round(28.0f * bodyAlpha)), 4, 1.8f);
         drawCenteredIcon(getIcon(), FontLoaders.I18, iconX + 12.0f, iconY + 12.0f,
                 withAlpha(accent, Math.round(230.0f * bodyAlpha)));
@@ -128,7 +128,7 @@ public class Notification {
                     withAlpha(MUTED(), Math.round(216.0f * bodyAlpha)));
         }
 
-        RenderUtil.drawProgressBar(x1 + 12.0f, y2 - 4.0f, x2 - 12.0f, y2 - 2.3f, 1.5f, progress,
+        RenderServices.shapes().progressBar(x1 + 12.0f, y2 - 4.0f, x2 - 12.0f, y2 - 2.3f, 1.5f, progress,
                 withAlpha(progressTrack(), Math.round(18.0f * bodyAlpha)),
                 withAlpha(accent, Math.round(190.0f * bodyAlpha)));
     }
@@ -139,21 +139,21 @@ public class Notification {
             GuiRenderUtils.drawGlowAround(x1, y1, x2, y2, radius,
                     withAlpha(accent, Math.round(220.0f * bodyAlpha)), 1.0f);
         }
-        RenderUtil.drawSoftShadow(x1, y1, x2, y2, radius,
+        RenderServices.shapes().shadow(x1, y1, x2, y2, radius,
                 withAlpha(shadowColor(), Math.round(58.0f * bodyAlpha)), 6, 2.2f);
-        RenderUtil.drawRoundedBorderedRect(x1, y1, x2, y2, radius, 0.8f,
+        RenderServices.shapes().roundedBorder(x1, y1, x2, y2, radius, 0.8f,
                 withAlpha(VAPE_SURFACE(), Math.round(164.0f * bodyAlpha)),
                 withAlpha(0xFFFFFFFF, Math.round(24.0f * bodyAlpha)));
-        RenderUtil.drawHorizontalGradientRect(x1 + 1.0f, y1 + 1.0f, x2 - 1.0f, y1 + 18.0f,
+        RenderServices.shapes().horizontalGradient(x1 + 1.0f, y1 + 1.0f, x2 - 1.0f, y1 + 18.0f,
                 withAlpha(0xFFFFFFFF, Math.round(15.0f * bodyAlpha)), withAlpha(0xFF000000, 0));
-        RenderUtil.drawRoundedRect(x2 - 3.0f, y1 + 7.0f, x2 - 1.0f, y2 - 7.0f, 1.0f,
+        RenderServices.shapes().rounded(x2 - 3.0f, y1 + 7.0f, x2 - 1.0f, y2 - 7.0f, 1.0f,
                 withAlpha(accent, Math.round(205.0f * bodyAlpha)));
 
         float iconCenterX = x1 + 25.0f;
         float iconCenterY = y1 + (y2 - y1) / 2.0f;
-        RenderUtil.drawCircle(iconCenterX, iconCenterY, 0, 360, 15.0f,
+        RenderServices.shapes().circle(iconCenterX, iconCenterY, 0, 360, 15.0f,
                 withAlpha(accent, Math.round(218.0f * bodyAlpha)));
-        RenderUtil.drawCircle(iconCenterX, iconCenterY, 0, 360, 12.0f,
+        RenderServices.shapes().circle(iconCenterX, iconCenterY, 0, 360, 12.0f,
                 withAlpha(VAPE_SURFACE_VARIANT(), Math.round(40.0f * bodyAlpha)));
         drawCenteredIcon(getIcon(), FontLoaders.I18, iconCenterX, iconCenterY,
                 withAlpha(onSurfaceColor(), Math.round(238.0f * bodyAlpha)));
@@ -164,7 +164,7 @@ public class Notification {
             FontLoaders.C12.drawString(trim(message, FontLoaders.C12, width - 68.0f),
                     x1 + 51.0f, y1 + 29.0f, withAlpha(VAPE_ON_VARIANT(), Math.round(220.0f * bodyAlpha)));
         }
-        RenderUtil.drawProgressBar(x1 + 51.0f, y2 - 5.0f, x2 - 12.0f, y2 - 3.2f, 0.9f, progress,
+        RenderServices.shapes().progressBar(x1 + 51.0f, y2 - 5.0f, x2 - 12.0f, y2 - 3.2f, 0.9f, progress,
                 withAlpha(progressTrack(), Math.round(16.0f * bodyAlpha)),
                 withAlpha(accent, Math.round(150.0f * bodyAlpha)));
     }

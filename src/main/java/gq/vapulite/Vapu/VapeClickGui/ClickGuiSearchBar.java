@@ -1,6 +1,6 @@
 package gq.vapulite.Vapu.VapeClickGui;
 
-import gq.vapulite.Vapu.utils.RenderUtil;
+import gq.vapulite.render.ui.RenderServices;
 
 /**
  * ClickGUI 搜索栏组件，负责模块搜索的输入与渲染。
@@ -44,7 +44,7 @@ final class ClickGuiSearchBar {
         gui.searchFocusProgress = gui.animate(gui.searchFocusProgress, gui.searchFocused ? 1.0f : hovered ? 0.55f : 0.0f, 0.20f);
         // 绘制聚焦/悬停发光阴影
         if (gui.searchFocusProgress > 0.02f) {
-            RenderUtil.drawSoftShadow(x - 1f, y - 1f, x + w + 1f, y + VapeClickGui.SEARCH_H + 1f, 19.0f,
+            RenderServices.shapes().shadow(x - 1f, y - 1f, x + w + 1f, y + VapeClickGui.SEARCH_H + 1f, 19.0f,
                     gui.withAlpha(gui.guiColors().accent, 86.0f * gui.searchFocusProgress * gui.guiAlpha), 7, 4.0f);
         }
         // 渲染搜索文本框

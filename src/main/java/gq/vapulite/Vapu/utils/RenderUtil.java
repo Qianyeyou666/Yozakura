@@ -3,6 +3,7 @@ package gq.vapulite.Vapu.utils;
 import gq.vapulite.render.RenderState;
 import gq.vapulite.render.Blur;
 import gq.vapulite.render.ShaderRenderer;
+import gq.vapulite.render.ui.RenderServices;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.util.AxisAlignedBB;
@@ -15,6 +16,34 @@ public class RenderUtil {
     public static Minecraft mc = Minecraft.getMinecraft();
 
     private static final int DEFAULT_ARC_SEGMENTS = 24;
+
+    public static void resetColor() {
+        RenderServices.context().resetColor();
+    }
+
+    public static void start() {
+        RenderServices.context().start2D();
+    }
+
+    public static void stop() {
+        RenderServices.context().stop2D();
+    }
+
+    public static void scaleStart(float x, float y, float scale) {
+        RenderServices.context().scaleStart(x, y, scale);
+    }
+
+    public static void scaleEnd() {
+        RenderServices.context().scaleEnd();
+    }
+
+    public static int applyOpacity(int color, float opacity) {
+        return RenderServices.context().applyOpacity(color, opacity);
+    }
+
+    public static Color applyOpacity(Color color, float opacity) {
+        return RenderServices.context().applyOpacity(color, opacity);
+    }
 
     public static void drawRoundedRect(float left, float top, float right, float bottom, int color) {
         drawRoundedRect(left, top, right, bottom, 2.0f, color);

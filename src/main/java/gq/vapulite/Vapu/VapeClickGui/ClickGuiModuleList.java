@@ -2,8 +2,8 @@ package gq.vapulite.Vapu.VapeClickGui;
 
 import gq.vapulite.Manager.ModuleManager;
 import gq.vapulite.Vapu.modules.Module;
-import gq.vapulite.Vapu.utils.RenderUtil;
 import gq.vapulite.font.FontLoaders;
+import gq.vapulite.render.ui.RenderServices;
 import gq.vapulite.ui.UiPanel;
 import gq.vapulite.ui.UiTheme;
 import org.lwjgl.input.Mouse;
@@ -229,13 +229,13 @@ final class ClickGuiModuleList {
         float click = gui.animateMap(gui.clickProgress, module, 0.0f, 0.22f);
         // 选中或悬停时的阴影效果
         if (selected || hover > 0.04f) {
-            RenderUtil.drawSoftShadow(x, y, x + rowW, y + height, 7.0f,
+            RenderServices.shapes().shadow(x, y, x + rowW, y + height, 7.0f,
                     gui.withAlpha(selected ? new Color(92, 85, 235).getRGB() : gui.shadowColor(190),
                             (selected ? 42.0f : 18.0f + hover * 12.0f) * alpha * gui.guiAlpha), 5, 3.0f);
         }
         // 点击时的脉冲阴影
         if (click > 0.02f) {
-            RenderUtil.drawSoftShadow(x, y, x + rowW, y + height, 7.0f,
+            RenderServices.shapes().shadow(x, y, x + rowW, y + height, 7.0f,
                     gui.withAlpha(new Color(112, 101, 255).getRGB(), (14.0f + click * 36.0f) * alpha * gui.guiAlpha), 5, 2.8f);
         }
         boolean enabled = module.getState();
@@ -250,18 +250,18 @@ final class ClickGuiModuleList {
             int bgColor = gq.vapulite.Vapu.modules.render.HUD.isLightTheme()
                     ? gui.blendColor(accent, 0xFFFFFFFF, 0.55f)   // 浅色/粉：混白提亮
                     : gui.blendColor(accent, 0xFF000000, 0.55f);  // 暗色：混黑压深
-            RenderUtil.drawRoundedRect(x, y, x + rowW, y + height, VapeClickGui.CARD_RADIUS,
+            RenderServices.shapes().rounded(x, y, x + rowW, y + height, VapeClickGui.CARD_RADIUS,
                     gui.withAlpha(bgColor, 46.0f * alpha * gui.guiAlpha));
         }
         // 悬停高亮（非选中状态）
         if (!selected && hover > 0.01f) {
             int hoverFill = gui.blendColor(new Color(0, 0, 0, 0).getRGB(), gui.guiColors().navDefaultHover, hover);
-            RenderUtil.drawRoundedRect(x, y, x + rowW, y + height, VapeClickGui.CARD_RADIUS,
+            RenderServices.shapes().rounded(x, y, x + rowW, y + height, VapeClickGui.CARD_RADIUS,
                     gui.withAlpha(hoverFill, gui.getAlpha(hoverFill) * alpha * gui.guiAlpha));
         }
         // 卡片底部分隔线（非选中状态）
         if (!selected) {
-            RenderUtil.drawLine(x + 9.0f, y + height - 0.5f, x + rowW - 9.0f, y + height - 0.5f, 0.6f,
+            RenderServices.shapes().line(x + 9.0f, y + height - 0.5f, x + rowW - 9.0f, y + height - 0.5f, 0.6f,
                     gui.withAlpha(new Color(102, 110, 128).getRGB(), 22.0f * alpha * gui.guiAlpha));
         }
         drawCardHeader(module, x, y, selected, alpha);
@@ -350,7 +350,7 @@ final class ClickGuiModuleList {
                 metrics.trackY + metrics.trackHeight, 2.0f,
                 gui.withAlpha(new Color(128, 128, 128, 32).getRGB(), 32.0f * gui.scrollbarAlpha * gui.guiAlpha));
         // 滑块阴影 + 滑块本体
-        RenderUtil.drawSoftShadow(metrics.trackX, metrics.thumbY, metrics.trackX + 2.2f,
+        RenderServices.shapes().shadow(metrics.trackX, metrics.thumbY, metrics.trackX + 2.2f,
                 metrics.thumbY + metrics.thumbHeight, 2.0f,
                 gui.withAlpha(gui.guiColors().accent, (35.0f + dragBoost * 60.0f) * gui.scrollbarAlpha * gui.guiAlpha), 4, 2.0f);
         gui.drawSoftRect(metrics.trackX, metrics.thumbY, metrics.trackX + 2.2f,

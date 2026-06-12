@@ -3,8 +3,8 @@ package gq.vapulite.Vapu.VapeClickGui;
 import gq.vapulite.Manager.ModuleManager;
 import gq.vapulite.Vapu.modules.render.ClickGUI;
 import gq.vapulite.Vapu.modules.render.HUD;
-import gq.vapulite.Vapu.utils.RenderUtil;
 import gq.vapulite.font.FontLoaders;
+import gq.vapulite.render.ui.RenderServices;
 import net.minecraft.client.gui.ScaledResolution;
 
 /**
@@ -34,7 +34,7 @@ final class ClickGuiBottomBar {
         float w = getWidth();
         float h = VapeClickGui.BOTTOM_BAR_H;
 
-        RenderUtil.drawSoftShadow(x, y, x + w, y + h, VapeClickGui.PANEL_RADIUS,
+        RenderServices.shapes().shadow(x, y, x + w, y + h, VapeClickGui.PANEL_RADIUS,
                 gui.withAlpha(gui.shadowColor(230), 76.0f * gui.guiAlpha), 9, 5.5f);
         gui.drawThemedGlass(x, y, x + w, y + h, VapeClickGui.PANEL_RADIUS, 1.0f,
                 gui.withAlpha(gui.guiColors().glassFill, 218.0f * gui.guiAlpha),
@@ -112,11 +112,11 @@ final class ClickGuiBottomBar {
         float trackY = y + 64.0f;
         float pct = (ClickGUI.clickGuiAlpha.getValue().floatValue() - 0.3f) / 0.7f;
         pct = gui.clamp(pct, 0.0f, 1.0f);
-        RenderUtil.drawLine(trackX, trackY, trackX + 98.0f, trackY, 2.0f,
+        RenderServices.shapes().line(trackX, trackY, trackX + 98.0f, trackY, 2.0f,
                 gui.withAlpha(gui.guiColors().valueTrack, 190.0f * gui.guiAlpha));
-        RenderUtil.drawLine(trackX, trackY, trackX + 98.0f * pct, trackY, 2.0f,
+        RenderServices.shapes().line(trackX, trackY, trackX + 98.0f * pct, trackY, 2.0f,
                 gui.withAlpha(gui.guiColors().accent, 220.0f * gui.guiAlpha));
-        RenderUtil.drawCircle(trackX + 98.0f * pct, trackY, 0, 360, 3.0f,
+        RenderServices.shapes().circle(trackX + 98.0f * pct, trackY, 0, 360, 3.0f,
                 gui.withAlpha(gui.guiColors().accent, 235.0f * gui.guiAlpha));
         gui.drawFont(Math.round(ClickGUI.clickGuiAlpha.getValue().floatValue() * 100.0f) + "%",
                 x + w - 36.0f, y + 59.0f, gui.withAlpha(gui.guiColors().muted, 185.0f * gui.guiAlpha));
@@ -147,15 +147,15 @@ final class ClickGuiBottomBar {
         float px = x - lift;
         float py = y - lift;
         if (progress > 0.02f || hover > 0.02f) {
-            RenderUtil.drawSoftShadow(px - 2.0f, py - 2.0f, px + size + 2.0f, py + size + 2.0f, 5.0f,
+            RenderServices.shapes().shadow(px - 2.0f, py - 2.0f, px + size + 2.0f, py + size + 2.0f, 5.0f,
                     gui.withAlpha(gui.guiColors().accent, (20.0f + 72.0f * progress + 34.0f * hover) * gui.guiAlpha), 5, 3.0f);
         }
-        RenderUtil.drawRoundedBorderedRect(px, py, px + size, py + size, 4.0f, 1.0f,
+        RenderServices.shapes().roundedBorder(px, py, px + size, py + size, 4.0f, 1.0f,
                 gui.withAlpha(color, (210.0f + 35.0f * progress + 18.0f * hover) * gui.guiAlpha),
                 gui.withAlpha(selected ? gui.guiColors().accent : gui.guiColors().glassBorder,
                         (70.0f + 116.0f * progress + 46.0f * hover) * gui.guiAlpha));
         if (theme == HUD.Theme.LIGHT) {
-            RenderUtil.drawRoundedBorderedRect(px + 1.0f, py + 1.0f, px + size - 1.0f, py + size - 1.0f, 3.0f, 0.5f,
+            RenderServices.shapes().roundedBorder(px + 1.0f, py + 1.0f, px + size - 1.0f, py + size - 1.0f, 3.0f, 0.5f,
                     gui.withAlpha(0x00FFFFFF, 0.0f),
                     gui.withAlpha(0xFFB8C0CC, 80.0f * gui.guiAlpha));
         }
@@ -217,7 +217,7 @@ final class ClickGuiBottomBar {
     }
 
     private void drawDivider(float x, float y, float h) {
-        RenderUtil.drawLine(x, y + 1.0f, x, y + h - 1.0f, 0.7f,
+        RenderServices.shapes().line(x, y + 1.0f, x, y + h - 1.0f, 0.7f,
                 gui.withAlpha(gui.guiColors().glassBorder, 70.0f * gui.guiAlpha));
     }
 

@@ -4,10 +4,10 @@ import gq.vapulite.Vapu.ModuleType;
 import gq.vapulite.Vapu.modules.Module;
 import gq.vapulite.Vapu.utils.ColorUtils;
 import gq.vapulite.Vapu.utils.HudDrag;
-import gq.vapulite.Vapu.utils.RenderUtil;
 import gq.vapulite.Vapu.value.Numbers;
 import gq.vapulite.Vapu.value.Option;
 import gq.vapulite.font.FontLoaders;
+import gq.vapulite.render.ui.RenderServices;
 import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
@@ -171,11 +171,11 @@ public class KeyboardDisplay extends Module {
         }
 
         if (animation > 0.05f) {
-            RenderUtil.drawSoftShadow(x, y, x + width, y + height, round, ColorUtils.applyAlpha(accent, Math.round(90.0f * animation)), 5, 3.0f);
+            RenderServices.shapes().shadow(x, y, x + width, y + height, round, ColorUtils.applyAlpha(accent, Math.round(90.0f * animation)), 5, 3.0f);
         }
-        RenderUtil.drawRoundedBorderedRect(x, y, x + width, y + height, round, 1.0f, background, border);
+        RenderServices.shapes().roundedBorder(x, y, x + width, y + height, round, 1.0f, background, border);
         if (animation > 0.02f) {
-            RenderUtil.drawProgressBar(x + 2.0f, y + height - 3.0f, x + width - 2.0f, y + height - 1.5f,
+            RenderServices.shapes().progressBar(x + 2.0f, y + height - 3.0f, x + width - 2.0f, y + height - 1.5f,
                     1.0f, animation, 0x00000000, ColorUtils.applyAlpha(accent, 210));
         }
 
@@ -196,20 +196,20 @@ public class KeyboardDisplay extends Module {
         int baseAlpha = alpha.getValue().intValue();
         int fillAlpha = Math.min(220, baseAlpha + Math.round(animation * 42.0f));
         if (animation > 0.04f) {
-            RenderUtil.drawSoftShadow(x, y, x + width, y + height, 2.0f,
+            RenderServices.shapes().shadow(x, y, x + width, y + height, 2.0f,
                     ColorUtils.applyAlpha(accent, Math.round(44.0f * animation)), 4, 1.8f);
         }
-        RenderUtil.drawRect(x, y, x + width, y + height, ColorUtils.applyAlpha(0xFF050505, fillAlpha));
-        RenderUtil.drawHorizontalGradientRect(x + 1.0f, y + 1.0f, x + width - 1.0f, y + Math.max(3.0f, height * 0.35f),
+        RenderServices.shapes().rect(x, y, x + width, y + height, ColorUtils.applyAlpha(0xFF050505, fillAlpha));
+        RenderServices.shapes().horizontalGradient(x + 1.0f, y + 1.0f, x + width - 1.0f, y + Math.max(3.0f, height * 0.35f),
                 ColorUtils.applyAlpha(0xFFFFFFFF, 14 + Math.round(animation * 12.0f)),
                 ColorUtils.applyAlpha(0xFF000000, 0));
-        RenderUtil.drawBorderedRect(x, y, x + width, y + height, 0.7f,
+        RenderServices.shapes().borderedRect(x, y, x + width, y + height, 0.7f,
                 ColorUtils.applyAlpha(ColorUtils.interpolate(0xFF343434, accent, animation), 84 + Math.round(animation * 70.0f)));
-        RenderUtil.drawRect(x, y + height - 2.0f, x + width, y + height,
+        RenderServices.shapes().rect(x, y + height - 2.0f, x + width, y + height,
                 ColorUtils.applyAlpha(ColorUtils.interpolate(0xFF6F7680, accent, animation),
                         Math.min(235, 92 + Math.round(animation * 132.0f))));
         if (animation > 0.02f) {
-            RenderUtil.drawRect(x + 2.0f, y + height - 4.5f, x + 2.0f + (width - 4.0f) * animation,
+            RenderServices.shapes().rect(x + 2.0f, y + height - 4.5f, x + 2.0f + (width - 4.0f) * animation,
                     y + height - 3.3f, ColorUtils.applyAlpha(accent, 185));
         }
 

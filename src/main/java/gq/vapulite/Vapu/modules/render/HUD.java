@@ -8,7 +8,6 @@ import gq.vapulite.Vapu.VapeClickGui.ClickGuiIcons;
 import gq.vapulite.Vapu.modules.Module;
 import gq.vapulite.Vapu.utils.ColorUtils;
 import gq.vapulite.Vapu.utils.HudDrag;
-import gq.vapulite.Vapu.utils.RenderUtil;
 import gq.vapulite.Vapu.value.Mode;
 import gq.vapulite.Vapu.value.Numbers;
 import gq.vapulite.Vapu.value.Option;
@@ -16,6 +15,7 @@ import gq.vapulite.Vapu.value.Value;
 import gq.vapulite.font.CFontRenderer;
 import gq.vapulite.font.FontLoaders;
 import gq.vapulite.render.ShaderRenderer;
+import gq.vapulite.render.ui.RenderServices;
 import gq.vapulite.utils.GuiRenderUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiMainMenu;
@@ -224,11 +224,11 @@ public class HUD extends Module {
         try {
             if (Boolean.TRUE.equals(backgrounds.getValue())) {
                 drawGlass(x, y, x + boxW, y + boxH, round, getGlassAlpha(), 54);
-                RenderUtil.drawHorizontalGradientRect(x + 9.0f, y + 4.0f, x + boxW - 9.0f, y + 5.2f,
+                RenderServices.shapes().horizontalGradient(x + 9.0f, y + 4.0f, x + boxW - 9.0f, y + 5.2f,
                         withAlpha(palette().accent, 120), withAlpha(palette().accentAlt, 92));
                 drawThemedFrostedGlass(x + 10.0f, y + 9.0f, x + 10.0f + iconSize, y + 9.0f + iconSize,
                         7.0f, 0.8f, withAlpha(palette().glassSoft, getSoftAlpha() + 18), withAlpha(palette().accent, 84));
-                RenderUtil.drawSoftShadow(x + 10.0f, y + 9.0f, x + 10.0f + iconSize, y + 9.0f + iconSize,
+                RenderServices.shapes().shadow(x + 10.0f, y + 9.0f, x + 10.0f + iconSize, y + 9.0f + iconSize,
                         7.0f, withAlpha(palette().accent, 34), 4, 2.0f);
             }
 
@@ -264,14 +264,14 @@ public class HUD extends Module {
         try {
             if (Boolean.TRUE.equals(backgrounds.getValue())) {
                 drawVapeCard(x, y, x + boxW, y + boxH, 7.0f, 170);
-                RenderUtil.drawHorizontalGradientRect(x + 1.0f, y + 1.0f, x + boxW - 1.0f, y + 18.0f,
+                RenderServices.shapes().horizontalGradient(x + 1.0f, y + 1.0f, x + boxW - 1.0f, y + 18.0f,
                         withAlpha(0xFFFFFFFF, 16), withAlpha(0xFF000000, 0));
-                RenderUtil.drawRoundedRect(x + 10.0f, y + 7.0f, x + 10.0f + iconSize,
+                RenderServices.shapes().rounded(x + 10.0f, y + 7.0f, x + 10.0f + iconSize,
                         y + 7.0f + iconSize, 8.0f, withAlpha(palette().vapeSurfaceVariant, 235));
-                RenderUtil.drawRoundedBorderedRect(x + 10.0f, y + 7.0f, x + 10.0f + iconSize,
+                RenderServices.shapes().roundedBorder(x + 10.0f, y + 7.0f, x + 10.0f + iconSize,
                         y + 7.0f + iconSize, 8.0f, 0.8f, 0x00000000,
                         withAlpha(0xFFFFFFFF, 24));
-                RenderUtil.drawCircle(x + boxW - 16.0f, y + 18.0f, 0, 360, 4.0f,
+                RenderServices.shapes().circle(x + boxW - 16.0f, y + 18.0f, 0, 360, 4.0f,
                         withAlpha(palette().vapeSecondary, 245));
             }
             FontLoaders.C30.drawString("M", x + 18.0f, y + 14.0f, withAlpha(palette().vapePrimary, 245));
@@ -284,8 +284,8 @@ public class HUD extends Module {
     }
 
     private void drawVapeTextChip(String text, float x, float y, float width, int accent) {
-        RenderUtil.drawRoundedRect(x, y, x + width, y + 15.0f, 4.0f, withAlpha(palette().vapeSurfaceVariant, 185));
-        RenderUtil.drawRoundedRect(x, y + 13.0f, x + width, y + 15.0f, 1.0f, withAlpha(accent, 165));
+        RenderServices.shapes().rounded(x, y, x + width, y + 15.0f, 4.0f, withAlpha(palette().vapeSurfaceVariant, 185));
+        RenderServices.shapes().rounded(x, y + 13.0f, x + width, y + 15.0f, 1.0f, withAlpha(accent, 165));
         FontLoaders.C12.drawString(text, x + (width - FontLoaders.C12.getStringWidth(text)) / 2.0f,
                 y + 4.0f, withAlpha(palette().vapeOnSurface, 232));
     }
@@ -307,7 +307,7 @@ public class HUD extends Module {
         try {
             if (Boolean.TRUE.equals(backgrounds.getValue())) {
                 drawVapeCard(x, y, x + width, y + height, 6.0f, 158);
-                RenderUtil.drawRoundedRect(x, y, x + 2.0f, y + height, 1.0f,
+                RenderServices.shapes().rounded(x, y, x + 2.0f, y + height, 1.0f,
                         withAlpha(palette().vapeTertiary, 188));
             }
             FontLoaders.C16.drawString("Effects", x + 11.0f, y + 8.0f, withAlpha(palette().vapeOnSurface, 242));
@@ -330,15 +330,15 @@ public class HUD extends Module {
                     String name = trim(I18n.format(potion.getName()) + amplifierSuffix(effect.getAmplifier()),
                             FontLoaders.C12, width - FontLoaders.C12.getStringWidth(duration) - 44.0f);
                     if (Boolean.TRUE.equals(backgrounds.getValue())) {
-                        RenderUtil.drawRoundedRect(x + 8.0f, rowY + 1.0f, x + width - 8.0f,
+                        RenderServices.shapes().rounded(x + 8.0f, rowY + 1.0f, x + width - 8.0f,
                                 rowY + rowH - 2.0f, 4.0f, withAlpha(palette().vapeSurfaceVariant, 112));
                     }
-                    RenderUtil.drawCircle(x + 17.0f, rowY + 8.0f, 0, 360, 3.4f, accent);
+                    RenderServices.shapes().circle(x + 17.0f, rowY + 8.0f, 0, 360, 3.4f, accent);
                     FontLoaders.C12.drawString(name, x + 26.0f, rowY + 4.0f, withAlpha(palette().vapeOnSurface, 230));
                     FontLoaders.C12.drawString(duration, x + width - FontLoaders.C12.getStringWidth(duration) - 12.0f,
                             rowY + 4.0f, withAlpha(palette().vapeOnVariant, 215));
                     float progress = Math.max(0.08f, Math.min(1.0f, effect.getDuration() / 1200.0f));
-                    RenderUtil.drawProgressBar(x + 26.0f, rowY + 14.0f, x + width - 12.0f, rowY + 15.6f,
+                    RenderServices.shapes().progressBar(x + 26.0f, rowY + 14.0f, x + width - 12.0f, rowY + 15.6f,
                             0.8f, progress, withAlpha(0xFFFFFFFF, 18), withAlpha(accent, 185));
                 }
             }
@@ -369,7 +369,7 @@ public class HUD extends Module {
         beginScaled(x, y, uiScale);
         try {
             drawGlass(x, y, x + width, y + height, getRadius(), getGlassAlpha(), 48);
-            RenderUtil.drawHorizontalGradientRect(x + 9.0f, y + 4.0f, x + width - 9.0f, y + 5.1f,
+            RenderServices.shapes().horizontalGradient(x + 9.0f, y + 4.0f, x + width - 9.0f, y + 5.1f,
                     withAlpha(palette().accentAlt, 105), withAlpha(palette().accent, 105));
             FontLoaders.C16.drawString("Inventory", x + 10.0f, y + 10.0f, withAlpha(palette().text, 236));
 
@@ -385,9 +385,9 @@ public class HUD extends Module {
                     int index = 9 + row * 9 + col;
                     float slotX = startX + col * stride;
                     float slotY = startY + row * stride;
-                    RenderUtil.drawRoundedRect(slotX - 1.0f, slotY - 1.0f, slotX + slot + 1.0f, slotY + slot + 1.0f,
+                    RenderServices.shapes().rounded(slotX - 1.0f, slotY - 1.0f, slotX + slot + 1.0f, slotY + slot + 1.0f,
                             4.0f, withAlpha(palette().glassSoft, getSoftAlpha()));
-                    RenderUtil.drawRoundedBorderedRect(slotX - 1.0f, slotY - 1.0f, slotX + slot + 1.0f,
+                    RenderServices.shapes().roundedBorder(slotX - 1.0f, slotY - 1.0f, slotX + slot + 1.0f,
                             slotY + slot + 1.0f, 4.0f, 0.7f, 0x00000000,
                             withAlpha(palette().border, 36));
                     drawItemStack(mc.thePlayer.inventory.mainInventory[index], slotX, slotY);
@@ -417,7 +417,7 @@ public class HUD extends Module {
             int filled = countInventoryItems();
             if (Boolean.TRUE.equals(backgrounds.getValue())) {
                 drawVapeCard(x, y, x + width, y + height, 6.0f, 158);
-                RenderUtil.drawRoundedRect(x, y, x + 2.0f, y + height, 1.0f,
+                RenderServices.shapes().rounded(x, y, x + 2.0f, y + height, 1.0f,
                         withAlpha(palette().vapeSecondary, 190));
             }
             FontLoaders.C16.drawString("Inventory", x + 11.0f, y + 8.0f, withAlpha(palette().vapeOnSurface, 242));
@@ -436,14 +436,14 @@ public class HUD extends Module {
                         int fill = ((row + col) & 1) == 0
                                 ? withAlpha(palette().vapeSurfaceVariant, 154)
                                 : withAlpha(0xFF151922, 144);
-                        RenderUtil.drawRoundedBorderedRect(slotX - 1.0f, slotY - 1.0f, slotX + slot + 1.0f,
+                        RenderServices.shapes().roundedBorder(slotX - 1.0f, slotY - 1.0f, slotX + slot + 1.0f,
                                 slotY + slot + 1.0f, 4.0f, 0.6f, fill, withAlpha(0xFFFFFFFF, 24));
                     }
                     drawItemStack(mc.thePlayer.inventory.mainInventory[index], slotX, slotY);
                 }
             }
             float progress = Math.min(1.0f, filled / 27.0f);
-            RenderUtil.drawProgressBar(x + 13.0f, y + height - 7.0f, x + width - 13.0f, y + height - 4.8f,
+            RenderServices.shapes().progressBar(x + 13.0f, y + height - 7.0f, x + width - 13.0f, y + height - 4.8f,
                     1.1f, progress, withAlpha(0xFFFFFFFF, 20), withAlpha(palette().vapePrimary, 218));
         } finally {
             endScaled();
@@ -521,11 +521,11 @@ public class HUD extends Module {
 
 
                 if (Boolean.TRUE.equals(backgrounds.getValue())) {
-                    RenderUtil.drawSoftShadow(x, y, right, y + rowH, round,
+                    RenderServices.shapes().shadow(x, y, right, y + rowH, round,
                             withAlpha(palette().shadowColor, Math.round(34.0f * progress)), 4, 2.4f);
                     drawThemedFrostedGlass(x, y, right, y + rowH, round, 0.8f,
                             withAlpha(palette().glass, rowAlpha), withAlpha(palette().border, Math.round(42.0f * progress)));
-                    RenderUtil.drawVerticalGradientRect(right - 3.0f, y + 3.0f, right - 1.4f, y + rowH - 3.0f,
+                    RenderServices.shapes().verticalGradient(right - 3.0f, y + 3.0f, right - 1.4f, y + rowH - 3.0f,
                             withAlpha(accent, Math.round(205.0f * progress)),
                             withAlpha(ColorUtils.lighten(accent, 0.16f), Math.round(165.0f * progress)));
                     drawCenteredIcon(icon, FontLoaders.I16, x + iconSlotW / 2.0f + 2.0f, y + rowH / 2.0f,
@@ -593,7 +593,7 @@ public class HUD extends Module {
             if (Boolean.TRUE.equals(backgrounds.getValue())) {
                 drawVapeCard(x, y, x + listW, y + listH, 6.0f, 150);
                 float lineX = rightSide ? x + listW - lineW : x;
-                RenderUtil.drawVerticalGradientRect(lineX, y + 5.0f, lineX + lineW, y + listH - 5.0f,
+                RenderServices.shapes().verticalGradient(lineX, y + 5.0f, lineX + lineW, y + listH - 5.0f,
                         withAlpha(palette().vapePrimary, 230), withAlpha(palette().vapeTertiary, 190));
             }
             if (modules.isEmpty()) {
@@ -617,14 +617,14 @@ public class HUD extends Module {
                     float rowBottom = drawY + rowH;
                     int rowAlpha = Math.round((index == 0 ? 44.0f : 26.0f) * progress);
                     if (Boolean.TRUE.equals(backgrounds.getValue())) {
-                        RenderUtil.drawRect(x + 4.0f, rowTop, x + listW - 4.0f, rowBottom,
+                        RenderServices.shapes().rect(x + 4.0f, rowTop, x + listW - 4.0f, rowBottom,
                                 withAlpha(palette().vapeSurfaceVariant, rowAlpha));
                         if (index > 0) {
-                            RenderUtil.drawRect(x + 8.0f, rowTop, x + listW - 8.0f, rowTop + 0.6f,
+                            RenderServices.shapes().rect(x + 8.0f, rowTop, x + listW - 8.0f, rowTop + 0.6f,
                                     withAlpha(palette().vapeOnVariant, Math.round(18.0f * progress)));
                         }
                         float pulseLineX = rightSide ? x + listW - lineW : x;
-                        RenderUtil.drawRect(pulseLineX, rowTop + 4.0f, pulseLineX + lineW, rowBottom - 4.0f,
+                        RenderServices.shapes().rect(pulseLineX, rowTop + 4.0f, pulseLineX + lineW, rowBottom - 4.0f,
                                 withAlpha(getCategoryAccent(module), Math.round((150.0f + index * 4.0f) * progress)));
                     }
                     String sideText = getModuleSideText(label);
@@ -684,7 +684,7 @@ public class HUD extends Module {
         beginScaled(x, y, uiScale);
         try {
             drawGlass(x, y, x + width, y + height, getRadius(), getGlassAlpha(), 48);
-            RenderUtil.drawHorizontalGradientRect(x + 9.0f, y + 4.0f, x + width - 9.0f, y + 5.1f,
+            RenderServices.shapes().horizontalGradient(x + 9.0f, y + 4.0f, x + width - 9.0f, y + 5.1f,
                     withAlpha(palette().accent, 120), withAlpha(palette().accentAlt, 86));
             FontLoaders.C16.drawString("Effects", x + 12.0f, y + 10.0f, withAlpha(palette().text, 236));
             drawStatusChip(String.valueOf(effects.size()), x + width - 38.0f, y + 8.0f, 28.0f, palette().accent);
@@ -706,7 +706,7 @@ public class HUD extends Module {
 
                     drawThemedFrostedGlass(x + 8.0f, rowY, x + 25.0f, rowY + 17.0f, 5.0f, 0.7f,
                             withAlpha(palette().glassSoft, getSoftAlpha()), withAlpha(accent, 68));
-                    RenderUtil.drawCircle(x + 16.5f, rowY + 8.5f, 0, 360, 3.2f, withAlpha(accent, 210));
+                    RenderServices.shapes().circle(x + 16.5f, rowY + 8.5f, 0, 360, 3.2f, withAlpha(accent, 210));
                     FontLoaders.C14.drawString(name, x + 31.0f, rowY + 2.0f, withAlpha(palette().text, 226));
                     FontLoaders.C12.drawString(duration, x + 31.0f, rowY + 12.0f, withAlpha(palette().muted, 210));
                 }
@@ -758,37 +758,25 @@ public class HUD extends Module {
         if (Boolean.TRUE.equals(backgrounds.getValue())) {
             drawThemedFrostedGlass(x, y, x + w, y + 14.0f, 5.0f, 0.6f,
                     withAlpha(palette().glassSoft, getSoftAlpha()), withAlpha(accent, 48));
-            RenderUtil.drawCircle(x + 7.5f, y + 7.0f, 0, 360, 2.0f, withAlpha(accent, 185));
+            RenderServices.shapes().circle(x + 7.5f, y + 7.0f, 0, 360, 2.0f, withAlpha(accent, 185));
         }
         FontLoaders.C14.drawString(trim(text, FontLoaders.C14, w - 16.0f), x + 14.0f, y + 4.0f,
                 withAlpha(palette().text, 218));
     }
 
     private void drawGlass(float x, float y, float x2, float y2, float round, int fillAlpha, int borderAlpha) {
-        RenderUtil.drawSoftShadow(x, y, x2, y2, round, withAlpha(palette().shadowColor, 44), 6, 3.2f);
-        drawThemedFrostedGlass(x, y, x2, y2, round, 1.0f,
+        HudRenderSupport.drawGlass(x, y, x2, y2, round, withAlpha(palette().shadowColor, 44),
                 withAlpha(palette().glass, fillAlpha), withAlpha(palette().border, borderAlpha));
     }
 
     public static void drawThemedFrostedGlass(float x, float y, float x2, float y2, float radius, float strength,
                                                 int fillColor, int borderColor) {
-        if (isLightTheme()) {
-            RenderUtil.drawRoundedBorderedRect(x, y, x2, y2, radius, 0.8f, fillColor, borderColor);
-        } else if (isGrayTheme()) {
-            if (!ShaderRenderer.drawFrostedGlass(x, y, x2, y2, radius, strength, fillColor, borderColor)) {
-                RenderUtil.drawRoundedBorderedRect(x, y, x2, y2, radius, 0.8f, fillColor, borderColor);
-            }
-        } else {
-            RenderUtil.drawFrostedGlassRect(x, y, x2, y2, radius, strength, fillColor, borderColor);
-        }
+        HudRenderSupport.drawThemedFrostedGlass(x, y, x2, y2, radius, strength, fillColor, borderColor);
     }
 
     private void drawVapeCard(float x, float y, float x2, float y2, float radius, int alpha) {
-        RenderUtil.drawSoftShadow(x, y, x2, y2, radius, withAlpha(palette().shadowColor, 58), 6, 2.4f);
-        RenderUtil.drawRoundedBorderedRect(x, y, x2, y2, radius, 0.8f,
+        HudRenderSupport.drawVapeCard(x, y, x2, y2, radius, withAlpha(palette().shadowColor, 58),
                 withAlpha(palette().vapeSurface, alpha), withAlpha(0xFFFFFFFF, 24));
-        RenderUtil.drawHorizontalGradientRect(x + 1.0f, y + 1.0f, x2 - 1.0f,
-                Math.min(y2 - 1.0f, y + 18.0f), withAlpha(0xFFFFFFFF, 14), withAlpha(0xFF000000, 0));
     }
 
     private void drawGlowIfEnabled(float x, float y, float x2, float y2, float radius, int glowColor) {

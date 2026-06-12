@@ -1,7 +1,5 @@
 package gq.vapulite.Vapu;
 
-import gq.vapulite.Vapu.gui.components.SubWindow;
-
 public enum ModuleType{
     Combat("Combat","战斗类"),
     Render("Render", "视觉类"),
@@ -13,12 +11,10 @@ public enum ModuleType{
 
     private final String name;
     private final String ChineseName;
-    private final SubWindow window;
 
     ModuleType(String name, String chineseName) {
         this.name = name;
         this.ChineseName = chineseName;
-        this.window = new SubWindow(name);
     }
 
     @Override
@@ -32,9 +28,5 @@ public enum ModuleType{
         } else {
             return name;
         }
-    }
-    
-    public SubWindow getWindow() {
-    	return window;
     }
 }

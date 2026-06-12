@@ -1,6 +1,5 @@
 package gq.vapulite.Vapu.modules.render;
 
-import gq.vapulite.Vapu.ClickUi.ClickUi;
 import gq.vapulite.Vapu.VapeClickGui.VapeClickGui;
 import org.lwjgl.input.Keyboard;
 

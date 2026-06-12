@@ -114,7 +114,6 @@ public class Client {
                 break;
             }
 //            if(Keyboard.isKeyDown(m.key) && Keyboard.isKeyDown(Keyboard.KEY_LCONTROL)) {
-//                mc.displayGuiScreen(new BindScreen(m));
 //            }
         }
     }

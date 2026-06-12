@@ -12,6 +12,7 @@ import gq.vapulite.Vapu.value.Option;
 import gq.vapulite.font.CFontRenderer;
 import gq.vapulite.font.FontLoaders;
 import gq.vapulite.render.ShaderRenderer;
+import gq.vapulite.render.ui.RenderServices;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.gui.inventory.GuiInventory;
 import net.minecraft.client.renderer.GlStateManager;
@@ -240,15 +241,15 @@ public class TargetHUD extends Module {
         int borderAlpha = Math.round((42.0f + pulse * 34.0f + hurt * 42.0f) * alpha);
         int accent = hurt > 0.04f ? ColorUtils.interpolate(ACCENT, HEALTH_LOW, hurt) : ACCENT;
 
-        RenderUtil.drawSoftShadow(x, y, x + scaledW, y + scaledH, 5.0f * uiScale,
+        RenderServices.shapes().shadow(x, y, x + scaledW, y + scaledH, 5.0f * uiScale,
                 withAlpha(0xFF000000, Math.round((86.0f + hurt * 38.0f) * alpha)), 8, 3.2f * uiScale);
         if (hurt > 0.03f) {
-            RenderUtil.drawSoftShadow(x - uiScale, y - uiScale, x + scaledW + uiScale, y + scaledH + uiScale,
+            RenderServices.shapes().shadow(x - uiScale, y - uiScale, x + scaledW + uiScale, y + scaledH + uiScale,
                     8.0f * uiScale, withAlpha(HEALTH_LOW, Math.round(70.0f * hurt * alpha)), 5, 3.0f * uiScale);
         }
         RenderUtil.drawFrostedGlassRect(x, y, x + scaledW, y + scaledH, 5.0f * uiScale, 0.75f * uiScale,
                 withAlpha(0xFF050608, fillAlpha), withAlpha(0xFF1D2027, borderAlpha));
-        RenderUtil.drawHorizontalGradientRect(x + uiScale, y + uiScale, x + scaledW - uiScale,
+        RenderServices.shapes().horizontalGradient(x + uiScale, y + uiScale, x + scaledW - uiScale,
                 y + 16.0f * uiScale, withAlpha(0xFFFFFFFF, Math.round(18.0f * alpha)),
                 withAlpha(0xFF11151C, Math.round(8.0f * alpha)));
 
@@ -290,21 +291,21 @@ public class TargetHUD extends Module {
             heartColor = ColorUtils.interpolate(heartColor, 0xFFFFA1AA, hurt);
         }
 
-        RenderUtil.drawSoftShadow(x, y, x + scaledW, y + scaledH, 7.0f * uiScale,
+        RenderServices.shapes().shadow(x, y, x + scaledW, y + scaledH, 7.0f * uiScale,
                 withAlpha(0xFF000000, Math.round(72.0f * alpha)), 7, 2.6f * uiScale);
-        RenderUtil.drawRoundedBorderedRect(x, y, x + scaledW, y + scaledH, 7.0f * uiScale, 0.8f * uiScale,
+        RenderServices.shapes().roundedBorder(x, y, x + scaledW, y + scaledH, 7.0f * uiScale, 0.8f * uiScale,
                 withAlpha(VAPE_SURFACE, Math.round(168.0f * alpha)),
                 withAlpha(0xFFFFFFFF, Math.round(28.0f * alpha)));
-        RenderUtil.drawHorizontalGradientRect(x + uiScale, y + uiScale, x + scaledW - uiScale,
+        RenderServices.shapes().horizontalGradient(x + uiScale, y + uiScale, x + scaledW - uiScale,
                 y + 20.0f * uiScale, withAlpha(0xFFFFFFFF, Math.round(16.0f * alpha)),
                 withAlpha(0xFF000000, 0));
 
         if (avatarEnabled) {
-            RenderUtil.drawRoundedBorderedRect(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize,
+            RenderServices.shapes().roundedBorder(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize,
                     8.0f * uiScale, 0.8f * uiScale,
                     withAlpha(VAPE_SURFACE_VARIANT, Math.round(218.0f * alpha)),
                     withAlpha(accent, Math.round(70.0f * alpha)));
-            RenderUtil.drawCircle(avatarX + avatarSize / 2.0f, avatarY + avatarSize / 2.0f, 0, 360,
+            RenderServices.shapes().circle(avatarX + avatarSize / 2.0f, avatarY + avatarSize / 2.0f, 0, 360,
                     avatarSize / 2.0f - 4.0f * uiScale, withAlpha(accent, Math.round(30.0f * alpha)));
             if (target != null) {
                 drawEntityPreview(target, avatarX + avatarSize / 2.0f, avatarY + avatarSize - 3.0f * uiScale,
@@ -351,22 +352,22 @@ public class TargetHUD extends Module {
         float barX = textX;
         float barY = y + scaledH - 16.0f * uiScale;
         float barW = right - textX;
-        RenderUtil.drawProgressBar(barX, barY, barX + barW, barY + 5.0f * uiScale, 2.4f * uiScale,
+        RenderServices.shapes().progressBar(barX, barY, barX + barW, barY + 5.0f * uiScale, 2.4f * uiScale,
                 1.0f, withAlpha(0xFFFFFFFF, Math.round(18.0f * alpha)),
                 withAlpha(0xFFFFFFFF, Math.round(18.0f * alpha)));
         float delayed = clamp01(Math.max(healthAnimation, damageAnimation));
         if (delayed > healthAnimation + 0.002f) {
-            RenderUtil.drawProgressBar(barX, barY, barX + barW * delayed, barY + 5.0f * uiScale,
+            RenderServices.shapes().progressBar(barX, barY, barX + barW * delayed, barY + 5.0f * uiScale,
                     2.4f * uiScale, 1.0f, 0x00000000, withAlpha(0xFFFF5A36, Math.round(90.0f * alpha)));
         }
-        RenderUtil.drawHorizontalGradientRect(barX, barY, barX + barW * clamp01(healthAnimation), barY + 5.0f * uiScale,
+        RenderServices.shapes().horizontalGradient(barX, barY, barX + barW * clamp01(healthAnimation), barY + 5.0f * uiScale,
                 withAlpha(VAPE_PRIMARY, Math.round(235.0f * alpha)),
                 withAlpha(accent, Math.round(230.0f * alpha)));
         if (target != null && absorptionAnimation > 0.001f) {
             float healthW = barW * clamp01(healthAnimation);
             float absorbW = Math.min(barW - healthW, barW * clamp01(absorptionAnimation));
             if (absorbW > 0.5f) {
-                RenderUtil.drawRect(barX + healthW, barY, barX + healthW + absorbW,
+                RenderServices.shapes().rect(barX + healthW, barY, barX + healthW + absorbW,
                         barY + 5.0f * uiScale, withAlpha(ABSORB, Math.round(205.0f * alpha)));
             }
         }
@@ -404,7 +405,7 @@ public class TargetHUD extends Module {
 
     private void drawBadge(String text, float centerX, float centerY, float radius, int accent,
                            float progress, float uiScale, float alpha) {
-        RenderUtil.drawCircleBadge(centerX, centerY, radius, 1.35f * uiScale, progress,
+        RenderServices.shapes().circleBadge(centerX, centerY, radius, 1.35f * uiScale, progress,
                 withAlpha(0xFF07080B, Math.round(188.0f * alpha)),
                 withAlpha(0xFF29313A, Math.round(112.0f * alpha)),
                 withAlpha(accent, Math.round(232.0f * alpha)));
@@ -441,33 +442,33 @@ public class TargetHUD extends Module {
         float health = clamp01(healthAnimation);
         float delayed = clamp01(Math.max(health, damageAnimation));
         float absorb = clamp01(absorptionAnimation);
-        RenderUtil.drawRoundedRect(x, y, x + width, y + height, 1.6f,
+        RenderServices.shapes().rounded(x, y, x + width, y + height, 1.6f,
                 withAlpha(0xFF1B0E12, Math.round(198.0f * alpha)));
         if (delayed > health + 0.002f) {
             float delayedW = width * delayed;
-            RenderUtil.drawRoundedRect(x, y, x + delayedW, y + height, Math.min(1.6f, delayedW / 2.0f),
+            RenderServices.shapes().rounded(x, y, x + delayedW, y + height, Math.min(1.6f, delayedW / 2.0f),
                     withAlpha(0xFFFF5A36, Math.round(112.0f * alpha)));
         }
         float fillW = width * health;
         if (fillW > 0.5f) {
-            RenderUtil.drawHorizontalGradientRect(x, y, x + fillW, y + height,
+            RenderServices.shapes().horizontalGradient(x, y, x + fillW, y + height,
                     withAlpha(BAR_RED, Math.round(245.0f * alpha)),
                     withAlpha(BAR_YELLOW, Math.round(245.0f * alpha)));
         }
         if (target != null && absorb > 0.001f && fillW < width - 0.5f) {
             float absorbW = Math.min(width - fillW, width * absorb);
-            RenderUtil.drawRoundedRect(x + fillW, y, x + fillW + absorbW, y + height,
+            RenderServices.shapes().rounded(x + fillW, y, x + fillW + absorbW, y + height,
                     Math.min(1.6f, absorbW / 2.0f), withAlpha(ABSORB, Math.round(210.0f * alpha)));
         }
     }
 
     private void drawAvatar(EntityLivingBase target, float x, float y, float size, float uiScale,
                             float alpha, int accent) {
-        RenderUtil.drawSoftShadow(x, y, x + size, y + size, 5.0f * uiScale,
+        RenderServices.shapes().shadow(x, y, x + size, y + size, 5.0f * uiScale,
                 withAlpha(0xFF000000, Math.round(62.0f * alpha)), 5, 2.2f * uiScale);
         RenderUtil.drawFrostedGlassRect(x, y, x + size, y + size, 4.0f * uiScale, 0.9f * uiScale,
                 withAlpha(GLASS_SOFT, Math.round(146.0f * alpha)), withAlpha(accent, Math.round(72.0f * alpha)));
-        RenderUtil.drawHorizontalGradientRect(x + 2.0f * uiScale, y + size - 3.0f * uiScale,
+        RenderServices.shapes().horizontalGradient(x + 2.0f * uiScale, y + size - 3.0f * uiScale,
                 x + size - 2.0f * uiScale, y + size - 2.0f * uiScale,
                 withAlpha(accent, Math.round(160.0f * alpha)),
                 withAlpha(ACCENT_ALT, Math.round(100.0f * alpha)));
@@ -479,9 +480,9 @@ public class TargetHUD extends Module {
 
         float centerX = x + size / 2.0f;
         float centerY = y + size / 2.0f;
-        RenderUtil.drawCircle(centerX, centerY, 0, 360, size / 2.0f - 3.0f,
+        RenderServices.shapes().circle(centerX, centerY, 0, 360, size / 2.0f - 3.0f,
                 withAlpha(accent, Math.round(42.0f * alpha)));
-        RenderUtil.drawCircle(centerX, centerY, 0, 360, size / 2.0f - 8.0f,
+        RenderServices.shapes().circle(centerX, centerY, 0, 360, size / 2.0f - 8.0f,
                 withAlpha(0xFF06090D, Math.round(104.0f * alpha)));
         String icon = targetIcon(target);
         CFontRenderer iconFont = scaledIconFont(26, uiScale);

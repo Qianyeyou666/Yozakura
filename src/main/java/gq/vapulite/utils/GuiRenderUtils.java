@@ -2,6 +2,7 @@ package gq.vapulite.utils;
 
 import gq.vapulite.Vapu.utils.ColorUtils;
 import gq.vapulite.Vapu.utils.RenderUtil;
+import gq.vapulite.render.ui.RenderServices;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.ScaledResolution;
@@ -270,14 +271,13 @@ public class GuiRenderUtils {
     }
 
     public static void enableRender2D() {
-        RenderState.begin2D();
-        GL11.glDisable(2884);
+        RenderServices.context().start2D();
         GL11.glLineWidth(1.0F);
     }
 
     public static void disableRender2D() {
         GlStateManager.shadeModel(GL11.GL_FLAT);
-        RenderState.end2D();
+        RenderServices.context().stop2D();
     }
 
     public static void setColor(int colorHex) {
@@ -312,136 +312,13 @@ public class GuiRenderUtils {
     }
 
     public static void drawRect(float x, float y, float width, float height, int color) {
-        enableRender2D();
-        setColor(color);
-        GL11.glBegin(7);
-        GL11.glVertex2d((double) x, (double) y);
-        GL11.glVertex2d((double) (x + width), (double) y);
-        GL11.glVertex2d((double) (x + width), (double) (y + height));
-        GL11.glVertex2d((double) x, (double) (y + height));
-        GL11.glEnd();
-        disableRender2D();
+        RenderServices.shapes().rectWH(x, y, width, height, color);
     }
 
     public static void drawRoundedRect(float x, float y, float width, float height, float edgeRadius, int color, float borderWidth, int borderColor) {
         if (color == 16777215) color = 0xFFF;
         if (borderColor == 16777215) borderColor = 0xFFF;
-
-        if (edgeRadius < 0.0F) {
-            edgeRadius = 0.0F;
-        }
-
-        if (edgeRadius > width / 2.0F) {
-            edgeRadius = width / 2.0F;
-        }
-
-        if (edgeRadius > height / 2.0F) {
-            edgeRadius = height / 2.0F;
-        }
-
-        drawRect(x + edgeRadius, y + edgeRadius, width - edgeRadius * 2.0F, height - edgeRadius * 2.0F, color);
-        drawRect(x + edgeRadius, y, width - edgeRadius * 2.0F, edgeRadius, color);
-        drawRect(x + edgeRadius, y + height - edgeRadius, width - edgeRadius * 2.0F, edgeRadius, color);
-        drawRect(x, y + edgeRadius, edgeRadius, height - edgeRadius * 2.0F, color);
-        drawRect(x + width - edgeRadius, y + edgeRadius, edgeRadius, height - edgeRadius * 2.0F, color);
-        enableRender2D();
-        RenderUtil.color(color);
-        GL11.glBegin(6);
-        float centerX = x + edgeRadius;
-        float centerY = y + edgeRadius;
-        GL11.glVertex2d((double) centerX, (double) centerY);
-        int vertices = (int) Math.min(Math.max(edgeRadius, 10.0F), 90.0F);
-
-        int i;
-        double angleRadians;
-        for (i = 0; i < vertices + 1; ++i) {
-            angleRadians = 6.283185307179586D * (double) (i + 180) / (double) (vertices * 4);
-            GL11.glVertex2d((double) centerX + Math.sin(angleRadians) * (double) edgeRadius, (double) centerY + Math.cos(angleRadians) * (double) edgeRadius);
-        }
-
-        GL11.glEnd();
-        GL11.glBegin(6);
-        centerX = x + width - edgeRadius;
-        centerY = y + edgeRadius;
-        GL11.glVertex2d((double) centerX, (double) centerY);
-        vertices = (int) Math.min(Math.max(edgeRadius, 10.0F), 90.0F);
-
-        for (i = 0; i < vertices + 1; ++i) {
-            angleRadians = 6.283185307179586D * (double) (i + 90) / (double) (vertices * 4);
-            GL11.glVertex2d((double) centerX + Math.sin(angleRadians) * (double) edgeRadius, (double) centerY + Math.cos(angleRadians) * (double) edgeRadius);
-        }
-
-        GL11.glEnd();
-        GL11.glBegin(6);
-        centerX = x + edgeRadius;
-        centerY = y + height - edgeRadius;
-        GL11.glVertex2d((double) centerX, (double) centerY);
-        vertices = (int) Math.min(Math.max(edgeRadius, 10.0F), 90.0F);
-
-        for (i = 0; i < vertices + 1; ++i) {
-            angleRadians = 6.283185307179586D * (double) (i + 270) / (double) (vertices * 4);
-            GL11.glVertex2d((double) centerX + Math.sin(angleRadians) * (double) edgeRadius, (double) centerY + Math.cos(angleRadians) * (double) edgeRadius);
-        }
-
-        GL11.glEnd();
-        GL11.glBegin(6);
-        centerX = x + width - edgeRadius;
-        centerY = y + height - edgeRadius;
-        GL11.glVertex2d((double) centerX, (double) centerY);
-        vertices = (int) Math.min(Math.max(edgeRadius, 10.0F), 90.0F);
-
-        for (i = 0; i < vertices + 1; ++i) {
-            angleRadians = 6.283185307179586D * (double) i / (double) (vertices * 4);
-            GL11.glVertex2d((double) centerX + Math.sin(angleRadians) * (double) edgeRadius, (double) centerY + Math.cos(angleRadians) * (double) edgeRadius);
-        }
-
-        GL11.glEnd();
-        RenderUtil.color(borderColor);
-        GL11.glLineWidth(borderWidth);
-        GL11.glBegin(3);
-        centerX = x + edgeRadius;
-        centerY = y + edgeRadius;
-        vertices = (int) Math.min(Math.max(edgeRadius, 10.0F), 90.0F);
-
-        for (i = vertices; i >= 0; --i) {
-            angleRadians = 6.283185307179586D * (double) (i + 180) / (double) (vertices * 4);
-            GL11.glVertex2d((double) centerX + Math.sin(angleRadians) * (double) edgeRadius, (double) centerY + Math.cos(angleRadians) * (double) edgeRadius);
-        }
-
-        GL11.glVertex2d((double) (x + edgeRadius), (double) y);
-        GL11.glVertex2d((double) (x + width - edgeRadius), (double) y);
-        centerX = x + width - edgeRadius;
-        centerY = y + edgeRadius;
-
-        for (i = vertices; i >= 0; --i) {
-            angleRadians = 6.283185307179586D * (double) (i + 90) / (double) (vertices * 4);
-            GL11.glVertex2d((double) centerX + Math.sin(angleRadians) * (double) edgeRadius, (double) centerY + Math.cos(angleRadians) * (double) edgeRadius);
-        }
-
-        GL11.glVertex2d((double) (x + width), (double) (y + edgeRadius));
-        GL11.glVertex2d((double) (x + width), (double) (y + height - edgeRadius));
-        centerX = x + width - edgeRadius;
-        centerY = y + height - edgeRadius;
-
-        for (i = vertices; i >= 0; --i) {
-            angleRadians = 6.283185307179586D * (double) i / (double) (vertices * 4);
-            GL11.glVertex2d((double) centerX + Math.sin(angleRadians) * (double) edgeRadius, (double) centerY + Math.cos(angleRadians) * (double) edgeRadius);
-        }
-
-        GL11.glVertex2d((double) (x + width - edgeRadius), (double) (y + height));
-        GL11.glVertex2d((double) (x + edgeRadius), (double) (y + height));
-        centerX = x + edgeRadius;
-        centerY = y + height - edgeRadius;
-
-        for (i = vertices; i >= 0; --i) {
-            angleRadians = 6.283185307179586D * (double) (i + 270) / (double) (vertices * 4);
-            GL11.glVertex2d((double) centerX + Math.sin(angleRadians) * (double) edgeRadius, (double) centerY + Math.cos(angleRadians) * (double) edgeRadius);
-        }
-
-        GL11.glVertex2d((double) x, (double) (y + height - edgeRadius));
-        GL11.glVertex2d((double) x, (double) (y + edgeRadius));
-        GL11.glEnd();
-        disableRender2D();
+        RenderServices.shapes().roundedBorderWH(x, y, width, height, edgeRadius, borderWidth, color, borderColor);
     }
 
     public static int getDisplayWidth() {
@@ -521,18 +398,9 @@ public class GuiRenderUtils {
         float clampedIntensity = Math.min(1.0f, Math.max(0.1f, intensity));
         int layers = 8;
         float spread = 7.0f * clampedIntensity;
-
-        for (int i = layers; i >= 1; i--) {
-            float progress = i / (float) layers;
-            float offset = spread * (1.0f - progress);
-            int alpha = Math.round(baseAlpha * progress * progress * 0.6f);
-            if (alpha <= 1) continue;
-            gq.vapulite.Vapu.utils.RenderUtil.drawRoundedRect(
-                    x - offset, y - offset,
-                    x2 + offset, y2 + offset,
-                    radius + offset,
-                    (glowColor & 0x00FFFFFF) | (alpha << 24));
-        }
+        RenderServices.shapes().shadow(x, y, x2, y2, radius,
+                (glowColor & 0x00FFFFFF) | (Math.round(baseAlpha * 0.6f) << 24),
+                layers, spread);
     }
 
     public static int darker(int hexColor, int factor) {

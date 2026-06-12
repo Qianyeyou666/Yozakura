@@ -2,12 +2,12 @@ package gq.vapulite.Vapu.VapeClickGui;
 
 import gq.vapulite.Manager.ModuleManager;
 import gq.vapulite.Vapu.modules.Module;
-import gq.vapulite.Vapu.utils.RenderUtil;
 import gq.vapulite.Vapu.value.Mode;
 import gq.vapulite.Vapu.value.Numbers;
 import gq.vapulite.Vapu.value.Option;
 import gq.vapulite.Vapu.value.Value;
 import gq.vapulite.font.FontLoaders;
+import gq.vapulite.render.ui.RenderServices;
 import gq.vapulite.ui.UiPanel;
 import gq.vapulite.ui.UiTheme;
 
@@ -370,7 +370,7 @@ final class ClickGuiDetailPanel {
         gui.drawThemedGlass(centerX - 13.0f, centerY - 13.0f, centerX + 13.0f, centerY + 13.0f,
                 8.0f, 0.8f, gui.withAlpha(gui.guiColors().glassFillSoft, 178.0f * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().accent, 74.0f * gui.guiAlpha));
-        RenderUtil.drawSoftShadow(centerX - 13.0f, centerY - 13.0f, centerX + 13.0f, centerY + 13.0f,
+        RenderServices.shapes().shadow(centerX - 13.0f, centerY - 13.0f, centerX + 13.0f, centerY + 13.0f,
                 8.0f, gui.withAlpha(gui.guiColors().accent, 34.0f * gui.guiAlpha), 4, 2.0f);
         gui.drawCenteredIcon(ClickGuiIcons.forModule(module), FontLoaders.I20, centerX, centerY,
                 gui.withAlpha(new Color(226, 232, 248).getRGB(), 236.0f * gui.guiAlpha));
@@ -387,11 +387,11 @@ final class ClickGuiDetailPanel {
         int headerFill = surfaceColor(true);
         int contentFill = surfaceColor(false);
 
-        RenderUtil.drawRoundedBorderedRect(headerX, headerY, headerX + headerW, headerY + headerH, 7.0f, 0.7f,
+        RenderServices.shapes().roundedBorder(headerX, headerY, headerX + headerW, headerY + headerH, 7.0f, 0.7f,
                 gui.withAlpha(headerFill, 116.0f * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, 28.0f * gui.guiAlpha));
         if (gq.vapulite.Vapu.modules.render.HUD.isSakuraTheme()) {
-            RenderUtil.drawHorizontalGradientRect(headerX + 2.0f, headerY + 2.0f,
+            RenderServices.shapes().horizontalGradient(headerX + 2.0f, headerY + 2.0f,
                     headerX + headerW - 2.0f, headerY + 30.0f,
                     gui.withAlpha(new Color(255, 232, 244).getRGB(), 82.0f * gui.guiAlpha),
                     gui.withAlpha(new Color(255, 250, 253).getRGB(), 28.0f * gui.guiAlpha));
@@ -401,7 +401,7 @@ final class ClickGuiDetailPanel {
         float contentY = gui.getDetailValuesY(panelY) - 8.0f;
         float contentW = gui.detailW - 26.0f;
         float contentH = Math.max(24.0f, gui.panelH - (contentY - panelY) - 10.0f);
-        RenderUtil.drawRoundedBorderedRect(contentX, contentY, contentX + contentW, contentY + contentH, 7.0f, 0.6f,
+        RenderServices.shapes().roundedBorder(contentX, contentY, contentX + contentW, contentY + contentH, 7.0f, 0.6f,
                 gui.withAlpha(contentFill, 64.0f * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, 22.0f * gui.guiAlpha));
     }
@@ -454,9 +454,9 @@ final class ClickGuiDetailPanel {
                             (active ? 238.0f : 196.0f) * gui.guiAlpha));
             // 激活标签页的底部指示线
             if (active) {
-                RenderUtil.drawSoftShadow(x + 9.0f, tabY + tabH - 2.0f, x + each - 9.0f, tabY + tabH,
+                RenderServices.shapes().shadow(x + 9.0f, tabY + tabH - 2.0f, x + each - 9.0f, tabY + tabH,
                         2.0f, gui.withAlpha(gui.guiColors().accent, 100.0f * gui.guiAlpha), 4, 2.0f);
-                RenderUtil.drawHorizontalGradientRect(x + 9.0f, tabY + tabH - 1.4f, x + each - 9.0f, tabY + tabH - 0.4f,
+                RenderServices.shapes().horizontalGradient(x + 9.0f, tabY + tabH - 1.4f, x + each - 9.0f, tabY + tabH - 0.4f,
                         gui.withAlpha(gui.guiColors().accent, 215.0f * gui.guiAlpha),
                         gui.withAlpha(new Color(152, 135, 255).getRGB(), 215.0f * gui.guiAlpha));
             }
@@ -546,24 +546,24 @@ final class ClickGuiDetailPanel {
                 gui.withAlpha(rainbow ? gui.guiColors().accent : gui.guiColors().muted, 205.0f * alpha * gui.guiAlpha));
 
         // 色相-亮度面板
-        RenderUtil.drawSoftShadow(paletteX, paletteY, paletteX + paletteW, paletteY + paletteH, 5.0f,
+        RenderServices.shapes().shadow(paletteX, paletteY, paletteX + paletteW, paletteY + paletteH, 5.0f,
                 gui.withAlpha(color, (36.0f + active * 64.0f) * alpha * gui.guiAlpha), 5, 3.0f);
         gui.drawThemedGlass(paletteX - 1.0f, paletteY - 1.0f, paletteX + paletteW + 1.0f,
                 paletteY + paletteH + 1.0f, 6.0f, 0.8f,
                 gui.withAlpha(gui.guiColors().glassFillSoft, 120.0f * alpha * gui.guiAlpha),
                 gui.withAlpha(rainbow ? gui.guiColors().accent : gui.guiColors().glassBorder,
                         (rainbow ? 95.0f : 52.0f) * alpha * gui.guiAlpha));
-        RenderUtil.drawRoundedHueRect(paletteX, paletteY, paletteX + paletteW, paletteY + paletteH,
+        RenderServices.shapes().roundedHue(paletteX, paletteY, paletteX + paletteW, paletteY + paletteH,
                 5.0f, alpha * gui.guiAlpha);
-        RenderUtil.drawRoundedBorderedRect(paletteX, paletteY, paletteX + paletteW, paletteY + paletteH,
+        RenderServices.shapes().roundedBorder(paletteX, paletteY, paletteX + paletteW, paletteY + paletteH,
                 5.0f, 0.8f, 0x00000000,
                 gui.withAlpha(new Color(255, 255, 255).getRGB(), 54.0f * alpha * gui.guiAlpha));
 
         // 当前颜色位置标记（白环 + 内部实心圆）
         float[] marker = getColorMarker(red, green, blue, paletteX, paletteY, paletteW, paletteH);
-        RenderUtil.drawCircleOutline(marker[0], marker[1], 4.0f + active, 1.2f,
+        RenderServices.shapes().circleOutline(marker[0], marker[1], 4.0f + active, 1.2f,
                 gui.withAlpha(new Color(255, 255, 255).getRGB(), 235.0f * alpha * gui.guiAlpha));
-        RenderUtil.drawCircle(marker[0], marker[1], 0, 360, 2.1f,
+        RenderServices.shapes().circle(marker[0], marker[1], 0, 360, 2.1f,
                 gui.withAlpha(color, 240.0f * alpha * gui.guiAlpha));
 
         // 颜色预览块
@@ -571,7 +571,7 @@ final class ClickGuiDetailPanel {
                 gui.withAlpha(color, 230.0f * alpha * gui.guiAlpha),
                 gui.withAlpha(new Color(255, 255, 255).getRGB(), 70.0f * alpha * gui.guiAlpha));
         if (rainbow) {
-            RenderUtil.drawCircle(previewX + preview - 5.5f, y + 13.5f, 0, 360, 2.6f,
+            RenderServices.shapes().circle(previewX + preview - 5.5f, y + 13.5f, 0, 360, 2.6f,
                     gui.withAlpha(gui.guiColors().accent, 230.0f * alpha * gui.guiAlpha));
         }
 
@@ -730,7 +730,7 @@ final class ClickGuiDetailPanel {
         float h = gui.getDetailValuesHeight();
         Module module = gui.selectedModule;
         float contentHeight = gui.getSettingsContentHeight(module);
-        RenderUtil.drawRoundedBorderedRect(x - 8.0f, y - 6.0f, x + w + 8.0f, y + h + 4.0f, 7.0f, 0.6f,
+        RenderServices.shapes().roundedBorder(x - 8.0f, y - 6.0f, x + w + 8.0f, y + h + 4.0f, 7.0f, 0.6f,
                 gui.withAlpha(surfaceColor(false), 42.0f * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, 18.0f * gui.guiAlpha));
         // 空设置提示
@@ -810,17 +810,17 @@ final class ClickGuiDetailPanel {
         gui.drawFont(gui.trim(gui.getDisplayName(value), FontLoaders.F14, labelW - 8.0f), x, y + 8.0f,
                 gui.withAlpha(gui.guiColors().text, 245.0f * alpha * gui.guiAlpha));
         // 滑块轨道
-        RenderUtil.drawRoundedRect(barX, barY, barX + barW, barY + 2.0f, 2.0f,
+        RenderServices.shapes().rounded(barX, barY, barX + barW, barY + 2.0f, 2.0f,
                 gui.withAlpha(gui.guiColors().valueTrack, 178.0f * alpha * gui.guiAlpha));
         // 滑块填充
-        RenderUtil.drawProgressBar(barX, barY, barX + barW, barY + 2.0f, 2.0f, value.animX,
+        RenderServices.shapes().progressBar(barX, barY, barX + barW, barY + 2.0f, 2.0f, value.animX,
                 0x00000000, gui.withAlpha(gui.guiColors().valueFill, 230.0f * alpha * gui.guiAlpha));
         // 滑块拖拽手柄（带阴影）
         float knob = 3.2f + active * 1.0f;
-        RenderUtil.drawSoftShadow(barX + barW * value.animX - knob, barY - 3.0f,
+        RenderServices.shapes().shadow(barX + barW * value.animX - knob, barY - 3.0f,
                 barX + barW * value.animX + knob, barY + 5.0f, 4.0f,
                 gui.withAlpha(gui.guiColors().valueFill, 100.0f * alpha * gui.guiAlpha), 4, 2.0f);
-        RenderUtil.drawRoundedRect(barX + barW * value.animX - knob, barY - knob + 1.0f,
+        RenderServices.shapes().rounded(barX + barW * value.animX - knob, barY - knob + 1.0f,
                 barX + barW * value.animX + knob, barY + knob + 1.0f, knob,
                 gui.withAlpha(gui.guiColors().valueFill, 255.0f * alpha * gui.guiAlpha));
         // 数值标签
@@ -857,17 +857,17 @@ final class ClickGuiDetailPanel {
                 x, y + 8.0f, gui.withAlpha(gui.guiColors().text, 245.0f * alpha * gui.guiAlpha));
         drawValuePill(rangeText, pillX, y + 3.0f, pillW, alpha);
         // 轨道
-        RenderUtil.drawRoundedRect(barX, barY, barX + barW, barY + 2.2f, 2.0f,
+        RenderServices.shapes().rounded(barX, barY, barX + barW, barY + 2.2f, 2.0f,
                 gui.withAlpha(gui.guiColors().valueTrack, 178.0f * alpha * gui.guiAlpha));
         // 范围填充
-        RenderUtil.drawRoundedRect(barX + barW * lowPct, barY, barX + barW * highPct, barY + 2.2f, 2.0f,
+        RenderServices.shapes().rounded(barX + barW * lowPct, barY, barX + barW * highPct, barY + 2.2f, 2.0f,
                 gui.withAlpha(gui.guiColors().valueFill, 230.0f * alpha * gui.guiAlpha));
         // 两个拖拽手柄
         drawRangeKnob(barX + barW * minValue.animX, barY, 3.1f + activeMin * 1.0f, activeMin, alpha);
         drawRangeKnob(barX + barW * maxValue.animX, barY, 3.1f + activeMax * 1.0f, activeMax, alpha);
         // 激活时的范围发光阴影
         if (active > 0.02f) {
-            RenderUtil.drawSoftShadow(barX + barW * lowPct, barY - 2.0f, barX + barW * highPct, barY + 4.0f,
+            RenderServices.shapes().shadow(barX + barW * lowPct, barY - 2.0f, barX + barW * highPct, barY + 4.0f,
                     3.0f, gui.withAlpha(gui.guiColors().valueFill, 62.0f * active * alpha * gui.guiAlpha),
                     4, 2.0f);
         }
@@ -875,10 +875,10 @@ final class ClickGuiDetailPanel {
 
     /** 绘制范围滑块的拖拽手柄 */
     private void drawRangeKnob(float centerX, float barY, float knob, float active, float alpha) {
-        RenderUtil.drawSoftShadow(centerX - knob, barY - 3.0f, centerX + knob, barY + 5.0f, 4.0f,
+        RenderServices.shapes().shadow(centerX - knob, barY - 3.0f, centerX + knob, barY + 5.0f, 4.0f,
                 gui.withAlpha(gui.guiColors().valueFill, 82.0f * (0.35f + active) * alpha * gui.guiAlpha),
                 4, 2.0f);
-        RenderUtil.drawRoundedRect(centerX - knob, barY - knob + 1.0f,
+        RenderServices.shapes().rounded(centerX - knob, barY - knob + 1.0f,
                 centerX + knob, barY + knob + 1.0f, knob,
                 gui.withAlpha(gui.guiColors().valueFill, 255.0f * alpha * gui.guiAlpha));
     }
@@ -1005,7 +1005,7 @@ final class ClickGuiDetailPanel {
                     5.0f, 0.9f,
                     gui.withAlpha(gui.guiColors().dropdownBg, 238.0f * gui.guiAlpha),
                     gui.withAlpha(gui.guiColors().glassBorder, 62.0f * gui.guiAlpha));
-            RenderUtil.drawSoftShadow(pillX, dropdownY, pillX + pillW, dropdownY + fullDropdownH,
+            RenderServices.shapes().shadow(pillX, dropdownY, pillX + pillW, dropdownY + fullDropdownH,
                     5.0f, gui.withAlpha(gui.shadowColor(200), 82.0f * gui.guiAlpha), 6, 3.0f);
 
             // 每行选项
