@@ -1259,8 +1259,7 @@ public class HUD extends Module {
     }
 
     public static boolean isLightTheme() {
-        Theme t = getTheme();
-        return t == Theme.LIGHT || t == Theme.SAKURA;
+        return getTheme() == Theme.LIGHT;
     }
 
     public static boolean isSakuraTheme() {

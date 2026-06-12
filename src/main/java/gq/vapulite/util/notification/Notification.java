@@ -18,7 +18,7 @@ public class Notification {
     public static final int SUCCESS = 3;
     public static final int MODULE = 4;
 
-    private static boolean isLightStyle() { return HUD.isLightTheme(); }
+    private static boolean isLightStyle() { return HUD.isLightTheme() || HUD.isSakuraTheme(); }
     private static boolean isSakura() { return HUD.getTheme() == HUD.Theme.SAKURA; }
 
     private static int TEXT() { return isLightStyle() ? 0xFF1C1E22 : 0xFFE8EAEC; }

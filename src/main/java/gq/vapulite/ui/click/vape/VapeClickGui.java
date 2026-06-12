@@ -218,7 +218,7 @@ public class VapeClickGui extends GuiScreen {
     /** 获取阴影颜色（浅色主题用白色半透明阴影，暗色用黑色阴影） */
     int shadowColor(int alpha) {
         try {
-            return gq.vapulite.module.render.HUD.isLightTheme()
+            return gq.vapulite.module.render.HUD.isLightTheme() || gq.vapulite.module.render.HUD.isSakuraTheme()
                     ? withAlpha(0xFFFFFFFF, alpha)
                     : new Color(0, 0, 0, alpha).getRGB();
         } catch (Exception e) {

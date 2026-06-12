@@ -1134,10 +1134,10 @@ final class ClickGuiDetailPanel {
     private void drawAnimeGirl(float posX, float posY) {
         switch (HUD.getTheme()) {
             case LIGHT:
-                RenderUtil.drawTexturedRect(new ResourceLocation("wubolong/light.png"), posX, posY, posX+75f, posY+50f, .5f);
+                RenderUtil.drawTexturedRect(new ResourceLocation("wubolong/light.png"), posX, posY, posX+75f, posY+50f, .5f * gui.guiAlpha);
                 break;
             case SAKURA:
-                RenderUtil.drawTexturedRect(new ResourceLocation("wubolong/sakura.png"), posX, posY, posX+75f, posY+50f, .5f);
+                RenderUtil.drawTexturedRect(new ResourceLocation("wubolong/sakura.png"), posX, posY, posX+75f, posY+50f, .5f * gui.guiAlpha);
                 break;
         }
     }
