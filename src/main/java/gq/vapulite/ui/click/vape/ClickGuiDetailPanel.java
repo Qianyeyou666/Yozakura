@@ -429,9 +429,35 @@ final class ClickGuiDetailPanel {
     }
 
     /**
+     * 检查指定标签页是否有可见的设置值。
+     * <p>
+     * 不依赖 {@code isDetailValueVisible}（该方法会与当前 {@code detailTabIndex} 比较），
+     * 而是直接检查值本身是否可见且归属于目标标签页。
+     */
+    private boolean tabHasValues(int tabIndex) {
+        if (gui.selectedModule == null) {
+            return false;
+        }
+        for (int i = 0; i < gui.selectedModule.getValues().size(); i++) {
+            Value value = gui.selectedModule.getValues().get(i);
+            if (!value.isVisible()
+                    || gui.isHiddenPaletteValue(gui.selectedModule, value)
+                    || gui.isColorContinuation(gui.selectedModule, i)
+                    || gui.isRangeContinuation(gui.selectedModule, i)) {
+                continue;
+            }
+            if (gui.getDetailValueTab(gui.selectedModule, i) == tabIndex) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * 绘制详情标签页（General / Targets / Extra / Rotation / Visuals）。
      * <p>
      * 每个标签页等宽排列，激活标签页底部有高亮指示线和渐变阴影。
+     * 没有值的标签页文字显示为浅灰色。
      */
     private void drawTabs(float panelY) {
         float tabX = gui.detailX + 6.0f;
@@ -448,12 +474,17 @@ final class ClickGuiDetailPanel {
         for (int i = 0; i < DETAIL_TABS.length; i++) {
             float x = tabX + each * i;
             boolean active = i == gui.detailTabIndex;
+            boolean hasValues = tabHasValues(i);
+            // 没有值的标签页使用浅灰色；有值未选中的标签页颜色更深以作区分
+            int textColor = !hasValues ? gui.guiColors().faint
+                    : active ? gui.guiColors().text : gui.guiColors().muted;
+            float textAlpha = !hasValues ? 120.0f
+                    : active ? 238.0f : 224.0f;
             // 标签文字
             gui.drawCenteredText(DETAIL_TABS[i], x, tabY + 10.0f, x + each, tabY + 22.0f,
-                    gui.withAlpha(active ? gui.guiColors().text : gui.guiColors().muted,
-                            (active ? 238.0f : 196.0f) * gui.guiAlpha));
-            // 激活标签页的底部指示线
-            if (active) {
+                    gui.withAlpha(textColor, textAlpha * gui.guiAlpha));
+            // 激活标签页的底部指示线（仅当有值时显示）
+            if (active && hasValues) {
                 RenderServices.shapes().shadow(x + 9.0f, tabY + tabH - 2.0f, x + each - 9.0f, tabY + tabH,
                         2.0f, gui.withAlpha(gui.guiColors().accent, 100.0f * gui.guiAlpha), 4, 2.0f);
                 RenderServices.shapes().horizontalGradient(x + 9.0f, tabY + tabH - 1.4f, x + each - 9.0f, tabY + tabH - 0.4f,
@@ -467,6 +498,7 @@ final class ClickGuiDetailPanel {
      * 处理标签页点击。
      * <p>
      * 切换标签页时重置滚动位置和拖拽状态。
+     * 没有值的标签页不会响应点击。
      */
     private boolean handleTabClick(int mouseX, int mouseY) {
         float tabX = gui.detailX + 6.0f;
@@ -478,6 +510,10 @@ final class ClickGuiDetailPanel {
         }
         int index = (int) ((mouseX - tabX) / (tabW / DETAIL_TABS.length));
         int next = Math.max(0, Math.min(DETAIL_TABS.length - 1, index));
+        // 如果目标标签页没有值，不切换
+        if (!tabHasValues(next)) {
+            return false;
+        }
         if (gui.detailTabIndex != next) {
             gui.detailTabIndex = next;
             // 切换标签页时重置滚动和拖拽状态

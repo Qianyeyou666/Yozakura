@@ -69,6 +69,6 @@ final class ClickGuiNavigationRenderer {
         float textY = y + 10.0f + titleOffsetY - hover * 0.4f;
         gui.drawCenteredIcon(tab.icon, navIconFont, groupX + iconW / 2.0f,
                 y + VapeClickGui.NAV_H / 2.0f - hover * 0.4f, color);
-        gui.drawFont(title, groupX + iconW + gap + titleOffsetX, textY, color);
+        gui.drawFont(title, groupX + iconW + gap + titleOffsetX, textY + 2.0f, color);
     }
 }
