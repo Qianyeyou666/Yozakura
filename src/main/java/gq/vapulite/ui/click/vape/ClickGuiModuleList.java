@@ -1,9 +1,11 @@
-package gq.vapulite.ui.click;
+package gq.vapulite.ui.click.vape;
 
 import gq.vapulite.manager.ModuleManager;
 import gq.vapulite.module.Module;
 import gq.vapulite.engine.font.FontLoaders;
 import gq.vapulite.engine.render.ui.RenderServices;
+import gq.vapulite.ui.click.ClickGuiIcons;
+import gq.vapulite.ui.UiPanel;
 import gq.vapulite.ui.UiTheme;
 import org.lwjgl.input.Mouse;
 

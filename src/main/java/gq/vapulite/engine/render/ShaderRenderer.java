@@ -1,5 +1,6 @@
 package gq.vapulite.engine.render;
 
+import gq.vapulite.engine.render.ui.LiquidGlassSettings;
 import net.minecraft.client.renderer.GlStateManager;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
@@ -21,9 +22,17 @@ import java.util.Map;
 public final class ShaderRenderer {
     private static final float EDGE_SOFTNESS = 0.75f;
     private static final float EDGE_PADDING = 1.0f;
+    /**
+     * Shared LiquidGlass preset used when draw calls do not pass a custom settings struct.
+     *
+     * <p>Parameter meanings and tunable default values live in {@link LiquidGlassSettings#defaults()}.</p>
+     */
+    public static final LiquidGlassSettings LIQUID_GLASS_PRESET = LiquidGlassSettings.defaults();
     private static final float MAX_LIQUID_GLASS_BLUR_RADIUS = 64.0f;
+    private static final float MIN_LIQUID_GLASS_BLUR_DOWNSCALE = 0.1f;
+    private static final float MAX_LIQUID_GLASS_BLUR_DOWNSCALE = 1.0f;
     private static final float MAX_GAUSSIAN_PASS_RADIUS = 10.0f;
-    private static final int MAX_GAUSSIAN_ITERATIONS = 8;
+    private static final int MAX_GAUSSIAN_ITERATIONS = 10;
     private static final int SHADER_ATTRIB_MASK = GL11.GL_ENABLE_BIT
             | GL11.GL_COLOR_BUFFER_BIT
             | GL11.GL_CURRENT_BIT
@@ -61,6 +70,8 @@ public final class ShaderRenderer {
     private static int blurWidth;
     private static int blurHeight;
     private static float frostedBlurRadius = -1.0f;
+    private static float frostedBlurDownscale = -1.0f;
+    private static int frostedBlurIterations = -1;
     private static boolean frostedBlurReady;
     private static boolean frostedGlassDirty = true;
     private static boolean loggedFailure;
@@ -71,6 +82,10 @@ public final class ShaderRenderer {
     public static void invalidateFrostedGlass() {
         frostedGlassDirty = true;
         Blur.invalidate();
+    }
+
+    public static LiquidGlassSettings defaultLiquidGlassSettings() {
+        return LIQUID_GLASS_PRESET;
     }
 
     public static boolean drawRect(float left, float top, float right, float bottom, int color) {
@@ -214,7 +229,8 @@ public final class ShaderRenderer {
     public static boolean drawFrostedGlass(float left, float top, float right, float bottom, float radius,
                                            float borderWidth, int fillColor, int borderColor) {
         Program program = getFrostedGlassProgram();
-        if (program == null || right <= left || bottom <= top || !ensureFrostedGlassTexture(10.0f)) {
+        LiquidGlassSettings settings = LIQUID_GLASS_PRESET.withBlurRadius(10.0f);
+        if (program == null || right <= left || bottom <= top || !ensureFrostedGlassTexture(settings)) {
             return false;
         }
 
@@ -223,12 +239,12 @@ public final class ShaderRenderer {
         float clampedBorder = Math.max(0.0f, Math.min(borderWidth, Math.min(width, height) / 2.0f));
         ShaderState shaderState = beginProgram(program);
         try {
-            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            setActiveTexture(GL13.GL_TEXTURE0);
             GL11.glEnable(GL11.GL_TEXTURE_2D);
             int sourceTexture = frostedBlurReady ? blurTextureB : screenTexture;
             int sourceWidth = frostedBlurReady ? blurWidth : capturedWidth;
             int sourceHeight = frostedBlurReady ? blurHeight : capturedHeight;
-            GL11.glBindTexture(GL11.GL_TEXTURE_2D, sourceTexture);
+            bindTexture(sourceTexture);
             setRoundedUniforms(program, width, height, radius);
             program.set1f("borderWidth", clampedBorder);
             program.set1f("grainStrength", 0.0f);
@@ -246,13 +262,18 @@ public final class ShaderRenderer {
     }
 
     public static boolean drawLiquidGlass(float left, float top, float right, float bottom, float radius,
+                                          float borderWidth, int fillColor, int borderColor) {
+        return drawLiquidGlass(left, top, right, bottom, radius, borderWidth, fillColor, borderColor,
+                LIQUID_GLASS_PRESET);
+    }
+
+    public static boolean drawLiquidGlass(float left, float top, float right, float bottom, float radius,
                                           float borderWidth, int fillColor, int borderColor,
-                                          float blurRadius, float refraction, float highlight,
-                                          float grainStrength) {
+                                          LiquidGlassSettings settings) {
+        LiquidGlassSettings resolvedSettings = liquidGlassSettingsOrDefault(settings);
         Program program = getLiquidGlassProgram();
-        float clampedBlurRadius = clampLiquidGlassBlurRadius(blurRadius);
         if (program == null || right <= left || bottom <= top
-                || !ensureFrostedGlassTexture(clampedBlurRadius) || !frostedBlurReady) {
+                || !ensureFrostedGlassTexture(resolvedSettings) || !frostedBlurReady) {
             return false;
         }
 
@@ -261,19 +282,15 @@ public final class ShaderRenderer {
         float clampedBorder = Math.max(0.0f, Math.min(borderWidth, Math.min(width, height) / 2.0f));
         ShaderState shaderState = beginProgram(program);
         try {
-            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            setActiveTexture(GL13.GL_TEXTURE0);
             GL11.glEnable(GL11.GL_TEXTURE_2D);
             int sourceTexture = blurTextureB;
             int sourceWidth = blurWidth;
             int sourceHeight = blurHeight;
-            GL11.glBindTexture(GL11.GL_TEXTURE_2D, sourceTexture);
+            bindTexture(sourceTexture);
             setRoundedUniforms(program, width, height, radius);
             program.set1f("borderWidth", clampedBorder);
-            program.set1f("blurRadius", clampedBlurRadius);
-            program.set1f("refraction", Math.max(0.0f, Math.min(1.4f, refraction)));
-            program.set1f("highlight", Math.max(0.0f, Math.min(1.35f, highlight)));
-            program.set1f("grainStrength", Math.max(0.0f, Math.min(1.0f, grainStrength)));
-            program.set1f("time", (System.nanoTime() % 60000000000L) / 1000000000.0f);
+            uploadLiquidGlassSettings(program, resolvedSettings);
             program.set2f("screenSize", sourceWidth, sourceHeight);
             program.set2f("viewportSize", capturedWidth, capturedHeight);
             program.set1i("screenTex", 0);
@@ -434,10 +451,11 @@ public final class ShaderRenderer {
         return true;
     }
 
-    private static boolean ensureFrostedGlassTexture(float requestedBlurRadius) {
+    private static boolean ensureFrostedGlassTexture(LiquidGlassSettings settings) {
         if (!supportsShaders()) {
             return false;
         }
+        LiquidGlassSettings resolvedSettings = liquidGlassSettingsOrDefault(settings);
         TextureState textureState = saveTexture0State();
         try {
             VIEWPORT_BUFFER.clear();
@@ -453,8 +471,8 @@ public final class ShaderRenderer {
                 screenTexture = GL11.glGenTextures();
                 frostedGlassDirty = true;
             }
-            GL13.glActiveTexture(GL13.GL_TEXTURE0);
-            GL11.glBindTexture(GL11.GL_TEXTURE_2D, screenTexture);
+            setActiveTexture(GL13.GL_TEXTURE0);
+            bindTexture(screenTexture);
             GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
             GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
             GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
@@ -467,15 +485,21 @@ public final class ShaderRenderer {
                 frostedGlassDirty = true;
                 frostedBlurReady = false;
             }
-            float blurRadius = clampLiquidGlassBlurRadius(requestedBlurRadius);
-            if (Math.abs(frostedBlurRadius - blurRadius) > 0.01f) {
+            float blurRadius = clampLiquidGlassBlurRadius(resolvedSettings.blurRadius());
+            float blurDownscale = clampLiquidGlassBlurDownscale(resolvedSettings.blurDownscale());
+            int blurIterations = clampGaussianIterations(resolvedSettings.blurIterations());
+            if (Math.abs(frostedBlurRadius - blurRadius) > 0.01f
+                    || Math.abs(frostedBlurDownscale - blurDownscale) > 0.001f
+                    || frostedBlurIterations != blurIterations) {
                 frostedGlassDirty = true;
                 frostedBlurReady = false;
             }
             if (frostedGlassDirty) {
                 GL11.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, viewportX, viewportY, viewportW, viewportH);
-                frostedBlurReady = buildFrostedBlur(viewportW, viewportH, blurRadius);
+                frostedBlurReady = buildFrostedBlur(viewportW, viewportH, blurRadius, blurIterations, blurDownscale);
                 frostedBlurRadius = blurRadius;
+                frostedBlurDownscale = blurDownscale;
+                frostedBlurIterations = blurIterations;
                 frostedGlassDirty = false;
             }
             return true;
@@ -516,6 +540,8 @@ public final class ShaderRenderer {
                 frostedGlassDirty = true;
                 frostedBlurReady = false;
             }
+            setActiveTexture(GL13.GL_TEXTURE0);
+            bindTexture(screenTexture);
             GL11.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, viewportX, viewportY, viewportW, viewportH);
             return true;
         } finally {
@@ -523,12 +549,13 @@ public final class ShaderRenderer {
         }
     }
 
-    private static boolean buildFrostedBlur(int width, int height, float blurRadius) {
+    private static boolean buildFrostedBlur(int width, int height, float blurRadius,
+                                            int blurIterations, float blurDownscale) {
         if (!supportsFramebufferBlur() || width <= 0 || height <= 0 || getGaussianBlurProgram() == null) {
             return false;
         }
-        int targetWidth = Math.max(1, width / 2);
-        int targetHeight = Math.max(1, height / 2);
+        int targetWidth = Math.max(1, Math.round(width * blurDownscale));
+        int targetHeight = Math.max(1, Math.round(height * blurDownscale));
         int previousFramebuffer = GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
         VIEWPORT_BUFFER.clear();
         GL11.glGetInteger(GL11.GL_VIEWPORT, VIEWPORT_BUFFER);
@@ -542,8 +569,13 @@ public final class ShaderRenderer {
             }
             blurWidth = targetWidth;
             blurHeight = targetHeight;
-            int iterations = gaussianIterationCount(blurRadius);
-            float passRadius = gaussianPassRadius(blurRadius, iterations);
+            int iterations = clampGaussianIterations(blurIterations);
+            if (iterations == 0) {
+                runBlurPass(screenTexture, blurFramebufferB, targetWidth, targetHeight,
+                        width, height, 0.0f, 0.0f, 0.0f);
+                return true;
+            }
+            float passRadius = clampGaussianPassRadius(blurRadius / Math.max(1, iterations));
             int sourceTexture = screenTexture;
             int sourceWidth = width;
             int sourceHeight = height;
@@ -607,9 +639,9 @@ public final class ShaderRenderer {
         Program program = getGaussianBlurProgram();
         ShaderState shaderState = beginProgram(program);
         try {
-            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            setActiveTexture(GL13.GL_TEXTURE0);
             GL11.glEnable(GL11.GL_TEXTURE_2D);
-            GL11.glBindTexture(GL11.GL_TEXTURE_2D, sourceTexture);
+            bindTexture(sourceTexture);
             program.set1i("screenTex", 0);
             program.set2f("u_resolution", Math.max(1.0f, sourceWidth), Math.max(1.0f, sourceHeight));
             program.set2f("u_direction", dirX, dirY);
@@ -624,20 +656,37 @@ public final class ShaderRenderer {
         return Math.max(0.0f, Math.min(MAX_LIQUID_GLASS_BLUR_RADIUS, blurRadius));
     }
 
-    private static int gaussianIterationCount(float blurRadius) {
-        if (blurRadius <= 0.0f) {
-            return 1;
-        }
-        return Math.max(1, Math.min(MAX_GAUSSIAN_ITERATIONS,
-                (int) Math.ceil(blurRadius / MAX_GAUSSIAN_PASS_RADIUS)));
+    private static float clampLiquidGlassBlurDownscale(float blurDownscale) {
+        return Math.max(MIN_LIQUID_GLASS_BLUR_DOWNSCALE,
+                Math.min(MAX_LIQUID_GLASS_BLUR_DOWNSCALE, blurDownscale));
     }
 
-    private static float gaussianPassRadius(float blurRadius, int iterations) {
-        return clampGaussianPassRadius(blurRadius / Math.max(1, iterations));
+    private static int clampGaussianIterations(int iterations) {
+        return Math.max(0, Math.min(MAX_GAUSSIAN_ITERATIONS, iterations));
     }
 
     private static float clampGaussianPassRadius(float blurRadius) {
         return Math.max(0.0f, Math.min(MAX_GAUSSIAN_PASS_RADIUS, blurRadius));
+    }
+
+    private static LiquidGlassSettings liquidGlassSettingsOrDefault(LiquidGlassSettings settings) {
+        return settings == null ? LIQUID_GLASS_PRESET : settings;
+    }
+
+    private static void uploadLiquidGlassSettings(Program program, LiquidGlassSettings settings) {
+        program.set1f("refraction", Math.max(0.0f, Math.min(1.4f, settings.refractionScale())));
+        program.set1f("highlight", Math.max(0.0f, Math.min(1.35f, settings.highlight())));
+        program.set1f("u_powerFactor", Math.max(1.001f, Math.min(6.0f, settings.powerFactor())));
+        program.set1f("u_fPower", Math.max(-1.5f, Math.min(6.0f, settings.refractionPower())));
+        program.set1f("u_a", Math.max(0.0f, Math.min(5.0f, settings.refractionA())));
+        program.set1f("u_b", Math.max(0.0f, Math.min(6.0f, settings.refractionB())));
+        program.set1f("u_c", Math.max(0.0f, Math.min(6.0f, settings.refractionC())));
+        program.set1f("u_d", Math.max(0.0f, Math.min(10.0f, settings.refractionD())));
+        program.set1f("u_noise", Math.max(0.0f, Math.min(0.3f, settings.noise())));
+        program.set1f("u_glowWeight", Math.max(-1.0f, Math.min(1.0f, settings.glowWeight())));
+        program.set1f("u_glowBias", Math.max(-1.0f, Math.min(1.0f, settings.glowBias())));
+        program.set1f("u_glowEdge0", Math.max(-1.0f, Math.min(1.0f, settings.glowEdge0())));
+        program.set1f("u_glowEdge1", Math.max(-1.0f, Math.min(1.0f, settings.glowEdge1())));
     }
 
     private static boolean supportsFramebufferBlur() {

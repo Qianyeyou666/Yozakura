@@ -6,7 +6,7 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import gq.vapulite.core.Client;
-import gq.vapulite.ui.click.VapeClickGui;
+import gq.vapulite.ui.click.vape.VapeClickGui;
 import gq.vapulite.module.Module;
 import gq.vapulite.util.minecraft.Helper;
 import gq.vapulite.value.Mode;

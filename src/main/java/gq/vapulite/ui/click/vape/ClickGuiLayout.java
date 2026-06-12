@@ -1,4 +1,4 @@
-package gq.vapulite.ui.click;
+package gq.vapulite.ui.click.vape;
 
 import gq.vapulite.module.render.ClickGUI;
 import net.minecraft.client.gui.ScaledResolution;

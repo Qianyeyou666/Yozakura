@@ -1,4 +1,4 @@
-package gq.vapulite.ui.click;
+package gq.vapulite.ui.click.vape;
 
 import gq.vapulite.module.ModuleType;
 import gq.vapulite.engine.font.FontLoaders;

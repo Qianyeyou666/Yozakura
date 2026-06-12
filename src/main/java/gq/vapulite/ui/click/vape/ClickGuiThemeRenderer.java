@@ -1,5 +1,6 @@
-package gq.vapulite.ui.click;
+package gq.vapulite.ui.click.vape;
 
+import gq.vapulite.engine.render.ui.LiquidGlassSettings;
 import gq.vapulite.module.render.HUD;
 import gq.vapulite.module.render.ClickGUI;
 import gq.vapulite.engine.render.ui.RenderServices;
@@ -52,10 +53,15 @@ final class ClickGuiThemeRenderer {
         float highlight = HUD.isLightTheme() || HUD.isSakuraTheme() ? 1.08f : 0.96f;
         float grain = HUD.isSakuraTheme() ? 0.08f : 0.13f;
         float eased = gui.easeSmooth(glassProgress);
+        LiquidGlassSettings settings = LiquidGlassSettings.defaults()
+                .withBlurRadius(blurRadius)
+                .withRefractionScale(refraction)
+                .withHighlight(highlight)
+                .withNoise(grain);
         RenderServices.liquidGlass().roundedBorder(x, y, x2, y2, radius, strength,
                 gui.withAlpha(fill, gui.getAlpha(fill) * eased),
                 gui.withAlpha(border, gui.getAlpha(border) * eased),
-                blurRadius, refraction, highlight, grain);
+                settings);
     }
 
     private boolean isGlassEnabled() {

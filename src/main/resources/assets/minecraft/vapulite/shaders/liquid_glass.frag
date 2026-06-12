@@ -13,27 +13,23 @@ uniform float radius;
 uniform float borderWidth;
 uniform float padding;
 uniform float softness;
-uniform float blurRadius;
 uniform float refraction;
 uniform float highlight;
-uniform float grainStrength;
-uniform float time;
+uniform float u_powerFactor;
+uniform float u_fPower;
+uniform float u_a;
+uniform float u_b;
+uniform float u_c;
+uniform float u_d;
+uniform float u_noise;
+uniform float u_glowWeight;
+uniform float u_glowBias;
+uniform float u_glowEdge0;
+uniform float u_glowEdge1;
 
 const float EPSILON1 = 0.0000000000001;
 const float EPSILON2 = 0.0001;
 const float M_E = 2.718281828459045;
-
-const float U_A = 0.7;
-const float U_B = 2.3;
-const float U_C = 5.2;
-const float U_D = 6.9;
-const float U_F_POWER = 1.0;
-const float U_POWER_FACTOR = 3.0;
-const float U_NOISE = 0.06;
-const float U_GLOW_WEIGHT = 0.25;
-const float U_GLOW_BIAS = 0.0;
-const float U_GLOW_EDGE0 = 0.5;
-const float U_GLOW_EDGE1 = -0.5;
 
 float sdSuperellipse(vec2 p, float n, float r) {
     vec2 pAbs = abs(p);
@@ -50,19 +46,19 @@ float roundedRectSDF(vec2 p, vec2 halfSize, float r) {
 }
 
 float f(float x) {
-    return 1.0 - U_B * pow(U_C * M_E, -U_D * x - U_A);
+    return 1.0 - u_b * pow(u_c * M_E, -u_d * x - u_a);
 }
 
 float rand(vec2 co) {
     return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
 }
 
-float glow(vec2 texCoord) {
-    return sin(atan(texCoord.y * 2.0 - 1.0, texCoord.x * 2.0 - 1.0) - 0.5);
-}
-
 vec2 safeUv(vec2 uv) {
     return clamp(uv, vec2(0.0015), vec2(0.9985));
+}
+
+float glow(vec2 texCoord) {
+    return sin(atan(texCoord.y * 2.0 - 1.0, texCoord.x * 2.0 - 1.0) - 0.5);
 }
 
 void main() {
@@ -80,21 +76,21 @@ void main() {
         discard;
     }
 
-    float d = sdSuperellipse(p, U_POWER_FACTOR, 1.0);
+    float d = sdSuperellipse(p, u_powerFactor, 1.0);
     float rectDist = clamp(-maskDistance / max(r, 1.0), 0.0, 1.0);
     float dist = max(max(-d, 0.0), rectDist);
-    vec2 sampleP = p * pow(max(f(dist), EPSILON2), U_F_POWER);
+    vec2 sampleP = p * pow(max(f(dist), EPSILON2), u_fPower);
     vec2 screenUv = safeUv(gl_FragCoord.xy / max(viewportSize, vec2(1.0)));
     vec2 quadScale = size / max(viewportSize, vec2(1.0)) * 0.5;
     vec2 centerUv = screenUv - p * quadScale;
     vec2 sourceUv = safeUv(centerUv + mix(p, sampleP, refraction) * quadScale);
 
-    vec3 noise = vec3(rand(gl_FragCoord.xy * 0.001 + vec2(time * 0.017)) - 0.5);
-    vec3 blurred = texture2D(screenTex, sourceUv).rgb + noise * U_NOISE * max(grainStrength, 0.0);
+    vec3 noise = vec3(rand(coord * 0.001) - 0.5);
+    vec3 blurred = texture2D(screenTex, sourceUv).rgb + noise * u_noise;
     float tintWeight = clamp(fillColor.a * 0.10, 0.0, 0.10);
     vec3 color = mix(blurred, fillColor.rgb, tintWeight);
-    float mul = glow(st) * U_GLOW_WEIGHT * highlight * smoothstep(U_GLOW_EDGE0, U_GLOW_EDGE1, dist)
-            + 1.0 + U_GLOW_BIAS;
+    float mul = glow(st) * u_glowWeight * highlight * smoothstep(u_glowEdge0, u_glowEdge1, dist)
+            + 1.0 + u_glowBias;
 
     float visibility = clamp(max(fillColor.a, borderColor.a) / 0.65, 0.0, 1.0);
     float glassAlpha = 0.96 * visibility * mask;

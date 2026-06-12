@@ -1,7 +1,8 @@
 package gq.vapulite.module.movement;
 
 import gq.vapulite.module.ModuleType;
-import gq.vapulite.ui.click.VapeClickGui;
+import gq.vapulite.ui.click.material.MaterialClickGui;
+import gq.vapulite.ui.click.vape.VapeClickGui;
 import gq.vapulite.module.Module;
 import gq.vapulite.util.minecraft.ClientUtil;
 import net.minecraft.client.gui.inventory.GuiContainer;
@@ -22,7 +23,9 @@ public class InvMove extends Module {
         if (!isInGame()) {
             return;
         }
-        if (!(mc.currentScreen instanceof GuiContainer) && !(mc.currentScreen instanceof VapeClickGui)) {
+        if (!(mc.currentScreen instanceof GuiContainer)
+                && !(mc.currentScreen instanceof VapeClickGui)
+                && !(mc.currentScreen instanceof MaterialClickGui)) {
             return;
         }
         double speed = 0.05;

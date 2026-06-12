@@ -4,11 +4,6 @@ import gq.vapulite.engine.render.GLStateManager;
 import gq.vapulite.engine.render.ShaderRenderer;
 
 public final class LiquidGlassRenderer {
-    private static final float DEFAULT_BLUR_RADIUS = 28.0f;
-    private static final float DEFAULT_REFRACTION = 0.92f;
-    private static final float DEFAULT_HIGHLIGHT = 0.98f;
-    private static final float DEFAULT_GRAIN = 0.14f;
-
     public LiquidGlassRenderer() {
     }
 
@@ -23,20 +18,19 @@ public final class LiquidGlassRenderer {
     public void roundedBorder(float x, float y, float x2, float y2, float radius,
                               float borderWidth, int fillColor, int borderColor) {
         roundedBorder(x, y, x2, y2, radius, borderWidth, fillColor, borderColor,
-                DEFAULT_BLUR_RADIUS, DEFAULT_REFRACTION, DEFAULT_HIGHLIGHT, DEFAULT_GRAIN);
+                (LiquidGlassSettings) null);
     }
 
     public void roundedBorder(float x, float y, float x2, float y2, float radius,
                               float borderWidth, int fillColor, int borderColor,
-                              float blurRadius, float refraction, float highlight,
-                              float grainStrength) {
+                              LiquidGlassSettings settings) {
         if (getAlpha(fillColor) <= 0 && getAlpha(borderColor) <= 0) {
             return;
         }
         GLStateManager.begin2D();
         try {
             ShaderRenderer.drawLiquidGlass(x, y, x2, y2, radius, borderWidth, fillColor, borderColor,
-                    blurRadius, refraction, highlight, grainStrength);
+                    settings);
         } finally {
             GLStateManager.end2D();
         }
