@@ -53,9 +53,12 @@ public final class ShaderRenderer {
     private static Program circleBadgeProgram;
     private static Program frostedGlassProgram;
     private static Program liquidGlassProgram;
+    private static Program killShatterProgram;
     private static Program gaussianBlurProgram;
     private static final String LIQUID_GLASS_FRAGMENT_RESOURCE =
             "/assets/minecraft/vapulite/shaders/liquid_glass.frag";
+    private static final String KILL_SHATTER_FRAGMENT_RESOURCE =
+            "/assets/minecraft/vapulite/shaders/kill_shatter.frag";
     private static final IntBuffer VIEWPORT_BUFFER = BufferUtils.createIntBuffer(16);
     private static int screenTexture;
     private static int blurTextureA;
@@ -300,6 +303,33 @@ public final class ShaderRenderer {
         return true;
     }
 
+    public static boolean drawKillShatterDistortion(float centerX, float centerY, float radius,
+                                                    float progress, float strength, float seed) {
+        Program program = getKillShatterProgram();
+        if (program == null || radius <= 1.0f || !ensureScreenTexture()) {
+            return false;
+        }
+
+        ShaderState shaderState = beginProgram(program);
+        try {
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            GL11.glEnable(GL11.GL_TEXTURE_2D);
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, screenTexture);
+            program.set1i("screenTex", 0);
+            program.set2f("screenSize", Math.max(1.0f, capturedWidth), Math.max(1.0f, capturedHeight));
+            program.set2f("center", centerX, centerY);
+            program.set1f("radius", radius);
+            program.set1f("progress", Math.max(0.0f, Math.min(1.0f, progress)));
+            program.set1f("strength", Math.max(0.0f, Math.min(2.0f, strength)));
+            program.set1f("seed", seed);
+            program.set1f("time", (System.nanoTime() % 60000000000L) / 1000000000.0f);
+            drawFullscreenPassQuad();
+        } finally {
+            endProgram(shaderState);
+        }
+        return true;
+    }
+
     public static boolean drawCircle(float centerX, float centerY, float radius, int color) {
         Program program = getCircleProgram();
         if (program == null || radius <= 0.0f) {
@@ -472,6 +502,47 @@ public final class ShaderRenderer {
                 frostedBlurIterations = blurIterations;
                 frostedGlassDirty = false;
             }
+            return true;
+        } finally {
+            restoreTexture0State(textureState);
+        }
+    }
+
+    private static boolean ensureScreenTexture() {
+        if (!supportsShaders()) {
+            return false;
+        }
+        TextureState textureState = saveTexture0State();
+        try {
+            VIEWPORT_BUFFER.clear();
+            GL11.glGetInteger(GL11.GL_VIEWPORT, VIEWPORT_BUFFER);
+            int viewportX = VIEWPORT_BUFFER.get(0);
+            int viewportY = VIEWPORT_BUFFER.get(1);
+            int viewportW = VIEWPORT_BUFFER.get(2);
+            int viewportH = VIEWPORT_BUFFER.get(3);
+            if (viewportW <= 0 || viewportH <= 0) {
+                return false;
+            }
+            if (screenTexture == 0) {
+                screenTexture = GL11.glGenTextures();
+            }
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, screenTexture);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+            if (capturedWidth != viewportW || capturedHeight != viewportH) {
+                GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGB, viewportW, viewportH, 0,
+                        GL11.GL_RGB, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
+                capturedWidth = viewportW;
+                capturedHeight = viewportH;
+                frostedGlassDirty = true;
+                frostedBlurReady = false;
+            }
+            setActiveTexture(GL13.GL_TEXTURE0);
+            bindTexture(screenTexture);
+            GL11.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, viewportX, viewportY, viewportW, viewportH);
             return true;
         } finally {
             restoreTexture0State(textureState);
@@ -723,6 +794,13 @@ public final class ShaderRenderer {
             liquidGlassProgram = createProgramFromResource(LIQUID_GLASS_FRAGMENT_RESOURCE);
         }
         return liquidGlassProgram;
+    }
+
+    private static Program getKillShatterProgram() {
+        if (killShatterProgram == null) {
+            killShatterProgram = createProgramFromResource(KILL_SHATTER_FRAGMENT_RESOURCE);
+        }
+        return killShatterProgram;
     }
 
     private static Program getGaussianBlurProgram() {

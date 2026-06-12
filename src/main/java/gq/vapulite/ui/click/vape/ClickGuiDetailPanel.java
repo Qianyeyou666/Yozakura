@@ -2,6 +2,8 @@ package gq.vapulite.ui.click.vape;
 
 import gq.vapulite.manager.ModuleManager;
 import gq.vapulite.module.Module;
+import gq.vapulite.module.render.HUD;
+import gq.vapulite.util.render.RenderUtil;
 import gq.vapulite.value.Mode;
 import gq.vapulite.value.Numbers;
 import gq.vapulite.value.Option;
@@ -11,6 +13,7 @@ import gq.vapulite.engine.render.ui.RenderServices;
 import gq.vapulite.ui.click.ClickGuiIcons;
 import gq.vapulite.ui.UiPanel;
 import gq.vapulite.ui.UiTheme;
+import net.minecraft.util.ResourceLocation;
 
 import java.awt.Color;
 import java.util.HashMap;
@@ -45,8 +48,6 @@ final class ClickGuiDetailPanel {
     private static final float PALETTE_MARKER_RADIUS = 4.8f;
     /** 关联的主 GUI 实例 */
     private final VapeClickGui gui;
-    /** UI 面板渲染器 */
-    private final UiPanel panel;
     /** 记录每个 Red 值对应的色相（用于颜色面板标记定位） */
     private final Map<Numbers, Float> paletteHueByRed = new HashMap<Numbers, Float>();
     /** 记录每个 Red 值对应的当前颜色值（用于检测颜色是否被外部改变） */
@@ -67,12 +68,10 @@ final class ClickGuiDetailPanel {
 
     ClickGuiDetailPanel(VapeClickGui gui) {
         this.gui = gui;
-        this.panel = new UiPanel().setTheme(gui.uiTheme);
     }
 
     /** 更新 UI 主题 */
     void updateTheme(UiTheme theme) {
-        panel.setTheme(theme);
     }
 
     /**
@@ -115,14 +114,13 @@ final class ClickGuiDetailPanel {
         // 面板定位
         float y = gui.contentY + introY;
         gui.settingsScroll = gui.animate(gui.settingsScroll, gui.targetSettingsScroll, 0.14f);
-        // 绘制面板背景
-        panel.setBounds(gui.detailX, y, gui.detailW, gui.panelH)
-                .radius(VapeClickGui.PANEL_RADIUS)
-                .fill(detailPanelFill())
-                .border(gui.guiColors().glassBorder)
-                .shadow(gui.shadowColor(230), 92.0f, 10, 7.0f)
-                .setAlpha(gui.guiAlpha)
-                .render(mouseX, mouseY, 0.0f);
+        // 绘制面板背
+        RenderServices.shapes().shadow(gui.detailX, y, gui.detailX + gui.detailW, y + gui.panelH,
+                VapeClickGui.PANEL_RADIUS, gui.withAlpha(gui.shadowColor(230), 92.0f * gui.guiAlpha), 10, 7.0f);
+        gui.drawPanelGlass(gui.detailX, y, gui.detailX + gui.detailW, y + gui.panelH,
+                VapeClickGui.PANEL_RADIUS, 1.0f,
+                gui.withAlpha(detailPanelFill(), gui.getAlpha(detailPanelFill()) * gui.guiAlpha),
+                gui.withAlpha(gui.guiColors().glassBorder, gui.getAlpha(gui.guiColors().glassBorder) * gui.guiAlpha));
         drawPanelSurfaces(y);
 
         // 未选中模块时的空状态提示
@@ -136,6 +134,7 @@ final class ClickGuiDetailPanel {
         // 绘制模块标题区域（图标 + 名称 + 描述 + 开关）
         float headerX = gui.detailX + 20.0f;
         float headerY = y + 16.0f;
+        drawAnimeGirl(headerX + 200f, headerY - 8f);
         drawModuleIcon(gui.selectedModule, headerX + 13.0f, headerY + 13.0f);
         FontLoaders.F16.drawString(gui.trim(gui.selectedModule.getName(), FontLoaders.F16, gui.detailW - 116.0f),
                 headerX + 38.0f, headerY + 1.0f, gui.withAlpha(gui.guiColors().text, 255.0f * gui.guiAlpha));
@@ -900,8 +899,8 @@ final class ClickGuiDetailPanel {
         gui.drawThemedGlass(pillX, y + 3.0f, pillX + pillW, y + 23.0f, 5.0f, 0.8f,
                 fillColor,
                 gui.withAlpha(gui.guiColors().glassBorder, borderAlpha * alpha * gui.guiAlpha));
-        gui.drawFont(gui.trim(gui.formatModeLabel(value.getModeAsString()), FontLoaders.F14, pillW - 28.0f),
-                pillX + 12.0f, y + 9.0f,
+        gui.drawFont(gui.trim(gui.formatModeLabel(value.getModeAsString()), FontLoaders.F16, pillW - 28.0f),
+                pillX + 10.0f, y + 11.0f,
                 gui.withAlpha(expanded ? gui.guiColors().accent : gui.guiColors().text,
                         (expanded ? 240.0f : 230.0f) * alpha * gui.guiAlpha));
         // 展开/收起箭头
@@ -1025,7 +1024,7 @@ final class ClickGuiDetailPanel {
                 }
                 // 选项文字
                 gui.drawFont(gui.trim(gui.formatModeLabel(modes[i].toString()), FontLoaders.F14, pillW - 20.0f),
-                        pillX + 10.0f, rowY + 4.0f,
+                        pillX + 10.0f, rowY + 7.0f,
                         gui.withAlpha(selected ? gui.guiColors().accent : gui.guiColors().text,
                                 (selected ? 240.0f : 210.0f) * gui.guiAlpha));
             }
@@ -1077,5 +1076,13 @@ final class ClickGuiDetailPanel {
             }
         }
         return false;
+    }
+
+    private void drawAnimeGirl(float posX, float posY) {
+        switch (HUD.getTheme()) {
+            case SAKURA: {
+                RenderUtil.drawTexturedRect(new ResourceLocation("wubolong/girl.png"), posX, posY, posX+75f, posY+50f, .5f);
+            }
+        }
     }
 }

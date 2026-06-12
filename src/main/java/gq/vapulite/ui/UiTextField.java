@@ -1,6 +1,7 @@
 package gq.vapulite.ui;
 
 import gq.vapulite.module.render.HUD;
+import gq.vapulite.module.render.ClickGUI;
 import gq.vapulite.engine.font.FontLoaders;
 import gq.vapulite.engine.render.ui.RenderServices;
 import org.lwjgl.input.Keyboard;
@@ -69,9 +70,15 @@ public class UiTextField extends UiComponent {
         float radius = Math.min(17.0f, bounds.height / 2.0f);
         int border = focused || hovered ? theme.accent : theme.fieldBorder;
         float borderAlpha = focused ? 138.0f : hovered ? 96.0f : 72.0f;
-        HUD.drawThemedFrostedGlass(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, 1.15f,
-                theme.withAlpha(theme.fieldFill, 156.0f * alpha),
-                theme.withAlpha(border, borderAlpha * alpha));
+        int fillColor = theme.withAlpha(theme.fieldFill, 156.0f * alpha);
+        int borderColor = theme.withAlpha(border, borderAlpha * alpha);
+        if (Boolean.TRUE.equals(ClickGUI.glassBackground.getValue())) {
+            HUD.drawThemedFrostedGlass(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, 1.15f,
+                    fillColor, borderColor);
+        } else {
+            RenderServices.shapes().roundedBorder(bounds.x, bounds.y, bounds.right(), bounds.bottom(), radius, 1.15f,
+                    fillColor, borderColor);
+        }
         RenderServices.shapes().roundedBorder(bounds.x + 1.8f, bounds.y + 1.8f, bounds.right() - 1.8f,
                 bounds.bottom() - 1.8f, Math.max(0.0f, radius - 1.8f), 0.6f,
                 theme.withAlpha(new Color(255, 255, 255).getRGB(), 0.0f),

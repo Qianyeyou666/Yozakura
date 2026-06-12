@@ -27,17 +27,13 @@ import java.util.List;
 final class ClickGuiModuleList {
     /** 关联的主 GUI 实例 */
     private final VapeClickGui gui;
-    /** UI 面板渲染器 */
-    private final UiPanel panel;
 
     ClickGuiModuleList(VapeClickGui gui) {
         this.gui = gui;
-        this.panel = new UiPanel().setTheme(gui.uiTheme);
     }
 
     /** 更新 UI 主题 */
     void updateTheme(UiTheme theme) {
-        panel.setTheme(theme);
     }
 
     /**
@@ -53,13 +49,13 @@ final class ClickGuiModuleList {
         float modulePanelHeight = gui.getModulePanelHeight();
         float panelY = gui.contentY + introY;
         // 绘制列表面板背景
-        panel.setBounds(gui.contentX, panelY, VapeClickGui.CARD_W, modulePanelHeight)
-                .radius(VapeClickGui.PANEL_RADIUS)
-                .fill(gui.guiColors().glassFill)
-                .border(gui.guiColors().glassBorder)
-                .shadow(gui.shadowColor(220), 88.0f, 9, 6.0f)
-                .setAlpha(gui.guiAlpha)
-                .render(mouseX, mouseY, 0.0f);
+        RenderServices.shapes().shadow(gui.contentX, panelY, gui.contentX + VapeClickGui.CARD_W,
+                panelY + modulePanelHeight, VapeClickGui.PANEL_RADIUS,
+                gui.withAlpha(gui.shadowColor(220), 88.0f * gui.guiAlpha), 9, 6.0f);
+        gui.drawPanelGlass(gui.contentX, panelY, gui.contentX + VapeClickGui.CARD_W, panelY + modulePanelHeight,
+                VapeClickGui.PANEL_RADIUS, 1.0f,
+                gui.withAlpha(gui.guiColors().glassFill, gui.getAlpha(gui.guiColors().glassFill) * gui.guiAlpha),
+                gui.withAlpha(gui.guiColors().glassBorder, gui.getAlpha(gui.guiColors().glassBorder) * gui.guiAlpha));
 
         // 在裁剪区域内渲染模块卡片
         float drawContentY = gui.getModuleListY() + introY;

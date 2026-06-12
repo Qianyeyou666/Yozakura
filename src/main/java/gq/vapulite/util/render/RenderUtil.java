@@ -1,21 +1,44 @@
 package gq.vapulite.util.render;
 
-import gq.vapulite.engine.render.GLStateManager;
 import gq.vapulite.engine.render.Blur;
+import gq.vapulite.engine.render.GLStateManager;
 import gq.vapulite.engine.render.ShaderRenderer;
 import gq.vapulite.engine.render.ui.RenderServices;
+import gq.vapulite.util.time.TimerUtil;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.ScaledResolution;
+import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.BlockPos;
 import net.minecraft.util.ResourceLocation;
+import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
 
 import java.awt.Color;
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
 
 public class RenderUtil {
     public static Minecraft mc = Minecraft.getMinecraft();
 
     private static final int DEFAULT_ARC_SEGMENTS = 24;
+
+    // --- Fields merged from RenderUtils ---
+    private static final AxisAlignedBB DEFAULT_AABB = new AxisAlignedBB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
+    private static final Map<Integer, Boolean> glCapMap = new HashMap<>();
+    public static TimerUtil splashTimer = new TimerUtil();
+    public static int splashTickPos = 0;
+    public static boolean isSplash = false;
+
+    // --- Scissor state (merged from GuiRenderUtils) ---
+    private static float scissorX, scissorY, scissorWidth, scissorHeight, scissorSF;
+    private static boolean isScissoring;
+
+    // ==================== Color & State Utilities ====================
 
     public static void resetColor() {
         RenderServices.context().resetColor();
@@ -45,50 +68,31 @@ public class RenderUtil {
         return RenderServices.context().applyOpacity(color, opacity);
     }
 
-    public static void drawRoundedRect(float left, float top, float right, float bottom, int color) {
-        drawRoundedRect(left, top, right, bottom, 2.0f, color);
+    public static int applyAlpha(int color, int alpha) {
+        return (color & 0x00FFFFFF) | (Math.max(0, Math.min(255, alpha)) << 24);
     }
 
-    public static void drawBorderedRect(float left, float top, float right, float bottom, float thickness, int color) {
-        if (thickness <= 0.0f || getAlpha(color) <= 0) {
-            return;
-        }
-        drawRect(left - thickness, top, left, bottom, color);
-        drawRect(right, top, right + thickness, bottom, color);
-        drawRect(left, top - thickness, right, top, color);
-        drawRect(left, bottom, right, bottom + thickness, color);
-    }
-
-    public static void drawImage(ResourceLocation image, int x, int y, float width, float height, float alpha) {
-        drawTexturedRect(image, x, y, x + width, y + height, alpha);
-    }
-
-    public static void drawTexturedRect(ResourceLocation image, float x, float y, float x2, float y2, float alpha) {
-        if (image == null || alpha <= 0.0f) {
-            return;
-        }
-        normalizeRect(Rect.tmp, x, y, x2, y2);
-        GLStateManager.beginTextured2D(alpha);
-        try {
-            mc.getTextureManager().bindTexture(image);
-            GL11.glBegin(GL11.GL_QUADS);
-            GL11.glTexCoord2f(0.0f, 0.0f);
-            GL11.glVertex2f(Rect.tmp.left, Rect.tmp.top);
-            GL11.glTexCoord2f(0.0f, 1.0f);
-            GL11.glVertex2f(Rect.tmp.left, Rect.tmp.bottom);
-            GL11.glTexCoord2f(1.0f, 1.0f);
-            GL11.glVertex2f(Rect.tmp.right, Rect.tmp.bottom);
-            GL11.glTexCoord2f(1.0f, 0.0f);
-            GL11.glVertex2f(Rect.tmp.right, Rect.tmp.top);
-            GL11.glEnd();
-        } finally {
-            GLStateManager.endTextured2D();
-        }
+    public static int getAlpha(int color) {
+        return color >>> 24 & 255;
     }
 
     public static int reAlpha(int color, float alpha) {
         return applyAlpha(color, Math.round(GLStateManager.clamp01(alpha) * 255.0f));
     }
+
+    public static void glColor(int hex) {
+        float alpha = (hex >> 24 & 0xFF) / 255.0F;
+        float red = (hex >> 16 & 0xFF) / 255.0F;
+        float green = (hex >> 8 & 0xFF) / 255.0F;
+        float blue = (hex & 0xFF) / 255.0F;
+        GL11.glColor4f(red, green, blue, alpha);
+    }
+
+    public static void glColor(float alpha, int redRGB, int greenRGB, int blueRGB) {
+        GL11.glColor4f(redRGB / 255.0f, greenRGB / 255.0f, blueRGB / 255.0f, GLStateManager.clamp01(alpha));
+    }
+
+    // ==================== Hover Detection ====================
 
     public static boolean isHovering(float mouseX, float mouseY, float xLeft, float yUp, float xRight, float yBottom) {
         return mouseX > xLeft && mouseX < xRight && mouseY > yUp && mouseY < yBottom;
@@ -98,21 +102,7 @@ public class RenderUtil {
         return mouseX > xLeft && mouseX < xLeft + width && mouseY > yUp && mouseY < yUp + height;
     }
 
-    public static void drawRoundedRect(float x, float y, float x2, float y2, final int borderColor, final int fillColor) {
-        drawRoundedBorderedRect(x, y, x2, y2, 3.0f, 1.0f, fillColor, borderColor);
-    }
-
-    public static void drawRoundRect(float x, float y, float x1, float y1, int color) {
-        drawRoundedRect(x, y, x1, y1, 3.0f, color);
-    }
-
-    public static void drawHLine(float x, float y, float right, int bottom) {
-        drawRect(Math.min(x, y), right, Math.max(x, y) + 1.0f, right + 1.0f, bottom);
-    }
-
-    public static void drawVLine(float x, float y, float right, int bottom) {
-        drawRect(x, Math.min(y, right), x + 1.0f, Math.max(y, right), bottom);
-    }
+    // ==================== Basic Shape Drawing ====================
 
     public static void drawRect(float left, float top, float right, float bottom, int color) {
         if (getAlpha(color) <= 0) {
@@ -129,23 +119,12 @@ public class RenderUtil {
         }
     }
 
-    public static void drawOutlinedRect(float x, float y, float width, float height, float lineSize, int lineColor) {
-        drawRect(x, y, width, y + lineSize, lineColor);
-        drawRect(x, height - lineSize, width, height, lineColor);
-        drawRect(x, y + lineSize, x + lineSize, height - lineSize, lineColor);
-        drawRect(width - lineSize, y + lineSize, width, height - lineSize, lineColor);
+    public static void drawRoundedRect(float left, float top, float right, float bottom, int color) {
+        drawRoundedRect(left, top, right, bottom, 2.0f, color);
     }
 
-    public static void drawFastRoundedRect(int left, float top, int right, float bottom, float radius, int color) {
-        drawRoundedRect(left, top, right, bottom, radius, color);
-    }
-
-    public static int width() {
-        return new ScaledResolution(mc).getScaledWidth();
-    }
-
-    public static int height() {
-        return new ScaledResolution(mc).getScaledHeight();
+    public static void drawRoundedRect(float x, float y, float x2, float y2, final int borderColor, final int fillColor) {
+        drawRoundedBorderedRect(x, y, x2, y2, 3.0f, 1.0f, fillColor, borderColor);
     }
 
     public static void drawRoundedRect(float x, float y, float x2, float y2, float round, int color) {
@@ -163,6 +142,177 @@ public class RenderUtil {
             GLStateManager.end2D();
         }
     }
+
+    public static void drawRoundRect(float x, float y, float x1, float y1, int color) {
+        drawRoundedRect(x, y, x1, y1, 3.0f, color);
+    }
+
+    public static void drawFastRoundedRect(int left, float top, int right, float bottom, float radius, int color) {
+        drawRoundedRect(left, top, right, bottom, radius, color);
+    }
+
+    public static void drawBorderedRect(float left, float top, float right, float bottom, float thickness, int color) {
+        if (thickness <= 0.0f || getAlpha(color) <= 0) {
+            return;
+        }
+        drawRect(left - thickness, top, left, bottom, color);
+        drawRect(right, top, right + thickness, bottom, color);
+        drawRect(left, top - thickness, right, top, color);
+        drawRect(left, bottom, right, bottom + thickness, color);
+    }
+
+    public static void drawOutlinedRect(float x, float y, float width, float height, float lineSize, int lineColor) {
+        drawRect(x, y, width, y + lineSize, lineColor);
+        drawRect(x, height - lineSize, width, height, lineColor);
+        drawRect(x, y + lineSize, x + lineSize, height - lineSize, lineColor);
+        drawRect(width - lineSize, y + lineSize, width, height - lineSize, lineColor);
+    }
+
+    public static void drawRoundedBorderedRect(float x, float y, float x2, float y2, float radius, float borderWidth, int fillColor, int borderColor) {
+        normalizeRect(Rect.tmp, x, y, x2, y2);
+        float width = Rect.tmp.width();
+        float height = Rect.tmp.height();
+        radius = GLStateManager.clampRadius(radius, width, height);
+        if (borderWidth <= 0.0f || getAlpha(borderColor) <= 0) {
+            drawRoundedRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom, radius, fillColor);
+            return;
+        }
+        borderWidth = Math.min(borderWidth, Math.min(width, height) / 2.0f);
+        GLStateManager.begin2D();
+        try {
+            if (!ShaderRenderer.drawRoundedBorderedRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
+                    radius, borderWidth, fillColor, borderColor)) {
+                roundedRectRaw(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom, radius, borderColor);
+                if (getAlpha(fillColor) > 0 && width > borderWidth * 2.0f && height > borderWidth * 2.0f) {
+                    roundedRectRaw(Rect.tmp.left + borderWidth, Rect.tmp.top + borderWidth,
+                            Rect.tmp.right - borderWidth, Rect.tmp.bottom - borderWidth,
+                            Math.max(0.0f, radius - borderWidth), fillColor);
+                }
+            }
+        } finally {
+            GLStateManager.end2D();
+        }
+    }
+
+    public static void drawGradientBorderedRect(float x, float y, float x2, float y2, float radius, float borderWidth,
+                                                int fillColor, int leftBorderColor, int rightBorderColor) {
+        normalizeRect(Rect.tmp, x, y, x2, y2);
+        drawRoundedBorderedRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom, radius, borderWidth, fillColor, leftBorderColor);
+        if (borderWidth > 0.0f) {
+            drawHorizontalGradientRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.top + borderWidth, leftBorderColor, rightBorderColor);
+        }
+    }
+
+    public static void layeredRect(float right, float bottom, float x2, float y2, int outline, int inline, int background) {
+        drawRect(right, bottom, x2, y2, outline);
+        drawRect(right + 0.5f, bottom + 0.5f, x2 - 0.5f, y2 - 0.5f, inline);
+        drawRect(right + 1.0f, bottom + 1.0f, x2 - 1.0f, y2 - 1.0f, background);
+    }
+
+    public static void drawHLine(float x, float y, float right, int bottom) {
+        drawRect(Math.min(x, y), right, Math.max(x, y) + 1.0f, right + 1.0f, bottom);
+    }
+
+    public static void drawVLine(float x, float y, float right, int bottom) {
+        drawRect(x, Math.min(y, right), x + 1.0f, Math.max(y, right), bottom);
+    }
+
+    // ==================== Gradient Drawing ====================
+
+    public static void drawGradientRect(float x, float y, float x1, float y1, int topColor, int bottomColor) {
+        drawVerticalGradientRect(x, y, x1, y1, topColor, bottomColor);
+    }
+
+    public static void drawVerticalGradientRect(float x, float y, float x2, float y2, int topColor, int bottomColor) {
+        if (getAlpha(topColor) <= 0 && getAlpha(bottomColor) <= 0) {
+            return;
+        }
+        normalizeRect(Rect.tmp, x, y, x2, y2);
+        GLStateManager.begin2D();
+        try {
+            if (!ShaderRenderer.drawGradientRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
+                    topColor, bottomColor, topColor, bottomColor)) {
+                GL11.glShadeModel(GL11.GL_SMOOTH);
+                GL11.glBegin(GL11.GL_QUADS);
+                glColor(topColor);
+                GL11.glVertex2f(Rect.tmp.left, Rect.tmp.top);
+                GL11.glVertex2f(Rect.tmp.right, Rect.tmp.top);
+                glColor(bottomColor);
+                GL11.glVertex2f(Rect.tmp.right, Rect.tmp.bottom);
+                GL11.glVertex2f(Rect.tmp.left, Rect.tmp.bottom);
+                GL11.glEnd();
+                GL11.glShadeModel(GL11.GL_FLAT);
+            }
+        } finally {
+            GLStateManager.end2D();
+        }
+    }
+
+    public static void drawHorizontalGradientRect(float x, float y, float x2, float y2, int leftColor, int rightColor) {
+        if (getAlpha(leftColor) <= 0 && getAlpha(rightColor) <= 0) {
+            return;
+        }
+        normalizeRect(Rect.tmp, x, y, x2, y2);
+        GLStateManager.begin2D();
+        try {
+            if (!ShaderRenderer.drawGradientRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
+                    leftColor, leftColor, rightColor, rightColor)) {
+                GL11.glShadeModel(GL11.GL_SMOOTH);
+                GL11.glBegin(GL11.GL_QUADS);
+                glColor(leftColor);
+                GL11.glVertex2f(Rect.tmp.left, Rect.tmp.top);
+                GL11.glVertex2f(Rect.tmp.left, Rect.tmp.bottom);
+                glColor(rightColor);
+                GL11.glVertex2f(Rect.tmp.right, Rect.tmp.bottom);
+                GL11.glVertex2f(Rect.tmp.right, Rect.tmp.top);
+                GL11.glEnd();
+                GL11.glShadeModel(GL11.GL_FLAT);
+            }
+        } finally {
+            GLStateManager.end2D();
+        }
+    }
+
+    public static void drawRoundedHueRect(float x, float y, float x2, float y2, float radius, float alpha) {
+        if (alpha <= 0.0f) {
+            return;
+        }
+        normalizeRect(Rect.tmp, x, y, x2, y2);
+        float width = Rect.tmp.width();
+        float height = Rect.tmp.height();
+        radius = GLStateManager.clampRadius(radius, width, height);
+        GLStateManager.begin2D();
+        try {
+            if (ShaderRenderer.drawRoundedHueRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
+                    radius, Math.max(0.0f, Math.min(1.0f, alpha)))) {
+                return;
+            }
+        } finally {
+            GLStateManager.end2D();
+        }
+
+        GLStateManager.pushScissor(Rect.tmp.left, Rect.tmp.top, width, height);
+        try {
+            int segments = 18;
+            float segmentW = width / segments;
+            for (int i = 0; i < segments; i++) {
+                float left = Rect.tmp.left + i * segmentW;
+                float right = i == segments - 1 ? Rect.tmp.right : left + segmentW + 0.5f;
+                int start = Color.HSBtoRGB(i / (float) segments, 0.86f, 1.0f);
+                int end = Color.HSBtoRGB((i + 1) / (float) segments, 0.86f, 1.0f);
+                drawHorizontalGradientRect(left, Rect.tmp.top, right, Rect.tmp.bottom,
+                        applyAlpha(start, Math.round(255.0f * alpha)),
+                        applyAlpha(end, Math.round(255.0f * alpha)));
+            }
+            drawVerticalGradientRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
+                    applyAlpha(0x00FFFFFF, 0),
+                    applyAlpha(0x000000, Math.round(148.0f * alpha)));
+        } finally {
+            GLStateManager.popScissor();
+        }
+    }
+
+    // ==================== Circle & Arc Drawing ====================
 
     public static void circle(float x, float y, float radius, int fill) {
         drawCircle(x, y, 0, 360, radius, fill);
@@ -230,6 +380,53 @@ public class RenderUtil {
         arcEllipse(x, y, start, end, radius, radius, color);
     }
 
+    /**
+     * Alternative circle drawing using polygon smoothing for anti-aliased edges.
+     * Signature differs from {@link #drawCircle(float, float, int, int, float, int)} to coexist.
+     */
+    public static void drawCircle(double x, double y, double radius, int c) {
+        GL11.glEnable(32925); // GL_MULTISAMPLE
+        GL11.glEnable(2881); // GL_POLYGON_SMOOTH
+        float alpha = (float) (c >> 24 & 255) / 255.0f;
+        float red = (float) (c >> 16 & 255) / 255.0f;
+        float green = (float) (c >> 8 & 255) / 255.0f;
+        float blue = (float) (c & 255) / 255.0f;
+        boolean blend = GL11.glIsEnabled(3042);
+        boolean line = GL11.glIsEnabled(2848);
+        boolean texture = GL11.glIsEnabled(3553);
+        if (!blend) {
+            GL11.glEnable(3042);
+        }
+        if (!line) {
+            GL11.glEnable(2848);
+        }
+        if (texture) {
+            GL11.glDisable(3553);
+        }
+        GL11.glBlendFunc(770, 771);
+        GL11.glColor4f(red, green, blue, alpha);
+        GL11.glBegin(9);
+        int i = 0;
+        while (i <= 360) {
+            GL11.glVertex2d(
+                    x + Math.sin(i * 3.141526 / 180.0) * radius,
+                    y + Math.cos(i * 3.141526 / 180.0) * radius);
+            ++i;
+        }
+        GL11.glEnd();
+        if (texture) {
+            GL11.glEnable(3553);
+        }
+        if (!line) {
+            GL11.glDisable(2848);
+        }
+        if (!blend) {
+            GL11.glDisable(3042);
+        }
+        GL11.glDisable(GL11.GL_POLYGON_SMOOTH);
+        GL11.glClear(0);
+    }
+
     public static void drawCircleWithTexture(float cX, float cY, int start, int end, float radius, ResourceLocation res, int color) {
         if (res == null || radius <= 0.0f || getAlpha(color) <= 0) {
             return;
@@ -261,11 +458,219 @@ public class RenderUtil {
         }
     }
 
-    public static void layeredRect(float right, float bottom, float x2, float y2, int outline, int inline, int background) {
-        drawRect(right, bottom, x2, y2, outline);
-        drawRect(right + 0.5f, bottom + 0.5f, x2 - 0.5f, y2 - 0.5f, inline);
-        drawRect(right + 1.0f, bottom + 1.0f, x2 - 1.0f, y2 - 1.0f, background);
+    public static void drawCircleOutline(float x, float y, float radius, float lineWidth, int color) {
+        drawArcOutline(x, y, radius, 0.0f, 360.0f, lineWidth, color);
     }
+
+    public static void drawArcOutline(float x, float y, float radius, float start, float end, float lineWidth, int color) {
+        if (radius <= 0.0f || lineWidth <= 0.0f || getAlpha(color) <= 0) {
+            return;
+        }
+        if (start > end) {
+            float temp = start;
+            start = end;
+            end = temp;
+        }
+        int segments = Math.max(12, Math.min(160, (int) Math.ceil((end - start) / 3.0f)));
+        GLStateManager.begin2D();
+        try {
+            if (ShaderRenderer.drawArc(x, y, radius, start, end, lineWidth, color)) {
+                return;
+            }
+            GL11.glLineWidth(lineWidth);
+            glColor(color);
+            GL11.glBegin(GL11.GL_LINE_STRIP);
+            for (int i = 0; i <= segments; i++) {
+                float angle = start + (end - start) * i / segments;
+                double radians = Math.toRadians(angle);
+                GL11.glVertex2d(x + Math.cos(radians) * radius, y + Math.sin(radians) * radius);
+            }
+            GL11.glEnd();
+        } finally {
+            GLStateManager.end2D();
+        }
+    }
+
+    public static void drawCircleBadge(float centerX, float centerY, float radius, float ringWidth,
+                                       float progress, int fillColor, int trackColor, int progressColor) {
+        if (radius <= 0.0f || ringWidth <= 0.0f) {
+            return;
+        }
+        float clampedProgress = GLStateManager.clamp01(progress);
+        GLStateManager.begin2D();
+        try {
+            if (ShaderRenderer.drawCircleBadge(centerX, centerY, radius, ringWidth,
+                    clampedProgress, fillColor, trackColor, progressColor)) {
+                return;
+            }
+        } finally {
+            GLStateManager.end2D();
+        }
+
+        drawCircle(centerX, centerY, 0, 360, Math.max(0.0f, radius - ringWidth), fillColor);
+        drawCircleOutline(centerX, centerY, radius - ringWidth / 2.0f, ringWidth, trackColor);
+        if (clampedProgress > 0.0f) {
+            drawArcOutline(centerX, centerY, radius - ringWidth / 2.0f, -90.0f,
+                    -90.0f + 360.0f * clampedProgress, ringWidth, progressColor);
+        }
+    }
+
+    // ==================== Line Drawing ====================
+
+    public static void drawLine(float x, float y, float x2, float y2, float lineWidth, int color) {
+        if (lineWidth <= 0.0f || getAlpha(color) <= 0) {
+            return;
+        }
+        GLStateManager.begin2D();
+        try {
+            if (ShaderRenderer.drawLine(x, y, x2, y2, lineWidth, color)) {
+                return;
+            }
+            GL11.glLineWidth(lineWidth);
+            glColor(color);
+            GL11.glBegin(GL11.GL_LINES);
+            GL11.glVertex2f(x, y);
+            GL11.glVertex2f(x2, y2);
+            GL11.glEnd();
+        } finally {
+            GLStateManager.end2D();
+        }
+    }
+
+    // ==================== Progress Bar ====================
+
+    public static void drawProgressBar(float x, float y, float x2, float y2, float radius, float progress, int backgroundColor, int fillColor) {
+        float clampedProgress = GLStateManager.clamp01(progress);
+        if (getAlpha(backgroundColor) > 0) {
+            drawRoundedRect(x, y, x2, y2, radius, backgroundColor);
+        }
+        if (clampedProgress <= 0.0f || getAlpha(fillColor) <= 0) {
+            return;
+        }
+        normalizeRect(Rect.tmp, x, y, x2, y2);
+        float fillRight = Rect.tmp.left + Rect.tmp.width() * clampedProgress;
+        GLStateManager.pushScissor(Rect.tmp.left, Rect.tmp.top, fillRight - Rect.tmp.left, Rect.tmp.height());
+        try {
+            drawRoundedRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom, radius, fillColor);
+        } finally {
+            GLStateManager.popScissor();
+        }
+    }
+
+    // ==================== Shadow & Frosted Glass ====================
+
+    public static void drawSoftShadow(float x, float y, float x2, float y2, float radius, int color, int layers, float spread) {
+        int alpha = getAlpha(color);
+        if (alpha <= 0 || layers <= 0 || spread <= 0.0f) {
+            return;
+        }
+        normalizeRect(Rect.tmp, x, y, x2, y2);
+        float left = Rect.tmp.left;
+        float top = Rect.tmp.top;
+        float right = Rect.tmp.right;
+        float bottom = Rect.tmp.bottom;
+        float clampedRadius = GLStateManager.clampRadius(radius, right - left, bottom - top);
+
+        GLStateManager.begin2D();
+        try {
+            if (ShaderRenderer.drawRoundedShadow(left, top, right, bottom, clampedRadius, spread, color)) {
+                return;
+            }
+        } finally {
+            GLStateManager.end2D();
+        }
+
+        for (int i = layers; i >= 1; i--) {
+            float distance = i / (float) layers;
+            float proximity = (layers - i + 1.0f) / layers;
+            float offset = spread * distance;
+            int layerAlpha = Math.max(1, Math.round(alpha * proximity * proximity * 0.5f));
+            drawRoundedRect(left - offset, top - offset,
+                    right + offset, bottom + offset,
+                    clampedRadius + offset, applyAlpha(color, layerAlpha));
+        }
+    }
+
+    public static void drawFrostedGlassRect(float x, float y, float x2, float y2, float radius,
+                                            float borderWidth, int fillColor, int borderColor) {
+        normalizeRect(Rect.tmp, x, y, x2, y2);
+        float width = Rect.tmp.width();
+        float height = Rect.tmp.height();
+        radius = GLStateManager.clampRadius(radius, width, height);
+        borderWidth = Math.max(0.0f, Math.min(borderWidth, Math.min(width, height) / 2.0f));
+
+        GLStateManager.begin2D();
+        try {
+            if (Blur.drawBlur(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
+                    radius, borderWidth, fillColor, borderColor)) {
+                return;
+            }
+            if (ShaderRenderer.drawFrostedGlass(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
+                    radius, borderWidth, fillColor, borderColor)) {
+                return;
+            }
+        } finally {
+            GLStateManager.end2D();
+        }
+
+        drawRoundedBorderedRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
+                radius, borderWidth, fillColor, borderColor);
+        drawVerticalGradientRect(Rect.tmp.left + 1.0f, Rect.tmp.top + 1.0f,
+                Rect.tmp.right - 1.0f, Rect.tmp.bottom - 1.0f,
+                applyAlpha(0x00FFFFFF, Math.min(30, Math.max(0, getAlpha(fillColor) / 5))),
+                applyAlpha(0x00000000, 0));
+    }
+
+    // ==================== Image / Texture Drawing ====================
+
+    public static void drawImage(ResourceLocation image, int x, int y, float width, float height, float alpha) {
+        drawTexturedRect(image, x, y, x + width, y + height, alpha);
+    }
+
+    /**
+     * Draws an image with a {@link Color} tint (merged from RenderUtils).
+     */
+    public static void drawImage(float x, float y, final int width, final int height, final ResourceLocation image, Color color) {
+        GLStateManager.beginTextured2D(color.getAlpha() / 255.0f);
+        try {
+            GL11.glColor4f(color.getRed() / 255.0f, color.getGreen() / 255.0f, color.getBlue() / 255.0f, color.getAlpha() / 255.0f);
+            mc.getTextureManager().bindTexture(image);
+            Gui.drawModalRectWithCustomSizedTexture((int) x, (int) y, 0.0f, 0.0f, width, height, (float) width, (float) height);
+        } finally {
+            GLStateManager.endTextured2D();
+        }
+    }
+
+    public static void drawTexturedRect(ResourceLocation image, float x, float y, float x2, float y2, float alpha) {
+        if (image == null || alpha <= 0.0f) {
+            return;
+        }
+        normalizeRect(Rect.tmp, x, y, x2, y2);
+        GLStateManager.beginTextured2D(alpha);
+        try {
+            mc.getTextureManager().bindTexture(image);
+            // Switch to linear filtering to remove aliasing
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+            GL11.glBegin(GL11.GL_QUADS);
+            GL11.glTexCoord2f(0.0f, 0.0f);
+            GL11.glVertex2f(Rect.tmp.left, Rect.tmp.top);
+            GL11.glTexCoord2f(0.0f, 1.0f);
+            GL11.glVertex2f(Rect.tmp.left, Rect.tmp.bottom);
+            GL11.glTexCoord2f(1.0f, 1.0f);
+            GL11.glVertex2f(Rect.tmp.right, Rect.tmp.bottom);
+            GL11.glTexCoord2f(1.0f, 0.0f);
+            GL11.glVertex2f(Rect.tmp.right, Rect.tmp.top);
+            GL11.glEnd();
+            // Restore default nearest filtering
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        } finally {
+            GLStateManager.endTextured2D();
+        }
+    }
+
+    // ==================== 3D Overlay Drawing ====================
 
     public static void drawOutlinedBoundingBox(AxisAlignedBB aa) {
         if (aa == null) {
@@ -361,13 +766,584 @@ public class RenderUtil {
         }
     }
 
+    /**
+     * Draws an outlined entity ESP with custom line width (merged from RenderUtils).
+     * This is a simpler outline-only variant compared to {@link #drawEntityESP}.
+     */
+    public static void drawOutlinedEntityESP(double x, double y, double z, double width, double height, float red,
+                                             float green, float blue, float alpha) {
+        GL11.glPushMatrix();
+        GL11.glEnable(GL11.GL_BLEND);
+        GL11.glBlendFunc(770, 771);
+        GL11.glDisable(GL11.GL_TEXTURE_2D);
+        GL11.glEnable(GL11.GL_LINE_SMOOTH);
+        GL11.glDisable(GL11.GL_DEPTH_TEST);
+        GL11.glDepthMask(false);
+        GL11.glLineWidth(1.5f);
+        GL11.glColor4f(red, green, blue, alpha);
+        drawOutlinedBoundingBox(new AxisAlignedBB(x - width, y, z - width, x + width, y + height, z + width));
+        GL11.glDisable(GL11.GL_LINE_SMOOTH);
+        GL11.glEnable(GL11.GL_TEXTURE_2D);
+        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GL11.glDepthMask(true);
+        GL11.glDisable(GL11.GL_BLEND);
+        GL11.glPopMatrix();
+    }
+
+    // ==================== World Block ESP Drawing ====================
+
+    public static void drawBlockESP(BlockPos pos, float red, float green, float blue) {
+        GL11.glPushMatrix();
+        GL11.glEnable(3042);
+        GL11.glBlendFunc(770, 771);
+        GL11.glEnable(2848);
+        GL11.glLineWidth(1.0f);
+        GL11.glDisable(3553);
+        GL11.glEnable(2884);
+        GL11.glDisable(2929);
+        GL11.glDisable(2896);
+        double renderPosX = mc.getRenderManager().viewerPosX;
+        double renderPosY = mc.getRenderManager().viewerPosY;
+        double renderPosZ = mc.getRenderManager().viewerPosZ;
+        GL11.glTranslated(-renderPosX, -renderPosY, -renderPosZ);
+        GL11.glTranslated(pos.getX(), pos.getY(), pos.getZ());
+        GL11.glColor4f(red, green, blue, 0.3f);
+        drawSolidBox();
+        GL11.glColor4f(red, green, blue, 0.7f);
+        drawOutlinedBox();
+        GL11.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+        GL11.glEnable(2896);
+        GL11.glEnable(2929);
+        GL11.glEnable(3553);
+        GL11.glDisable(3042);
+        GL11.glDisable(2848);
+        GL11.glPopMatrix();
+    }
+
+    public static void drawSolidBox() {
+        drawSolidBox(DEFAULT_AABB);
+    }
+
+    public static void drawSolidBox(AxisAlignedBB bb) {
+        GL11.glBegin(7);
+        GL11.glVertex3d(bb.minX, bb.minY, bb.minZ);
+        GL11.glVertex3d(bb.maxX, bb.minY, bb.minZ);
+        GL11.glVertex3d(bb.maxX, bb.minY, bb.maxZ);
+        GL11.glVertex3d(bb.minX, bb.minY, bb.maxZ);
+        GL11.glVertex3d(bb.minX, bb.maxY, bb.minZ);
+        GL11.glVertex3d(bb.minX, bb.maxY, bb.maxZ);
+        GL11.glVertex3d(bb.maxX, bb.maxY, bb.maxZ);
+        GL11.glVertex3d(bb.maxX, bb.maxY, bb.minZ);
+        GL11.glVertex3d(bb.minX, bb.minY, bb.minZ);
+        GL11.glVertex3d(bb.minX, bb.maxY, bb.minZ);
+        GL11.glVertex3d(bb.maxX, bb.maxY, bb.minZ);
+        GL11.glVertex3d(bb.maxX, bb.minY, bb.minZ);
+        GL11.glVertex3d(bb.maxX, bb.minY, bb.minZ);
+        GL11.glVertex3d(bb.maxX, bb.maxY, bb.minZ);
+        GL11.glVertex3d(bb.maxX, bb.maxY, bb.maxZ);
+        GL11.glVertex3d(bb.maxX, bb.minY, bb.maxZ);
+        GL11.glVertex3d(bb.minX, bb.minY, bb.maxZ);
+        GL11.glVertex3d(bb.maxX, bb.minY, bb.maxZ);
+        GL11.glVertex3d(bb.maxX, bb.maxY, bb.maxZ);
+        GL11.glVertex3d(bb.minX, bb.maxY, bb.maxZ);
+        GL11.glVertex3d(bb.minX, bb.minY, bb.minZ);
+        GL11.glVertex3d(bb.minX, bb.minY, bb.maxZ);
+        GL11.glVertex3d(bb.minX, bb.maxY, bb.maxZ);
+        GL11.glVertex3d(bb.minX, bb.maxY, bb.minZ);
+        GL11.glEnd();
+    }
+
+    public static void drawOutlinedBox() {
+        drawOutlinedBox(DEFAULT_AABB);
+    }
+
+    public static void drawOutlinedBox(AxisAlignedBB bb) {
+        GL11.glBegin(1);
+        GL11.glVertex3d(bb.minX, bb.minY, bb.minZ);
+        GL11.glVertex3d(bb.maxX, bb.minY, bb.minZ);
+        GL11.glVertex3d(bb.maxX, bb.minY, bb.minZ);
+        GL11.glVertex3d(bb.maxX, bb.minY, bb.maxZ);
+        GL11.glVertex3d(bb.maxX, bb.minY, bb.maxZ);
+        GL11.glVertex3d(bb.minX, bb.minY, bb.maxZ);
+        GL11.glVertex3d(bb.minX, bb.minY, bb.maxZ);
+        GL11.glVertex3d(bb.minX, bb.minY, bb.minZ);
+        GL11.glVertex3d(bb.minX, bb.minY, bb.minZ);
+        GL11.glVertex3d(bb.minX, bb.maxY, bb.minZ);
+        GL11.glVertex3d(bb.maxX, bb.minY, bb.minZ);
+        GL11.glVertex3d(bb.maxX, bb.maxY, bb.minZ);
+        GL11.glVertex3d(bb.maxX, bb.minY, bb.maxZ);
+        GL11.glVertex3d(bb.maxX, bb.maxY, bb.maxZ);
+        GL11.glVertex3d(bb.minX, bb.minY, bb.maxZ);
+        GL11.glVertex3d(bb.minX, bb.maxY, bb.maxZ);
+        GL11.glVertex3d(bb.minX, bb.maxY, bb.minZ);
+        GL11.glVertex3d(bb.maxX, bb.maxY, bb.minZ);
+        GL11.glVertex3d(bb.maxX, bb.maxY, bb.minZ);
+        GL11.glVertex3d(bb.maxX, bb.maxY, bb.maxZ);
+        GL11.glVertex3d(bb.maxX, bb.maxY, bb.maxZ);
+        GL11.glVertex3d(bb.minX, bb.maxY, bb.maxZ);
+        GL11.glVertex3d(bb.minX, bb.maxY, bb.maxZ);
+        GL11.glVertex3d(bb.minX, bb.maxY, bb.minZ);
+        GL11.glEnd();
+    }
+
+    // ==================== Scissor ====================
+
     public static void doGlScissor(float x, float y, float windowWidth2, float windowHeight2) {
         GLStateManager.applyScissor(x, y, windowWidth2, windowHeight2);
     }
 
-    public static void glColor(float alpha, int redRGB, int greenRGB, int blueRGB) {
-        GL11.glColor4f(redRGB / 255.0f, greenRGB / 255.0f, blueRGB / 255.0f, GLStateManager.clamp01(alpha));
+    // ==================== GL Capability Management ====================
+
+    public static void clearCaps() {
+        glCapMap.clear();
     }
+
+    public static void enableGlCap(final int cap) {
+        setGlCap(cap, true);
+    }
+
+    public static void enableGlCap(final int... caps) {
+        for (final int cap : caps)
+            setGlCap(cap, true);
+    }
+
+    public static void disableGlCap(final int cap) {
+        setGlCap(cap, false);
+    }
+
+    public static void disableGlCap(final int... caps) {
+        for (final int cap : caps)
+            setGlCap(cap, false);
+    }
+
+    public static void setGlCap(final int cap, final boolean state) {
+        glCapMap.put(cap, GL11.glGetBoolean(cap));
+        setGlState(cap, state);
+    }
+
+    public static void setGlState(final int cap, final boolean state) {
+        if (state)
+            GL11.glEnable(cap);
+        else
+            GL11.glDisable(cap);
+    }
+
+    // ==================== Utility ====================
+
+    public static String DF(double value, int maxvalue) {
+        DecimalFormat df = new DecimalFormat("0", DecimalFormatSymbols.getInstance(Locale.ENGLISH));
+        df.setMaximumFractionDigits(maxvalue);
+        return df.format(value);
+    }
+
+    public static int width() {
+        return new ScaledResolution(mc).getScaledWidth();
+    }
+
+    public static int height() {
+        return new ScaledResolution(mc).getScaledHeight();
+    }
+
+    // ==================== Scissor / Crop (merged from GuiRenderUtils) ====================
+
+    /**
+     * Gets current scissor data
+     * @return float[] of scissorX,scissorY,scissorWidth,scissorHeight,scissorSF or -1 for none
+     */
+    public static float[] getScissor() {
+        if (isScissoring) {
+            return new float[]{scissorX, scissorY, scissorWidth, scissorHeight, scissorSF};
+        }
+        return new float[]{-1};
+    }
+
+    public static void beginCrop(float x, float y, float width, float height) {
+        float scaleFactor = getScaleFactor();
+        beginCrop(x, y, width, height, scaleFactor);
+    }
+
+    public static void beginCropFixed(float x, float y, float width, float height) {
+        float scaleFactor = getScaleFactor();
+        beginCrop(x, y, width, height, scaleFactor);
+    }
+
+    public static void beginCrop(float x, float y, float width, float height, float scaleFactor) {
+        GL11.glEnable(GL11.GL_SCISSOR_TEST);
+        GL11.glScissor((int) (x * scaleFactor), (int) (Display.getHeight() - (y + height) * scaleFactor), (int) (width * scaleFactor), (int) (height * scaleFactor));
+        isScissoring = true;
+        scissorX = x;
+        scissorY = y;
+        scissorWidth = width;
+        scissorHeight = height;
+        scissorSF = scaleFactor;
+    }
+
+    public static void endCrop() {
+        GL11.glDisable(GL11.GL_SCISSOR_TEST);
+        isScissoring = false;
+    }
+
+    // ==================== 3D Render Enable/Disable (merged from GuiRenderUtils) ====================
+
+    public static void enableRender3D(boolean disableDepth) {
+        if (disableDepth) {
+            GL11.glDepthMask(false);
+            GL11.glDisable(2929);
+        }
+        GL11.glDisable(3008);
+        GL11.glEnable(3042);
+        GL11.glDisable(3553);
+        GL11.glBlendFunc(770, 771);
+        GL11.glEnable(2848);
+        GL11.glHint(3154, 4354);
+        GL11.glLineWidth(1.0F);
+    }
+
+    public static void disableRender3D(boolean enableDepth) {
+        if (enableDepth) {
+            GL11.glDepthMask(true);
+            GL11.glEnable(2929);
+        }
+        GL11.glEnable(3553);
+        GL11.glDisable(3042);
+        GL11.glEnable(3008);
+        GL11.glDisable(2848);
+        GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+    }
+
+    public static void enableRender2D() {
+        RenderServices.context().start2D();
+        GL11.glLineWidth(1.0F);
+    }
+
+    public static void disableRender2D() {
+        GlStateManager.shadeModel(GL11.GL_FLAT);
+        RenderServices.context().stop2D();
+    }
+
+    // ==================== 2D Primitives (merged from GuiRenderUtils) ====================
+
+    public static void setColor(int colorHex) {
+        float alpha = (float) (colorHex >> 24 & 255) / 255.0F;
+        float red = (float) (colorHex >> 16 & 255) / 255.0F;
+        float green = (float) (colorHex >> 8 & 255) / 255.0F;
+        float blue = (float) (colorHex & 255) / 255.0F;
+        GL11.glColor4f(red, green, blue, alpha);
+    }
+
+    /**
+     * Draws a filled rect defined by width/height (not right/bottom coords).
+     * Renamed from drawRect to avoid collision with RenderUtil's coordinate-based drawRect.
+     */
+    public static void drawRectWH(float x, float y, float width, float height, int color) {
+        RenderServices.shapes().rectWH(x, y, width, height, color);
+    }
+
+    public static void drawRect(float x, float y, float width, float height, Color color) {
+        drawRectWH(x, y, width, height, color.getRGB());
+    }
+
+    public static void drawBorderedRect(float x, float y, float width, float height, float borderWidth, Color rectColor, Color borderColor) {
+        drawBorderedRect(x, y, width, height, borderWidth, rectColor.getRGB(), borderColor.getRGB());
+    }
+
+    public static void drawBorderedRect(float x, float y, float width, float height, float borderWidth, int rectColor, int borderColor) {
+        drawRectWH(x + borderWidth, y + borderWidth, width - borderWidth * 2.0F, height - borderWidth * 2.0F, rectColor);
+        drawRectWH(x, y, width, borderWidth, borderColor);
+        drawRectWH(x, y + borderWidth, borderWidth, height - borderWidth, borderColor);
+        drawRectWH(x + width - borderWidth, y + borderWidth, borderWidth, height - borderWidth, borderColor);
+        drawRectWH(x + borderWidth, y + height - borderWidth, width - borderWidth * 2.0F, borderWidth, borderColor);
+    }
+
+    public static void drawBorder(float x, float y, float width, float height, float borderWidth, int borderColor) {
+        drawRectWH(x + borderWidth, y + borderWidth, width - borderWidth * 2.0F, borderWidth, borderColor);
+        drawRectWH(x, y + borderWidth, borderWidth, height - borderWidth, borderColor);
+        drawRectWH(x + width - borderWidth, y + borderWidth, borderWidth, height - borderWidth, borderColor);
+        drawRectWH(x + borderWidth, y + height - borderWidth, width - borderWidth * 2.0F, borderWidth, borderColor);
+    }
+
+    public static void drawRoundedRect(float x, float y, float width, float height, float edgeRadius, int color, float borderWidth, int borderColor) {
+        if (color == 16777215) color = 0xFFF;
+        if (borderColor == 16777215) borderColor = 0xFFF;
+        RenderServices.shapes().roundedBorderWH(x, y, width, height, edgeRadius, borderWidth, color, borderColor);
+    }
+
+    public static void drawImageSpread(ResourceLocation image, float x, float y, float width, float height, float alpha) {
+        GLStateManager.beginTextured2D(alpha);
+        try {
+            mc.getTextureManager().bindTexture(image);
+            Gui.drawModalRectWithCustomSizedTexture((int) x, (int) y, 0.0f, 0.0f, (int) width, (int) height, 25, 25);
+        } finally {
+            GLStateManager.endTextured2D();
+        }
+    }
+
+    // ==================== Circle Drawing Variants (merged from GuiRenderUtils) ====================
+
+    /** Draws a circle outline with configurable line width. */
+    public static void drawCircle(float x, float y, float radius, float lineWidth, int color) {
+        enableRender2D();
+        setColor(color);
+        GL11.glLineWidth(lineWidth);
+        int vertices = (int) Math.min(Math.max(radius, 45.0F), 360.0F);
+        GL11.glBegin(2);
+        for (int i = 0; i < vertices; ++i) {
+            double angleRadians = 6.283185307179586D * (double) i / (double) vertices;
+            GL11.glVertex2d((double) x + Math.sin(angleRadians) * (double) radius, (double) y + Math.cos(angleRadians) * (double) radius);
+        }
+        GL11.glEnd();
+        disableRender2D();
+    }
+
+    public static void drawFilledCircle(float x, float y, float radius, int color) {
+        enableRender2D();
+        setColor(color);
+        int vertices = (int) Math.min(Math.max(radius, 45.0F), 360.0F);
+        GL11.glBegin(9);
+        for (int i = 0; i < vertices; ++i) {
+            double angleRadians = 6.283185307179586D * (double) i / (double) vertices;
+            GL11.glVertex2d((double) x + Math.sin(angleRadians) * (double) radius, (double) y + Math.cos(angleRadians) * (double) radius);
+        }
+        GL11.glEnd();
+        disableRender2D();
+        drawCircle(x, y, radius, 1.5F, 16777215);
+    }
+
+    public static void drawFilledCircleNoBorder(float x, float y, float radius, int color) {
+        enableRender2D();
+        setColor(color);
+        int vertices = (int) Math.min(Math.max(radius, 45.0F), 360.0F);
+        GL11.glBegin(9);
+        for (int i = 0; i < vertices; ++i) {
+            double angleRadians = 6.283185307179586D * (double) i / (double) vertices;
+            GL11.glVertex2d((double) x + Math.sin(angleRadians) * (double) radius, (double) y + Math.cos(angleRadians) * (double) radius);
+        }
+        GL11.glEnd();
+        disableRender2D();
+    }
+
+    // ==================== 3D Line Drawing (merged from GuiRenderUtils) ====================
+
+    public static void drawLine3D(double x1, double y1, double z1, double x2, double y2, double z2, int color) {
+        drawLine3D(x1, y1, z1, x2, y2, z2, color, true);
+    }
+
+    public static void drawLine3D(double x1, double y1, double z1, double x2, double y2, double z2, int color, boolean disableDepth) {
+        enableRender3D(disableDepth);
+        setColor(color);
+        GL11.glBegin(1);
+        GL11.glVertex3d(x1, y1, z1);
+        GL11.glVertex3d(x2, y2, z2);
+        GL11.glEnd();
+        disableRender3D(disableDepth);
+    }
+
+    public static void drawLine2D(double x1, double y1, double x2, double y2, float width, int color) {
+        enableRender2D();
+        setColor(color);
+        GL11.glLineWidth(width);
+        GL11.glBegin(1);
+        GL11.glVertex2d(x1, y1);
+        GL11.glVertex2d(x2, y2);
+        GL11.glEnd();
+        disableRender2D();
+    }
+
+    public static void drawPoint(int x, int y, float size, int color) {
+        enableRender2D();
+        setColor(color);
+        GL11.glPointSize(size);
+        GL11.glEnable(2832);
+        GL11.glBegin(0);
+        GL11.glVertex2d((double) x, (double) y);
+        GL11.glEnd();
+        GL11.glDisable(2832);
+        disableRender2D();
+    }
+
+    // ==================== 3D Box Drawing (merged from GuiRenderUtils) ====================
+
+    public static void drawOutlinedBox(AxisAlignedBB boundingBox, int color) {
+        drawOutlinedBox(boundingBox, color, true);
+    }
+
+    public static void drawOutlinedBox(AxisAlignedBB boundingBox, int color, boolean disableDepth) {
+        if (boundingBox != null) {
+            enableRender3D(disableDepth);
+            setColor(color);
+            GL11.glBegin(3);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.minZ);
+            GL11.glEnd();
+            GL11.glBegin(3);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glEnd();
+            GL11.glBegin(1);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glEnd();
+            disableRender3D(disableDepth);
+        }
+    }
+
+    public static void drawBox(AxisAlignedBB boundingBox, int color) {
+        drawBox(boundingBox, color, true);
+    }
+
+    public static void drawBox(AxisAlignedBB boundingBox, int color, boolean disableDepth) {
+        if (boundingBox != null) {
+            enableRender3D(disableDepth);
+            setColor(color);
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glEnd();
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glEnd();
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glEnd();
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glEnd();
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glEnd();
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glEnd();
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glEnd();
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glEnd();
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glEnd();
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.maxY, boundingBox.maxZ);
+            GL11.glEnd();
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glEnd();
+            GL11.glBegin(7);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.minZ);
+            GL11.glVertex3d(boundingBox.minX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glVertex3d(boundingBox.maxX, boundingBox.minY, boundingBox.maxZ);
+            GL11.glEnd();
+            disableRender3D(disableDepth);
+        }
+    }
+
+    // ==================== Glow & Color Utilities (merged from GuiRenderUtils) ====================
+
+    /**
+     * Draws a soft glow behind a rounded-rect area using multi-layer alpha falloff.
+     * @param x        left edge of the glow source rect
+     * @param y        top edge of the glow source rect
+     * @param x2       right edge of the glow source rect
+     * @param y2       bottom edge of the glow source rect
+     * @param radius   corner radius of the glow source rect
+     * @param glowColor ARGB glow colour (alpha channel controls overall intensity)
+     * @param intensity 0.0 = invisible, 1.0 = full spread — clamped to [0.1, 1.0]
+     */
+    public static void drawGlowAround(float x, float y, float x2, float y2, float radius, int glowColor, float intensity) {
+        if (intensity <= 0.0f) return;
+        int baseAlpha = (glowColor >>> 24);
+        if (baseAlpha <= 0) return;
+
+        float clampedIntensity = Math.min(1.0f, Math.max(0.1f, intensity));
+        int layers = 8;
+        float spread = 7.0f * clampedIntensity;
+        RenderServices.shapes().shadow(x, y, x2, y2, radius,
+                (glowColor & 0x00FFFFFF) | (Math.round(baseAlpha * 0.6f) << 24),
+                layers, spread);
+    }
+
+    public static int darker(int hexColor, int factor) {
+        float alpha = (float) (hexColor >> 24 & 255);
+        float red = Math.max((float) (hexColor >> 16 & 255) - (float) (hexColor >> 16 & 255) / (100.0F / (float) factor), 0.0F);
+        float green = Math.max((float) (hexColor >> 8 & 255) - (float) (hexColor >> 8 & 255) / (100.0F / (float) factor), 0.0F);
+        float blue = Math.max((float) (hexColor & 255) - (float) (hexColor & 255) / (100.0F / (float) factor), 0.0F);
+        return (int) ((float) (((int) alpha << 24) + ((int) red << 16) + ((int) green << 8)) + blue);
+    }
+
+    public static int opacity(int hexColor, int factor) {
+        float alpha = Math.max((float) (hexColor >> 24 & 255) - (float) (hexColor >> 24 & 255) / (100.0F / (float) factor), 0.0F);
+        float red = (float) (hexColor >> 16 & 255);
+        float green = (float) (hexColor >> 8 & 255);
+        float blue = (float) (hexColor & 255);
+        return (int) ((float) (((int) alpha << 24) + ((int) red << 16) + ((int) green << 8)) + blue);
+    }
+
+    // ==================== Display Helpers (merged from GuiRenderUtils) ====================
+
+    public static float getScaleFactor() {
+        ScaledResolution scaledResolution = new ScaledResolution(mc);
+        return scaledResolution.getScaleFactor();
+    }
+
+    public static int getDisplayWidth() {
+        ScaledResolution scaledResolution = new ScaledResolution(mc);
+        int displayWidth = scaledResolution.getScaledWidth();
+        return displayWidth;
+    }
+
+    public static int getDisplayHeight() {
+        ScaledResolution scaledResolution = new ScaledResolution(mc);
+        int displayHeight = scaledResolution.getScaledHeight();
+        return displayHeight;
+    }
+
+    // ==================== R2DUtils Inner Class ====================
 
     public static class R2DUtils {
         public static void enableGL2D() {
@@ -407,306 +1383,7 @@ public class RenderUtil {
         }
     }
 
-    public static void drawGradientRect(float x, float y, float x1, float y1, int topColor, int bottomColor) {
-        drawVerticalGradientRect(x, y, x1, y1, topColor, bottomColor);
-    }
-
-    public static void drawVerticalGradientRect(float x, float y, float x2, float y2, int topColor, int bottomColor) {
-        if (getAlpha(topColor) <= 0 && getAlpha(bottomColor) <= 0) {
-            return;
-        }
-        normalizeRect(Rect.tmp, x, y, x2, y2);
-        GLStateManager.begin2D();
-        try {
-            if (!ShaderRenderer.drawGradientRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
-                    topColor, bottomColor, topColor, bottomColor)) {
-                GL11.glShadeModel(GL11.GL_SMOOTH);
-                GL11.glBegin(GL11.GL_QUADS);
-                glColor(topColor);
-                GL11.glVertex2f(Rect.tmp.left, Rect.tmp.top);
-                GL11.glVertex2f(Rect.tmp.right, Rect.tmp.top);
-                glColor(bottomColor);
-                GL11.glVertex2f(Rect.tmp.right, Rect.tmp.bottom);
-                GL11.glVertex2f(Rect.tmp.left, Rect.tmp.bottom);
-                GL11.glEnd();
-                GL11.glShadeModel(GL11.GL_FLAT);
-            }
-        } finally {
-            GLStateManager.end2D();
-        }
-    }
-
-    public static void drawHorizontalGradientRect(float x, float y, float x2, float y2, int leftColor, int rightColor) {
-        if (getAlpha(leftColor) <= 0 && getAlpha(rightColor) <= 0) {
-            return;
-        }
-        normalizeRect(Rect.tmp, x, y, x2, y2);
-        GLStateManager.begin2D();
-        try {
-            if (!ShaderRenderer.drawGradientRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
-                    leftColor, leftColor, rightColor, rightColor)) {
-                GL11.glShadeModel(GL11.GL_SMOOTH);
-                GL11.glBegin(GL11.GL_QUADS);
-                glColor(leftColor);
-                GL11.glVertex2f(Rect.tmp.left, Rect.tmp.top);
-                GL11.glVertex2f(Rect.tmp.left, Rect.tmp.bottom);
-                glColor(rightColor);
-                GL11.glVertex2f(Rect.tmp.right, Rect.tmp.bottom);
-                GL11.glVertex2f(Rect.tmp.right, Rect.tmp.top);
-                GL11.glEnd();
-                GL11.glShadeModel(GL11.GL_FLAT);
-            }
-        } finally {
-            GLStateManager.end2D();
-        }
-    }
-
-    public static void drawRoundedHueRect(float x, float y, float x2, float y2, float radius, float alpha) {
-        if (alpha <= 0.0f) {
-            return;
-        }
-        normalizeRect(Rect.tmp, x, y, x2, y2);
-        float width = Rect.tmp.width();
-        float height = Rect.tmp.height();
-        radius = GLStateManager.clampRadius(radius, width, height);
-        GLStateManager.begin2D();
-        try {
-            if (ShaderRenderer.drawRoundedHueRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
-                    radius, Math.max(0.0f, Math.min(1.0f, alpha)))) {
-                return;
-            }
-        } finally {
-            GLStateManager.end2D();
-        }
-
-        GLStateManager.pushScissor(Rect.tmp.left, Rect.tmp.top, width, height);
-        try {
-            int segments = 18;
-            float segmentW = width / segments;
-            for (int i = 0; i < segments; i++) {
-                float left = Rect.tmp.left + i * segmentW;
-                float right = i == segments - 1 ? Rect.tmp.right : left + segmentW + 0.5f;
-                int start = Color.HSBtoRGB(i / (float) segments, 0.86f, 1.0f);
-                int end = Color.HSBtoRGB((i + 1) / (float) segments, 0.86f, 1.0f);
-                drawHorizontalGradientRect(left, Rect.tmp.top, right, Rect.tmp.bottom,
-                        applyAlpha(start, Math.round(255.0f * alpha)),
-                        applyAlpha(end, Math.round(255.0f * alpha)));
-            }
-            drawVerticalGradientRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
-                    applyAlpha(0x00FFFFFF, 0),
-                    applyAlpha(0x000000, Math.round(148.0f * alpha)));
-        } finally {
-            GLStateManager.popScissor();
-        }
-    }
-
-    public static void drawRoundedBorderedRect(float x, float y, float x2, float y2, float radius, float borderWidth, int fillColor, int borderColor) {
-        normalizeRect(Rect.tmp, x, y, x2, y2);
-        float width = Rect.tmp.width();
-        float height = Rect.tmp.height();
-        radius = GLStateManager.clampRadius(radius, width, height);
-        if (borderWidth <= 0.0f || getAlpha(borderColor) <= 0) {
-            drawRoundedRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom, radius, fillColor);
-            return;
-        }
-        borderWidth = Math.min(borderWidth, Math.min(width, height) / 2.0f);
-        GLStateManager.begin2D();
-        try {
-            if (!ShaderRenderer.drawRoundedBorderedRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
-                    radius, borderWidth, fillColor, borderColor)) {
-                roundedRectRaw(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom, radius, borderColor);
-                if (getAlpha(fillColor) > 0 && width > borderWidth * 2.0f && height > borderWidth * 2.0f) {
-                    roundedRectRaw(Rect.tmp.left + borderWidth, Rect.tmp.top + borderWidth,
-                            Rect.tmp.right - borderWidth, Rect.tmp.bottom - borderWidth,
-                            Math.max(0.0f, radius - borderWidth), fillColor);
-                }
-            }
-        } finally {
-            GLStateManager.end2D();
-        }
-    }
-
-    public static void drawFrostedGlassRect(float x, float y, float x2, float y2, float radius,
-                                            float borderWidth, int fillColor, int borderColor) {
-        normalizeRect(Rect.tmp, x, y, x2, y2);
-        float width = Rect.tmp.width();
-        float height = Rect.tmp.height();
-        radius = GLStateManager.clampRadius(radius, width, height);
-        borderWidth = Math.max(0.0f, Math.min(borderWidth, Math.min(width, height) / 2.0f));
-
-        GLStateManager.begin2D();
-        try {
-            if (Blur.drawBlur(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
-                    radius, borderWidth, fillColor, borderColor)) {
-                return;
-            }
-            if (ShaderRenderer.drawFrostedGlass(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
-                    radius, borderWidth, fillColor, borderColor)) {
-                return;
-            }
-        } finally {
-            GLStateManager.end2D();
-        }
-
-        drawRoundedBorderedRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
-                radius, borderWidth, fillColor, borderColor);
-        drawVerticalGradientRect(Rect.tmp.left + 1.0f, Rect.tmp.top + 1.0f,
-                Rect.tmp.right - 1.0f, Rect.tmp.bottom - 1.0f,
-                applyAlpha(0x00FFFFFF, Math.min(30, Math.max(0, getAlpha(fillColor) / 5))),
-                applyAlpha(0x00000000, 0));
-    }
-
-    public static void drawGradientBorderedRect(float x, float y, float x2, float y2, float radius, float borderWidth,
-                                                int fillColor, int leftBorderColor, int rightBorderColor) {
-        normalizeRect(Rect.tmp, x, y, x2, y2);
-        drawRoundedBorderedRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom, radius, borderWidth, fillColor, leftBorderColor);
-        if (borderWidth > 0.0f) {
-            drawHorizontalGradientRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.top + borderWidth, leftBorderColor, rightBorderColor);
-        }
-    }
-
-    public static void drawLine(float x, float y, float x2, float y2, float lineWidth, int color) {
-        if (lineWidth <= 0.0f || getAlpha(color) <= 0) {
-            return;
-        }
-        GLStateManager.begin2D();
-        try {
-            if (ShaderRenderer.drawLine(x, y, x2, y2, lineWidth, color)) {
-                return;
-            }
-            GL11.glLineWidth(lineWidth);
-            glColor(color);
-            GL11.glBegin(GL11.GL_LINES);
-            GL11.glVertex2f(x, y);
-            GL11.glVertex2f(x2, y2);
-            GL11.glEnd();
-        } finally {
-            GLStateManager.end2D();
-        }
-    }
-
-    public static void drawArcOutline(float x, float y, float radius, float start, float end, float lineWidth, int color) {
-        if (radius <= 0.0f || lineWidth <= 0.0f || getAlpha(color) <= 0) {
-            return;
-        }
-        if (start > end) {
-            float temp = start;
-            start = end;
-            end = temp;
-        }
-        int segments = Math.max(12, Math.min(160, (int) Math.ceil((end - start) / 3.0f)));
-        GLStateManager.begin2D();
-        try {
-            if (ShaderRenderer.drawArc(x, y, radius, start, end, lineWidth, color)) {
-                return;
-            }
-            GL11.glLineWidth(lineWidth);
-            glColor(color);
-            GL11.glBegin(GL11.GL_LINE_STRIP);
-            for (int i = 0; i <= segments; i++) {
-                float angle = start + (end - start) * i / segments;
-                double radians = Math.toRadians(angle);
-                GL11.glVertex2d(x + Math.cos(radians) * radius, y + Math.sin(radians) * radius);
-            }
-            GL11.glEnd();
-        } finally {
-            GLStateManager.end2D();
-        }
-    }
-
-    public static void drawCircleOutline(float x, float y, float radius, float lineWidth, int color) {
-        drawArcOutline(x, y, radius, 0.0f, 360.0f, lineWidth, color);
-    }
-
-    public static void drawCircleBadge(float centerX, float centerY, float radius, float ringWidth,
-                                       float progress, int fillColor, int trackColor, int progressColor) {
-        if (radius <= 0.0f || ringWidth <= 0.0f) {
-            return;
-        }
-        float clampedProgress = GLStateManager.clamp01(progress);
-        GLStateManager.begin2D();
-        try {
-            if (ShaderRenderer.drawCircleBadge(centerX, centerY, radius, ringWidth,
-                    clampedProgress, fillColor, trackColor, progressColor)) {
-                return;
-            }
-        } finally {
-            GLStateManager.end2D();
-        }
-
-        drawCircle(centerX, centerY, 0, 360, Math.max(0.0f, radius - ringWidth), fillColor);
-        drawCircleOutline(centerX, centerY, radius - ringWidth / 2.0f, ringWidth, trackColor);
-        if (clampedProgress > 0.0f) {
-            drawArcOutline(centerX, centerY, radius - ringWidth / 2.0f, -90.0f,
-                    -90.0f + 360.0f * clampedProgress, ringWidth, progressColor);
-        }
-    }
-
-    public static void drawProgressBar(float x, float y, float x2, float y2, float radius, float progress, int backgroundColor, int fillColor) {
-        float clampedProgress = GLStateManager.clamp01(progress);
-        if (getAlpha(backgroundColor) > 0) {
-            drawRoundedRect(x, y, x2, y2, radius, backgroundColor);
-        }
-        if (clampedProgress <= 0.0f || getAlpha(fillColor) <= 0) {
-            return;
-        }
-        normalizeRect(Rect.tmp, x, y, x2, y2);
-        float fillRight = Rect.tmp.left + Rect.tmp.width() * clampedProgress;
-        GLStateManager.pushScissor(Rect.tmp.left, Rect.tmp.top, fillRight - Rect.tmp.left, Rect.tmp.height());
-        try {
-            drawRoundedRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom, radius, fillColor);
-        } finally {
-            GLStateManager.popScissor();
-        }
-    }
-
-    public static void drawSoftShadow(float x, float y, float x2, float y2, float radius, int color, int layers, float spread) {
-        int alpha = getAlpha(color);
-        if (alpha <= 0 || layers <= 0 || spread <= 0.0f) {
-            return;
-        }
-        normalizeRect(Rect.tmp, x, y, x2, y2);
-        float left = Rect.tmp.left;
-        float top = Rect.tmp.top;
-        float right = Rect.tmp.right;
-        float bottom = Rect.tmp.bottom;
-        float clampedRadius = GLStateManager.clampRadius(radius, right - left, bottom - top);
-
-        GLStateManager.begin2D();
-        try {
-            if (ShaderRenderer.drawRoundedShadow(left, top, right, bottom, clampedRadius, spread, color)) {
-                return;
-            }
-        } finally {
-            GLStateManager.end2D();
-        }
-
-        for (int i = layers; i >= 1; i--) {
-            float distance = i / (float) layers;
-            float proximity = (layers - i + 1.0f) / layers;
-            float offset = spread * distance;
-            int layerAlpha = Math.max(1, Math.round(alpha * proximity * proximity * 0.5f));
-            drawRoundedRect(left - offset, top - offset,
-                    right + offset, bottom + offset,
-                    clampedRadius + offset, applyAlpha(color, layerAlpha));
-        }
-    }
-
-    public static int applyAlpha(int color, int alpha) {
-        return (color & 0x00FFFFFF) | (Math.max(0, Math.min(255, alpha)) << 24);
-    }
-
-    public static int getAlpha(int color) {
-        return color >>> 24 & 255;
-    }
-
-    public static void glColor(int hex) {
-        float alpha = (hex >> 24 & 0xFF) / 255.0F;
-        float red = (hex >> 16 & 0xFF) / 255.0F;
-        float green = (hex >> 8 & 0xFF) / 255.0F;
-        float blue = (hex & 0xFF) / 255.0F;
-        GL11.glColor4f(red, green, blue, alpha);
-    }
+    // ==================== Private Helpers ====================
 
     private static void fillRectRaw(float left, float top, float right, float bottom, int color) {
         glColor(color);

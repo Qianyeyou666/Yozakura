@@ -28,7 +28,7 @@ import java.awt.Color;
 final class ClickGuiSidePanel {
     private static final float STATS_H = 82.0f;
     private static final float SUMMARY_MIN_H = 126.0f;
-    private static final float DESIGN_H = 150.0f;
+    private static final float DESIGN_H = 172.0f;
     private static final float DRAG_H = 28.0f;
 
     /** 关联的主 GUI 实例 */
@@ -306,7 +306,7 @@ final class ClickGuiSidePanel {
         String[][] rows = new String[][]{
                 new String[]{"State", gui.selectedModule.getState() ? "Enabled" : "Disabled"},
                 new String[]{"Key", gui.getKeyName(gui.selectedModule)},
-                new String[]{"Options", String.valueOf(gui.getVisibleValueCount(gui.selectedModule))}
+//                new String[]{"Options", String.valueOf(gui.getVisibleValueCount(gui.selectedModule))}
         };
         for (int i = 0; i < rows.length; i++) {
             float rowY = y + i * 20.0f;
@@ -369,7 +369,15 @@ final class ClickGuiSidePanel {
         RenderServices.shapes().circle(previewX + previewW * 0.72f, previewY + 16.0f, 0, 360, 16.0f,
                 gui.withAlpha(new Color(255, 255, 255).getRGB(), 52.0f * gui.guiAlpha));
 
-        float buttonY = y + 105.0f;
+        float glassY = y + 105.0f;
+        boolean glassEnabled = Boolean.TRUE.equals(ClickGUI.glassBackground.getValue());
+        gui.drawFont("Glass", gui.sideX + 16.0f, glassY + 2.0f,
+                gui.withAlpha(gui.guiColors().text, 222.0f * gui.guiAlpha));
+        gui.drawFont(glassEnabled ? "On" : "Solid", gui.sideX + 72.0f, glassY + 2.0f,
+                gui.withAlpha(glassEnabled ? gui.guiColors().accent : gui.guiColors().muted, 200.0f * gui.guiAlpha));
+        gui.drawSwitch(getGlassSwitchX(gui.sideX), getGlassSwitchY(y), glassEnabled, 1.0f, ClickGUI.glassBackground);
+
+        float buttonY = y + 127.0f;
         boolean buttonHovered = VapeClickGui.isHovered(gui.sideX + 15.0f, buttonY, gui.sideX + gui.sideW - 15.0f,
                 buttonY + 15.0f, mouseX, mouseY);
         gui.designThemeButtonHoverProgress = gui.animate(gui.designThemeButtonHoverProgress,
@@ -388,7 +396,7 @@ final class ClickGuiSidePanel {
                 gui.sideX + gui.sideW - 18.0f, buttonY + 14.0f,
                 gui.withAlpha(gui.guiColors().text, (218.0f + 24.0f * buttonHover) * gui.guiAlpha));
 
-        float resetY = y + 127.0f;
+        float resetY = y + 149.0f;
         boolean resetHovered = VapeClickGui.isHovered(gui.sideX + 15.0f, resetY, gui.sideX + gui.sideW - 15.0f,
                 resetY + 16.0f, mouseX, mouseY);
         gui.designResetButtonHoverProgress = gui.animate(gui.designResetButtonHoverProgress,
@@ -466,6 +474,12 @@ final class ClickGuiSidePanel {
                 gui.addToast("Theme -> " + formatTheme(themes[i]));
                 return true;
             }
+        }
+        if (gui.isSwitchHit(getGlassSwitchX(xBase), getGlassSwitchY(y), mouseX, mouseY)) {
+            boolean enabled = Boolean.TRUE.equals(ClickGUI.glassBackground.getValue());
+            ClickGUI.glassBackground.setValue(!enabled);
+            gui.valueActiveProgress.put(ClickGUI.glassBackground, 1.0f);
+            return true;
         }
         if (isResetButtonHovered(y, mouseX, mouseY)) {
             gui.resetUiLayout();
@@ -558,10 +572,18 @@ final class ClickGuiSidePanel {
     }
 
     private boolean isResetButtonHovered(float panelY, int mouseX, int mouseY) {
-        float y = panelY + 127.0f;
+        float y = panelY + 149.0f;
         float x = getPanelX(ClickGUI.sideDesignOffsetX);
         return VapeClickGui.isHovered(x + 15.0f, y, x + gui.sideW - 15.0f, y + 16.0f,
                 mouseX, mouseY);
+    }
+
+    private float getGlassSwitchX(float panelX) {
+        return panelX + gui.sideW - 47.0f;
+    }
+
+    private float getGlassSwitchY(float panelY) {
+        return panelY + 105.0f;
     }
 
     private interface PanelDraw {
