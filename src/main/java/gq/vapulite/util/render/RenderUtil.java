@@ -649,6 +649,9 @@ public class RenderUtil {
         GLStateManager.beginTextured2D(alpha);
         try {
             mc.getTextureManager().bindTexture(image);
+            // Switch to linear filtering to remove aliasing
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
             GL11.glBegin(GL11.GL_QUADS);
             GL11.glTexCoord2f(0.0f, 0.0f);
             GL11.glVertex2f(Rect.tmp.left, Rect.tmp.top);
@@ -659,6 +662,9 @@ public class RenderUtil {
             GL11.glTexCoord2f(1.0f, 0.0f);
             GL11.glVertex2f(Rect.tmp.right, Rect.tmp.top);
             GL11.glEnd();
+            // Restore default nearest filtering
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
         } finally {
             GLStateManager.endTextured2D();
         }

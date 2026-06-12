@@ -2,6 +2,8 @@ package gq.vapulite.ui.click;
 
 import gq.vapulite.manager.ModuleManager;
 import gq.vapulite.module.Module;
+import gq.vapulite.module.render.HUD;
+import gq.vapulite.util.render.RenderUtil;
 import gq.vapulite.value.Mode;
 import gq.vapulite.value.Numbers;
 import gq.vapulite.value.Option;
@@ -9,6 +11,7 @@ import gq.vapulite.value.Value;
 import gq.vapulite.engine.font.FontLoaders;
 import gq.vapulite.engine.render.ui.RenderServices;
 import gq.vapulite.ui.UiTheme;
+import net.minecraft.util.ResourceLocation;
 
 import java.awt.Color;
 import java.util.HashMap;
@@ -109,7 +112,7 @@ final class ClickGuiDetailPanel {
         // 面板定位
         float y = gui.contentY + introY;
         gui.settingsScroll = gui.animate(gui.settingsScroll, gui.targetSettingsScroll, 0.14f);
-        // 绘制面板背景
+        // 绘制面板背
         RenderServices.shapes().shadow(gui.detailX, y, gui.detailX + gui.detailW, y + gui.panelH,
                 VapeClickGui.PANEL_RADIUS, gui.withAlpha(gui.shadowColor(230), 92.0f * gui.guiAlpha), 10, 7.0f);
         gui.drawPanelGlass(gui.detailX, y, gui.detailX + gui.detailW, y + gui.panelH,
@@ -129,6 +132,7 @@ final class ClickGuiDetailPanel {
         // 绘制模块标题区域（图标 + 名称 + 描述 + 开关）
         float headerX = gui.detailX + 20.0f;
         float headerY = y + 16.0f;
+        drawAnimeGirl(headerX + 200f, headerY - 8f);
         drawModuleIcon(gui.selectedModule, headerX + 13.0f, headerY + 13.0f);
         FontLoaders.F16.drawString(gui.trim(gui.selectedModule.getName(), FontLoaders.F16, gui.detailW - 116.0f),
                 headerX + 38.0f, headerY + 1.0f, gui.withAlpha(gui.guiColors().text, 255.0f * gui.guiAlpha));
@@ -1070,5 +1074,13 @@ final class ClickGuiDetailPanel {
             }
         }
         return false;
+    }
+
+    private void drawAnimeGirl(float posX, float posY) {
+        switch (HUD.getTheme()) {
+            case SAKURA: {
+                RenderUtil.drawTexturedRect(new ResourceLocation("wubolong/girl.png"), posX, posY, posX+75f, posY+50f, .5f);
+            }
+        }
     }
 }
