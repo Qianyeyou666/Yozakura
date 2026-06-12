@@ -305,7 +305,7 @@ final class ClickGuiSidePanel {
         String[][] rows = new String[][]{
                 new String[]{"State", gui.selectedModule.getState() ? "Enabled" : "Disabled"},
                 new String[]{"Key", gui.getKeyName(gui.selectedModule)},
-                new String[]{"Options", String.valueOf(gui.getVisibleValueCount(gui.selectedModule))}
+//                new String[]{"Options", String.valueOf(gui.getVisibleValueCount(gui.selectedModule))}
         };
         for (int i = 0; i < rows.length; i++) {
             float rowY = y + i * 20.0f;
