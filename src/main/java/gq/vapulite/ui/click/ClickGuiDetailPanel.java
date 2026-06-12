@@ -897,8 +897,8 @@ final class ClickGuiDetailPanel {
         gui.drawThemedGlass(pillX, y + 3.0f, pillX + pillW, y + 23.0f, 5.0f, 0.8f,
                 fillColor,
                 gui.withAlpha(gui.guiColors().glassBorder, borderAlpha * alpha * gui.guiAlpha));
-        gui.drawFont(gui.trim(gui.formatModeLabel(value.getModeAsString()), FontLoaders.F14, pillW - 28.0f),
-                pillX + 12.0f, y + 9.0f,
+        gui.drawFont(gui.trim(gui.formatModeLabel(value.getModeAsString()), FontLoaders.F16, pillW - 28.0f),
+                pillX + 10.0f, y + 11.0f,
                 gui.withAlpha(expanded ? gui.guiColors().accent : gui.guiColors().text,
                         (expanded ? 240.0f : 230.0f) * alpha * gui.guiAlpha));
         // 展开/收起箭头
@@ -1022,7 +1022,7 @@ final class ClickGuiDetailPanel {
                 }
                 // 选项文字
                 gui.drawFont(gui.trim(gui.formatModeLabel(modes[i].toString()), FontLoaders.F14, pillW - 20.0f),
-                        pillX + 10.0f, rowY + 4.0f,
+                        pillX + 10.0f, rowY + 7.0f,
                         gui.withAlpha(selected ? gui.guiColors().accent : gui.guiColors().text,
                                 (selected ? 240.0f : 210.0f) * gui.guiAlpha));
             }
