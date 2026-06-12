@@ -227,20 +227,20 @@ final class ClickGuiModuleList {
         // 选中或悬停时的阴影效果
         if (selected || hover > 0.04f) {
             RenderServices.shapes().shadow(x, y, x + rowW, y + height, 7.0f,
-                    gui.withAlpha(selected ? new Color(92, 85, 235).getRGB() : gui.shadowColor(190),
+                    gui.withAlpha(selected ? gui.guiColors().accent : gui.shadowColor(190),
                             (selected ? 42.0f : 18.0f + hover * 12.0f) * alpha * gui.guiAlpha), 5, 3.0f);
         }
         // 点击时的脉冲阴影
         if (click > 0.02f) {
             RenderServices.shapes().shadow(x, y, x + rowW, y + height, 7.0f,
-                    gui.withAlpha(new Color(112, 101, 255).getRGB(), (14.0f + click * 36.0f) * alpha * gui.guiAlpha), 5, 2.8f);
+                    gui.withAlpha(gui.guiColors().accent, (14.0f + click * 36.0f) * alpha * gui.guiAlpha), 5, 2.8f);
         }
         boolean enabled = module.getState();
         if (selected) {
-            // 选中状态：高亮毛玻璃卡片
-            gui.drawThemedGlass(x, y, x + rowW, y + height, 7.0f, 0.8f,
+            // 选中状态：高亮毛玻璃卡片，边框直接使用主题强调色
+            gui.drawThemedGlass(x, y, x + rowW, y + height, 7.0f, 1.2f,
                     gui.withAlpha(gui.guiColors().detailSelectedFill, 218.0f * alpha * gui.guiAlpha),
-                    gui.withAlpha(gui.guiColors().detailSelectedBorder, 78.0f * alpha * gui.guiAlpha));
+                    gui.withAlpha(gui.guiColors().accent, 78.0f * alpha * gui.guiAlpha));
         } else if (enabled) {
             // 启用状态：带主题色混合背景
             int accent = gui.guiColors().accent;

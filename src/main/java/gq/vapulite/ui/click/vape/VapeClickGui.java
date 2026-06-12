@@ -116,7 +116,7 @@ public class VapeClickGui extends GuiScreen {
                 new Color(0, 0, 0, 200).getRGB(),
                 new Color(0, 0, 0, 210).getRGB());
 
-        /** 浅色主题配色 */
+        /** 浅色主题配色（透明度与 Sakura 对齐） */
         static final GuiPalette LIGHT = new GuiPalette(
                 new Color(230, 235, 242, 148).getRGB(),
                 new Color(220, 225, 234, 220).getRGB(),
@@ -128,11 +128,11 @@ public class VapeClickGui extends GuiScreen {
                 new Color(155, 162, 175).getRGB(),
                 new Color(24, 142, 198).getRGB(),
                 new Color(182, 50, 55).getRGB(),
-                new Color(232, 236, 244, 148).getRGB(),
-                new Color(225, 230, 240, 118).getRGB(),
-                new Color(160, 175, 198, 54).getRGB(),
+                new Color(232, 236, 244, 250).getRGB(),   // glassFill: alpha 148→250
+                new Color(225, 230, 240, 250).getRGB(),   // glassFillSoft: alpha 118→250
+                new Color(160, 175, 198, 104).getRGB(),   // glassBorder: alpha 54→104
                 new Color(210, 215, 228, 170).getRGB(),
-                new Color(190, 192, 220, 200).getRGB(),
+                new Color(190, 192, 220, 226).getRGB(),   // detailSelectedFill: alpha 200→226
                 new Color(130, 160, 240).getRGB(),
                 new Color(24, 142, 198).getRGB(),
                 new Color(190, 195, 210, 170).getRGB(),

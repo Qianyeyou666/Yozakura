@@ -32,11 +32,17 @@ cl /nologo /EHsc /std:c++17 /O2 /DUNICODE /D_UNICODE ^
   "third_party\imgui\backends\imgui_impl_win32.cpp" ^
   "third_party\imgui\backends\imgui_impl_dx11.cpp" ^
   /link /NOLOGO /SUBSYSTEM:WINDOWS /OUT:"build\libs\VapuLiteInjector.exe" ^
-  user32.lib gdi32.lib shlwapi.lib shell32.lib dwmapi.lib ole32.lib windowscodecs.lib d3d11.lib dxgi.lib
+  user32.lib gdi32.lib shlwapi.lib shell32.lib dwmapi.lib ole32.lib windowscodecs.lib d3d11.lib d3dcompiler.lib dxgi.lib
 
 if errorlevel 1 exit /b %errorlevel%
 
 copy /Y "native\assets\vapu_logo.png" "build\libs\vapu_logo.png" >nul
+if errorlevel 1 exit /b %errorlevel%
+copy /Y "native\assets\minecraft_grass_block.png" "build\libs\minecraft_grass_block.png" >nul
+if errorlevel 1 exit /b %errorlevel%
+copy /Y "native\assets\minecraft_furnace_block.png" "build\libs\minecraft_furnace_block.png" >nul
+if errorlevel 1 exit /b %errorlevel%
+copy /Y "native\assets\minecraft_cherry_block.png" "build\libs\minecraft_cherry_block.png" >nul
 if errorlevel 1 exit /b %errorlevel%
 
 echo Built:
