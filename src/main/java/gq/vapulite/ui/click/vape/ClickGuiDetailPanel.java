@@ -373,7 +373,7 @@ final class ClickGuiDetailPanel {
         RenderServices.shapes().shadow(centerX - 13.0f, centerY - 13.0f, centerX + 13.0f, centerY + 13.0f,
                 8.0f, gui.withAlpha(gui.guiColors().accent, 34.0f * gui.guiAlpha), 4, 2.0f);
         gui.drawCenteredIcon(ClickGuiIcons.forModule(module), FontLoaders.I20, centerX, centerY,
-                gui.withAlpha(new Color(226, 232, 248).getRGB(), 236.0f * gui.guiAlpha));
+                gui.withAlpha(gui.guiColors().accent, 236.0f * gui.guiAlpha));
     }
 
     private void drawPanelSurfaces(float panelY) {

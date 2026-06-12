@@ -18,8 +18,8 @@ final class ClickGuiNavigationRenderer {
         RenderServices.shapes().shadow(x, y, right, y + VapeClickGui.NAV_H, 9.0f,
                 gui.withAlpha(gui.shadowColor(210), 70.0f * gui.guiAlpha), 7, 5.0f);
         gui.drawPanelGlass(x, y, right, y + VapeClickGui.NAV_H, 9.0f, 1.0f,
-                gui.withAlpha(gui.guiColors().glassFillSoft, 186.0f * gui.guiAlpha),
-                gui.withAlpha(gui.guiColors().glassBorder, 52.0f * gui.guiAlpha));
+                gui.withAlpha(gui.guiColors().glassFillSoft, gui.getAlpha(gui.guiColors().glassFillSoft) * gui.guiAlpha),
+                gui.withAlpha(gui.guiColors().glassBorder, gui.getAlpha(gui.guiColors().glassBorder) * gui.guiAlpha));
     }
 
     void drawNavigation(int mouseX, int mouseY, float introY) {
@@ -27,8 +27,8 @@ final class ClickGuiNavigationRenderer {
         RenderServices.shapes().shadow(gui.navX, y, gui.navX + gui.navW, y + VapeClickGui.NAV_H, 9.0f,
                 gui.withAlpha(gui.shadowColor(210), 70.0f * gui.guiAlpha), 7, 5.0f);
         gui.drawPanelGlass(gui.navX, y, gui.navX + gui.navW, y + VapeClickGui.NAV_H, 9.0f, 1.0f,
-                gui.withAlpha(gui.guiColors().glassFillSoft, 186.0f * gui.guiAlpha),
-                gui.withAlpha(gui.guiColors().glassBorder, 52.0f * gui.guiAlpha));
+                gui.withAlpha(gui.guiColors().glassFillSoft, gui.getAlpha(gui.guiColors().glassFillSoft) * gui.guiAlpha),
+                gui.withAlpha(gui.guiColors().glassBorder, gui.getAlpha(gui.guiColors().glassBorder) * gui.guiAlpha));
 
         float tabW = gui.navW / GuiTab.values().length;
         float targetX = gui.navX + VapeClickGui.currentTab.ordinal() * tabW + 2.0f;

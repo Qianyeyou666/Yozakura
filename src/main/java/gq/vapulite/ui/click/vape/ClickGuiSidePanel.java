@@ -150,8 +150,8 @@ final class ClickGuiSidePanel {
                         70.0f * gui.guiAlpha), 8, 5.0f);
         gui.drawPanelGlass(x, y, x + w, y + VapeClickGui.NAV_H,
                 VapeClickGui.PANEL_RADIUS, 1.0f,
-                gui.withAlpha(gui.guiColors().glassFill, 206.0f * gui.guiAlpha),
-                gui.withAlpha(gui.guiColors().glassBorder, 50.0f * gui.guiAlpha));
+                gui.withAlpha(gui.guiColors().glassFill, gui.getAlpha(gui.guiColors().glassFill) * gui.guiAlpha),
+                gui.withAlpha(gui.guiColors().glassBorder, gui.getAlpha(gui.guiColors().glassBorder) * gui.guiAlpha));
         // 用户头像图标
         gui.drawSoftRect(x + 10.0f, y + 6.0f, x + 26.0f, y + 22.0f, 5.0f,
                 gui.withAlpha(new Color(81, 87, 103, 220).getRGB(), 220.0f * gui.guiAlpha));
@@ -171,8 +171,8 @@ final class ClickGuiSidePanel {
         RenderServices.shapes().shadow(gui.sideX, y, gui.sideX + gui.sideW, y + STATS_H, VapeClickGui.PANEL_RADIUS,
                 gui.withAlpha(gui.shadowColor(220), 70.0f * gui.guiAlpha), 8, 5.0f);
         gui.drawPanelGlass(gui.sideX, y, gui.sideX + gui.sideW, y + STATS_H, VapeClickGui.PANEL_RADIUS, 1.0f,
-                gui.withAlpha(gui.guiColors().glassFill, 204.0f * gui.guiAlpha),
-                gui.withAlpha(gui.guiColors().glassBorder, 48.0f * gui.guiAlpha));
+                gui.withAlpha(gui.guiColors().glassFill, gui.getAlpha(gui.guiColors().glassFill) * gui.guiAlpha),
+                gui.withAlpha(gui.guiColors().glassBorder, gui.getAlpha(gui.guiColors().glassBorder) * gui.guiAlpha));
         drawPanelTitle(FontLoaders.ICON_INFO, "Statistics", y + 13.0f);
         // 三列状态数据
         drawStat("FPS", gui.getLiveFpsText(), gui.sideX + 12.0f, y + 32.0f, gui.guiColors().text);
@@ -255,8 +255,8 @@ final class ClickGuiSidePanel {
         RenderServices.shapes().shadow(gui.sideX, y, gui.sideX + gui.sideW, y + h, VapeClickGui.PANEL_RADIUS,
                 gui.withAlpha(gui.shadowColor(230), 78.0f * gui.guiAlpha), 9, 6.0f);
         gui.drawPanelGlass(gui.sideX, y, gui.sideX + gui.sideW, y + h, VapeClickGui.PANEL_RADIUS, 1.0f,
-                gui.withAlpha(gui.guiColors().glassFill, 210.0f * gui.guiAlpha),
-                gui.withAlpha(gui.guiColors().glassBorder, 48.0f * gui.guiAlpha));
+                gui.withAlpha(gui.guiColors().glassFill, gui.getAlpha(gui.guiColors().glassFill) * gui.guiAlpha),
+                gui.withAlpha(gui.guiColors().glassBorder, gui.getAlpha(gui.guiColors().glassBorder) * gui.guiAlpha));
         drawPanelTitle(FontLoaders.ICON_SETTINGS, "Module Info", y + 17.0f);
         // 未选中模块时的提示
         if (gui.selectedModule == null) {
@@ -345,8 +345,8 @@ final class ClickGuiSidePanel {
         RenderServices.shapes().shadow(gui.sideX, y, gui.sideX + gui.sideW, y + DESIGN_H, VapeClickGui.PANEL_RADIUS,
                 gui.withAlpha(gui.shadowColor(230), 72.0f * gui.guiAlpha), 8, 5.0f);
         gui.drawPanelGlass(gui.sideX, y, gui.sideX + gui.sideW, y + DESIGN_H, VapeClickGui.PANEL_RADIUS, 1.0f,
-                gui.withAlpha(gui.guiColors().glassFill, 214.0f * gui.guiAlpha),
-                gui.withAlpha(gui.guiColors().glassBorder, 54.0f * gui.guiAlpha));
+                gui.withAlpha(gui.guiColors().glassFill, gui.getAlpha(gui.guiColors().glassFill) * gui.guiAlpha),
+                gui.withAlpha(gui.guiColors().glassBorder, gui.getAlpha(gui.guiColors().glassBorder) * gui.guiAlpha));
         drawPanelTitle(FontLoaders.ICON_SUN_ALT, "Design", y + 17.0f);
 
         float swatchX = gui.sideX + 15.0f;
