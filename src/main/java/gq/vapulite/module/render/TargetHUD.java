@@ -34,7 +34,7 @@ public class TargetHUD extends Module {
     private static final int MUTED = 0xFFB8AEB8;
     private static final int SAKURA = 0xFFFFB7D1;
     private static final int SAKURA_STRONG = 0xFFFF80B3;
-    private static final int GLASS_FILL = 0xFF101015;
+    private static final int GLASS_FILL = 0xFF08080D;
     private static final int GLASS_BORDER = 0xFFFFB7D1;
 
     private final Numbers<Double> xPosition = new Numbers<Double>("X", "X", -1.0, -1.0, 2000.0, 1.0);
@@ -132,8 +132,10 @@ public class TargetHUD extends Module {
         }
 
         float targetHealth = displayTarget == null ? 0.0f : healthRatio(displayTarget);
-        healthAnimation += (targetHealth - healthAnimation) * factor;
-        float damageFactor = targetHealth < damageAnimation ? Math.min(1.0f, factor * 0.34f)
+        float healthFactor = targetHealth < healthAnimation ? Math.min(1.0f, factor * 0.48f)
+                : Math.min(1.0f, factor * 1.35f);
+        healthAnimation += (targetHealth - healthAnimation) * healthFactor;
+        float damageFactor = targetHealth < damageAnimation ? Math.min(1.0f, factor * 0.18f)
                 : Math.min(1.0f, factor * 1.15f);
         damageAnimation += (targetHealth - damageAnimation) * damageFactor;
         flowerAnimation += (healthAnimation - flowerAnimation) * Math.min(1.0f, factor * 0.72f);
@@ -152,15 +154,18 @@ public class TargetHUD extends Module {
         float[] pos = HudDrag.update("target_hud", xPosition, yPosition, scale, defaultX, defaultY,
                 width * uiScale, height * uiScale, sr);
 
-        float easedAlpha = clamp01(alpha);
+        float rawAlpha = clamp01(alpha);
+        float easedAlpha = smoothStep(rawAlpha);
         float x = pos[0];
-        float y = pos[1] + (HudDrag.isEditMode() ? 0.0f : (1.0f - easedAlpha) * 5.0f);
+        boolean editMode = HudDrag.isEditMode();
+        float y = pos[1] + (editMode ? 0.0f : (1.0f - rawAlpha) * 10.0f);
         float w = width * uiScale;
         float h = height * uiScale;
         float radius = 8.0f * uiScale;
         float pulse = clamp01(switchPulse);
+        float panelScale = editMode ? 1.0f : 0.88f + 0.12f * easeOutBack(rawAlpha) + pulse * 0.018f;
 
-        int fill = withAlpha(GLASS_FILL, Math.round((128.0f + pulse * 20.0f) * easedAlpha));
+        int fill = withAlpha(GLASS_FILL, Math.round((158.0f + pulse * 18.0f) * easedAlpha));
         int border = withAlpha(GLASS_BORDER, Math.round((24.0f + pulse * 18.0f) * easedAlpha));
         LiquidGlassSettings settings = LiquidGlassSettings.defaults()
                 .withBlurRadius(18.0f)
@@ -169,6 +174,14 @@ public class TargetHUD extends Module {
                 .withRefractionScale(1.16f)
                 .withHighlight(1.05f);
 
+        GlStateManager.pushMatrix();
+        if (Math.abs(panelScale - 1.0f) > 0.001f) {
+            float centerX = x + w * 0.5f;
+            float centerY = y + h * 0.5f;
+            GlStateManager.translate(centerX, centerY, 0.0f);
+            GlStateManager.scale(panelScale, panelScale, 1.0f);
+            GlStateManager.translate(-centerX, -centerY, 0.0f);
+        }
         RenderServices.shapes().shadow(x, y, x + w, y + h, radius,
                 withAlpha(0xFF000000, Math.round(96.0f * easedAlpha)), 8, 3.4f * uiScale);
         RenderServices.shapes().shadow(x, y, x + w, y + h, radius,
@@ -176,12 +189,12 @@ public class TargetHUD extends Module {
         RenderServices.liquidGlass().roundedBorder(x, y, x + w, y + h, radius, 0.55f * uiScale,
                 fill, border, settings);
         drawBackgroundAccent(x, y, w, h, radius, uiScale, easedAlpha);
-        drawLiquidEdgeReflections(x, y, w, h, radius, uiScale, easedAlpha, pulse);
 
         drawAvatar(target, x + 14.0f * uiScale, y + 8.0f * uiScale, 26.0f * uiScale, uiScale, easedAlpha);
         drawText(target, x, y, w, uiScale, easedAlpha);
         drawHealth(target, x, y, w, uiScale, easedAlpha);
         HudDrag.drawHint("target_hud", x, y, w, h, radius);
+        GlStateManager.popMatrix();
     }
 
     private void drawBackgroundAccent(float x, float y, float width, float height, float radius,
@@ -196,68 +209,6 @@ public class TargetHUD extends Module {
         RenderServices.shapes().rounded(x + 8.0f * uiScale, y + height - 9.0f * uiScale,
                 x + 72.0f * uiScale, y + height - 4.0f * uiScale,
                 3.0f * uiScale, withAlpha(SAKURA, Math.round(14.0f * alpha)));
-    }
-
-    private void drawLiquidEdgeReflections(float x, float y, float width, float height, float radius,
-                                           float uiScale, float alpha, float pulse) {
-        if (alpha <= 0.002f) {
-            return;
-        }
-        float shimmer = 0.55f + 0.45f * (float) Math.sin(System.currentTimeMillis() * 0.0022D);
-        GlStateManager.enableBlend();
-        GlStateManager.disableTexture2D();
-        GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0);
-
-        float inset = 2.15f * uiScale;
-        GL11.glLineWidth(Math.max(0.65f, 0.78f * uiScale));
-        glColor(0xFFFFF7FB, alpha * (0.20f + shimmer * 0.070f + pulse * 0.060f));
-        drawCubicLine(x + radius * 0.95f, y + inset,
-                x + width * 0.23f, y + inset * 0.42f,
-                x + width * 0.38f, y + inset * 1.62f,
-                x + width * 0.52f, y + inset * 0.78f, 18);
-
-        glColor(0xFFFFD2E2, alpha * (0.13f + shimmer * 0.045f));
-        drawCubicLine(x + width * 0.68f, y + inset * 0.88f,
-                x + width * 0.76f, y + inset * 1.65f,
-                x + width * 0.85f, y + inset * 0.52f,
-                x + width - radius * 0.95f, y + inset * 1.12f, 12);
-
-        GL11.glLineWidth(Math.max(0.55f, 0.62f * uiScale));
-        glColor(0xFFFFF2F8, alpha * (0.095f + pulse * 0.050f));
-        drawCubicLine(x + inset, y + radius * 1.18f,
-                x + inset * 0.48f, y + height * 0.38f,
-                x + inset * 1.40f, y + height * 0.50f,
-                x + inset, y + height - radius * 1.25f, 12);
-
-        glColor(0xFFFFD9E7, alpha * (0.082f + shimmer * 0.036f));
-        drawCubicLine(x + width - inset, y + radius * 1.20f,
-                x + width - inset * 0.48f, y + height * 0.36f,
-                x + width - inset * 1.42f, y + height * 0.49f,
-                x + width - inset, y + height - radius * 1.28f, 12);
-
-        glColor(0xFFFFEAF3, alpha * 0.092f);
-        drawCubicLine(x + width * 0.62f, y + height - inset * 0.72f,
-                x + width * 0.71f, y + height - inset * 0.18f,
-                x + width * 0.80f, y + height - inset * 1.18f,
-                x + width - radius * 1.18f, y + height - inset * 0.82f, 10);
-
-        GlStateManager.enableTexture2D();
-        resetTextRenderState();
-    }
-
-    private void drawCubicLine(float x0, float y0, float x1, float y1, float x2, float y2,
-                               float x3, float y3, int segments) {
-        GL11.glBegin(GL11.GL_LINE_STRIP);
-        for (int i = 0; i <= segments; i++) {
-            float t = i / (float) segments;
-            float it = 1.0f - t;
-            float x = it * it * it * x0 + 3.0f * it * it * t * x1
-                    + 3.0f * it * t * t * x2 + t * t * t * x3;
-            float y = it * it * it * y0 + 3.0f * it * it * t * y1
-                    + 3.0f * it * t * t * y2 + t * t * t * y3;
-            GL11.glVertex2f(x, y);
-        }
-        GL11.glEnd();
     }
 
     private void drawText(EntityLivingBase target, float x, float y, float width, float uiScale, float alpha) {
@@ -277,8 +228,26 @@ public class TargetHUD extends Module {
                 withAlpha(SAKURA, Math.round(218.0f * alpha)));
 
         String percentText = percent + "%";
-        percentFont.drawString(percentText, right - percentFont.getStringWidth(percentText),
-                y + 21.0f * uiScale, withAlpha(SAKURA, Math.round(240.0f * alpha)));
+        float percentX = right - percentFont.getStringWidth(percentText);
+        float percentY = y + 21.0f * uiScale;
+        drawTextGlow(percentFont, percentText, percentX, percentY, uiScale, alpha);
+        percentFont.drawString(percentText, percentX, percentY,
+                withAlpha(0xFFFFB9D4, Math.round(248.0f * alpha)));
+    }
+
+    private void drawTextGlow(CFontRenderer font, String text, float x, float y, float uiScale, float alpha) {
+        int wideGlow = withAlpha(SAKURA, Math.round(28.0f * alpha));
+        int nearGlow = withAlpha(0xFFFFBED8, Math.round(48.0f * alpha));
+        float wide = Math.max(0.72f, 0.88f * uiScale);
+        float near = Math.max(0.38f, 0.50f * uiScale);
+        font.drawString(text, x - wide, y, wideGlow);
+        font.drawString(text, x + wide, y, wideGlow);
+        font.drawString(text, x, y - wide, wideGlow);
+        font.drawString(text, x, y + wide, wideGlow);
+        font.drawString(text, x - near, y - near, nearGlow);
+        font.drawString(text, x + near, y - near, nearGlow);
+        font.drawString(text, x - near, y + near, nearGlow);
+        font.drawString(text, x + near, y + near, nearGlow);
     }
 
     private void drawHealth(EntityLivingBase target, float x, float y, float width, float uiScale, float alpha) {
@@ -295,7 +264,7 @@ public class TargetHUD extends Module {
         drawCapsule(barX, barY, barW, barH, withAlpha(0xFF17171D, Math.round(186.0f * alpha)));
         if (delayed > health + 0.003f) {
             drawCapsule(barX, barY, barW * delayed, barH,
-                    withAlpha(0xFFFF4E77, Math.round(62.0f * alpha)));
+                    withAlpha(0xFFFF6F9A, Math.round(92.0f * alpha)));
         }
         float fillW = Math.max(0.0f, barW * health);
         float flowerX = barX + Math.max(0.0f, Math.min(barW, barW * clamp01(flowerAnimation)));
@@ -603,5 +572,16 @@ public class TargetHUD extends Module {
 
     private float clamp01(float value) {
         return Math.max(0.0f, Math.min(1.0f, value));
+    }
+
+    private float smoothStep(float value) {
+        float t = clamp01(value);
+        return t * t * (3.0f - 2.0f * t);
+    }
+
+    private float easeOutBack(float value) {
+        float t = clamp01(value) - 1.0f;
+        float c = 1.55f;
+        return 1.0f + t * t * ((c + 1.0f) * t + c);
     }
 }
