@@ -3,12 +3,14 @@
 #include <tlhelp32.h>
 #include <shlwapi.h>
 #include <d3d11.h>
+#include <d3dcompiler.h>
 #include <dwmapi.h>
 #include <wincodec.h>
 #include <tchar.h>
 
 #include <cmath>
 #include <cwchar>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -19,6 +21,7 @@
 #include "ui_fonts.h"
 
 #pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "d3dcompiler.lib")
 #pragma comment(lib, "dxgi.lib")
 #pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "dwmapi.lib")
@@ -34,8 +37,8 @@ const UINT kInjectDone = WM_APP + 1;
 const float kPi = 3.1415926535f;
 const int kBootWidth = 430;
 const int kBootHeight = 270;
-const int kWindowWidth = 1024;
-const int kWindowHeight = 544;
+const int kWindowWidth = 940;
+const int kWindowHeight = 600;
 
 enum UiState {
     STATE_BOOT,
@@ -59,7 +62,9 @@ struct AppState {
     float stageAlpha = 0.0f;
     float contentAlpha = 0.0f;
     float loadingAlpha = 0.0f;
+    float resultAlpha = 0.0f;
     DWORD injectStarted = 0;
+    DWORD injectFinished = 0;
     char status[512] = "Ready";
     wchar_t dllPath[MAX_PATH] = {};
 };
@@ -81,6 +86,31 @@ IDXGISwapChain* g_swapChain = nullptr;
 ID3D11RenderTargetView* g_renderTarget = nullptr;
 ID3D11ShaderResourceView* g_logoTexture = nullptr;
 ImVec2 g_logoSize(0.0f, 0.0f);
+ID3D11ShaderResourceView* g_versionTextures[3] = {};
+ImVec2 g_versionTextureSizes[3] = {};
+
+struct BlurConstants {
+    float texelSize[2];
+    float direction[2];
+};
+
+struct BlurResources {
+    int width = 0;
+    int height = 0;
+    ID3D11Texture2D* textureA = nullptr;
+    ID3D11Texture2D* textureB = nullptr;
+    ID3D11RenderTargetView* rtvA = nullptr;
+    ID3D11RenderTargetView* rtvB = nullptr;
+    ID3D11ShaderResourceView* srvA = nullptr;
+    ID3D11ShaderResourceView* srvB = nullptr;
+    ID3D11VertexShader* vertexShader = nullptr;
+    ID3D11PixelShader* blurShader = nullptr;
+    ID3D11SamplerState* sampler = nullptr;
+    ID3D11Buffer* constants = nullptr;
+    bool ready = false;
+};
+
+BlurResources g_blur;
 
 enum AccentState {
     ACCENT_DISABLED = 0,
@@ -158,6 +188,15 @@ std::string wideToUtf8(const wchar_t* text) {
 
 void setStatus(const char* text) {
     strncpy_s(g_app.status, text ? text : "", _TRUNCATE);
+}
+
+void currentDateText(char* out, size_t outSize) {
+    SYSTEMTIME now = {};
+    GetLocalTime(&now);
+    sprintf_s(out, outSize, "%02u.%02u.%04u",
+              static_cast<unsigned>(now.wDay),
+              static_cast<unsigned>(now.wMonth),
+              static_cast<unsigned>(now.wYear));
 }
 
 std::wstring exeDirectory() {
@@ -408,11 +447,219 @@ bool createDeviceD3D(HWND hwnd) {
     return true;
 }
 
+template <typename T>
+void releaseDx(T*& object) {
+    if (object) {
+        object->Release();
+        object = nullptr;
+    }
+}
+
+void releaseBlurTargets() {
+    releaseDx(g_blur.textureA);
+    releaseDx(g_blur.textureB);
+    releaseDx(g_blur.rtvA);
+    releaseDx(g_blur.rtvB);
+    releaseDx(g_blur.srvA);
+    releaseDx(g_blur.srvB);
+    g_blur.ready = false;
+    g_blur.width = 0;
+    g_blur.height = 0;
+}
+
+void cleanupBlurResources() {
+    releaseBlurTargets();
+    releaseDx(g_blur.vertexShader);
+    releaseDx(g_blur.blurShader);
+    releaseDx(g_blur.sampler);
+    releaseDx(g_blur.constants);
+}
+
+bool createBlurShaders() {
+    if (g_blur.vertexShader && g_blur.blurShader) {
+        return true;
+    }
+    const char* shader = R"(
+        cbuffer BlurConstants : register(b0) {
+            float2 texelSize;
+            float2 direction;
+        };
+        Texture2D sourceTexture : register(t0);
+        SamplerState sourceSampler : register(s0);
+
+        struct VSOut {
+            float4 pos : SV_POSITION;
+            float2 uv : TEXCOORD0;
+        };
+
+        VSOut VSMain(uint id : SV_VertexID) {
+            VSOut output;
+            float2 pos[3] = { float2(-1.0, -1.0), float2(-1.0, 3.0), float2(3.0, -1.0) };
+            float2 uv[3] = { float2(0.0, 1.0), float2(0.0, -1.0), float2(2.0, 1.0) };
+            output.pos = float4(pos[id], 0.0, 1.0);
+            output.uv = uv[id];
+            return output;
+        }
+
+        float4 PSMain(VSOut input) : SV_TARGET {
+            float2 step = texelSize * direction;
+            float4 color = sourceTexture.Sample(sourceSampler, input.uv) * 0.1964825502;
+            color += sourceTexture.Sample(sourceSampler, input.uv + step * 1.4117647059) * 0.2969069647;
+            color += sourceTexture.Sample(sourceSampler, input.uv - step * 1.4117647059) * 0.2969069647;
+            color += sourceTexture.Sample(sourceSampler, input.uv + step * 3.2941176471) * 0.0944703979;
+            color += sourceTexture.Sample(sourceSampler, input.uv - step * 3.2941176471) * 0.0944703979;
+            color += sourceTexture.Sample(sourceSampler, input.uv + step * 5.1764705882) * 0.0103813624;
+            color += sourceTexture.Sample(sourceSampler, input.uv - step * 5.1764705882) * 0.0103813624;
+            return color;
+        }
+    )";
+
+    ID3DBlob* vsBlob = nullptr;
+    ID3DBlob* psBlob = nullptr;
+    ID3DBlob* errors = nullptr;
+    HRESULT hr = D3DCompile(shader, strlen(shader), nullptr, nullptr, nullptr, "VSMain", "vs_4_0", 0, 0, &vsBlob, &errors);
+    if (FAILED(hr)) {
+        releaseDx(errors);
+        return false;
+    }
+    hr = D3DCompile(shader, strlen(shader), nullptr, nullptr, nullptr, "PSMain", "ps_4_0", 0, 0, &psBlob, &errors);
+    if (FAILED(hr)) {
+        releaseDx(vsBlob);
+        releaseDx(errors);
+        return false;
+    }
+    hr = g_device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &g_blur.vertexShader);
+    if (SUCCEEDED(hr)) {
+        hr = g_device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &g_blur.blurShader);
+    }
+    releaseDx(vsBlob);
+    releaseDx(psBlob);
+    releaseDx(errors);
+    if (FAILED(hr)) {
+        return false;
+    }
+
+    D3D11_SAMPLER_DESC sampler = {};
+    sampler.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    sampler.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler.ComparisonFunc = D3D11_COMPARISON_ALWAYS;
+    sampler.MaxLOD = D3D11_FLOAT32_MAX;
+    if (FAILED(g_device->CreateSamplerState(&sampler, &g_blur.sampler))) {
+        return false;
+    }
+
+    D3D11_BUFFER_DESC cb = {};
+    cb.ByteWidth = sizeof(BlurConstants);
+    cb.Usage = D3D11_USAGE_DYNAMIC;
+    cb.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    cb.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    return SUCCEEDED(g_device->CreateBuffer(&cb, nullptr, &g_blur.constants));
+}
+
+bool ensureBlurTargets(int width, int height) {
+    if (width <= 0 || height <= 0 || !createBlurShaders()) {
+        return false;
+    }
+    if (g_blur.ready && g_blur.width == width && g_blur.height == height) {
+        return true;
+    }
+    releaseBlurTargets();
+    g_blur.width = width;
+    g_blur.height = height;
+
+    D3D11_TEXTURE2D_DESC desc = {};
+    desc.Width = width;
+    desc.Height = height;
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.Usage = D3D11_USAGE_DEFAULT;
+    desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    if (FAILED(g_device->CreateTexture2D(&desc, nullptr, &g_blur.textureA)) ||
+        FAILED(g_device->CreateTexture2D(&desc, nullptr, &g_blur.textureB)) ||
+        FAILED(g_device->CreateRenderTargetView(g_blur.textureA, nullptr, &g_blur.rtvA)) ||
+        FAILED(g_device->CreateRenderTargetView(g_blur.textureB, nullptr, &g_blur.rtvB)) ||
+        FAILED(g_device->CreateShaderResourceView(g_blur.textureA, nullptr, &g_blur.srvA)) ||
+        FAILED(g_device->CreateShaderResourceView(g_blur.textureB, nullptr, &g_blur.srvB))) {
+        releaseBlurTargets();
+        return false;
+    }
+    g_blur.ready = true;
+    return true;
+}
+
+void blurPass(ID3D11ShaderResourceView* source, ID3D11RenderTargetView* target, float dx, float dy) {
+    BlurConstants constants = {};
+    constants.texelSize[0] = 1.0f / static_cast<float>(g_blur.width);
+    constants.texelSize[1] = 1.0f / static_cast<float>(g_blur.height);
+    constants.direction[0] = dx;
+    constants.direction[1] = dy;
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (SUCCEEDED(g_context->Map(g_blur.constants, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+        memcpy(mapped.pData, &constants, sizeof(constants));
+        g_context->Unmap(g_blur.constants, 0);
+    }
+
+    D3D11_VIEWPORT viewport = {};
+    viewport.Width = static_cast<float>(g_blur.width);
+    viewport.Height = static_cast<float>(g_blur.height);
+    viewport.MinDepth = 0.0f;
+    viewport.MaxDepth = 1.0f;
+    D3D11_RECT scissor = {0, 0, static_cast<LONG>(g_blur.width), static_cast<LONG>(g_blur.height)};
+    float blendFactor[4] = {0, 0, 0, 0};
+    g_context->RSSetViewports(1, &viewport);
+    g_context->RSSetScissorRects(1, &scissor);
+    g_context->OMSetRenderTargets(1, &target, nullptr);
+    g_context->OMSetBlendState(nullptr, blendFactor, 0xffffffff);
+    g_context->OMSetDepthStencilState(nullptr, 0);
+    g_context->IASetInputLayout(nullptr);
+    g_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    g_context->VSSetShader(g_blur.vertexShader, nullptr, 0);
+    g_context->PSSetShader(g_blur.blurShader, nullptr, 0);
+    g_context->PSSetConstantBuffers(0, 1, &g_blur.constants);
+    g_context->PSSetSamplers(0, 1, &g_blur.sampler);
+    g_context->PSSetShaderResources(0, 1, &source);
+    g_context->Draw(3, 0);
+    ID3D11ShaderResourceView* nullSrv = nullptr;
+    g_context->PSSetShaderResources(0, 1, &nullSrv);
+}
+
+void updateGaussianBlurTexture() {
+    if (!g_swapChain) {
+        return;
+    }
+    DXGI_SWAP_CHAIN_DESC sd = {};
+    g_swapChain->GetDesc(&sd);
+    if (!ensureBlurTargets(sd.BufferDesc.Width, sd.BufferDesc.Height)) {
+        return;
+    }
+    ID3D11Texture2D* backBuffer = nullptr;
+    if (FAILED(g_swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuffer)))) {
+        return;
+    }
+    g_context->CopyResource(g_blur.textureA, backBuffer);
+    backBuffer->Release();
+
+    blurPass(g_blur.srvA, g_blur.rtvB, 1.85f, 0.0f);
+    blurPass(g_blur.srvB, g_blur.rtvA, 0.0f, 1.85f);
+}
+
 void cleanupDeviceD3D() {
+    cleanupBlurResources();
     cleanupRenderTarget();
     if (g_logoTexture) {
         g_logoTexture->Release();
         g_logoTexture = nullptr;
+    }
+    for (int i = 0; i < 3; ++i) {
+        if (g_versionTextures[i]) {
+            g_versionTextures[i]->Release();
+            g_versionTextures[i] = nullptr;
+        }
+        g_versionTextureSizes[i] = ImVec2(0.0f, 0.0f);
     }
     if (g_swapChain) {
         g_swapChain->Release();
@@ -649,22 +896,107 @@ void drawRainBackdrop(ImDrawList* draw, ImVec2 size, float alpha) {
     }
 }
 
-void drawLoadingStep(ImDrawList* draw, ImVec2 pos, const char* icon, const char* text, int index, float progress, float alpha) {
+void drawSakuraPetal(ImDrawList* draw, ImVec2 center, float length, float width, float rotation, ImU32 fill, ImU32 edge, ImU32 vein) {
+    ImVec2 points[16];
+    int count = 0;
+    float cs = cosf(rotation);
+    float sn = sinf(rotation);
+    auto transform = [&](float x, float y) {
+        return ImVec2(center.x + x * cs - y * sn, center.y + x * sn + y * cs);
+    };
+
+    for (int i = 0; i < 8; ++i) {
+        float u = static_cast<float>(i) / 7.0f;
+        float y = -length * 0.54f + u * length;
+        float taper = sinf(u * kPi);
+        float bulge = 0.72f + 0.34f * (1.0f - u);
+        float x = taper * width * bulge;
+        points[count++] = transform(x, y);
+    }
+    for (int i = 7; i >= 0; --i) {
+        float u = static_cast<float>(i) / 7.0f;
+        float y = -length * 0.54f + u * length;
+        float taper = sinf(u * kPi);
+        float bulge = 0.72f + 0.34f * (1.0f - u);
+        float x = -taper * width * bulge;
+        points[count++] = transform(x, y);
+    }
+
+    draw->AddConvexPolyFilled(points, count, fill);
+    draw->AddPolyline(points, count, edge, ImDrawFlags_Closed, 0.75f);
+    draw->AddLine(transform(0.0f, -length * 0.40f), transform(0.0f, length * 0.34f), vein, 0.65f);
+    draw->AddCircleFilled(transform(0.0f, -length * 0.38f), width * 0.20f, colAlpha(255, 245, 255, 0.16f), 10);
+}
+
+void drawSakuraPetals(ImDrawList* draw, ImVec2 size, float alpha) {
+    DWORD tick = GetTickCount();
+    for (int i = 0; i < 42; ++i) {
+        float seed = static_cast<float>(i);
+        float speed = 0.026f + (i % 7) * 0.0065f;
+        float wave = tick * 0.0010f + seed * 1.37f;
+        float drift = sinf(wave) * (24.0f + (i % 5) * 7.0f);
+        float sway = sinf(tick * 0.0018f + seed * 2.11f) * 7.0f;
+        float x = fmodf(34.0f + seed * 83.0f + drift, size.x + 120.0f) - 60.0f;
+        float y = fmodf(-110.0f + seed * 61.0f + tick * speed, size.y + 190.0f) - 92.0f;
+        bool foreground = (i % 9) == 0;
+        float length = foreground ? 16.0f + (i % 3) * 3.0f : 8.5f + (i % 5) * 1.2f;
+        float width = foreground ? length * 0.34f : length * 0.30f;
+        float rot = 0.45f + sinf(tick * 0.0015f + seed) * 0.80f + (i % 4) * 0.34f;
+        float petalAlpha = (foreground ? 0.34f : 0.18f + (i % 5) * 0.025f) * alpha;
+        ImVec2 c(x + sway, y);
+        ImU32 fill = colAlpha(255, 162 + (i % 3) * 12, 224 + (i % 2) * 16, petalAlpha);
+        ImU32 edge = colAlpha(255, 232, 250, (foreground ? 0.28f : 0.18f) * alpha);
+        ImU32 vein = colAlpha(255, 245, 255, (foreground ? 0.24f : 0.13f) * alpha);
+        drawSakuraPetal(draw, c, length, width, rot, fill, edge, vein);
+    }
+}
+
+int currentFailureStep() {
+    if (g_app.uiState != STATE_FAILED) {
+        return -1;
+    }
+    if (strstr(g_app.status, "VapuLiteReobf-x64.dll not found") != nullptr ||
+        strstr(g_app.status, "worker thread") != nullptr) {
+        return 1;
+    }
+    if (strstr(g_app.status, "Minecraft 1.8.9 was not found") != nullptr) {
+        return 2;
+    }
+    return 3;
+}
+
+void drawLoadingStep(ImDrawList* draw, ImVec2 pos, const char* icon, const char* text, int index, float progress, int failureStep, float alpha) {
     float stepPoint = 0.18f + index * 0.22f;
-    bool done = progress >= stepPoint + 0.12f;
-    bool active = !done && progress >= stepPoint - 0.08f;
+    bool failed = failureStep == index;
+    bool blockedByFailure = failureStep >= 0 && index > failureStep;
+    bool done = !failed && !blockedByFailure && progress >= stepPoint + 0.12f;
+    bool active = !failed && !blockedByFailure && progress >= stepPoint - 0.08f;
     ImU32 textCol = done ? colAlpha(255, 255, 255, 0.76f * alpha)
-                         : active ? colAlpha(245, 205, 255, 0.90f * alpha)
-                                  : colAlpha(255, 255, 255, 0.34f * alpha);
+                         : failed ? colAlpha(255, 148, 166, 0.92f * alpha)
+                                  : active ? colAlpha(245, 205, 255, 0.90f * alpha)
+                                           : colAlpha(255, 255, 255, 0.34f * alpha);
     ImU32 iconCol = done ? colAlpha(210, 255, 230, 0.90f * alpha)
-                         : active ? colAlpha(230, 170, 255, 0.95f * alpha)
-                                  : colAlpha(255, 255, 255, 0.38f * alpha);
+                         : failed ? colAlpha(255, 132, 154, 0.95f * alpha)
+                                  : active ? colAlpha(230, 170, 255, 0.95f * alpha)
+                                           : colAlpha(255, 255, 255, 0.38f * alpha);
     draw->AddText(fontOrDefault(g_fonts.icon12), 12.0f, pos, iconCol, icon);
     draw->AddText(fontOrDefault(g_fonts.medium), 16.0f, pos + ImVec2(38.0f, -2.0f), textCol, text);
 
     ImVec2 status(pos.x + 510.0f, pos.y - 1.0f);
-    if (done) {
-        draw->AddText(fontOrDefault(g_fonts.medium), 16.0f, status, colAlpha(210, 225, 255, 0.88f * alpha), "v");
+    if (failed) {
+        ImVec2 c = status + ImVec2(8.0f, 8.0f);
+        draw->AddCircleFilled(c, 10.0f, colAlpha(255, 92, 120, 0.085f * alpha), 24);
+        draw->AddLine(c + ImVec2(-5.0f, -5.0f), c + ImVec2(5.0f, 5.0f),
+                      colAlpha(255, 132, 154, 0.94f * alpha), 1.8f);
+        draw->AddLine(c + ImVec2(5.0f, -5.0f), c + ImVec2(-5.0f, 5.0f),
+                      colAlpha(255, 132, 154, 0.94f * alpha), 1.8f);
+    } else if (done) {
+        ImVec2 c = status + ImVec2(8.0f, 8.0f);
+        draw->AddCircleFilled(c, 10.0f, colAlpha(132, 255, 205, 0.075f * alpha), 24);
+        draw->AddLine(c + ImVec2(-4.5f, -0.5f), c + ImVec2(-1.0f, 3.5f),
+                      colAlpha(210, 255, 230, 0.92f * alpha), 1.8f);
+        draw->AddLine(c + ImVec2(-1.0f, 3.5f), c + ImVec2(5.5f, -5.0f),
+                      colAlpha(210, 255, 230, 0.92f * alpha), 1.8f);
     } else {
         float pulse = active ? 0.45f + 0.55f * sinf(GetTickCount() * 0.010f) : 0.0f;
         draw->AddCircle(status + ImVec2(8.0f, 8.0f), 8.0f, colAlpha(220, 150, 255, (active ? 0.82f : 0.18f) * alpha), 32, 2.0f);
@@ -674,22 +1006,73 @@ void drawLoadingStep(ImDrawList* draw, ImVec2 pos, const char* icon, const char*
     }
 }
 
-void drawInjectionLoadingOverlay(ImDrawList* draw, ImVec2 size, float alpha) {
+void drawLiquidGlassEdges(ImDrawList* draw, ImVec2 min, ImVec2 max, float rounding, float alpha) {
+    ImVec2 size = max - min;
+    ImVec2 center = (min + max) * 0.5f;
+    float pulse = 0.5f + 0.5f * sinf(GetTickCount() * 0.0022f);
+
+    draw->AddRect(min + ImVec2(0.5f, 0.5f), max - ImVec2(0.5f, 0.5f),
+                  colAlpha(255, 255, 255, 0.15f * alpha), rounding, 0, 1.0f);
+
+    ImU32 cornerGlow = colAlpha(255, 202, 255, (0.10f + pulse * 0.04f) * alpha);
+    draw->AddCircleFilled(min + ImVec2(rounding, rounding), 38.0f, cornerGlow, 48);
+    draw->AddCircleFilled(ImVec2(max.x - rounding, min.y + rounding), 38.0f, cornerGlow, 48);
+    draw->AddCircleFilled(ImVec2(min.x + rounding, max.y - rounding), 32.0f, colAlpha(170, 120, 255, 0.050f * alpha), 48);
+    draw->AddCircleFilled(max - ImVec2(rounding, rounding), 32.0f, colAlpha(170, 120, 255, 0.055f * alpha), 48);
+
+    draw->AddBezierCubic(min + ImVec2(size.x * 0.09f, 5.0f),
+                         min + ImVec2(size.x * 0.22f, -2.0f),
+                         min + ImVec2(size.x * 0.38f, 9.0f),
+                         min + ImVec2(size.x * 0.50f, 4.0f),
+                         colAlpha(255, 238, 255, 0.30f * alpha), 1.15f, 34);
+    draw->AddBezierCubic(min + ImVec2(size.x * 0.58f, 5.0f),
+                         min + ImVec2(size.x * 0.67f, 10.0f),
+                         min + ImVec2(size.x * 0.80f, -1.0f),
+                         min + ImVec2(size.x * 0.91f, 7.0f),
+                         colAlpha(255, 210, 255, 0.18f * alpha), 0.95f, 28);
+    draw->AddBezierCubic(min + ImVec2(8.0f, 35.0f),
+                         min + ImVec2(0.0f, 58.0f),
+                         min + ImVec2(18.0f, 86.0f),
+                         min + ImVec2(9.0f, 116.0f),
+                         colAlpha(255, 230, 255, 0.15f * alpha), 0.85f, 22);
+    draw->AddBezierCubic(ImVec2(max.x - 10.0f, min.y + 42.0f),
+                         ImVec2(max.x - 2.0f, min.y + 68.0f),
+                         ImVec2(max.x - 18.0f, min.y + 96.0f),
+                         ImVec2(max.x - 9.0f, min.y + 126.0f),
+                         colAlpha(210, 178, 255, 0.12f * alpha), 0.85f, 22);
+
+    draw->AddCircleFilled(center + ImVec2(0.0f, -size.y * 0.20f), size.x * 0.14f,
+                          colAlpha(255, 180, 255, 0.030f * alpha), 64);
+}
+
+void resetToReady();
+
+bool drawInjectionLoadingOverlay(ImDrawList* draw, ImVec2 size, float alpha) {
     DWORD now = GetTickCount();
     float elapsed = g_app.injectStarted ? (now - g_app.injectStarted) / 1000.0f : 0.0f;
-    float progress = 0.10f + elapsed * 0.21f;
-    progress += sinf(elapsed * 2.8f) * 0.015f;
-    if (progress > 0.92f) {
+    bool hasResult = g_app.uiState == STATE_SUCCESS || g_app.uiState == STATE_FAILED;
+    float progress = 0.10f + elapsed * 0.21f + sinf(elapsed * 2.8f) * 0.015f;
+    if (hasResult) {
+        float finishElapsed = g_app.injectFinished ? (now - g_app.injectFinished) / 1000.0f : 0.0f;
+        progress = 0.96f + finishElapsed * 0.16f;
+    } else if (progress > 0.92f) {
         progress = 0.92f + sinf(elapsed * 3.4f) * 0.018f;
     }
     if (progress < 0.0f) {
         progress = 0.0f;
-    } else if (progress > 0.96f) {
-        progress = 0.96f;
+    } else if (progress > 1.0f) {
+        progress = 1.0f;
     }
+    float resultFade = g_app.resultAlpha;
+    if (resultFade < 0.0f) {
+        resultFade = 0.0f;
+    } else if (resultFade > 1.0f) {
+        resultFade = 1.0f;
+    }
+    float loadingPageAlpha = alpha * (1.0f - resultFade);
 
-    draw->AddRectFilled(ImVec2(0, 0), size, colAlpha(11, 10, 18, 0.76f * alpha), 16.0f);
-    drawRainBackdrop(draw, size, alpha);
+    draw->AddRectFilled(ImVec2(0, 0), size, colAlpha(11, 10, 18, 0.18f * alpha), 16.0f);
+    drawSakuraPetals(draw, size, alpha);
     draw->AddCircleFilled(ImVec2(size.x * 0.50f, size.y * 0.30f), 260.0f, colAlpha(95, 110, 195, 0.085f * alpha), 96);
     draw->AddCircleFilled(ImVec2(size.x * 0.50f, size.y * 0.70f), 320.0f, colAlpha(185, 95, 235, 0.050f * alpha), 96);
 
@@ -698,70 +1081,156 @@ void drawInjectionLoadingOverlay(ImDrawList* draw, ImVec2 size, float alpha) {
     ImVec2 cardMax = cardMin + cardSize;
     draw->AddRectFilled(cardMin - ImVec2(18.0f, 18.0f), cardMax + ImVec2(18.0f, 18.0f),
                         colAlpha(190, 115, 255, 0.045f * alpha), 28.0f);
-    draw->AddRectFilled(cardMin, cardMax, colAlpha(64, 66, 112, 0.47f * alpha), 22.0f);
+    if (g_blur.ready && g_blur.srvA) {
+        ImVec2 uvMin(cardMin.x / size.x, cardMin.y / size.y);
+        ImVec2 uvMax(cardMax.x / size.x, cardMax.y / size.y);
+        draw->AddImageRounded(g_blur.srvA, cardMin, cardMax, uvMin, uvMax,
+                              colAlpha(255, 255, 255, 0.48f * alpha), 22.0f);
+    }
+    draw->AddRectFilled(cardMin, cardMax, colAlpha(64, 66, 112, 0.055f * alpha), 22.0f);
     draw->AddRectFilled(cardMin + ImVec2(1, 1), cardMax - ImVec2(1, 1),
-                        colAlpha(255, 255, 255, 0.035f * alpha), 21.0f);
-    draw->AddRect(cardMin, cardMax, colAlpha(235, 232, 255, 0.22f * alpha), 22.0f, 0, 1.2f);
-    draw->AddLine(cardMin + ImVec2(26, 1), cardMin + ImVec2(cardSize.x - 26, 1),
-                  colAlpha(255, 255, 255, 0.18f * alpha), 1.0f);
+                        colAlpha(255, 255, 255, 0.022f * alpha), 21.0f);
+    draw->AddRect(cardMin, cardMax, colAlpha(235, 232, 255, 0.10f * alpha), 22.0f, 0, 1.0f);
+    draw->AddBezierCubic(cardMin + ImVec2(38.0f, 11.0f),
+                         cardMin + ImVec2(180.0f, 2.0f),
+                         cardMin + ImVec2(360.0f, 18.0f),
+                         cardMin + ImVec2(520.0f, 8.0f),
+                         colAlpha(255, 255, 255, 0.055f * alpha), 0.85f, 40);
+    draw->AddBezierCubic(ImVec2(cardMax.x - 260.0f, cardMin.y + 8.0f),
+                         ImVec2(cardMax.x - 180.0f, 18.0f + cardMin.y),
+                         ImVec2(cardMax.x - 90.0f, 0.0f + cardMin.y),
+                         ImVec2(cardMax.x - 38.0f, 10.0f + cardMin.y),
+                         colAlpha(255, 220, 255, 0.050f * alpha), 0.85f, 32);
+    drawLiquidGlassEdges(draw, cardMin, cardMax, 22.0f, alpha);
 
-    draw->AddCircleFilled(cardMin + ImVec2(34.0f, 46.0f), 4.0f, colAlpha(235, 165, 255, 0.95f * alpha), 16);
-    draw->AddText(fontOrDefault(g_fonts.medium), 16.0f, cardMin + ImVec2(50.0f, 36.0f), colAlpha(255, 255, 255, 0.82f * alpha), "VapuLite");
-    draw->AddText(fontOrDefault(g_fonts.medium), 14.0f, cardMin + ImVec2(50.0f, 68.0f), colAlpha(255, 255, 255, 0.36f * alpha), "Liquid Glass");
-    draw->AddText(fontOrDefault(g_fonts.medium), 16.0f, cardMax - ImVec2(74.0f, 394.0f), colAlpha(255, 255, 255, 0.52f * alpha), "v2.5.0");
-    draw->AddText(fontOrDefault(g_fonts.medium), 14.0f, cardMax - ImVec2(146.0f, 362.0f), colAlpha(255, 255, 255, 0.42f * alpha), "Sakura Theme");
-    draw->AddText(fontOrDefault(g_fonts.icon12), 12.0f, cardMax - ImVec2(48.0f, 360.0f), colAlpha(255, 185, 242, 0.90f * alpha), "*");
+    draw->AddCircleFilled(cardMin + ImVec2(34.0f, 46.0f), 4.0f, colAlpha(235, 165, 255, 0.95f * loadingPageAlpha), 16);
+    draw->AddText(fontOrDefault(g_fonts.medium), 16.0f, cardMin + ImVec2(50.0f, 36.0f), colAlpha(255, 255, 255, 0.82f * loadingPageAlpha), "VapuLite");
+    draw->AddText(fontOrDefault(g_fonts.medium), 14.0f, cardMin + ImVec2(50.0f, 68.0f), colAlpha(255, 255, 255, 0.36f * loadingPageAlpha), "Liquid Glass");
+    draw->AddText(fontOrDefault(g_fonts.medium), 16.0f, cardMax - ImVec2(74.0f, 394.0f), colAlpha(255, 255, 255, 0.52f * loadingPageAlpha), "v2.5.0");
+    draw->AddText(fontOrDefault(g_fonts.medium), 14.0f, cardMax - ImVec2(146.0f, 362.0f), colAlpha(255, 255, 255, 0.42f * loadingPageAlpha), "Sakura Theme");
+    draw->AddText(fontOrDefault(g_fonts.icon12), 12.0f, cardMax - ImVec2(48.0f, 360.0f), colAlpha(255, 185, 242, 0.90f * loadingPageAlpha), "*");
 
     ImVec2 logoCenter(cardMin.x + cardSize.x * 0.5f, cardMin.y + 120.0f);
-    draw->AddCircleFilled(logoCenter, 72.0f, colAlpha(205, 115, 255, 0.11f * alpha), 72);
-    draw->AddCircleFilled(logoCenter, 42.0f, colAlpha(244, 178, 255, 0.12f * alpha), 72);
-    drawLogo(draw, logoCenter, 96.0f, alpha);
+    draw->AddCircleFilled(logoCenter, 72.0f, colAlpha(205, 115, 255, 0.11f * loadingPageAlpha), 72);
+    draw->AddCircleFilled(logoCenter, 42.0f, colAlpha(244, 178, 255, 0.12f * loadingPageAlpha), 72);
+    drawLogo(draw, logoCenter, 96.0f, loadingPageAlpha);
 
-    draw->AddText(fontOrDefault(g_fonts.title), 38.0f, cardMin + ImVec2(330.0f, 164.0f), colAlpha(255, 220, 255, 0.94f * alpha), "VapuLite");
-    draw->AddText(fontOrDefault(g_fonts.medium), 20.0f, cardMin + ImVec2(306.0f, 220.0f), colAlpha(255, 255, 255, 0.45f * alpha), "Loading your experience...");
+    draw->AddText(fontOrDefault(g_fonts.title), 38.0f, cardMin + ImVec2(330.0f, 164.0f), colAlpha(255, 220, 255, 0.94f * loadingPageAlpha), "VapuLite");
+    draw->AddText(fontOrDefault(g_fonts.medium), 20.0f, cardMin + ImVec2(306.0f, 220.0f), colAlpha(255, 255, 255, 0.45f * loadingPageAlpha), "Loading your experience...");
 
     ImVec2 barMin(cardMin.x + 194.0f, cardMin.y + 272.0f);
     ImVec2 barMax(cardMin.x + 660.0f, cardMin.y + 280.0f);
     float barW = barMax.x - barMin.x;
     float fillW = barW * progress;
-    draw->AddRectFilled(barMin, barMax, colAlpha(255, 255, 255, 0.085f * alpha), 5.0f);
+    draw->AddRectFilled(barMin, barMax, colAlpha(255, 255, 255, 0.085f * loadingPageAlpha), 5.0f);
     draw->AddRectFilled(barMin - ImVec2(5.0f, 5.0f), ImVec2(barMin.x + fillW + 5.0f, barMax.y + 5.0f),
-                        colAlpha(232, 116, 255, 0.075f * alpha), 9.0f);
-    draw->AddRectFilled(barMin, ImVec2(barMin.x + fillW, barMax.y), colAlpha(243, 152, 255, 0.92f * alpha), 5.0f);
+                        colAlpha(232, 116, 255, 0.075f * loadingPageAlpha), 9.0f);
+    draw->AddRectFilled(barMin, ImVec2(barMin.x + fillW, barMax.y), colAlpha(243, 152, 255, 0.92f * loadingPageAlpha), 5.0f);
     draw->AddRectFilledMultiColor(barMin, ImVec2(barMin.x + fillW, barMax.y),
-                                  colAlpha(255, 185, 255, 0.90f * alpha),
-                                  colAlpha(200, 120, 255, 0.90f * alpha),
-                                  colAlpha(200, 120, 255, 0.90f * alpha),
-                                  colAlpha(255, 185, 255, 0.90f * alpha));
+                                  colAlpha(255, 185, 255, 0.90f * loadingPageAlpha),
+                                  colAlpha(200, 120, 255, 0.90f * loadingPageAlpha),
+                                  colAlpha(200, 120, 255, 0.90f * loadingPageAlpha),
+                                  colAlpha(255, 185, 255, 0.90f * loadingPageAlpha));
     ImVec2 knob(barMin.x + fillW, (barMin.y + barMax.y) * 0.5f);
-    draw->AddCircleFilled(knob, 9.5f, colAlpha(255, 195, 255, 0.95f * alpha), 32);
-    draw->AddCircleFilled(knob, 20.0f, colAlpha(235, 130, 255, 0.075f * alpha), 40);
+    draw->AddCircleFilled(knob, 9.5f, colAlpha(255, 195, 255, 0.95f * loadingPageAlpha), 32);
+    draw->AddCircleFilled(knob, 20.0f, colAlpha(235, 130, 255, 0.075f * loadingPageAlpha), 40);
     char percent[16] = {};
     sprintf_s(percent, "%d%%", static_cast<int>(progress * 100.0f));
-    draw->AddText(fontOrDefault(g_fonts.medium), 17.0f, barMax + ImVec2(20.0f, -9.0f), colAlpha(255, 220, 255, 0.90f * alpha), percent);
+    draw->AddText(fontOrDefault(g_fonts.medium), 17.0f, barMax + ImVec2(20.0f, -9.0f), colAlpha(255, 220, 255, 0.90f * loadingPageAlpha), percent);
 
-    ImVec2 list(cardMin.x + 204.0f, cardMin.y + 318.0f);
-    drawLoadingStep(draw, list + ImVec2(0.0f, 0.0f), "B", "Initializing modules", 0, progress, alpha);
-    drawLoadingStep(draw, list + ImVec2(0.0f, 28.0f), "W", "Loading configuration", 1, progress, alpha);
-    drawLoadingStep(draw, list + ImVec2(0.0f, 56.0f), "V", "Connecting to Minecraft", 2, progress, alpha);
-    drawLoadingStep(draw, list + ImVec2(0.0f, 84.0f), "A", "Finalizing injection", 3, progress, alpha);
+    ImVec2 list(cardMin.x + 204.0f, cardMin.y + 308.0f);
+    int failureStep = currentFailureStep();
+    drawLoadingStep(draw, list + ImVec2(0.0f, 0.0f), "B", "Initializing modules", 0, progress, failureStep, loadingPageAlpha);
+    drawLoadingStep(draw, list + ImVec2(0.0f, 26.0f), "W", "Loading configuration", 1, progress, failureStep, loadingPageAlpha);
+    drawLoadingStep(draw, list + ImVec2(0.0f, 52.0f), "V", "Connecting to Minecraft", 2, progress, failureStep, loadingPageAlpha);
+    drawLoadingStep(draw, list + ImVec2(0.0f, 78.0f), "A", "Finalizing injection", 3, progress, failureStep, loadingPageAlpha);
 
-    draw->AddText(fontOrDefault(g_fonts.medium), 16.0f, cardMin + ImVec2(288.0f, 414.0f),
-                  colAlpha(255, 255, 255, 0.38f * alpha), "\"In the silence of the rain, I find my focus.\"");
-    float dotsX = cardMin.x + cardSize.x * 0.5f - 44.0f;
+    const char* quote = "\"In the silence of the rain, I find my focus.\"";
+    ImVec2 quoteSize = ImGui::CalcTextSize(quote);
+    draw->AddText(fontOrDefault(g_fonts.medium), 14.0f,
+                  ImVec2(cardMin.x + (cardSize.x - quoteSize.x) * 0.5f, cardMax.y - 42.0f),
+                  colAlpha(255, 255, 255, 0.34f * loadingPageAlpha), quote);
+    float dotsX = cardMin.x + cardSize.x * 0.5f - 42.0f;
+    int activeDot = static_cast<int>(progress * 4.99f);
     for (int i = 0; i < 5; ++i) {
-        float phase = fmodf(elapsed * 1.8f + i * 0.18f, 1.0f);
-        float dotAlpha = (phase < 0.28f ? 0.92f : 0.25f) * alpha;
-        draw->AddCircleFilled(ImVec2(dotsX + i * 22.0f, cardMax.y - 22.0f), 5.0f,
-                              i == static_cast<int>(progress * 5.0f) % 5 ? colAlpha(255, 165, 245, 0.95f * alpha)
-                                                                         : colAlpha(255, 255, 255, dotAlpha * 0.45f), 18);
+        bool passed = i <= activeDot;
+        bool current = i == activeDot;
+        float radius = current ? 5.4f : 4.2f;
+        ImU32 dotColor = passed ? colAlpha(255, 165, 245, (current ? 0.95f : 0.56f) * loadingPageAlpha)
+                                : colAlpha(255, 255, 255, 0.15f * loadingPageAlpha);
+        draw->AddCircleFilled(ImVec2(dotsX + i * 21.0f, cardMax.y - 18.0f), radius, dotColor, 18);
     }
+
+    if (g_app.resultAlpha > 0.01f) {
+        float ra = g_app.resultAlpha * alpha;
+        bool success = g_app.uiState == STATE_SUCCESS;
+        draw->AddRectFilled(cardMin + ImVec2(1, 1), cardMax - ImVec2(1, 1),
+                            colAlpha(22, 18, 32, 0.42f * ra), 21.0f);
+        ImVec2 resultCenter(cardMin.x + cardSize.x * 0.5f, cardMin.y + cardSize.y * 0.5f - 18.0f);
+        ImU32 glow = success ? colAlpha(120, 255, 185, 0.12f * ra) : colAlpha(255, 90, 130, 0.13f * ra);
+        ImU32 accent = success ? colAlpha(128, 255, 190, 0.95f * ra) : colAlpha(255, 112, 140, 0.95f * ra);
+        ImVec2 markCenter = resultCenter + ImVec2(0.0f, -58.0f);
+        draw->AddCircleFilled(markCenter, 82.0f, glow, 72);
+        draw->AddCircleFilled(markCenter, 43.0f, success ? colAlpha(120, 255, 185, 0.070f * ra)
+                                                        : colAlpha(255, 90, 130, 0.075f * ra), 64);
+        draw->AddCircle(markCenter, 34.0f, accent, 56, 2.2f);
+        if (success) {
+            draw->AddLine(markCenter + ImVec2(-13.0f, -1.0f), markCenter + ImVec2(-4.0f, 10.0f), accent, 3.0f);
+            draw->AddLine(markCenter + ImVec2(-4.0f, 10.0f), markCenter + ImVec2(16.0f, -15.0f), accent, 3.0f);
+        } else {
+            draw->AddLine(markCenter + ImVec2(-12.0f, -12.0f), markCenter + ImVec2(12.0f, 12.0f), accent, 2.8f);
+            draw->AddLine(markCenter + ImVec2(12.0f, -12.0f), markCenter + ImVec2(-12.0f, 12.0f), accent, 2.8f);
+        }
+        const char* title = success ? "Injection Complete" : "Injection Failed";
+        const char* subtitle = success ? "VapuLite is now attached to Minecraft 1.8.9." : g_app.status;
+        ImFont* titleFont = fontOrDefault(g_fonts.title);
+        ImFont* bodyFont = fontOrDefault(g_fonts.medium);
+        ImVec2 titleSize = titleFont->CalcTextSizeA(30.0f, 10000.0f, 0.0f, title);
+        draw->AddText(fontOrDefault(g_fonts.title), 30.0f,
+                      resultCenter + ImVec2(-titleSize.x * 0.5f, 62.0f),
+                      colAlpha(255, 235, 255, 0.95f * ra), title);
+        ImVec2 subSize = bodyFont->CalcTextSizeA(16.0f, 10000.0f, 0.0f, subtitle);
+        float subX = resultCenter.x - subSize.x * 0.5f;
+        if (subX < cardMin.x + 72.0f) {
+            subX = cardMin.x + 72.0f;
+        }
+        draw->AddText(bodyFont, 16.0f,
+                      ImVec2(subX, resultCenter.y + 108.0f),
+                      colAlpha(255, 255, 255, 0.52f * ra), subtitle);
+        ImVec2 buttonMin(resultCenter.x - 74.0f, resultCenter.y + 154.0f);
+        ImVec2 buttonMax(resultCenter.x + 74.0f, resultCenter.y + 188.0f);
+        ImGui::SetCursorScreenPos(buttonMin);
+        ImGui::InvisibleButton("result_back_button", buttonMax - buttonMin);
+        bool buttonHovered = ImGui::IsItemHovered();
+        bool resetClicked = ImGui::IsItemClicked();
+        draw->AddRectFilled(buttonMin, buttonMax, success ? colAlpha(120, 255, 185, 0.16f * ra)
+                                                          : colAlpha(255, 112, 140, (buttonHovered ? 0.26f : 0.16f) * ra), 9.0f);
+        draw->AddRect(buttonMin, buttonMax, success ? colAlpha(145, 255, 205, 0.42f * ra)
+                                                    : colAlpha(255, 150, 170, (buttonHovered ? 0.62f : 0.42f) * ra), 9.0f);
+        const char* buttonText = success ? "Done" : "Back";
+        ImVec2 btnSize = ImGui::CalcTextSize(buttonText);
+        draw->AddText(fontOrDefault(g_fonts.medium), 15.0f,
+                      ImVec2(resultCenter.x - btnSize.x * 0.5f, buttonMin.y + 8.0f),
+                      colAlpha(255, 255, 255, 0.78f * ra), buttonText);
+        if (resetClicked) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool invisibleHit(const char* id, ImVec2 pos, ImVec2 size) {
     ImGui::SetCursorScreenPos(pos);
     ImGui::InvisibleButton(id, size);
     return ImGui::IsItemClicked();
+}
+
+void resetToReady() {
+    g_app.uiState = STATE_READY;
+    g_app.injectStarted = 0;
+    g_app.injectFinished = 0;
+    g_app.resultAlpha = 0.0f;
+    setStatus("Ready");
 }
 
 void drawVersionPill(const char* label, int index, bool enabled, ImVec2 pos) {
@@ -788,6 +1257,64 @@ void drawVersionPill(const char* label, int index, bool enabled, ImVec2 pos) {
     ImGui::PopID();
 }
 
+void drawVersionIcon(ImDrawList* draw, ImVec2 center, int type, float alpha, bool enabled) {
+    float a = enabled ? alpha : alpha * 0.48f;
+    if (type >= 0 && type < 3 && g_versionTextures[type] && g_versionTextureSizes[type].x > 0.0f && g_versionTextureSizes[type].y > 0.0f) {
+        float maxSize = type == 0 ? 46.0f : 42.0f;
+        float aspect = g_versionTextureSizes[type].x / g_versionTextureSizes[type].y;
+        ImVec2 size(maxSize, maxSize);
+        if (aspect > 1.0f) {
+            size.y = maxSize / aspect;
+        } else {
+            size.x = maxSize * aspect;
+        }
+        ImVec2 min = center - size * 0.5f;
+        ImVec2 max = center + size * 0.5f;
+        draw->AddImage(g_versionTextures[type], min, max, ImVec2(0, 0), ImVec2(1, 1),
+                       colAlpha(255, 255, 255, a));
+        return;
+    }
+    ImVec2 p = center - ImVec2(21.0f, 21.0f);
+    if (type == 0) {
+        ImVec2 top[4] = {
+            p + ImVec2(7.0f, 2.0f), p + ImVec2(34.0f, 7.0f),
+            p + ImVec2(24.0f, 18.0f), p + ImVec2(0.0f, 12.0f)
+        };
+        ImVec2 left[4] = {
+            p + ImVec2(0.0f, 12.0f), p + ImVec2(24.0f, 18.0f),
+            p + ImVec2(24.0f, 39.0f), p + ImVec2(0.0f, 32.0f)
+        };
+        ImVec2 right[4] = {
+            p + ImVec2(24.0f, 18.0f), p + ImVec2(34.0f, 7.0f),
+            p + ImVec2(34.0f, 28.0f), p + ImVec2(24.0f, 39.0f)
+        };
+        draw->AddQuadFilled(top[0], top[1], top[2], top[3], colAlpha(126, 210, 112, 0.82f * a));
+        draw->AddQuadFilled(left[0], left[1], left[2], left[3], colAlpha(116, 78, 50, 0.90f * a));
+        draw->AddQuadFilled(right[0], right[1], right[2], right[3], colAlpha(82, 58, 42, 0.92f * a));
+        draw->AddLine(top[0], top[1], colAlpha(225, 255, 210, 0.24f * a), 1.0f);
+        draw->AddLine(left[2], left[3], colAlpha(255, 210, 180, 0.14f * a), 1.0f);
+    } else if (type == 1) {
+        ImVec2 boxMin = center - ImVec2(17.0f, 17.0f);
+        ImVec2 boxMax = center + ImVec2(17.0f, 17.0f);
+        draw->AddRectFilled(boxMin, boxMax, colAlpha(120, 112, 132, 0.42f * a), 5.0f);
+        draw->AddRect(boxMin, boxMax, colAlpha(255, 235, 255, 0.18f * a), 5.0f, 0, 1.0f);
+        draw->AddLine(center - ImVec2(10.0f, 4.0f), center + ImVec2(10.0f, -4.0f), colAlpha(210, 196, 224, 0.52f * a), 2.0f);
+        draw->AddLine(center - ImVec2(7.0f, 8.0f), center + ImVec2(12.0f, 9.0f), colAlpha(130, 118, 148, 0.66f * a), 2.0f);
+        draw->AddCircleFilled(center + ImVec2(-6.0f, 8.0f), 3.0f, colAlpha(255, 208, 255, 0.46f * a), 12);
+    } else {
+        draw->AddRectFilled(center - ImVec2(13.0f, 12.0f), center + ImVec2(13.0f, 14.0f),
+                            colAlpha(106, 76, 56, 0.70f * a), 4.0f);
+        for (int i = 0; i < 5; ++i) {
+            float angle = -1.25f + i * 0.62f;
+            ImVec2 tip(center.x + cosf(angle) * 22.0f, center.y - 8.0f + sinf(angle) * 19.0f);
+            ImVec2 baseA(center.x + cosf(angle - 0.18f) * 8.0f, center.y + sinf(angle - 0.18f) * 7.0f);
+            ImVec2 baseB(center.x + cosf(angle + 0.18f) * 8.0f, center.y + sinf(angle + 0.18f) * 7.0f);
+            draw->AddTriangleFilled(tip, baseA, baseB, colAlpha(255, 154, 220, 0.74f * a));
+        }
+        draw->AddCircleFilled(center, 6.0f, colAlpha(255, 218, 245, 0.70f * a), 18);
+    }
+}
+
 bool versionCard(const char* title, const char* meta, bool selected, bool enabled, ImVec2 size) {
     ImGui::BeginGroup();
     ImVec2 p = ImGui::GetCursorScreenPos();
@@ -795,30 +1322,36 @@ bool versionCard(const char* title, const char* meta, bool selected, bool enable
     ImGui::InvisibleButton(title, size);
     bool clickedCard = ImGui::IsItemClicked() && enabled;
     bool hovered = ImGui::IsItemHovered() && enabled;
-    ImU32 bg = col(255, 255, 255, selected ? 15 : 8);
-    ImU32 border = selected ? col(199, 149, 237, hovered ? 180 : 122) : col(255, 255, 255, hovered ? 28 : 10);
-    draw->AddRectFilled(p, p + size, bg, 8.0f);
-    draw->AddRect(p, p + size, border, 8.0f, 0, 1.0f);
+    float a = enabled ? 1.0f : 0.56f;
+    ImU32 bg = colAlpha(48, 48, 82, selected ? 0.18f : 0.075f);
+    ImU32 border = selected ? colAlpha(235, 190, 255, hovered ? 0.68f : 0.42f)
+                            : colAlpha(255, 255, 255, hovered ? 0.20f : 0.10f);
+    draw->AddRectFilled(p, p + size, bg, 9.0f);
+    draw->AddRect(p, p + size, border, 9.0f, 0, selected ? 1.3f : 1.0f);
+    draw->AddBezierCubic(p + ImVec2(18.0f, 5.0f), p + ImVec2(size.x * 0.28f, -1.0f),
+                         p + ImVec2(size.x * 0.52f, 10.0f), p + ImVec2(size.x * 0.74f, 5.0f),
+                         colAlpha(255, 230, 255, selected ? 0.20f : 0.075f), 0.85f, 28);
     ImVec2 imgMin(p.x + 12.0f, p.y + 12.0f);
     ImVec2 imgMax(p.x + size.x - 12.0f, p.y + 138.0f);
-    draw->AddRectFilled(imgMin, imgMax, enabled ? col(34, 58, 70, 235) : col(34, 31, 38, 235), 5.0f);
-    draw->AddRect(imgMin, imgMax, col(255, 255, 255, 24), 5.0f, 0, 1.0f);
+    draw->AddRectFilled(imgMin, imgMax, enabled ? colAlpha(45, 82, 102, 0.55f) : colAlpha(34, 31, 38, 0.48f), 6.0f);
+    draw->AddRect(imgMin, imgMax, colAlpha(255, 255, 255, enabled ? 0.13f : 0.06f), 6.0f, 0, 1.0f);
+    draw->AddCircleFilled((imgMin + imgMax) * 0.5f, 88.0f, colAlpha(199, 149, 237, enabled ? 0.040f : 0.018f), 64);
     for (int i = 0; i < 12; ++i) {
         float x = imgMin.x + 10.0f + i * 20.0f;
         draw->AddLine(ImVec2(x, imgMin.y + 6.0f), ImVec2(x + 36.0f, imgMax.y - 6.0f),
-                      enabled ? col(199, 149, 237, 56) : col(120, 90, 100, 36), 2.0f);
+                      enabled ? colAlpha(220, 160, 255, 0.20f) : colAlpha(120, 90, 100, 0.11f), 2.0f);
     }
     if (!enabled) {
         draw->AddRectFilled(imgMin, imgMax, col(14, 13, 15, 148), 5.0f);
         draw->AddText(fontOrDefault(g_fonts.semiBold), 13.0f, ImVec2(imgMin.x + size.x * 0.25f, imgMin.y + 52.0f), col(255, 255, 255, 72), "Not Released");
     }
-    draw->AddText(fontOrDefault(g_fonts.medium), 16.0f, ImVec2(p.x + 12.0f, p.y + size.y - 54.0f), enabled ? col(255, 255, 255, 230) : col(255, 255, 255, 120), title);
-    draw->AddText(fontOrDefault(g_fonts.icon8), 8.0f, ImVec2(p.x + 12.0f, p.y + size.y - 23.0f), enabled ? col(255, 255, 255, 122) : col(255, 255, 255, 62), "E");
-    draw->AddText(fontOrDefault(g_fonts.medium), 14.0f, ImVec2(p.x + 28.0f, p.y + size.y - 31.0f), enabled ? col(255, 255, 255, 156) : col(255, 255, 255, 86), meta);
+    draw->AddText(fontOrDefault(g_fonts.medium), 16.0f, ImVec2(p.x + 12.0f, p.y + size.y - 54.0f), colAlpha(255, 255, 255, 0.90f * a), title);
+    draw->AddText(fontOrDefault(g_fonts.icon8), 8.0f, ImVec2(p.x + 12.0f, p.y + size.y - 23.0f), colAlpha(255, 255, 255, 0.48f * a), "E");
+    draw->AddText(fontOrDefault(g_fonts.medium), 14.0f, ImVec2(p.x + 28.0f, p.y + size.y - 31.0f), colAlpha(255, 255, 255, 0.62f * a), meta);
     ImVec2 bmin(p.x + size.x - 46.0f, p.y + size.y - 46.0f);
     ImVec2 bmax(p.x + size.x - 12.0f, p.y + size.y - 12.0f);
-    draw->AddRectFilled(bmin, bmax, enabled ? col(199, 149, 237, selected ? 245 : 120) : col(255, 255, 255, 12), 5.0f);
-    draw->AddRect(bmin, bmax, enabled ? col(255, 255, 255, 122) : col(255, 255, 255, 16), 5.0f);
+    draw->AddRectFilled(bmin, bmax, enabled ? colAlpha(199, 149, 237, selected ? 0.88f : 0.42f) : colAlpha(255, 255, 255, 0.06f), 7.0f);
+    draw->AddRect(bmin, bmax, enabled ? colAlpha(255, 255, 255, 0.44f) : colAlpha(255, 255, 255, 0.08f), 7.0f);
     draw->AddText(fontOrDefault(g_fonts.icon12), 12.0f, bmin + ImVec2(11.0f, 10.0f), enabled ? col(255, 255, 255, 235) : col(255, 255, 255, 70), enabled ? "E" : "F");
     ImGui::EndGroup();
     return clickedCard;
@@ -830,18 +1363,25 @@ void startInject(HWND hwnd) {
     }
     if (!resolveDllPath(g_app.dllPath, MAX_PATH)) {
         g_app.uiState = STATE_FAILED;
+        g_app.injectStarted = GetTickCount();
+        g_app.injectFinished = g_app.injectStarted;
+        g_app.loadingAlpha = 0.0f;
+        g_app.resultAlpha = 0.0f;
         setStatus("Injection failed: VapuLiteReobf-x64.dll not found");
         return;
     }
     g_app.uiState = STATE_INJECTING;
     g_app.injectStarted = GetTickCount();
+    g_app.injectFinished = 0;
     g_app.loadingAlpha = 0.0f;
+    g_app.resultAlpha = 0.0f;
     setStatus("Searching Minecraft 1.8.9...");
     HANDLE thread = CreateThread(nullptr, 0, injectThread, hwnd, 0, nullptr);
     if (thread) {
         CloseHandle(thread);
     } else {
         g_app.uiState = STATE_FAILED;
+        g_app.injectFinished = GetTickCount();
         setStatus("Injection failed: worker thread was not created");
     }
 }
@@ -849,7 +1389,11 @@ void startInject(HWND hwnd) {
 void drawMainUi(HWND hwnd) {
     easing(g_app.stageAlpha, 1.0f, 6.0f);
     easing(g_app.contentAlpha, 1.0f, 6.0f);
-    easing(g_app.loadingAlpha, g_app.uiState == STATE_INJECTING ? 1.0f : 0.0f, 8.0f);
+    bool showInjectionOverlay = g_app.uiState == STATE_INJECTING || g_app.uiState == STATE_SUCCESS || g_app.uiState == STATE_FAILED;
+    easing(g_app.loadingAlpha, showInjectionOverlay ? 1.0f : 0.0f, 8.0f);
+    bool showResult = (g_app.uiState == STATE_SUCCESS || g_app.uiState == STATE_FAILED) &&
+                      g_app.injectFinished != 0 && GetTickCount() - g_app.injectFinished > 650;
+    easing(g_app.resultAlpha, showResult ? 1.0f : 0.0f, 7.0f);
 
     ImGuiIO& io = ImGui::GetIO();
     ImGui::SetNextWindowPos(ImVec2(0, 0));
@@ -861,25 +1405,70 @@ void drawMainUi(HWND hwnd) {
     ImDrawList* draw = ImGui::GetWindowDrawList();
     ImVec2 s = io.DisplaySize;
     float a = g_app.stageAlpha;
-    draw->AddRectFilled(ImVec2(0, 0), s, colAlpha(14, 13, 15, 0.74f), 16.0f);
-    draw->AddRectFilled(ImVec2(1.0f, 1.0f), ImVec2(s.x - 1.0f, s.y - 1.0f), colAlpha(255, 255, 255, 0.026f * a), 16.0f);
-    draw->AddRect(ImVec2(0.5f, 0.5f), ImVec2(s.x - 0.5f, s.y - 0.5f), colAlpha(255, 255, 255, 0.12f * a), 16.0f);
-    draw->AddRect(ImVec2(1.5f, 1.5f), ImVec2(s.x - 1.5f, s.y - 1.5f), colAlpha(199, 149, 237, 0.10f * a), 15.0f);
+    ImVec2 windowMin(0.0f, 0.0f);
+    ImVec2 windowMax(s.x, s.y);
+    if (g_blur.ready && g_blur.srvA) {
+        draw->AddImageRounded(g_blur.srvA, windowMin, windowMax, ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f),
+                              colAlpha(255, 255, 255, 0.36f * a), 16.0f);
+    }
+    draw->AddRectFilled(windowMin, windowMax, colAlpha(15, 13, 22, 0.46f), 16.0f);
+    draw->AddRectFilled(ImVec2(1.0f, 1.0f), ImVec2(s.x - 1.0f, s.y - 1.0f), colAlpha(255, 255, 255, 0.018f * a), 16.0f);
+    draw->AddRect(ImVec2(0.5f, 0.5f), ImVec2(s.x - 0.5f, s.y - 0.5f), colAlpha(255, 230, 255, 0.12f * a), 16.0f);
+    draw->AddRect(ImVec2(2.0f, 2.0f), ImVec2(s.x - 2.0f, s.y - 2.0f), colAlpha(199, 149, 237, 0.075f * a), 14.0f);
+    draw->AddBezierCubic(ImVec2(30.0f, 4.0f), ImVec2(174.0f, -2.0f),
+                         ImVec2(386.0f, 12.0f), ImVec2(548.0f, 5.0f),
+                         colAlpha(255, 238, 255, 0.13f * a), 0.8f, 34);
+    draw->AddBezierCubic(ImVec2(s.x - 318.0f, 5.0f), ImVec2(s.x - 222.0f, 12.0f),
+                         ImVec2(s.x - 112.0f, -1.0f), ImVec2(s.x - 36.0f, 7.0f),
+                         colAlpha(210, 178, 255, 0.085f * a), 0.8f, 28);
+    draw->AddBezierCubic(ImVec2(5.0f, 44.0f), ImVec2(-2.0f, 82.0f),
+                         ImVec2(12.0f, 132.0f), ImVec2(5.0f, 196.0f),
+                         colAlpha(255, 230, 255, 0.08f * a), 0.7f, 24);
+    draw->AddBezierCubic(ImVec2(s.x - 5.0f, 44.0f), ImVec2(s.x + 2.0f, 82.0f),
+                         ImVec2(s.x - 12.0f, 132.0f), ImVec2(s.x - 5.0f, 196.0f),
+                         colAlpha(210, 178, 255, 0.07f * a), 0.7f, 24);
+    drawSakuraPetals(draw, s, 0.85f * a);
     draw->AddCircleFilled(ImVec2(205, 148), 112.0f, colAlpha(199, 149, 237, 0.080f * a), 64);
     draw->AddCircleFilled(ImVec2(788, 416), 120.0f, colAlpha(199, 149, 237, 0.065f * a), 64);
     draw->AddBezierCubic(ImVec2(96, 250), ImVec2(168, 78), ImVec2(348, 86), ImVec2(474, 125), colAlpha(80, 135, 165, 0.28f * a), 1.0f, 32);
     draw->AddBezierCubic(ImVec2(474, 125), ImVec2(596, 162), ImVec2(680, 54), ImVec2(842, 66), colAlpha(80, 135, 165, 0.22f * a), 1.0f, 32);
 
+    if (showInjectionOverlay) {
+        if (g_app.loadingAlpha > 0.01f && drawInjectionLoadingOverlay(draw, s, g_app.loadingAlpha)) {
+            resetToReady();
+        }
+        ImGui::End();
+        return;
+    }
+
     ImVec2 pad(16.0f, 16.0f);
     ImVec2 topMin = pad;
-    ImVec2 topMax(s.x - 68.0f, pad.y + 44.0f);
-    draw->AddRectFilled(topMin, topMax, colAlpha(255, 255, 255, 0.02f * a), 8.0f);
-    draw->AddRect(topMin, topMax, colAlpha(255, 255, 255, 0.04f * a), 8.0f);
+    ImVec2 topMax(s.x - 68.0f, pad.y + 42.0f);
+    if (g_blur.ready && g_blur.srvA) {
+        ImVec2 uvMin(topMin.x / s.x, topMin.y / s.y);
+        ImVec2 uvMax(topMax.x / s.x, topMax.y / s.y);
+        draw->AddImageRounded(g_blur.srvA, topMin, topMax, uvMin, uvMax,
+                              colAlpha(255, 255, 255, 0.34f * a), 11.0f);
+    }
+    draw->AddRectFilled(topMin, topMax, colAlpha(42, 35, 68, 0.105f * a), 11.0f);
+    draw->AddRectFilled(topMin + ImVec2(1.0f, 1.0f), topMax - ImVec2(1.0f, 1.0f),
+                        colAlpha(255, 255, 255, 0.014f * a), 10.0f);
+    draw->AddRect(topMin, topMax, colAlpha(255, 230, 255, 0.125f * a), 11.0f, 0, 1.0f);
+    draw->AddBezierCubic(topMin + ImVec2(28.0f, 4.0f), topMin + ImVec2(168.0f, -3.0f),
+                         topMin + ImVec2(376.0f, 9.0f), topMin + ImVec2(552.0f, 3.0f),
+                         colAlpha(255, 238, 255, 0.115f * a), 0.85f, 34);
+    draw->AddBezierCubic(ImVec2(topMax.x - 250.0f, topMin.y + 4.0f),
+                         ImVec2(topMax.x - 168.0f, topMin.y + 9.0f),
+                         ImVec2(topMax.x - 96.0f, topMin.y - 2.0f),
+                         ImVec2(topMax.x - 34.0f, topMin.y + 6.0f),
+                         colAlpha(210, 178, 255, 0.075f * a), 0.8f, 26);
     draw->AddText(fontOrDefault(g_fonts.icon12), 12.0f, ImVec2(topMin.x + 16.0f, topMin.y + 16.0f), col(199, 149, 237, static_cast<int>(255 * a)), "B");
     draw->AddCircleFilled(ImVec2(topMin.x + 50.0f, topMin.y + 22.0f), 1.6f, colAlpha(255, 255, 255, 0.12f * a), 12);
-    draw->AddText(fontOrDefault(g_fonts.medium), 16.0f, ImVec2(topMin.x + 64.0f, topMin.y + 12.0f), col(255, 255, 255, static_cast<int>(235 * a)), "discord.gg/xWVR45bahE");
+    draw->AddText(fontOrDefault(g_fonts.medium), 16.0f, ImVec2(topMin.x + 64.0f, topMin.y + 12.0f), col(255, 255, 255, static_cast<int>(235 * a)), "vape.gg");
     draw->AddText(fontOrDefault(g_fonts.icon12), 12.0f, ImVec2(topMax.x - 148.0f, topMin.y + 16.0f), colAlpha(255, 255, 255, 0.24f * a), "V");
-    draw->AddText(fontOrDefault(g_fonts.medium), 16.0f, ImVec2(topMax.x - 124.0f, topMin.y + 12.0f), colAlpha(255, 255, 255, 0.48f * a), "22.08.2025");
+    char dateText[16] = {};
+    currentDateText(dateText, sizeof(dateText));
+    draw->AddText(fontOrDefault(g_fonts.medium), 16.0f, ImVec2(topMax.x - 124.0f, topMin.y + 12.0f), colAlpha(255, 255, 255, 0.48f * a), dateText);
 
     ImVec2 closeMin(s.x - 42.0f, 16.0f);
     if (invisibleHit("close", closeMin, ImVec2(26.0f, 26.0f))) {
@@ -889,49 +1478,154 @@ void drawMainUi(HWND hwnd) {
     draw->AddText(fontOrDefault(g_fonts.medium), 16.0f, closeMin + ImVec2(8.0f, 4.0f), colAlpha(255, 255, 255, 0.62f), "x");
 
     float ca = g_app.contentAlpha * g_app.stageAlpha;
-    drawLogo(draw, ImVec2(s.x * 0.5f, 112.0f), 168.0f, ca);
-    draw->AddText(fontOrDefault(g_fonts.title), 28.0f, ImVec2(s.x * 0.5f - 82.0f, 164.0f), col(255, 255, 255, static_cast<int>(230 * ca)), "Choose One");
-
-    float pillsX = s.x * 0.5f - 227.0f;
-    drawVersionPill("Minecraft 1.8.9", 0, true, ImVec2(pillsX, 210.0f));
-    drawVersionPill("Minecraft 1.20.1", 1, false, ImVec2(pillsX + 154.0f, 210.0f));
-    drawVersionPill("Minecraft 26.1", 2, false, ImVec2(pillsX + 308.0f, 210.0f));
-
-    draw->AddText(fontOrDefault(g_fonts.semiBold), 13.0f, ImVec2(16.0f, 260.0f), colAlpha(255, 255, 255, 0.48f * ca), "MINECRAFT");
-    ImVec2 cardSize((s.x - 16.0f * 2.0f - 8.0f * 2.0f) / 3.0f, 196.0f);
-    ImGui::SetCursorScreenPos(ImVec2(16.0f, 288.0f));
-    if (versionCard("Minecraft 1.8.9", "Available", true, true, cardSize)) {
-        startInject(hwnd);
+    ImVec2 shellMin(36.0f, 82.0f);
+    ImVec2 shellMax(s.x - 36.0f, s.y - 34.0f);
+    if (g_blur.ready && g_blur.srvA) {
+        ImVec2 uvMin(shellMin.x / s.x, shellMin.y / s.y);
+        ImVec2 uvMax(shellMax.x / s.x, shellMax.y / s.y);
+        draw->AddImageRounded(g_blur.srvA, shellMin, shellMax, uvMin, uvMax,
+                              colAlpha(255, 255, 255, 0.42f * ca), 24.0f);
     }
-    ImGui::SetCursorScreenPos(ImVec2(16.0f + cardSize.x + 8.0f, 288.0f));
-    versionCard("Minecraft 1.20.1", "Not Released", false, false, cardSize);
-    ImGui::SetCursorScreenPos(ImVec2(16.0f + (cardSize.x + 8.0f) * 2.0f, 288.0f));
-    versionCard("Minecraft 26.1", "Not Released", false, false, cardSize);
+    draw->AddRectFilled(shellMin, shellMax, colAlpha(42, 35, 68, 0.155f * ca), 24.0f);
+    draw->AddRectFilled(shellMin + ImVec2(1.0f, 1.0f), shellMax - ImVec2(1.0f, 1.0f),
+                        colAlpha(255, 255, 255, 0.018f * ca), 23.0f);
+    draw->AddRect(shellMin, shellMax, colAlpha(255, 230, 255, 0.16f * ca), 24.0f, 0, 1.0f);
+    draw->AddBezierCubic(shellMin + ImVec2(42.0f, 10.0f), shellMin + ImVec2(168.0f, -4.0f),
+                         shellMin + ImVec2(430.0f, 22.0f), shellMin + ImVec2(680.0f, 8.0f),
+                         colAlpha(255, 230, 255, 0.13f * ca), 0.9f, 40);
+    drawLiquidGlassEdges(draw, shellMin, shellMax, 24.0f, ca);
 
-    ImVec2 railIcon(s.x - 64.0f, s.y * 0.5f - 18.0f);
-    draw->AddRectFilled(railIcon, railIcon + ImVec2(30.0f, 30.0f), col(199, 149, 237, static_cast<int>(230 * ca)), 15.0f);
-    draw->AddText(fontOrDefault(g_fonts.icon12), 12.0f, railIcon + ImVec2(10.0f, 9.0f), col(255, 255, 255, static_cast<int>(255 * ca)), "A");
-    const char* rail[3] = {"Login", "Loader", "Dash"};
-    for (int i = 0; i < 3; ++i) {
-        ImVec2 r(s.x - 78.0f, s.y * 0.5f + 24.0f + i * 34.0f);
-        bool clicked = invisibleHit(rail[i], r, ImVec2(62.0f, 26.0f));
-        bool hovered = ImGui::IsItemHovered();
-        draw->AddRectFilled(r, r + ImVec2(62.0f, 26.0f), colAlpha(255, 255, 255, hovered ? 0.08f : 0.04f), 8.0f);
-        draw->AddRect(r, r + ImVec2(62.0f, 26.0f), colAlpha(255, 255, 255, hovered ? 0.12f : 0.06f), 8.0f);
-        ImVec2 ts = ImGui::CalcTextSize(rail[i]);
-        draw->AddText(fontOrDefault(g_fonts.semiBold), 13.0f, r + ImVec2((62.0f - ts.x) * 0.5f, 6.0f), colAlpha(255, 255, 255, i == 1 ? 0.90f : 0.62f), rail[i]);
-        if (clicked && i == 1) {
-            startInject(hwnd);
+    ImVec2 logoCenter(shellMin.x + 72.0f, shellMin.y + 56.0f);
+    draw->AddCircleFilled(logoCenter, 46.0f, colAlpha(199, 149, 237, 0.10f * ca), 48);
+    drawLogo(draw, logoCenter, 86.0f, ca);
+    draw->AddText(fontOrDefault(g_fonts.title), 30.0f, shellMin + ImVec2(122.0f, 35.0f),
+                  colAlpha(255, 230, 255, 0.96f * ca), "VapuLite");
+    draw->AddText(fontOrDefault(g_fonts.medium), 15.0f, shellMin + ImVec2(124.0f, 72.0f),
+                  colAlpha(255, 255, 255, 0.42f * ca), "Sakura Injector");
+    draw->AddText(fontOrDefault(g_fonts.medium), 15.0f, shellMax - ImVec2(98.0f, shellMax.y - shellMin.y - 68.0f),
+                  colAlpha(255, 255, 255, 0.46f * ca), "v2.5.0");
+
+    ImVec2 sideMin(shellMin.x + 22.0f, shellMin.y + 124.0f);
+    ImVec2 sideMax(shellMin.x + 302.0f, shellMax.y - 28.0f);
+    draw->AddRectFilled(sideMin, sideMax, colAlpha(18, 16, 32, 0.18f * ca), 18.0f);
+    draw->AddRect(sideMin, sideMax, colAlpha(255, 255, 255, 0.075f * ca), 18.0f);
+    const char* stepTitle[4] = {"Select Version", "Check Environment", "Prepare Injection", "Launch Client"};
+    const char* stepSub[4] = {"Choose target game version", "Verify Minecraft process", "Setting up modules", "Starting Minecraft client"};
+    for (int i = 0; i < 4; ++i) {
+        ImVec2 p(sideMin.x + 28.0f, sideMin.y + 34.0f + i * 82.0f);
+        bool active = i == 0;
+        if (i < 3) {
+            draw->AddLine(p + ImVec2(7.0f, 20.0f), p + ImVec2(7.0f, 66.0f),
+                          colAlpha(255, 255, 255, 0.070f * ca), 1.0f);
         }
+        draw->AddCircleFilled(p + ImVec2(7.0f, 7.0f), active ? 15.0f : 11.0f,
+                              active ? colAlpha(213, 130, 255, 0.20f * ca) : colAlpha(255, 255, 255, 0.025f * ca), 28);
+        draw->AddCircle(p + ImVec2(7.0f, 7.0f), active ? 9.0f : 8.0f,
+                        active ? colAlpha(255, 188, 255, 0.82f * ca) : colAlpha(255, 255, 255, 0.24f * ca), 28, 1.5f);
+        if (active) {
+            draw->AddCircleFilled(p + ImVec2(7.0f, 7.0f), 4.2f, colAlpha(255, 202, 255, 0.96f * ca), 18);
+        }
+        draw->AddText(fontOrDefault(g_fonts.medium), 16.0f, p + ImVec2(34.0f, -4.0f),
+                      colAlpha(255, 255, 255, (active ? 0.90f : 0.58f) * ca), stepTitle[i]);
+        draw->AddText(fontOrDefault(g_fonts.medium), 13.0f, p + ImVec2(34.0f, 22.0f),
+                      colAlpha(255, 255, 255, (active ? 0.46f : 0.30f) * ca), stepSub[i]);
+    }
+    ImVec2 contentMin(shellMin.x + 330.0f, shellMin.y + 132.0f);
+    ImVec2 contentMax(shellMax.x - 36.0f, shellMax.y - 30.0f);
+    draw->AddText(fontOrDefault(g_fonts.title), 29.0f, contentMin,
+                  colAlpha(255, 235, 255, 0.94f * ca), "Select Target Version");
+    draw->AddText(fontOrDefault(g_fonts.medium), 15.0f, contentMin + ImVec2(0.0f, 42.0f),
+                  colAlpha(255, 255, 255, 0.44f * ca), "Choose the Minecraft version you want to inject");
+
+    struct VersionCardData {
+        const char* title;
+        const char* tag;
+        const char* meta;
+        int iconType;
+        bool enabled;
+    };
+    VersionCardData cards[3] = {
+        {"1.8.9", "Forge", "Most popular", 0, true},
+        {"1.12.2", "Forge", "Stable support", 1, false},
+        {"1.20.1", "Fabric", "Latest version", 2, false},
+    };
+    ImVec2 cardSize(154.0f, 128.0f);
+    ImVec2 cardsStart(contentMin.x, contentMin.y + 82.0f);
+    for (int i = 0; i < 3; ++i) {
+        ImVec2 cardMin = cardsStart + ImVec2(i * (cardSize.x + 14.0f), 0.0f);
+        ImVec2 cardMax = cardMin + cardSize;
+        bool selected = g_app.selectedVersion == i;
+        bool clicked = invisibleHit(cards[i].title, cardMin, cardSize);
+        bool hovered = ImGui::IsItemHovered() && cards[i].enabled;
+        if (clicked && cards[i].enabled) {
+            g_app.selectedVersion = i;
+            setStatus("Minecraft 1.8.9 selected");
+        } else if (clicked) {
+            setStatus("Only Minecraft 1.8.9 is available now");
+        }
+        float cardAlpha = cards[i].enabled ? 1.0f : 0.55f;
+        draw->AddRectFilled(cardMin, cardMax,
+                            selected ? colAlpha(92, 58, 136, 0.36f * ca) : colAlpha(255, 255, 255, (hovered ? 0.075f : 0.046f) * ca),
+                            14.0f);
+        draw->AddRect(cardMin, cardMax,
+                      selected ? colAlpha(255, 180, 255, 0.70f * ca) : colAlpha(255, 255, 255, (hovered ? 0.20f : 0.095f) * ca),
+                      14.0f, 0, selected ? 1.4f : 1.0f);
+        if (selected) {
+            draw->AddRectFilled(cardMin - ImVec2(6.0f, 6.0f), cardMax + ImVec2(6.0f, 6.0f),
+                                colAlpha(210, 110, 255, 0.045f * ca), 18.0f);
+            ImVec2 badgeCenter(cardMax.x - 24.0f, cardMin.y + 24.0f);
+            draw->AddCircleFilled(badgeCenter, 15.0f, colAlpha(232, 158, 255, 0.13f * ca), 28);
+            draw->AddCircleFilled(badgeCenter, 10.5f,
+                                  colAlpha(232, 158, 255, 0.84f * ca), 28);
+            draw->AddLine(badgeCenter + ImVec2(-4.0f, 0.0f), badgeCenter + ImVec2(-1.0f, 4.0f),
+                          colAlpha(255, 255, 255, 0.95f * ca), 1.7f);
+            draw->AddLine(badgeCenter + ImVec2(-1.0f, 4.0f), badgeCenter + ImVec2(5.0f, -5.0f),
+                          colAlpha(255, 255, 255, 0.95f * ca), 1.7f);
+        }
+        ImVec2 iconCenter(cardMin.x + 48.0f, cardMin.y + 34.0f);
+        draw->AddCircleFilled(iconCenter, 24.0f, colAlpha(255, 164, 238, (cards[i].enabled ? 0.12f : 0.045f) * ca), 36);
+        drawVersionIcon(draw, iconCenter + ImVec2(1.0f, 1.0f), cards[i].iconType, ca, cards[i].enabled);
+        draw->AddText(fontOrDefault(g_fonts.title), 23.0f, cardMin + ImVec2(28.0f, 62.0f),
+                      colAlpha(255, 255, 255, 0.88f * cardAlpha * ca), cards[i].title);
+        draw->AddRectFilled(cardMin + ImVec2(84.0f, 69.0f), cardMin + ImVec2(140.0f, 96.0f),
+                            colAlpha(255, 255, 255, 0.045f * cardAlpha * ca), 7.0f);
+        draw->AddText(fontOrDefault(g_fonts.medium), 13.0f, cardMin + ImVec2(96.0f, 75.0f),
+                      colAlpha(255, 255, 255, 0.58f * cardAlpha * ca), cards[i].tag);
+        draw->AddText(fontOrDefault(g_fonts.medium), 13.0f, cardMin + ImVec2(28.0f, 104.0f),
+                      colAlpha(255, 255, 255, 0.45f * cardAlpha * ca), cards[i].meta);
+        if (!cards[i].enabled) {
+            draw->AddRectFilled(cardMin, cardMax, colAlpha(12, 10, 18, 0.16f * ca), 14.0f);
+        }
+    }
+
+    ImVec2 launchMin(contentMin.x + 74.0f, shellMax.y - 76.0f);
+    ImVec2 launchMax(contentMax.x - 74.0f, shellMax.y - 24.0f);
+    bool launchClicked = invisibleHit("launch_selected_version", launchMin, launchMax - launchMin);
+    bool launchHovered = ImGui::IsItemHovered();
+    draw->AddRectFilled(launchMin - ImVec2(10.0f, 10.0f), launchMax + ImVec2(10.0f, 10.0f),
+                        colAlpha(214, 107, 255, (launchHovered ? 0.095f : 0.060f) * ca), 18.0f);
+    draw->AddRectFilled(launchMin, launchMax,
+                        colAlpha(145, 78, 196, (launchHovered ? 0.70f : 0.55f) * ca), 14.0f);
+    draw->AddRect(launchMin, launchMax, colAlpha(255, 190, 255, 0.46f * ca), 14.0f, 0, 1.2f);
+    draw->AddBezierCubic(launchMin + ImVec2(20.0f, 6.0f), launchMin + ImVec2(122.0f, -2.0f),
+                         launchMax - ImVec2(140.0f, 48.0f), launchMax - ImVec2(24.0f, 48.0f),
+                         colAlpha(255, 238, 255, 0.18f * ca), 0.85f, 30);
+    ImVec2 launchTextSize = fontOrDefault(g_fonts.medium)->CalcTextSizeA(21.0f, 10000.0f, 0.0f, "Inject VapuLite");
+    drawLogo(draw, ImVec2(launchMin.x + 68.0f, (launchMin.y + launchMax.y) * 0.5f), 46.0f, ca);
+    draw->AddText(fontOrDefault(g_fonts.medium), 21.0f,
+                  ImVec2((launchMin.x + launchMax.x - launchTextSize.x) * 0.5f, launchMin.y + 15.0f),
+                  colAlpha(255, 255, 255, 0.92f * ca), "Inject VapuLite");
+    draw->AddText(fontOrDefault(g_fonts.medium), 30.0f, launchMax - ImVec2(48.0f, 43.0f),
+                  colAlpha(255, 255, 255, 0.72f * ca), ">");
+    if (launchClicked) {
+        startInject(hwnd);
     }
 
     ImU32 statusColor = g_app.uiState == STATE_SUCCESS ? col(115, 255, 176, 230)
                        : g_app.uiState == STATE_FAILED ? col(255, 112, 128, 230)
                                                        : colAlpha(255, 255, 255, 0.48f);
-    draw->AddText(fontOrDefault(g_fonts.medium), 14.0f, ImVec2(18.0f, s.y - 32.0f), statusColor, g_app.status);
-
-    if (g_app.loadingAlpha > 0.01f) {
-        drawInjectionLoadingOverlay(draw, s, g_app.loadingAlpha);
+    if (!showInjectionOverlay) {
+        draw->AddText(fontOrDefault(g_fonts.medium), 14.0f, ImVec2(18.0f, s.y - 32.0f), statusColor, g_app.status);
     }
 
     ImGui::End();
@@ -945,9 +1639,17 @@ void drawBootUi() {
                               ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
     ImDrawList* draw = ImGui::GetWindowDrawList();
     ImVec2 s = io.DisplaySize;
-    draw->AddRectFilled(ImVec2(0, 0), s, colAlpha(14, 13, 15, 0.74f), 16.0f);
-    draw->AddRectFilled(ImVec2(1.0f, 1.0f), ImVec2(s.x - 1.0f, s.y - 1.0f), colAlpha(255, 255, 255, 0.026f), 16.0f);
-    draw->AddRect(ImVec2(0.5f, 0.5f), ImVec2(s.x - 0.5f, s.y - 0.5f), col(255, 255, 255, 32), 16.0f);
+    if (g_blur.ready && g_blur.srvA) {
+        draw->AddImageRounded(g_blur.srvA, ImVec2(0, 0), s, ImVec2(0, 0), ImVec2(1, 1),
+                              colAlpha(255, 255, 255, 0.32f), 16.0f);
+    }
+    draw->AddRectFilled(ImVec2(0, 0), s, colAlpha(15, 13, 22, 0.48f), 16.0f);
+    draw->AddRectFilled(ImVec2(1.0f, 1.0f), ImVec2(s.x - 1.0f, s.y - 1.0f), colAlpha(255, 255, 255, 0.018f), 16.0f);
+    draw->AddRect(ImVec2(0.5f, 0.5f), ImVec2(s.x - 0.5f, s.y - 0.5f), colAlpha(255, 230, 255, 0.12f), 16.0f);
+    draw->AddRect(ImVec2(2.0f, 2.0f), ImVec2(s.x - 2.0f, s.y - 2.0f), colAlpha(199, 149, 237, 0.075f), 14.0f);
+    draw->AddBezierCubic(ImVec2(26.0f, 4.0f), ImVec2(114.0f, -2.0f),
+                         ImVec2(236.0f, 12.0f), ImVec2(344.0f, 5.0f),
+                         colAlpha(255, 238, 255, 0.13f), 0.8f, 26);
     draw->AddCircleFilled(ImVec2(s.x * 0.48f, s.y * 0.42f), 76.0f, col(199, 149, 237, 46), 48);
     ImVec2 c(s.x * 0.5f, s.y * 0.5f);
     drawLogo(draw, ImVec2(c.x, c.y - 36.0f), 176.0f, 1.0f);
@@ -991,6 +1693,8 @@ LRESULT WINAPI wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     case kInjectDone: {
         InjectResult* result = reinterpret_cast<InjectResult*>(lParam);
         g_app.uiState = result && result->ok ? STATE_SUCCESS : STATE_FAILED;
+        g_app.injectFinished = GetTickCount();
+        g_app.resultAlpha = 0.0f;
         std::string msgText = result ? wideToUtf8(result->message) : "Injection failed: unknown error";
         setStatus(msgText.c_str());
         delete result;
@@ -1021,6 +1725,17 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     std::wstring logoPath = resolveAssetPath(L"vapu_logo.png");
     if (!logoPath.empty()) {
         loadTextureFromFile(logoPath.c_str(), &g_logoTexture, &g_logoSize);
+    }
+    const wchar_t* versionAssets[3] = {
+        L"minecraft_grass_block.png",
+        L"minecraft_furnace_block.png",
+        L"minecraft_cherry_block.png"
+    };
+    for (int i = 0; i < 3; ++i) {
+        std::wstring assetPath = resolveAssetPath(versionAssets[i]);
+        if (!assetPath.empty()) {
+            loadTextureFromFile(assetPath.c_str(), &g_versionTextures[i], &g_versionTextureSizes[i]);
+        }
     }
     enableGlassBackground(hwnd);
     centerWindow(hwnd, kBootWidth, kBootHeight);
@@ -1088,6 +1803,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         g_context->OMSetRenderTargets(1, &g_renderTarget, nullptr);
         g_context->ClearRenderTargetView(g_renderTarget, clear);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+        updateGaussianBlurTexture();
         g_swapChain->Present(1, 0);
     }
 
