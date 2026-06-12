@@ -15,6 +15,9 @@ final class MaterialClickTheme {
     static final int MUTED = 0xFFCAC4D0;
     static final int SURFACE = 0xFF141218;
     static final int SURFACE_VARIANT = 0xFF49454F;
+    static final int CARD_SURFACE = 0xFF101010;
+    static final int CARD_HOVER = 0xFF181818;
+    static final int ACTIVE_CARD = 0xFF46317C;
     static final int BACKDROP = 0xFF0B080F;
     static final int OUTLINE = 0xFFFFFFFF;
 
@@ -32,13 +35,29 @@ final class MaterialClickTheme {
         return withAlpha(SURFACE, 166.0f * alpha);
     }
 
+    int windowScrim() {
+        return withAlpha(0xFF000000, 84.0f * alpha);
+    }
+
     int cardFill(boolean active, float hover) {
-        int base = active ? blend(SURFACE_VARIANT, PRIMARY_CONTAINER, 0.34f) : SURFACE_VARIANT;
-        return withAlpha(blend(base, 0xFFFFFFFF, hover * 0.08f), (active ? 76.0f : 48.0f + hover * 20.0f) * alpha);
+        if (active) {
+            return withAlpha(blend(ACTIVE_CARD, PRIMARY, hover * 0.08f), (118.0f + hover * 16.0f) * alpha);
+        }
+        if (hover > 0.0f) {
+            return withAlpha(CARD_HOVER, 112.0f * alpha);
+        }
+        return withAlpha(CARD_SURFACE, 104.0f * alpha);
     }
 
     int cardBorder(boolean active, float hover) {
-        return withAlpha(active ? PRIMARY : OUTLINE, (active ? 72.0f : 24.0f + hover * 38.0f) * alpha);
+        if (active) {
+            return withAlpha(PRIMARY, 78.0f * alpha);
+        }
+        return withAlpha(hover > 0.0f ? PRIMARY : OUTLINE, (hover > 0.0f ? 32.0f : 12.0f) * alpha);
+    }
+
+    int keybindFill() {
+        return withAlpha(OUTLINE, 22.0f * alpha);
     }
 
     int softFill(float alpha) {
@@ -50,7 +69,7 @@ final class MaterialClickTheme {
     }
 
     int muted() {
-        return withAlpha(MUTED, 210.0f * alpha);
+        return withAlpha(MUTED, 255.0f * alpha);
     }
 
     int faint() {

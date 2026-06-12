@@ -24,7 +24,8 @@ public class NoSlowDown extends Module {
         if (BlockHit.isBlockingActive()) {
             return;
         }
-        mc.thePlayer.movementInput.moveStrafe = speedValue.getValue();
-        mc.thePlayer.movementInput.moveForward = speedValue.getValue();
+        float speed = speedValue.getValue().floatValue();
+        mc.thePlayer.movementInput.moveStrafe = speed;
+        mc.thePlayer.movementInput.moveForward = speed;
     }
 }

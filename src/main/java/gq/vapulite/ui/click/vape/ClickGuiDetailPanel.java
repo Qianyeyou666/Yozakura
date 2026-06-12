@@ -255,7 +255,7 @@ final class ClickGuiDetailPanel {
             double pair = ((Number) gui.draggingNumberPair.getValue()).doubleValue();
             result = gui.draggingNumberLowerBound ? Math.min(result, pair) : Math.max(result, pair);
         }
-        value.setValue(result);
+        value.setNumberValue(result);
     }
 
     /** 计算滑块百分比 */
@@ -705,7 +705,7 @@ final class ClickGuiDetailPanel {
 
     /** 设置 Numbers 值（0-255 范围） */
     private void setNumber(Numbers value, int color) {
-        value.setValue((double) Math.max(0, Math.min(255, color)));
+        value.setNumberValue(Math.max(0, Math.min(255, color)));
     }
 
     /** 将 int 颜色转为 #RRGGBB 格式 */
