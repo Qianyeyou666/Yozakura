@@ -1,6 +1,7 @@
 package gq.vapulite.module.render;
 
 import gq.vapulite.ui.click.material.MaterialClickGui;
+import gq.vapulite.ui.click.sakura.SakuraClickGui;
 import gq.vapulite.ui.click.vape.VapeClickGui;
 import org.lwjgl.input.Keyboard;
 
@@ -13,7 +14,8 @@ import gq.vapulite.value.Option;
 public class ClickGUI extends Module {
 	public enum GuiStyle {
 		MATERIAL,
-		VAPE
+		VAPE,
+		SAKURA
 	}
 
 	public static final Mode<GuiStyle> guiStyle = new Mode<GuiStyle>("Style", "Style", GuiStyle.values(), GuiStyle.MATERIAL);
@@ -38,7 +40,9 @@ public class ClickGUI extends Module {
 	}
 
 	public void toggle() {
-		if (guiStyle.getValue() == GuiStyle.VAPE) {
+		if (guiStyle.getValue() == GuiStyle.SAKURA) {
+			mc.displayGuiScreen(new SakuraClickGui());
+		} else if (guiStyle.getValue() == GuiStyle.VAPE) {
 			mc.displayGuiScreen(new VapeClickGui());
 		} else {
 			mc.displayGuiScreen(new MaterialClickGui());
