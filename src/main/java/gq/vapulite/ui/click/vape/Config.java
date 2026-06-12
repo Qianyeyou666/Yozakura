@@ -1,4 +1,4 @@
-package gq.vapulite.ui.click;
+package gq.vapulite.ui.click.vape;
 
 /**
  * 配置数据模型类，用于保存和描述一个模块的配置状态。

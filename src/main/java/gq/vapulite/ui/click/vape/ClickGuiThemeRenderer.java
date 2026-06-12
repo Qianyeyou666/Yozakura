@@ -1,4 +1,4 @@
-package gq.vapulite.ui.click;
+package gq.vapulite.ui.click.vape;
 
 import gq.vapulite.module.render.HUD;
 import gq.vapulite.engine.render.ui.RenderServices;
@@ -26,12 +26,7 @@ final class ClickGuiThemeRenderer {
 
     void drawPanelGlass(float x, float y, float x2, float y2, float radius,
                         float strength, int fill, int border) {
-        float blurRadius = HUD.isSakuraTheme() ? 24.0f : HUD.isLightTheme() ? 26.0f : 30.0f;
-        float refraction = 0.76f + Math.min(strength, 1.25f) * 0.20f;
-        float highlight = HUD.isLightTheme() || HUD.isSakuraTheme() ? 1.08f : 0.96f;
-        float grain = HUD.isSakuraTheme() ? 0.08f : 0.13f;
-        RenderServices.liquidGlass().roundedBorder(x, y, x2, y2, radius, strength, fill, border,
-                blurRadius, refraction, highlight, grain);
+        RenderServices.liquidGlass().roundedBorder(x, y, x2, y2, radius, strength, fill, border);
     }
 
     void drawBackdrop(ScaledResolution sr) {

@@ -22,6 +22,12 @@ import java.util.Map;
 public final class ShaderRenderer {
     private static final float EDGE_SOFTNESS = 0.75f;
     private static final float EDGE_PADDING = 1.0f;
+    /**
+     * Shared LiquidGlass preset used when draw calls do not pass a custom settings struct.
+     *
+     * <p>Parameter meanings and tunable default values live in {@link LiquidGlassSettings#defaults()}.</p>
+     */
+    public static final LiquidGlassSettings LIQUID_GLASS_PRESET = LiquidGlassSettings.defaults();
     private static final float MAX_LIQUID_GLASS_BLUR_RADIUS = 64.0f;
     private static final float MIN_LIQUID_GLASS_BLUR_DOWNSCALE = 0.1f;
     private static final float MAX_LIQUID_GLASS_BLUR_DOWNSCALE = 1.0f;
@@ -73,6 +79,10 @@ public final class ShaderRenderer {
     public static void invalidateFrostedGlass() {
         frostedGlassDirty = true;
         Blur.invalidate();
+    }
+
+    public static LiquidGlassSettings defaultLiquidGlassSettings() {
+        return LIQUID_GLASS_PRESET;
     }
 
     public static boolean drawRect(float left, float top, float right, float bottom, int color) {
@@ -216,7 +226,7 @@ public final class ShaderRenderer {
     public static boolean drawFrostedGlass(float left, float top, float right, float bottom, float radius,
                                            float borderWidth, int fillColor, int borderColor) {
         Program program = getFrostedGlassProgram();
-        LiquidGlassSettings settings = LiquidGlassSettings.defaults().withBlurRadius(10.0f);
+        LiquidGlassSettings settings = LIQUID_GLASS_PRESET.withBlurRadius(10.0f);
         if (program == null || right <= left || bottom <= top || !ensureFrostedGlassTexture(settings)) {
             return false;
         }
@@ -249,21 +259,15 @@ public final class ShaderRenderer {
     }
 
     public static boolean drawLiquidGlass(float left, float top, float right, float bottom, float radius,
-                                          float borderWidth, int fillColor, int borderColor,
-                                          float blurRadius, float refraction, float highlight,
-                                          float grainStrength) {
-        LiquidGlassSettings settings = LiquidGlassSettings.defaults()
-                .withBlurRadius(blurRadius)
-                .withRefractionScale(refraction)
-                .withHighlight(highlight)
-                .withNoise(grainStrength);
-        return drawLiquidGlass(left, top, right, bottom, radius, borderWidth, fillColor, borderColor, settings);
+                                          float borderWidth, int fillColor, int borderColor) {
+        return drawLiquidGlass(left, top, right, bottom, radius, borderWidth, fillColor, borderColor,
+                LIQUID_GLASS_PRESET);
     }
 
     public static boolean drawLiquidGlass(float left, float top, float right, float bottom, float radius,
                                           float borderWidth, int fillColor, int borderColor,
                                           LiquidGlassSettings settings) {
-        LiquidGlassSettings resolvedSettings = settings == null ? LiquidGlassSettings.defaults() : settings;
+        LiquidGlassSettings resolvedSettings = liquidGlassSettingsOrDefault(settings);
         Program program = getLiquidGlassProgram();
         if (program == null || right <= left || bottom <= top
                 || !ensureFrostedGlassTexture(resolvedSettings) || !frostedBlurReady) {
@@ -421,7 +425,7 @@ public final class ShaderRenderer {
         if (!supportsShaders()) {
             return false;
         }
-        LiquidGlassSettings resolvedSettings = settings == null ? LiquidGlassSettings.defaults() : settings;
+        LiquidGlassSettings resolvedSettings = liquidGlassSettingsOrDefault(settings);
         TextureState textureState = saveTexture0State();
         try {
             VIEWPORT_BUFFER.clear();
@@ -495,12 +499,12 @@ public final class ShaderRenderer {
             blurWidth = targetWidth;
             blurHeight = targetHeight;
             int iterations = clampGaussianIterations(blurIterations);
-            float passRadius = clampGaussianPassRadius(blurRadius);
             if (iterations == 0) {
                 runBlurPass(screenTexture, blurFramebufferB, targetWidth, targetHeight,
                         width, height, 0.0f, 0.0f, 0.0f);
                 return true;
             }
+            float passRadius = clampGaussianPassRadius(blurRadius / Math.max(1, iterations));
             int sourceTexture = screenTexture;
             int sourceWidth = width;
             int sourceHeight = height;
@@ -592,6 +596,10 @@ public final class ShaderRenderer {
 
     private static float clampGaussianPassRadius(float blurRadius) {
         return Math.max(0.0f, Math.min(MAX_GAUSSIAN_PASS_RADIUS, blurRadius));
+    }
+
+    private static LiquidGlassSettings liquidGlassSettingsOrDefault(LiquidGlassSettings settings) {
+        return settings == null ? LIQUID_GLASS_PRESET : settings;
     }
 
     private static void uploadLiquidGlassSettings(Program program, LiquidGlassSettings settings) {

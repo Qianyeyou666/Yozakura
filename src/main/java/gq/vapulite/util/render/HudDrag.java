@@ -1,7 +1,8 @@
 package gq.vapulite.util.render;
 
 import gq.vapulite.value.Numbers;
-import gq.vapulite.ui.click.VapeClickGui;
+import gq.vapulite.ui.click.material.MaterialClickGui;
+import gq.vapulite.ui.click.vape.VapeClickGui;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.client.gui.ScaledResolution;
@@ -110,7 +111,7 @@ public final class HudDrag {
     }
 
     private static boolean isClickGuiOpen() {
-        return MC.currentScreen instanceof VapeClickGui;
+        return MC.currentScreen instanceof VapeClickGui || MC.currentScreen instanceof MaterialClickGui;
     }
 
     private static float resolvePosition(Numbers<Double> value, float fallback) {
