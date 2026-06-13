@@ -244,7 +244,8 @@ final class ClickGuiModuleList {
         } else if (enabled) {
             // 启用状态：带主题色混合背景
             int accent = gui.guiColors().accent;
-            int bgColor = gq.vapulite.module.render.HUD.isLightTheme()
+            boolean light = gq.vapulite.module.render.HUD.isLightTheme() || gq.vapulite.module.render.HUD.isSakuraTheme();
+            int bgColor = light
                     ? gui.blendColor(accent, 0xFFFFFFFF, 0.55f)   // 浅色/粉：混白提亮
                     : gui.blendColor(accent, 0xFF000000, 0.55f);  // 暗色：混黑压深
             RenderServices.shapes().rounded(x, y, x + rowW, y + height, VapeClickGui.CARD_RADIUS,

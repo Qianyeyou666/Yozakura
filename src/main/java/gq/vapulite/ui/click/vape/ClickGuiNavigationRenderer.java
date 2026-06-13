@@ -3,6 +3,7 @@ package gq.vapulite.ui.click.vape;
 import gq.vapulite.engine.font.CFontRenderer;
 import gq.vapulite.engine.font.FontLoaders;
 import gq.vapulite.engine.render.ui.RenderServices;
+import gq.vapulite.util.animation.AnimUtil;
 
 final class ClickGuiNavigationRenderer {
     private final VapeClickGui gui;
@@ -18,8 +19,8 @@ final class ClickGuiNavigationRenderer {
         RenderServices.shapes().shadow(x, y, right, y + VapeClickGui.NAV_H, 9.0f,
                 gui.withAlpha(gui.shadowColor(210), 70.0f * gui.guiAlpha), 7, 5.0f);
         gui.drawPanelGlass(x, y, right, y + VapeClickGui.NAV_H, 9.0f, 1.0f,
-                gui.withAlpha(gui.guiColors().glassFillSoft, 186.0f * gui.guiAlpha),
-                gui.withAlpha(gui.guiColors().glassBorder, 52.0f * gui.guiAlpha));
+                gui.withAlpha(gui.guiColors().glassFillSoft, gui.getAlpha(gui.guiColors().glassFillSoft) * gui.guiAlpha),
+                gui.withAlpha(gui.guiColors().glassBorder, gui.getAlpha(gui.guiColors().glassBorder) * gui.guiAlpha));
     }
 
     void drawNavigation(int mouseX, int mouseY, float introY) {
@@ -27,8 +28,8 @@ final class ClickGuiNavigationRenderer {
         RenderServices.shapes().shadow(gui.navX, y, gui.navX + gui.navW, y + VapeClickGui.NAV_H, 9.0f,
                 gui.withAlpha(gui.shadowColor(210), 70.0f * gui.guiAlpha), 7, 5.0f);
         gui.drawPanelGlass(gui.navX, y, gui.navX + gui.navW, y + VapeClickGui.NAV_H, 9.0f, 1.0f,
-                gui.withAlpha(gui.guiColors().glassFillSoft, 186.0f * gui.guiAlpha),
-                gui.withAlpha(gui.guiColors().glassBorder, 52.0f * gui.guiAlpha));
+                gui.withAlpha(gui.guiColors().glassFillSoft, gui.getAlpha(gui.guiColors().glassFillSoft) * gui.guiAlpha),
+                gui.withAlpha(gui.guiColors().glassBorder, gui.getAlpha(gui.guiColors().glassBorder) * gui.guiAlpha));
 
         float tabW = gui.navW / GuiTab.values().length;
         float targetX = gui.navX + VapeClickGui.currentTab.ordinal() * tabW + 2.0f;
@@ -66,9 +67,12 @@ final class ClickGuiNavigationRenderer {
         float groupX = x + (tabW - iconW - gap - titleW) / 2.0f;
         float titleOffsetX = -1.5f;
         float titleOffsetY = 1.5f;
-        float textY = y + 10.0f + titleOffsetY - hover * 0.4f;
-        gui.drawCenteredIcon(tab.icon, navIconFont, groupX + iconW / 2.0f,
-                y + VapeClickGui.NAV_H / 2.0f - hover * 0.4f, color);
-        gui.drawFont(title, groupX + iconW + gap + titleOffsetX, textY, color);
+        // 选中标签页文字弹跳
+        boolean isSelected = tab == VapeClickGui.currentTab;
+        float bounceY = isSelected ? AnimUtil.bounceY(gui.navBounce.get(index)) : 0f;
+        float textY = y + 10.0f + titleOffsetY - hover * 0.4f + bounceY;
+        float iconY = y + VapeClickGui.NAV_H / 2.0f - hover * 0.4f + bounceY;
+        gui.drawCenteredIcon(tab.icon, navIconFont, groupX + iconW / 2.0f, iconY, color);
+        gui.drawFont(title, groupX + iconW + gap + titleOffsetX, textY + 2.0f, color);
     }
 }

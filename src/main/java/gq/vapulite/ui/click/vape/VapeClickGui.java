@@ -18,6 +18,7 @@ import gq.vapulite.ui.click.ClickGuiIcons;
 import gq.vapulite.ui.UiTextField;
 import gq.vapulite.ui.UiTheme;
 import gq.vapulite.ui.UiToggle;
+import gq.vapulite.util.animation.AnimUtil;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
 import org.lwjgl.input.Keyboard;
@@ -116,30 +117,30 @@ public class VapeClickGui extends GuiScreen {
                 new Color(0, 0, 0, 200).getRGB(),
                 new Color(0, 0, 0, 210).getRGB());
 
-        /** 浅色主题配色（透明度与 Sakura 对齐） */
+        /** 浅色主题配色（天蓝色系，透明度与 Sakura 对齐） */
         static final GuiPalette LIGHT = new GuiPalette(
                 new Color(230, 235, 242, 148).getRGB(),
                 new Color(220, 225, 234, 220).getRGB(),
                 new Color(240, 244, 250, 210).getRGB(),
                 new Color(225, 230, 240, 218).getRGB(),
-                new Color(200, 205, 235, 225).getRGB(),
+                new Color(190, 218, 238, 225).getRGB(),   // cardOpen: 天蓝
                 new Color(28, 30, 36).getRGB(),
                 new Color(105, 110, 120).getRGB(),
                 new Color(155, 162, 175).getRGB(),
                 new Color(24, 142, 198).getRGB(),
                 new Color(182, 50, 55).getRGB(),
-                new Color(232, 236, 244, 250).getRGB(),   // glassFill: alpha 148→250
-                new Color(225, 230, 240, 250).getRGB(),   // glassFillSoft: alpha 118→250
-                new Color(160, 175, 198, 104).getRGB(),   // glassBorder: alpha 54→104
-                new Color(210, 215, 228, 170).getRGB(),
-                new Color(190, 192, 220, 226).getRGB(),   // detailSelectedFill: alpha 200→226
-                new Color(130, 160, 240).getRGB(),
+                new Color(232, 236, 244, 250).getRGB(),   // glassFill
+                new Color(225, 230, 240, 250).getRGB(),   // glassFillSoft
+                new Color(155, 185, 210, 104).getRGB(),   // glassBorder: 天蓝调
+                new Color(195, 218, 235, 170).getRGB(),   // navDefaultHover: 天蓝
+                new Color(185, 212, 238, 210).getRGB(),   // detailSelectedFill: 天蓝
+                new Color(115, 178, 232).getRGB(),        // detailSelectedBorder: 天蓝
                 new Color(24, 142, 198).getRGB(),
-                new Color(190, 195, 210, 170).getRGB(),
+                new Color(200, 216, 232, 170).getRGB(),   // valueTrack: 更浅天蓝
                 new Color(120, 165, 235, 215).getRGB(),
-                new Color(210, 215, 235, 190).getRGB(),
-                new Color(170, 185, 228, 148).getRGB(),
-                new Color(200, 205, 220, 132).getRGB(),
+                new Color(195, 220, 240, 190).getRGB(),   // modeExpandedFill: 天蓝
+                new Color(175, 210, 236, 148).getRGB(),   // modeRowSelected: 天蓝
+                new Color(195, 218, 235, 132).getRGB(),   // modeRowHovered: 天蓝
                 new Color(218, 224, 238, 228).getRGB(),
                 new Color(255, 255, 255, 120).getRGB(),
                 new Color(255, 255, 255, 140).getRGB());
@@ -218,7 +219,7 @@ public class VapeClickGui extends GuiScreen {
     /** 获取阴影颜色（浅色主题用白色半透明阴影，暗色用黑色阴影） */
     int shadowColor(int alpha) {
         try {
-            return gq.vapulite.module.render.HUD.isLightTheme()
+            return gq.vapulite.module.render.HUD.isLightTheme() || gq.vapulite.module.render.HUD.isSakuraTheme()
                     ? withAlpha(0xFFFFFFFF, alpha)
                     : new Color(0, 0, 0, alpha).getRGB();
         } catch (Exception e) {
@@ -281,6 +282,11 @@ public class VapeClickGui extends GuiScreen {
             detailScrollByModule.put(selectedModule.getName(), settingsScroll);
         }
         selectedModule = m;
+        if (m != null) {
+            for (Value v : m.getValues()) {
+                v.animX = 0f;
+            }
+        }
         if (m != null && detailScrollByModule.containsKey(m.getName())) {
             settingsScroll = detailScrollByModule.get(m.getName());
             targetSettingsScroll = settingsScroll;
@@ -368,6 +374,7 @@ public class VapeClickGui extends GuiScreen {
     long fpsGraphLastSample;         // FPS 波形图上次采样时间
     float fpsGraphSmoothed;          // FPS 平滑值
     float frameScale = 1.0f;         // 帧缩放因子（用于帧率无关动画）
+    final AnimUtil navBounce = new AnimUtil(280f);  // 导航栏选中指示器弹跳动画
     gq.vapulite.module.render.HUD.Theme lastTheme = gq.vapulite.module.render.HUD.Theme.DARK;
     float themeFadeProgress = 0.0f;
     final Map<gq.vapulite.module.render.HUD.Theme, Float> themeSwatchProgress = new HashMap<gq.vapulite.module.render.HUD.Theme, Float>();
@@ -441,6 +448,7 @@ public class VapeClickGui extends GuiScreen {
         currentMouseX = mouseX;
         currentMouseY = mouseY;
         updateFrameScale();
+        navBounce.tick();
         ScaledResolution sr = new ScaledResolution(mc);
         updateLayout(sr);
         // 同步 UI 主题
@@ -772,7 +780,10 @@ public class VapeClickGui extends GuiScreen {
             return true;
         }
         GuiTab tab = GuiTab.values()[index];
-        currentTab = tab;
+        if (tab != currentTab) {
+            currentTab = tab;
+            navBounce.trigger(tab.ordinal());
+        }
         selectModule(null);
         searchFocused = false;
         setSearchQuery("");
@@ -861,9 +872,9 @@ public class VapeClickGui extends GuiScreen {
         return Math.max(120.0f, getModulePanelHeight() - SEARCH_H - 52.0f);
     }
 
-    /** @return 左侧模块列表面板高度，独立短于右侧主体面板 */
+    /** @return 左侧模块列表面板高度，与详情面板底部对齐 */
     float getModulePanelHeight() {
-        return Math.max(220.0f, panelH - MODULE_PANEL_SHORTEN);
+        return panelH;
     }
 
     /** @return 模块列表起始 Y 坐标 */

@@ -13,6 +13,7 @@ import gq.vapulite.engine.render.ui.RenderServices;
 import gq.vapulite.ui.click.ClickGuiIcons;
 import gq.vapulite.ui.UiPanel;
 import gq.vapulite.ui.UiTheme;
+import gq.vapulite.util.animation.AnimUtil;
 import net.minecraft.util.ResourceLocation;
 
 import java.awt.Color;
@@ -56,6 +57,12 @@ final class ClickGuiDetailPanel {
     private static final Set<Mode> expandedModes = new HashSet<>();
     /** 下拉栏展开动画进度 0→1 */
     private static final Map<Mode, Float> dropdownAnim = new HashMap<>();
+    /** 标签页摇晃动画（基于真实时间，约 260ms 衰减完毕） */
+    private final AnimUtil tabShake = new AnimUtil(260f);
+    /** 标签页弹跳动画（基于真实时间，约 280ms 衰减完毕） */
+    private final AnimUtil tabBounce = new AnimUtil(280f);
+    /** 标签页底部指示线 X 动画位置（-1 表示未初始化） */
+    private float tabIndicatorX = -1f;
     /** 当前帧的 introY，下拉栏需要用它对齐 detail 面板 */
     private float currentIntroY;
 
@@ -165,6 +172,9 @@ final class ClickGuiDetailPanel {
                 }
             }
         }
+        // 更新标签页动画
+        tabShake.tick();
+        tabBounce.tick();
         // 绘制所有有动画进度的下拉栏
         for (Mode mode : dropdownAnim.keySet()) {
             if (gui.selectedModule != null && gui.selectedModule.getValues().contains(mode) && isModeVisible(mode)) {
@@ -373,7 +383,7 @@ final class ClickGuiDetailPanel {
         RenderServices.shapes().shadow(centerX - 13.0f, centerY - 13.0f, centerX + 13.0f, centerY + 13.0f,
                 8.0f, gui.withAlpha(gui.guiColors().accent, 34.0f * gui.guiAlpha), 4, 2.0f);
         gui.drawCenteredIcon(ClickGuiIcons.forModule(module), FontLoaders.I20, centerX, centerY,
-                gui.withAlpha(new Color(226, 232, 248).getRGB(), 236.0f * gui.guiAlpha));
+                gui.withAlpha(gui.guiColors().accent, 236.0f * gui.guiAlpha));
     }
 
     private void drawPanelSurfaces(float panelY) {
@@ -429,9 +439,35 @@ final class ClickGuiDetailPanel {
     }
 
     /**
+     * 检查指定标签页是否有可见的设置值。
+     * <p>
+     * 不依赖 {@code isDetailValueVisible}（该方法会与当前 {@code detailTabIndex} 比较），
+     * 而是直接检查值本身是否可见且归属于目标标签页。
+     */
+    private boolean tabHasValues(int tabIndex) {
+        if (gui.selectedModule == null) {
+            return false;
+        }
+        for (int i = 0; i < gui.selectedModule.getValues().size(); i++) {
+            Value value = gui.selectedModule.getValues().get(i);
+            if (!value.isVisible()
+                    || gui.isHiddenPaletteValue(gui.selectedModule, value)
+                    || gui.isColorContinuation(gui.selectedModule, i)
+                    || gui.isRangeContinuation(gui.selectedModule, i)) {
+                continue;
+            }
+            if (gui.getDetailValueTab(gui.selectedModule, i) == tabIndex) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * 绘制详情标签页（General / Targets / Extra / Rotation / Visuals）。
      * <p>
      * 每个标签页等宽排列，激活标签页底部有高亮指示线和渐变阴影。
+     * 没有值的标签页文字显示为浅灰色。
      */
     private void drawTabs(float panelY) {
         float tabX = gui.detailX + 6.0f;
@@ -445,21 +481,36 @@ final class ClickGuiDetailPanel {
                     gui.withAlpha(gui.guiColors().glassBorder, 34.0f * gui.guiAlpha));
         }
         float each = tabW / DETAIL_TABS.length;
+        // 底部指示线目标位置
+        float targetIndicatorX = tabX + each * gui.detailTabIndex + 9.0f;
+        if (tabIndicatorX < 0f) tabIndicatorX = targetIndicatorX;
+        tabIndicatorX = gui.animate(tabIndicatorX, targetIndicatorX, 0.14f);
         for (int i = 0; i < DETAIL_TABS.length; i++) {
             float x = tabX + each * i;
             boolean active = i == gui.detailTabIndex;
-            // 标签文字
-            gui.drawCenteredText(DETAIL_TABS[i], x, tabY + 10.0f, x + each, tabY + 22.0f,
-                    gui.withAlpha(active ? gui.guiColors().text : gui.guiColors().muted,
-                            (active ? 238.0f : 196.0f) * gui.guiAlpha));
-            // 激活标签页的底部指示线
-            if (active) {
-                RenderServices.shapes().shadow(x + 9.0f, tabY + tabH - 2.0f, x + each - 9.0f, tabY + tabH,
-                        2.0f, gui.withAlpha(gui.guiColors().accent, 100.0f * gui.guiAlpha), 4, 2.0f);
-                RenderServices.shapes().horizontalGradient(x + 9.0f, tabY + tabH - 1.4f, x + each - 9.0f, tabY + tabH - 0.4f,
-                        gui.withAlpha(gui.guiColors().accent, 215.0f * gui.guiAlpha),
-                        gui.withAlpha(new Color(152, 135, 255).getRGB(), 215.0f * gui.guiAlpha));
-            }
+            boolean hasValues = tabHasValues(i);
+            // 没有值的标签页使用浅灰色；有值未选中的标签页颜色更深以作区分
+            int textColor = !hasValues ? gui.guiColors().faint
+                    : active ? gui.guiColors().text : gui.guiColors().muted;
+            float textAlpha = !hasValues ? 120.0f
+                    : active ? 238.0f : 224.0f;
+            // 计算摇晃和弹跳偏移
+            float shakeOffset = AnimUtil.shakeX(tabShake.get(i));
+            float bounceOffsetY = AnimUtil.bounceY(tabBounce.get(i));
+            float bounceScale = AnimUtil.bounceScale(tabBounce.get(i));
+            // 标签文字（应用摇晃和弹跳偏移）
+            float textTop = tabY + 10.0f + bounceOffsetY;
+            float textBottom = tabY + 22.0f + bounceOffsetY;
+            gui.drawCenteredText(DETAIL_TABS[i], x + shakeOffset, textTop, x + each + shakeOffset, textBottom,
+                    gui.withAlpha(textColor, textAlpha * gui.guiAlpha));
+        }
+        // 底部指示线（使用动画位置）
+        if (tabHasValues(gui.detailTabIndex)) {
+            RenderServices.shapes().shadow(tabIndicatorX, tabY + tabH - 2.0f, tabIndicatorX + each - 18.0f, tabY + tabH,
+                    2.0f, gui.withAlpha(gui.guiColors().accent, 100.0f * gui.guiAlpha), 4, 2.0f);
+            RenderServices.shapes().horizontalGradient(tabIndicatorX, tabY + tabH - 1.4f, tabIndicatorX + each - 18.0f, tabY + tabH - 0.4f,
+                    gui.withAlpha(gui.guiColors().accent, 215.0f * gui.guiAlpha),
+                    gui.withAlpha(new Color(152, 135, 255).getRGB(), 215.0f * gui.guiAlpha));
         }
     }
 
@@ -467,6 +518,7 @@ final class ClickGuiDetailPanel {
      * 处理标签页点击。
      * <p>
      * 切换标签页时重置滚动位置和拖拽状态。
+     * 没有值的标签页不会响应点击。
      */
     private boolean handleTabClick(int mouseX, int mouseY) {
         float tabX = gui.detailX + 6.0f;
@@ -478,8 +530,15 @@ final class ClickGuiDetailPanel {
         }
         int index = (int) ((mouseX - tabX) / (tabW / DETAIL_TABS.length));
         int next = Math.max(0, Math.min(DETAIL_TABS.length - 1, index));
+        // 如果目标标签页没有值，触发摇晃动画并阻止切换
+        if (!tabHasValues(next)) {
+            tabShake.trigger(next);
+            return false;
+        }
         if (gui.detailTabIndex != next) {
             gui.detailTabIndex = next;
+            // 触发选中标签页的弹跳动画
+            tabBounce.trigger(next);
             // 切换标签页时重置滚动和拖拽状态
             gui.settingsScroll = 0.0f;
             gui.targetSettingsScroll = 0.0f;
@@ -487,6 +546,14 @@ final class ClickGuiDetailPanel {
             gui.draggingNumberCustomRange = false;
             gui.draggingNumberPair = null;
             gui.clearDraggingColor();
+            // 重置可见滑条的 animX，触发入场动画
+            if (gui.selectedModule != null) {
+                for (int vi = 0; vi < gui.selectedModule.getValues().size(); vi++) {
+                    if (gui.isDetailValueVisible(gui.selectedModule, vi)) {
+                        gui.selectedModule.getValues().get(vi).animX = 0f;
+                    }
+                }
+            }
         }
         return true;
     }
@@ -757,8 +824,6 @@ final class ClickGuiDetailPanel {
                 float rowAlpha = Math.max(0.0f, Math.min(1.0f, 1.0f - index * 0.015f));
                 // 视口裁剪优化：仅绘制可见行
                 if (valueY + valueH >= y - 2.0f && valueY <= y + h + 2.0f) {
-                    float active = gui.animateValueMap(gui.valueActiveProgress, value,
-                            gui.draggingNumber == value ? 1.0f : 0.0f, 0.18f);
                     // 根据值类型分发绘制
                     if (gui.isColorStart(module, i)) {
                         drawColorPalette(module, (Numbers) values.get(i), (Numbers) values.get(i + 1),
@@ -1081,10 +1146,10 @@ final class ClickGuiDetailPanel {
     private void drawAnimeGirl(float posX, float posY) {
         switch (HUD.getTheme()) {
             case LIGHT:
-                RenderUtil.drawTexturedRect(new ResourceLocation("wubolong/light.png"), posX, posY, posX+75f, posY+50f, .5f);
+                RenderUtil.drawTexturedRect(new ResourceLocation("wubolong/light.png"), posX, posY, posX+75f, posY+50f, .5f * gui.guiAlpha);
                 break;
             case SAKURA:
-                RenderUtil.drawTexturedRect(new ResourceLocation("wubolong/sakura.png"), posX, posY, posX+75f, posY+50f, .5f);
+                RenderUtil.drawTexturedRect(new ResourceLocation("wubolong/sakura.png"), posX, posY, posX+75f, posY+50f, .5f * gui.guiAlpha);
                 break;
         }
     }
