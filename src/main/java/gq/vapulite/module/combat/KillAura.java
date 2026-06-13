@@ -31,8 +31,10 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.input.Keyboard;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Queue;
 import java.lang.reflect.Field;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ThreadLocalRandom;
@@ -60,6 +62,7 @@ public class KillAura extends Module {
     public enum AutoBlockMode {
         LEGIT,
         PACKET,
+        BLINK,
         FAKE
     }
 
@@ -120,6 +123,7 @@ public class KillAura extends Module {
     private static final long ATTACK_WAIT_TIMEOUT_MS = 70L;
     private Channel rotationChannel;
     private PendingPacket pendingAttackPacket;
+    private final Queue<PendingPacket> blinkPackets = new ArrayDeque<PendingPacket>();
     private long lastSilentPacketAt;
     private final RotationUtil.State rotationState = new RotationUtil.State();
 
@@ -161,6 +165,7 @@ public class KillAura extends Module {
         blocking = false;
         serverBlocking = false;
         pendingAttackPacket = null;
+        blinkPackets.clear();
         lastSilentPacketAt = 0L;
         resetSilentRotation();
         delayMs = nextAttackDelay();
@@ -176,6 +181,7 @@ public class KillAura extends Module {
         rotationState.reset();
         resetSilentRotation();
         pendingAttackPacket = null;
+        releaseBlinkPackets();
         lastSilentPacketAt = 0L;
         targetAcquiredAt = 0L;
         legitReactionMs = 0L;
@@ -193,6 +199,7 @@ public class KillAura extends Module {
             return;
         }
         injectRotationHandler();
+        releaseDueBlinkPackets();
         if (Boolean.TRUE.equals(weaponOnly.getValue()) && !CombatUtil.isHoldingWeapon()) {
             clearTargetState();
             return;
@@ -386,13 +393,32 @@ public class KillAura extends Module {
         silentYaw = RotationUtil.limitAngleChange(silentYaw, targetYaw, yawStep);
         silentPitch = RotationUtil.limitAngleChange(silentPitch, targetPitch, pitchStep);
         silentPitch = MathHelper.clamp_float(silentPitch, -90.0f, 90.0f);
+        syncVisibleRotation(silentYaw);
     }
 
     private void resetSilentRotation() {
+        resetVisibleRotation();
         silentYaw = 0.0f;
         silentPitch = 0.0f;
         silentRotationReady = false;
         rageCurveProgress = 0.0f;
+    }
+
+    private void syncVisibleRotation(float yaw) {
+        if (mc.thePlayer == null) {
+            return;
+        }
+        mc.thePlayer.rotationYawHead = yaw;
+        mc.thePlayer.prevRotationYawHead = yaw;
+        mc.thePlayer.renderYawOffset = yaw;
+        mc.thePlayer.prevRenderYawOffset = yaw;
+    }
+
+    private void resetVisibleRotation() {
+        if (mc.thePlayer == null) {
+            return;
+        }
+        syncVisibleRotation(mc.thePlayer.rotationYaw);
     }
 
     private void injectRotationHandler() {
@@ -421,6 +447,7 @@ public class KillAura extends Module {
         Channel current = rotationChannel;
         rotationChannel = null;
         releasePendingAttackPacket();
+        releaseBlinkPackets();
         if (current == null) {
             return;
         }
@@ -484,6 +511,30 @@ public class KillAura extends Module {
         return System.currentTimeMillis() - lastSilentPacketAt > 45L;
     }
 
+    private boolean shouldBlinkBlockPacket(Object packet) {
+        if (!getState() || !isInGame() || getEffectiveAutoBlockMode() != AutoBlockMode.BLINK || !blocking) {
+            return false;
+        }
+        return packet instanceof C08PacketPlayerBlockPlacement
+                || packet instanceof C07PacketPlayerDigging;
+    }
+
+    private boolean holdBlinkPacket(ChannelHandlerContext ctx, Object packet, ChannelPromise promise) {
+        if (blinkPackets.size() >= 8) {
+            releaseBlinkPackets();
+            return false;
+        }
+        long delay = ThreadLocalRandom.current().nextLong(85L, 146L);
+        blinkPackets.offer(new PendingPacket(ctx, packet, promise, System.currentTimeMillis() + delay));
+        ctx.executor().schedule(new Runnable() {
+            @Override
+            public void run() {
+                releaseDueBlinkPackets();
+            }
+        }, delay, TimeUnit.MILLISECONDS);
+        return true;
+    }
+
     private boolean holdAttackPacket(ChannelHandlerContext ctx, Object packet, ChannelPromise promise) {
         releasePendingAttackPacket();
         pendingAttackPacket = new PendingPacket(ctx, packet, promise, System.currentTimeMillis() + ATTACK_WAIT_TIMEOUT_MS);
@@ -510,6 +561,32 @@ public class KillAura extends Module {
         if (pending != null && System.currentTimeMillis() >= pending.releaseAt) {
             releasePendingAttackPacket();
         }
+    }
+
+    private void releaseDueBlinkPackets() {
+        long now = System.currentTimeMillis();
+        while (true) {
+            PendingPacket pending = blinkPackets.peek();
+            if (pending == null || pending.releaseAt > now) {
+                break;
+            }
+            blinkPackets.poll();
+            writePendingPacket(pending);
+        }
+    }
+
+    private void releaseBlinkPackets() {
+        PendingPacket pending;
+        while ((pending = blinkPackets.poll()) != null) {
+            writePendingPacket(pending);
+        }
+    }
+
+    private void writePendingPacket(PendingPacket pending) {
+        if (pending == null || pending.ctx == null || pending.packet == null || pending.promise == null) {
+            return;
+        }
+        pending.ctx.writeAndFlush(pending.packet, pending.promise);
     }
 
     private float[] getAimRotations(EntityLivingBase entity) {
@@ -652,6 +729,7 @@ public class KillAura extends Module {
         silentPitch = MathHelper.clamp_float(silentPitch, -90.0f, 90.0f);
         silentRotationReady = true;
         rageCurveProgress = 1.0f;
+        syncVisibleRotation(silentYaw);
     }
 
     private boolean isLegitAttackReady(EntityLivingBase expected) {
@@ -759,14 +837,15 @@ public class KillAura extends Module {
 
     private void preAttackBlock() {
         if (isLegitMode() || !Boolean.TRUE.equals(autoblock.getValue())
-                || getEffectiveAutoBlockMode() != AutoBlockMode.PACKET) {
+                || getEffectiveAutoBlockMode() == AutoBlockMode.LEGIT
+                || getEffectiveAutoBlockMode() == AutoBlockMode.FAKE) {
             return;
         }
         releaseBlock();
     }
 
     private void blockWithSword() {
-        if (isLegitMode() || auraMode.getValue() == AuraMode.RAGE) {
+        if (isLegitMode()) {
             releaseBlock();
             return;
         }
@@ -779,6 +858,12 @@ public class KillAura extends Module {
         if (currentMode == AutoBlockMode.FAKE) {
             blocking = true;
             serverBlocking = false;
+            return;
+        }
+        if (currentMode == AutoBlockMode.BLINK) {
+            blocking = true;
+            serverBlocking = true;
+            mc.thePlayer.sendQueue.addToSendQueue(new C08PacketPlayerBlockPlacement(stack));
             return;
         }
         if (currentMode == AutoBlockMode.PACKET) {
@@ -932,7 +1017,11 @@ public class KillAura extends Module {
             if (module.shouldHoldAttackPacket(msg) && module.holdAttackPacket(ctx, msg, promise)) {
                 return;
             }
+            if (module.shouldBlinkBlockPacket(msg) && module.holdBlinkPacket(ctx, msg, promise)) {
+                return;
+            }
             module.releasePendingAttackIfDue();
+            module.releaseDueBlinkPackets();
             super.write(ctx, msg, promise);
         }
     }

@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Jar,
 
-    [string]$EntryClass = "gq.vapulite.Vapu.Client",
+    [string]$EntryClass = "gq.vapulite.core.Client",
 
     [string]$Name,
 

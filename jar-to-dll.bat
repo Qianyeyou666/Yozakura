@@ -7,7 +7,7 @@ set "NAME=%~3"
 set "ARCH=%~4"
 
 if "%JAR%"=="" set "JAR=build\libs\VapuLite.jar"
-if "%ENTRY%"=="" set "ENTRY=gq.vapulite.Vapu.Client"
+if "%ENTRY%"=="" set "ENTRY=gq.vapulite.core.Client"
 if "%NAME%"=="" set "NAME=VapuLiteLoader"
 if "%ARCH%"=="" set "ARCH=x64"
 
