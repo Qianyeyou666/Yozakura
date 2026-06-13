@@ -1,9 +1,9 @@
 package gq.vapulite.module.combat;
 
-import gq.vapulite.module.ModuleType;
 import gq.vapulite.module.Module;
-import gq.vapulite.util.time.TimerUtil;
+import gq.vapulite.module.ModuleType;
 import gq.vapulite.util.minecraft.RotationUtil;
+import gq.vapulite.util.time.TimerUtil;
 import gq.vapulite.value.Mode;
 import gq.vapulite.value.Numbers;
 import gq.vapulite.value.Option;
@@ -12,7 +12,6 @@ import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemSword;
@@ -21,6 +20,7 @@ import net.minecraft.network.play.client.C02PacketUseEntity;
 import net.minecraft.network.play.client.C03PacketPlayer;
 import net.minecraft.network.play.client.C07PacketPlayerDigging;
 import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
+import net.minecraft.network.play.client.C09PacketHeldItemChange;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.BlockPos;
 import net.minecraft.util.EnumFacing;
@@ -31,116 +31,85 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.input.Keyboard;
 
+import java.lang.reflect.Field;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
-import java.lang.reflect.Field;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ThreadLocalRandom;
 
 public class KillAura extends Module {
-    public enum AuraMode {
-        SAFE,
-        RAGE
-    }
-
     public enum AttackMode {
         SINGLE,
         SWITCH,
         MULTI
     }
 
-    public enum AimPoint {
-        SMART,
-        HEAD,
-        CHEST,
-        LEGS,
-        RANDOM
+    public enum RotationMode {
+        NONE,
+        SILENT,
+        LOCK_VIEW,
+        LIQUID_BOUNCE
     }
 
     public enum AutoBlockMode {
-        LEGIT,
-        PACKET,
+        NONE,
+        VANILLA,
+        SPOOF,
+        HYPIXEL,
         BLINK,
+        INTERACT,
         FAKE
     }
 
-    private final TimerUtil timer = new TimerUtil();
     public static EntityLivingBase target;
     public static final List<EntityLivingBase> targets = new ArrayList<EntityLivingBase>();
 
-    private final Numbers<Double> rangeValue = new Numbers<Double>("Range", "Range", 4.2, 1.0, 6.0, 0.1);
-    private final Numbers<Double> minCps = new Numbers<Double>("Min CPS", "MinCPS", 8.0, 1.0, 20.0, 1.0);
-    private final Numbers<Double> cps = new Numbers<Double>("Max CPS", "Cps", 12.0, 1.0, 20.0, 1.0);
-    private final Numbers<Double> fov = new Numbers<Double>("FOV", "FOV", 180.0, 10.0, 180.0, 5.0);
-    private final Numbers<Double> yawSpeed = new Numbers<Double>("Yaw Speed", "YawSpeed", 32.0, 1.0, 90.0, 1.0);
-    private final Numbers<Double> pitchSpeed = new Numbers<Double>("Pitch Speed", "PitchSpeed", 24.0, 1.0, 90.0, 1.0);
-    private final Numbers<Double> hurtTime = new Numbers<Double>("Hurt Time", "HurtTime", 10.0, 0.0, 10.0, 1.0);
-    private final Numbers<Double> switchDelay = new Numbers<Double>("Switch Delay", "SwitchDelay", 320.0, 80.0, 1200.0, 10.0);
-    private final Numbers<Double> maxTargets = new Numbers<Double>("Max Targets", "MaxTargets", 3.0, 1.0, 8.0, 1.0);
-    private final Numbers<Double> rayExpand = new Numbers<Double>("Ray Expand", "RayExpand", 0.12, 0.0, 0.6, 0.01);
-    private final Mode<AuraMode> auraMode = new Mode<AuraMode>("Aura Mode", "AuraMode", AuraMode.values(), AuraMode.SAFE);
+    private static final String ROTATION_HANDLER_NAME = "vapulite_killaura_rotation";
+
+    private final TimerUtil attackTimer = new TimerUtil();
     private final Mode<AttackMode> mode = new Mode<AttackMode>("Mode", "Mode", AttackMode.values(), AttackMode.SINGLE);
     private final Mode<CombatUtil.TargetPriority> priority =
             new Mode<CombatUtil.TargetPriority>("Priority", "Priority", CombatUtil.TargetPriority.values(), CombatUtil.TargetPriority.DISTANCE);
-    private final Mode<AimPoint> aimPoint = new Mode<AimPoint>("Aim Point", "AimPoint", AimPoint.values(), AimPoint.SMART);
-    private final Mode<AutoBlockMode> autoBlockMode =
-            new Mode<AutoBlockMode>("AutoBlock Mode", "AutoBlockMode", AutoBlockMode.values(), AutoBlockMode.LEGIT);
-    private final Option<Boolean> autoblock = new Option<Boolean>("AutoBlock", "AutoBlock", true);
-    private final Option<Boolean> legitRequireAttack = new Option<Boolean>("Require Attack", "LegitRequireAttack", true);
-    private final Option<Boolean> rayCast = new Option<Boolean>("Ray Cast", "RayCast", false);
-    private final Option<Boolean> randomAim = new Option<Boolean>("Random Aim", "RandomAim", true);
-    private final Option<Boolean> weaponOnly = new Option<Boolean>("Only Weapon", "OnlyWeapon", false);
+    private final Mode<RotationMode> rotations =
+            new Mode<RotationMode>("Rotations", "Rotations", RotationMode.values(), RotationMode.SILENT);
+    private final Mode<AutoBlockMode> autoBlock =
+            new Mode<AutoBlockMode>("AutoBlock", "AutoBlock", AutoBlockMode.values(), AutoBlockMode.HYPIXEL);
+    private final Numbers<Double> rangeValue = new Numbers<Double>("Range", "Range", 4.2D, 1.0D, 6.0D, 0.1D);
+    private final Numbers<Double> swingRange = new Numbers<Double>("Swing Range", "SwingRange", 4.2D, 1.0D, 6.0D, 0.1D);
+    private final Numbers<Double> blockRange = new Numbers<Double>("Block Range", "BlockRange", 6.0D, 1.0D, 8.0D, 0.1D);
+    private final Numbers<Double> minCps = new Numbers<Double>("Min CPS", "MinCPS", 10.0D, 1.0D, 20.0D, 1.0D);
+    private final Numbers<Double> maxCps = new Numbers<Double>("Max CPS", "MaxCPS", 14.0D, 1.0D, 20.0D, 1.0D);
+    private final Numbers<Double> fov = new Numbers<Double>("FOV", "FOV", 180.0D, 10.0D, 180.0D, 5.0D);
+    private final Numbers<Double> turnSpeed = new Numbers<Double>("Turn Speed", "TurnSpeed", 90.0D, 5.0D, 180.0D, 1.0D);
+    private final Numbers<Double> hurtTime = new Numbers<Double>("Hurt Time", "HurtTime", 10.0D, 0.0D, 10.0D, 1.0D);
+    private final Numbers<Double> switchDelay = new Numbers<Double>("Switch Delay", "SwitchDelay", 150.0D, 0.0D, 1000.0D, 25.0D);
+    private final Option<Boolean> throughWalls = new Option<Boolean>("Through Walls", "ThroughWalls", true);
+    private final Option<Boolean> requirePress = new Option<Boolean>("Require Press", "RequirePress", false);
+    private final Option<Boolean> weaponsOnly = new Option<Boolean>("Weapons Only", "WeaponsOnly", true);
     private final Option<Boolean> players = new Option<Boolean>("Players", "Players", true);
-    private final Option<Boolean> mobs = new Option<Boolean>("Mobs", "Mobs", true);
-    private final Option<Boolean> animals = new Option<Boolean>("Animals", "Animals", true);
-    private final Option<Boolean> throughWalls = new Option<Boolean>("Through Walls", "ThroughWalls", false);
-    private final Option<Boolean> rotate = new Option<Boolean>("Rotate", "Rotate", true);
-    private final Option<Boolean> onlyYaw = new Option<Boolean>("Only Yaw", "OnlyYaw", false);
+    private final Option<Boolean> mobs = new Option<Boolean>("Mobs", "Mobs", false);
+    private final Option<Boolean> animals = new Option<Boolean>("Animals", "Animals", false);
+    private final Option<Boolean> moveFix = new Option<Boolean>("Move Fix", "MoveFix", true);
 
-    private int switchIndex;
-    private int delayMs;
-    private int targetId = -1;
-    private long lastSwitchAt;
-    private long targetAcquiredAt;
-    private long legitReactionMs;
-    private long nextLegitClickAt;
-    private long nextAimUpdateAt;
-    private double aimOffsetX;
-    private double aimOffsetZ;
-    private double targetAimOffsetX;
-    private double targetAimOffsetZ;
-    private double randomHeightRatio = 0.62D;
-    private double targetRandomHeightRatio = 0.62D;
-    private boolean blocking;
-    private boolean serverBlocking;
-    private float silentYaw;
-    private float silentPitch;
-    private boolean silentRotationReady;
-    private float rageCurveProgress;
-    private static final String ROTATION_HANDLER_NAME = "vapulite_killaura_rotation";
-    private static final long ATTACK_WAIT_TIMEOUT_MS = 70L;
     private Channel rotationChannel;
-    private PendingPacket pendingAttackPacket;
-    private final Queue<PendingPacket> blinkPackets = new ArrayDeque<PendingPacket>();
-    private long lastSilentPacketAt;
-    private final RotationUtil.State rotationState = new RotationUtil.State();
+    private Field channelField;
+    private float serverYaw;
+    private float serverPitch;
+    private boolean rotated;
+    private boolean blockingState;
+    private boolean fakeBlockState;
+    private int blockTick;
+    private int switchIndex;
+    private long lastSwitchAt;
+    private int attackDelay;
+    private final Queue<QueuedPacket> blinkPackets = new ArrayDeque<QueuedPacket>();
 
     public KillAura() {
-        super("KillAura", Keyboard.KEY_NONE, ModuleType.Combat, "Auto attack nearby targets");
-        mode.visibleWhen(() -> !isLegitMode());
-        switchDelay.visibleWhen(() -> !isLegitMode() && mode.getValue() == AttackMode.SWITCH);
-        maxTargets.visibleWhen(() -> !isLegitMode() && mode.getValue() == AttackMode.MULTI);
-        rayCast.visibleWhen(() -> !isLegitMode());
-        rayExpand.visibleWhen(() -> !isLegitMode() && Boolean.TRUE.equals(rayCast.getValue()));
-        autoblock.visibleWhen(() -> !isLegitMode());
-        autoBlockMode.visibleWhen(() -> !isLegitMode() && Boolean.TRUE.equals(autoblock.getValue()));
-        throughWalls.visibleWhen(() -> !isLegitMode());
-        legitRequireAttack.visibleWhen(() -> isLegitMode());
-        this.addValues(rangeValue, minCps, cps, fov, yawSpeed, pitchSpeed, hurtTime, switchDelay, maxTargets,
-                rayExpand, auraMode, mode, priority, aimPoint, autoBlockMode, autoblock, legitRequireAttack, rayCast, randomAim,
-                weaponOnly, players, mobs, animals, throughWalls, rotate, onlyYaw);
+        super("KillAura", Keyboard.KEY_NONE, ModuleType.Combat, "Leader-style silent aura");
+        addValues(mode, priority, rotations, autoBlock, rangeValue, swingRange, blockRange, minCps, maxCps,
+                fov, turnSpeed, hurtTime, switchDelay, throughWalls, requirePress, weaponsOnly,
+                players, mobs, animals, moveFix);
         Chinese = "杀戮光环";
     }
 
@@ -148,44 +117,29 @@ public class KillAura extends Module {
     public void enable() {
         target = null;
         targets.clear();
-        targetId = -1;
-        rotationState.reset();
+        serverYaw = isInGame() ? mc.thePlayer.rotationYaw : 0.0F;
+        serverPitch = isInGame() ? mc.thePlayer.rotationPitch : 0.0F;
+        rotated = false;
+        blockingState = false;
+        fakeBlockState = false;
+        blockTick = 0;
         switchIndex = 0;
         lastSwitchAt = 0L;
-        targetAcquiredAt = 0L;
-        legitReactionMs = 0L;
-        nextLegitClickAt = 0L;
-        nextAimUpdateAt = 0L;
-        aimOffsetX = 0.0D;
-        aimOffsetZ = 0.0D;
-        targetAimOffsetX = 0.0D;
-        targetAimOffsetZ = 0.0D;
-        randomHeightRatio = 0.62D;
-        targetRandomHeightRatio = 0.62D;
-        blocking = false;
-        serverBlocking = false;
-        pendingAttackPacket = null;
-        blinkPackets.clear();
-        lastSilentPacketAt = 0L;
-        resetSilentRotation();
-        delayMs = nextAttackDelay();
+        attackDelay = nextAttackDelay();
+        attackTimer.reset();
+        injectRotationHandler();
     }
 
     @Override
     public void disable() {
-        releaseBlock();
-        removeRotationHandler();
+        stopBlock();
         target = null;
         targets.clear();
-        targetId = -1;
-        rotationState.reset();
-        resetSilentRotation();
-        pendingAttackPacket = null;
+        rotated = false;
+        fakeBlockState = false;
         releaseBlinkPackets();
-        lastSilentPacketAt = 0L;
-        targetAcquiredAt = 0L;
-        legitReactionMs = 0L;
-        nextLegitClickAt = 0L;
+        removeRotationHandler();
+        resetVisibleRotation();
     }
 
     @SubscribeEvent
@@ -194,223 +148,226 @@ public class KillAura extends Module {
             return;
         }
         if (!isInGame() || CombatUtil.shouldPauseForScreen()) {
-            removeRotationHandler();
-            clearTargetState();
+            clearState();
             return;
         }
+
         injectRotationHandler();
         releaseDueBlinkPackets();
-        if (Boolean.TRUE.equals(weaponOnly.getValue()) && !CombatUtil.isHoldingWeapon()) {
-            clearTargetState();
-            return;
-        }
-        if (shouldRequireAttackKey() && !mc.gameSettings.keyBindAttack.isKeyDown()) {
-            clearTargetState();
-            return;
-        }
+        collectTargets();
+        target = selectTarget();
+        boolean attack = target != null && canAttack();
+        boolean block = target != null && canAutoBlock();
 
-        double searchRange = getSearchRange();
-        double searchFov = getSearchFov();
-        boolean allowThroughWalls = !isLegitMode() && Boolean.TRUE.equals(throughWalls.getValue());
-        List<EntityLivingBase> foundTargets = CombatUtil.collectTargets(searchRange, searchFov,
-                players.getValue(), mobs.getValue(), animals.getValue(), allowThroughWalls);
-        CombatUtil.sortTargets(foundTargets, priority.getValue());
-        targets.clear();
-        targets.addAll(foundTargets);
-
-        if (foundTargets.isEmpty()) {
-            clearTargetState();
-            return;
-        }
-
-        target = selectTarget(foundTargets);
-
-        if (target != null && target.getEntityId() != targetId) {
-            targetId = target.getEntityId();
-            rotationState.reset();
-            resetSilentRotation();
-            targetAcquiredAt = System.currentTimeMillis();
-            legitReactionMs = randomRange(130L, 260L);
-            nextLegitClickAt = 0L;
-            nextAimUpdateAt = 0L;
-            aimOffsetX = 0.0D;
-            aimOffsetZ = 0.0D;
-            targetAimOffsetX = 0.0D;
-            targetAimOffsetZ = 0.0D;
-            randomHeightRatio = 0.62D;
-            targetRandomHeightRatio = 0.62D;
-        }
-
-        if (target != null) {
-            updateAuraRotation(target);
-        }
-        if (isLegitMode() || !Boolean.TRUE.equals(autoblock.getValue())) {
-            releaseBlock();
-        }
-
-        if (!timer.delay(delayMs)) {
-            return;
-        }
-
-        boolean attacked = false;
-        if (!isLegitMode() && mode.getValue() == AttackMode.MULTI) {
-            int attackedTargets = 0;
-            int limit = Math.max(1, maxTargets.getValue().intValue());
-            for (EntityLivingBase entity : foundTargets) {
-                if (attackedTargets >= limit) {
-                    break;
-                }
-                if (attack(entity, true)) {
-                    attackedTargets++;
-                    attacked = true;
-                }
-            }
+        if (target != null && rotations.getValue() != RotationMode.NONE) {
+            updateServerRotation(target);
+            rotated = true;
+            maintainVisibleRotation();
         } else {
-            attacked = attack(target, false);
+            rotated = false;
         }
 
-        if (attacked) {
-            delayMs = nextAttackDelay();
-            timer.reset();
-        } else if (!isLegitMode() && Boolean.TRUE.equals(autoblock.getValue()) && target == null) {
-            releaseBlock();
+        updateAutoBlock(block && attack);
+
+        if (attack && attackTimer.delay(attackDelay)) {
+            performAttack(target);
+            attackDelay = nextAttackDelay();
+            attackTimer.reset();
         }
     }
 
     @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent event) {
-        if (event.phase == TickEvent.Phase.END
-                && auraMode.getValue() == AuraMode.RAGE
-                && silentRotationReady
-                && target != null
-                && isInGame()
-                && Boolean.TRUE.equals(rotate.getValue())) {
-            syncVisibleRotation(silentYaw);
-            return;
-        }
-        if (event.phase != TickEvent.Phase.END || !isLegitMode() || target == null) {
-            return;
-        }
-        if (!isInGame() || CombatUtil.shouldPauseForScreen() || !Boolean.TRUE.equals(rotate.getValue())) {
-            return;
-        }
-        if (shouldRequireAttackKey() && !mc.gameSettings.keyBindAttack.isKeyDown()) {
-            return;
-        }
-        if (CombatUtil.isValidTarget(target, getSearchRange() + 0.25D, getSearchFov() + 8.0D,
-                players.getValue(), mobs.getValue(), animals.getValue(), false)) {
-            faceTarget(target);
+        if (event.phase == TickEvent.Phase.START || event.phase == TickEvent.Phase.END) {
+            maintainVisibleRotation();
+            maintainBlockVisual();
         }
     }
 
-    private EntityLivingBase selectTarget(List<EntityLivingBase> foundTargets) {
-        if (isLegitMode()) {
-            if (target != null && foundTargets.contains(target)) {
-                return target;
+    private void collectTargets() {
+        targets.clear();
+        targets.addAll(CombatUtil.collectTargets(swingRange.getValue(), fov.getValue(), players.getValue(),
+                mobs.getValue(), animals.getValue(), throughWalls.getValue()));
+        CombatUtil.sortTargets(targets, priority.getValue());
+    }
+
+    private EntityLivingBase selectTarget() {
+        if (targets.isEmpty()) {
+            return null;
+        }
+        if (mode.getValue() == AttackMode.SWITCH && targets.size() > 1) {
+            long now = System.currentTimeMillis();
+            if (now - lastSwitchAt >= switchDelay.getValue().longValue()) {
+                switchIndex = (switchIndex + 1) % targets.size();
+                lastSwitchAt = now;
             }
-            return foundTargets.get(0);
-        }
-        AttackMode currentMode = mode.getValue();
-        if (currentMode == AttackMode.SWITCH) {
-            return selectSwitchTarget(foundTargets);
-        }
-        if (currentMode == AttackMode.SINGLE && target != null && foundTargets.contains(target)) {
-            return target;
-        }
-        return foundTargets.get(0);
-    }
-
-    private EntityLivingBase selectSwitchTarget(List<EntityLivingBase> foundTargets) {
-        long now = System.currentTimeMillis();
-        if (switchIndex >= foundTargets.size()) {
-            switchIndex = 0;
-        }
-        if (target == null || !foundTargets.contains(target)) {
-            switchIndex = 0;
-            lastSwitchAt = now;
-            return foundTargets.get(switchIndex);
-        }
-        if (foundTargets.size() > 1 && now - lastSwitchAt >= switchDelay.getValue().longValue()) {
-            switchIndex = foundTargets.indexOf(target) + 1;
-            if (switchIndex >= foundTargets.size()) {
+            if (switchIndex >= targets.size()) {
                 switchIndex = 0;
             }
-            lastSwitchAt = now;
-        } else {
-            switchIndex = foundTargets.indexOf(target);
+            return targets.get(switchIndex);
         }
-        return foundTargets.get(switchIndex);
+        return targets.get(0);
     }
 
-    private void updateAuraRotation(EntityLivingBase entity) {
-        if (!Boolean.TRUE.equals(rotate.getValue())) {
-            resetSilentRotation();
+    private boolean canAttack() {
+        if (target == null || target.hurtTime > hurtTime.getValue().intValue()) {
+            return false;
+        }
+        if (Boolean.TRUE.equals(requirePress.getValue()) && !mc.gameSettings.keyBindAttack.isKeyDown()) {
+            return false;
+        }
+        if (Boolean.TRUE.equals(weaponsOnly.getValue()) && !CombatUtil.isHoldingWeapon()) {
+            return false;
+        }
+        return mc.thePlayer.getDistanceToEntity(target) <= rangeValue.getValue();
+    }
+
+    private boolean canAutoBlock() {
+        AutoBlockMode current = autoBlock.getValue() == null ? AutoBlockMode.NONE : autoBlock.getValue();
+        if (current == AutoBlockMode.NONE || target == null || !isHoldingSword()) {
+            return false;
+        }
+        return mc.thePlayer.getDistanceToEntity(target) <= blockRange.getValue();
+    }
+
+    private void updateServerRotation(EntityLivingBase entity) {
+        float[] rotations = rotationsToEntity(entity);
+        RotationMode current = this.rotations.getValue() == null ? RotationMode.SILENT : this.rotations.getValue();
+        if (!rotated || current == RotationMode.SILENT || current == RotationMode.LOCK_VIEW) {
+            serverYaw = quantize(rotations[0]);
+            serverPitch = quantize(MathHelper.clamp_float(rotations[1], -90.0F, 90.0F));
             return;
         }
-        if (shouldRequireAttackKey() && !mc.gameSettings.keyBindAttack.isKeyDown()) {
-            rotationState.reset();
+        float speed = turnSpeed.getValue().floatValue();
+        serverYaw = quantize(RotationUtil.limitAngleChange(serverYaw, rotations[0], speed));
+        serverPitch = quantize(RotationUtil.limitAngleChange(serverPitch, rotations[1], speed));
+        serverPitch = MathHelper.clamp_float(serverPitch, -90.0F, 90.0F);
+    }
+
+    private float[] rotationsToEntity(EntityLivingBase entity) {
+        AxisAlignedBB box = entity.getEntityBoundingBox().expand(entity.getCollisionBorderSize(),
+                entity.getCollisionBorderSize(), entity.getCollisionBorderSize());
+        Vec3 eyes = mc.thePlayer.getPositionEyes(1.0F);
+        Vec3 point = clampVecToBox(eyes, box);
+        double dx = point.xCoord - eyes.xCoord;
+        double dy = point.yCoord - eyes.yCoord;
+        double dz = point.zCoord - eyes.zCoord;
+        double dist = MathHelper.sqrt_double(dx * dx + dz * dz);
+        float yaw = (float) (Math.atan2(dz, dx) * 180.0D / Math.PI) - 90.0F;
+        float pitch = (float) (-(Math.atan2(dy, dist) * 180.0D / Math.PI));
+        return new float[]{yaw, pitch};
+    }
+
+    private Vec3 clampVecToBox(Vec3 point, AxisAlignedBB box) {
+        return new Vec3(MathHelper.clamp_double(point.xCoord, box.minX, box.maxX),
+                MathHelper.clamp_double(point.yCoord, box.minY, box.maxY),
+                MathHelper.clamp_double(point.zCoord, box.minZ, box.maxZ));
+    }
+
+    private void performAttack(EntityLivingBase entity) {
+        if (entity == null) {
             return;
         }
-        if (auraMode.getValue() == AuraMode.RAGE) {
-            updateSilentRotation(entity);
-        } else {
-            faceTarget(entity);
-        }
-    }
-
-    private void faceTarget(EntityLivingBase entity) {
-        float[] rotations = getAimRotations(entity);
-        if (isLegitMode()) {
-            float mouseStep = getMouseStep();
-            float yawDiff = MathHelper.wrapAngleTo180_float(rotations[0] - mc.thePlayer.rotationYaw);
-            float edge = Math.abs(yawDiff) / Math.max(1.0f, (float) getSearchFov());
-            float edgeScale = MathHelper.clamp_float(1.0f
-                            - RotationUtil.smoothStep(edge) * 0.38f,
-                    0.45f, 1.0f);
-            float yawStep = MathHelper.clamp_float(yawSpeed.getValue().floatValue(), 2.0f, 11.0f)
-                    * getSensitivityScale(mouseStep) * edgeScale;
-            float pitchStep = MathHelper.clamp_float(pitchSpeed.getValue().floatValue(), 1.0f, 7.0f)
-                    * getSensitivityScale(mouseStep) * edgeScale;
-            boolean yawOnlyLegit = Math.abs(yawDiff) > 12.0f || Boolean.TRUE.equals(onlyYaw.getValue());
-            RotationUtil.applyToPlayer(mc, rotations[0], rotations[1], yawStep, pitchStep,
-                    yawOnlyLegit, 0.55f, rotationState, 0.48f, 0.006f, true);
+        if (mode.getValue() == AttackMode.MULTI) {
+            for (EntityLivingBase living : new ArrayList<EntityLivingBase>(targets)) {
+                if (mc.thePlayer.getDistanceToEntity(living) <= rangeValue.getValue()) {
+                    sendAttack(living);
+                }
+            }
             return;
         }
-        RotationUtil.applyToPlayer(mc, rotations[0], rotations[1], yawSpeed.getValue().floatValue(),
-                pitchSpeed.getValue().floatValue(), Boolean.TRUE.equals(onlyYaw.getValue()), 0.16f,
-                rotationState, 0.48f, 0.08f, true);
+        sendAttack(entity);
     }
 
-    private void updateSilentRotation(EntityLivingBase entity) {
-        float[] rotations = getAimRotations(entity);
-        if (!silentRotationReady) {
-            silentYaw = mc.thePlayer.rotationYaw;
-            silentPitch = mc.thePlayer.rotationPitch;
-            silentRotationReady = true;
+    private void sendAttack(EntityLivingBase entity) {
+        mc.thePlayer.swingItem();
+        mc.thePlayer.sendQueue.addToSendQueue(new C02PacketUseEntity(entity, C02PacketUseEntity.Action.ATTACK));
+    }
+
+    private void updateAutoBlock(boolean shouldBlock) {
+        if (!shouldBlock) {
+            stopBlock();
+            blockTick = 0;
+            fakeBlockState = false;
+            return;
         }
-
-        float targetYaw = rotations[0];
-        float targetPitch = Boolean.TRUE.equals(onlyYaw.getValue()) ? mc.thePlayer.rotationPitch : rotations[1];
-        rageCurveProgress = MathHelper.clamp_float(rageCurveProgress + 0.22f, 0.0f, 1.0f);
-        float yawDiff = MathHelper.wrapAngleTo180_float(targetYaw - silentYaw);
-        float pitchDiff = MathHelper.wrapAngleTo180_float(targetPitch - silentPitch);
-        float yawStep = RotationUtil.curvedStep(yawDiff, yawSpeed.getValue().floatValue() * 1.45f,
-                0.18f, rageCurveProgress);
-        float pitchStep = RotationUtil.curvedStep(pitchDiff, pitchSpeed.getValue().floatValue() * 1.30f,
-                0.14f, rageCurveProgress);
-
-        silentYaw = RotationUtil.limitAngleChange(silentYaw, targetYaw, yawStep);
-        silentPitch = RotationUtil.limitAngleChange(silentPitch, targetPitch, pitchStep);
-        silentPitch = MathHelper.clamp_float(silentPitch, -90.0f, 90.0f);
-        syncVisibleRotation(silentYaw);
+        AutoBlockMode current = autoBlock.getValue() == null ? AutoBlockMode.NONE : autoBlock.getValue();
+        if (current == AutoBlockMode.FAKE) {
+            fakeBlockState = true;
+            maintainBlockVisual();
+            return;
+        }
+        if (current == AutoBlockMode.SPOOF && blockTick == 0) {
+            int slot = emptyHotbarSlot();
+            mc.thePlayer.sendQueue.addToSendQueue(new C09PacketHeldItemChange(slot));
+            mc.thePlayer.sendQueue.addToSendQueue(new C09PacketHeldItemChange(mc.thePlayer.inventory.currentItem));
+        }
+        if ((current == AutoBlockMode.HYPIXEL || current == AutoBlockMode.BLINK) && blockingState && blockTick % 2 == 1) {
+            stopBlock();
+            blockTick++;
+            return;
+        }
+        if (!blockingState) {
+            startBlock();
+        }
+        fakeBlockState = true;
+        blockTick++;
+        maintainBlockVisual();
     }
 
-    private void resetSilentRotation() {
-        resetVisibleRotation();
-        silentYaw = 0.0f;
-        silentPitch = 0.0f;
-        silentRotationReady = false;
-        rageCurveProgress = 0.0f;
+    private void startBlock() {
+        ItemStack stack = mc.thePlayer.getHeldItem();
+        if (stack == null || !(stack.getItem() instanceof ItemSword)) {
+            return;
+        }
+        mc.thePlayer.sendQueue.addToSendQueue(new C08PacketPlayerBlockPlacement(stack));
+        mc.thePlayer.setItemInUse(stack, stack.getMaxItemUseDuration());
+        blockingState = true;
+    }
+
+    private void stopBlock() {
+        if (blockingState && isInGame()) {
+            mc.thePlayer.sendQueue.addToSendQueue(new C07PacketPlayerDigging(
+                    C07PacketPlayerDigging.Action.RELEASE_USE_ITEM, BlockPos.ORIGIN, EnumFacing.DOWN));
+        }
+        if (isInGame()) {
+            mc.thePlayer.stopUsingItem();
+        }
+        blockingState = false;
+    }
+
+    private void maintainBlockVisual() {
+        if (!isInGame() || (!blockingState && !fakeBlockState)) {
+            return;
+        }
+        ItemStack stack = mc.thePlayer.getHeldItem();
+        if (stack != null && stack.getItem() instanceof ItemSword) {
+            mc.thePlayer.setItemInUse(stack, stack.getMaxItemUseDuration());
+        }
+    }
+
+    private boolean isHoldingSword() {
+        ItemStack stack = mc.thePlayer.getHeldItem();
+        return stack != null && stack.getItem() instanceof ItemSword;
+    }
+
+    private int emptyHotbarSlot() {
+        for (int slot = 0; slot < 9; slot++) {
+            if (slot != mc.thePlayer.inventory.currentItem && mc.thePlayer.inventory.getStackInSlot(slot) == null) {
+                return slot;
+            }
+        }
+        return (mc.thePlayer.inventory.currentItem + 1) % 9;
+    }
+
+    private int nextAttackDelay() {
+        return CombatUtil.nextDelay(minCps.getValue(), maxCps.getValue());
+    }
+
+    private float quantize(float angle) {
+        float f = mc.gameSettings.mouseSensitivity * 0.6F + 0.2F;
+        float gcd = f * f * f * 1.2F;
+        return Math.round(angle / gcd) * gcd;
     }
 
     private void syncVisibleRotation(float yaw) {
@@ -421,14 +378,95 @@ public class KillAura extends Module {
         mc.thePlayer.prevRotationYawHead = yaw;
         mc.thePlayer.renderYawOffset = yaw;
         mc.thePlayer.prevRenderYawOffset = yaw;
-        mc.thePlayer.cameraYaw = 0.0F;
+    }
+
+    private void maintainVisibleRotation() {
+        if (getState() && isInGame() && rotated && target != null) {
+            syncVisibleRotation(serverYaw);
+        }
     }
 
     private void resetVisibleRotation() {
-        if (mc.thePlayer == null) {
-            return;
+        if (mc.thePlayer != null) {
+            syncVisibleRotation(mc.thePlayer.rotationYaw);
         }
-        syncVisibleRotation(mc.thePlayer.rotationYaw);
+    }
+
+    private void clearState() {
+        target = null;
+        targets.clear();
+        rotated = false;
+        fakeBlockState = false;
+        stopBlock();
+        releaseBlinkPackets();
+        resetVisibleRotation();
+    }
+
+    public boolean isBlocking() {
+        return isHoldingSword() && (blockingState || fakeBlockState);
+    }
+
+    public EntityLivingBase getTarget() {
+        return target;
+    }
+
+    public static void assistFaceEntity(Entity entity, float yaw, float pitch) {
+        CombatUtil.faceEntity(entity, yaw, pitch, pitch <= 0.0F, 0.0F);
+    }
+
+    public static float updateRotation(float current, float targetYaw, float maxTurn) {
+        return CombatUtil.updateRotation(current, targetYaw, maxTurn);
+    }
+
+    private boolean shouldRewriteRotationPacket() {
+        return getState() && isInGame() && rotated && target != null && rotations.getValue() != RotationMode.NONE;
+    }
+
+    private C03PacketPlayer rewriteRotationPacket(C03PacketPlayer packet) {
+        if (!shouldRewriteRotationPacket() || packet == null) {
+            return null;
+        }
+        boolean onGround = packet.isOnGround();
+        if (packet instanceof C03PacketPlayer.C06PacketPlayerPosLook
+                || packet instanceof C03PacketPlayer.C04PacketPlayerPosition) {
+            return new C03PacketPlayer.C06PacketPlayerPosLook(packet.getPositionX(), packet.getPositionY(),
+                    packet.getPositionZ(), serverYaw, serverPitch, onGround);
+        }
+        return new C03PacketPlayer.C05PacketPlayerLook(serverYaw, serverPitch, onGround);
+    }
+
+    private boolean shouldBlinkPacket(Object packet) {
+        return getState() && autoBlock.getValue() == AutoBlockMode.BLINK
+                && (packet instanceof C08PacketPlayerBlockPlacement || packet instanceof C07PacketPlayerDigging);
+    }
+
+    private boolean queueBlinkPacket(ChannelHandlerContext ctx, Object packet, ChannelPromise promise) {
+        if (blinkPackets.size() > 10) {
+            releaseBlinkPackets();
+            return false;
+        }
+        blinkPackets.offer(new QueuedPacket(ctx, packet, promise, System.currentTimeMillis()
+                + ThreadLocalRandom.current().nextLong(75L, 130L)));
+        return true;
+    }
+
+    private void releaseDueBlinkPackets() {
+        long now = System.currentTimeMillis();
+        while (!blinkPackets.isEmpty() && blinkPackets.peek().releaseAt <= now) {
+            writeQueued(blinkPackets.poll());
+        }
+    }
+
+    private void releaseBlinkPackets() {
+        while (!blinkPackets.isEmpty()) {
+            writeQueued(blinkPackets.poll());
+        }
+    }
+
+    private void writeQueued(QueuedPacket packet) {
+        if (packet != null && packet.ctx != null && packet.packet != null && packet.promise != null) {
+            packet.ctx.writeAndFlush(packet.packet, packet.promise);
+        }
     }
 
     private void injectRotationHandler() {
@@ -437,572 +475,63 @@ public class KillAura extends Module {
         }
         try {
             NetworkManager manager = mc.getNetHandler().getNetworkManager();
-            Channel current = getChannel(manager);
-            if (current == null || !current.isOpen()) {
+            Channel channel = getChannel(manager);
+            if (channel == null || !channel.isOpen()) {
                 return;
             }
-            if (rotationChannel != null && rotationChannel != current) {
+            if (rotationChannel != null && rotationChannel != channel) {
                 removeRotationHandler();
             }
-            if (current.pipeline().get(ROTATION_HANDLER_NAME) == null) {
-                current.pipeline().addBefore("packet_handler", ROTATION_HANDLER_NAME, new SilentRotationPacketHandler(this));
+            if (channel.pipeline().get(ROTATION_HANDLER_NAME) == null) {
+                channel.pipeline().addBefore("packet_handler", ROTATION_HANDLER_NAME, new SilentRotationPacketHandler(this));
             }
-            rotationChannel = current;
+            rotationChannel = channel;
         } catch (Throwable ignored) {
             rotationChannel = null;
         }
     }
 
     private void removeRotationHandler() {
-        Channel current = rotationChannel;
+        Channel channel = rotationChannel;
         rotationChannel = null;
-        releasePendingAttackPacket();
-        releaseBlinkPackets();
-        if (current == null) {
+        if (channel == null) {
             return;
         }
         try {
-            if (current.isOpen() && current.pipeline().get(ROTATION_HANDLER_NAME) != null) {
-                current.pipeline().remove(ROTATION_HANDLER_NAME);
+            if (channel.isOpen() && channel.pipeline().get(ROTATION_HANDLER_NAME) != null) {
+                channel.pipeline().remove(ROTATION_HANDLER_NAME);
             }
         } catch (Throwable ignored) {
         }
     }
 
     private Channel getChannel(NetworkManager manager) {
-        String[] names = new String[]{"channel", "field_150746_k"};
-        for (String name : names) {
-            try {
-                Field field = NetworkManager.class.getDeclaredField(name);
-                field.setAccessible(true);
-                Object value = field.get(manager);
-                if (value instanceof Channel) {
-                    return (Channel) value;
-                }
-            } catch (Throwable ignored) {
-            }
-        }
-        return null;
-    }
-
-    private boolean shouldRewriteRotationPacket() {
-        return getState()
-                && isInGame()
-                && auraMode.getValue() == AuraMode.RAGE
-                && Boolean.TRUE.equals(rotate.getValue())
-                && silentRotationReady
-                && target != null;
-    }
-
-    private C03PacketPlayer rewriteRotationPacket(C03PacketPlayer packet) {
-        if (!shouldRewriteRotationPacket() || packet == null) {
-            return null;
-        }
-        lastSilentPacketAt = System.currentTimeMillis();
-        boolean onGround = packet.isOnGround();
-        float yaw = silentYaw;
-        float pitch = silentPitch;
-        if (packet instanceof C03PacketPlayer.C06PacketPlayerPosLook
-                || packet instanceof C03PacketPlayer.C04PacketPlayerPosition) {
-            return new C03PacketPlayer.C06PacketPlayerPosLook(packet.getPositionX(), packet.getPositionY(),
-                    packet.getPositionZ(), yaw, pitch, onGround);
-        }
-        return new C03PacketPlayer.C05PacketPlayerLook(yaw, pitch, onGround);
-    }
-
-    private boolean shouldHoldAttackPacket(Object packet) {
-        if (!shouldRewriteRotationPacket() || !(packet instanceof C02PacketUseEntity)) {
-            return false;
-        }
-        C02PacketUseEntity useEntity = (C02PacketUseEntity) packet;
-        if (useEntity.getAction() != C02PacketUseEntity.Action.ATTACK) {
-            return false;
-        }
-        return System.currentTimeMillis() - lastSilentPacketAt > 45L;
-    }
-
-    private boolean shouldBlinkBlockPacket(Object packet) {
-        if (!getState() || !isInGame() || getEffectiveAutoBlockMode() != AutoBlockMode.BLINK || !blocking) {
-            return false;
-        }
-        return packet instanceof C08PacketPlayerBlockPlacement
-                || packet instanceof C07PacketPlayerDigging;
-    }
-
-    private boolean holdBlinkPacket(ChannelHandlerContext ctx, Object packet, ChannelPromise promise) {
-        if (blinkPackets.size() >= 8) {
-            releaseBlinkPackets();
-            return false;
-        }
-        long delay = ThreadLocalRandom.current().nextLong(85L, 146L);
-        blinkPackets.offer(new PendingPacket(ctx, packet, promise, System.currentTimeMillis() + delay));
-        ctx.executor().schedule(new Runnable() {
-            @Override
-            public void run() {
-                releaseDueBlinkPackets();
-            }
-        }, delay, TimeUnit.MILLISECONDS);
-        return true;
-    }
-
-    private boolean holdAttackPacket(ChannelHandlerContext ctx, Object packet, ChannelPromise promise) {
-        releasePendingAttackPacket();
-        pendingAttackPacket = new PendingPacket(ctx, packet, promise, System.currentTimeMillis() + ATTACK_WAIT_TIMEOUT_MS);
-        ctx.executor().schedule(new Runnable() {
-            @Override
-            public void run() {
-                releasePendingAttackIfDue();
-            }
-        }, ATTACK_WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-        return true;
-    }
-
-    private void releasePendingAttackPacket() {
-        PendingPacket pending = pendingAttackPacket;
-        pendingAttackPacket = null;
-        if (pending == null || pending.ctx == null || pending.packet == null || pending.promise == null) {
-            return;
-        }
-        pending.ctx.writeAndFlush(pending.packet, pending.promise);
-    }
-
-    private void releasePendingAttackIfDue() {
-        PendingPacket pending = pendingAttackPacket;
-        if (pending != null && System.currentTimeMillis() >= pending.releaseAt) {
-            releasePendingAttackPacket();
-        }
-    }
-
-    private void releaseDueBlinkPackets() {
-        long now = System.currentTimeMillis();
-        while (true) {
-            PendingPacket pending = blinkPackets.peek();
-            if (pending == null || pending.releaseAt > now) {
-                break;
-            }
-            blinkPackets.poll();
-            writePendingPacket(pending);
-        }
-    }
-
-    private void releaseBlinkPackets() {
-        PendingPacket pending;
-        while ((pending = blinkPackets.poll()) != null) {
-            writePendingPacket(pending);
-        }
-    }
-
-    private void writePendingPacket(PendingPacket pending) {
-        if (pending == null || pending.ctx == null || pending.packet == null || pending.promise == null) {
-            return;
-        }
-        pending.ctx.writeAndFlush(pending.packet, pending.promise);
-    }
-
-    private float[] getAimRotations(EntityLivingBase entity) {
-        AimProfile profile = getAimProfile(entity);
-        AxisAlignedBB box = entity.getEntityBoundingBox();
-        double width = Math.max(0.1D, Math.min(box.maxX - box.minX, box.maxZ - box.minZ));
-        double prediction = 0.16D;
-        double targetX = entity.posX + (entity.posX - entity.lastTickPosX) * prediction + profile.offsetX * width;
-        double targetZ = entity.posZ + (entity.posZ - entity.lastTickPosZ) * prediction + profile.offsetZ * width;
-        double targetY = box.minY + (box.maxY - box.minY) * profile.heightRatio
-                + (entity.posY - entity.lastTickPosY) * Math.min(0.7D, prediction);
-        return RotationUtil.getRotationsTo(mc, targetX, targetY, targetZ);
-    }
-
-    private AimProfile getAimProfile(EntityLivingBase entity) {
-        long now = System.currentTimeMillis();
-        if (now >= nextAimUpdateAt || entity.getEntityId() != targetId) {
-            retargetAimPoint(entity, now);
-        }
-        updateAimPointDrift();
-        double height = getBaseHeightRatio(entity);
-        if (aimPoint.getValue() == AimPoint.RANDOM) {
-            height = randomHeightRatio;
-        }
-        if (Boolean.TRUE.equals(randomAim.getValue())) {
-            height = MathHelper.clamp_double(height + ThreadLocalRandom.current().nextDouble(-0.018D, 0.019D),
-                    0.24D, 0.92D);
-            return new AimProfile(height, aimOffsetX, aimOffsetZ);
-        }
-        return new AimProfile(height, 0.0D, 0.0D);
-    }
-
-    private void retargetAimPoint(EntityLivingBase entity, long now) {
-        ThreadLocalRandom random = ThreadLocalRandom.current();
-        targetRandomHeightRatio = random.nextDouble(0.38D, 0.84D);
-        targetAimOffsetX = random.nextDouble(-0.15D, 0.16D);
-        targetAimOffsetZ = random.nextDouble(-0.15D, 0.16D);
-        double distance = mc.thePlayer.getDistanceToEntity(entity);
-        long baseDelay = distance < 2.7D ? 220L : 300L;
-        nextAimUpdateAt = now + baseDelay + random.nextLong(180L);
-    }
-
-    private void updateAimPointDrift() {
-        aimOffsetX += (targetAimOffsetX - aimOffsetX) * 0.065D;
-        aimOffsetZ += (targetAimOffsetZ - aimOffsetZ) * 0.065D;
-        randomHeightRatio += (targetRandomHeightRatio - randomHeightRatio) * 0.055D;
-    }
-
-    private double getBaseHeightRatio(EntityLivingBase entity) {
-        AimPoint point = aimPoint.getValue();
-        if (point == AimPoint.HEAD) {
-            return 0.86D;
-        }
-        if (point == AimPoint.CHEST) {
-            return 0.62D;
-        }
-        if (point == AimPoint.LEGS) {
-            return 0.32D;
-        }
-        if (point == AimPoint.RANDOM) {
-            return randomHeightRatio;
-        }
-        AxisAlignedBB box = entity.getEntityBoundingBox();
-        double height = Math.max(0.1D, box.maxY - box.minY);
-        double playerEye = mc.thePlayer.posY + mc.thePlayer.getEyeHeight();
-        double eyeRelative = (playerEye - box.minY) / height;
-        double smart = MathHelper.clamp_double(eyeRelative, 0.44D, 0.84D);
-        if (entity.hurtTime > 4) {
-            smart = Math.min(smart, 0.64D);
-        }
-        if (entity instanceof EntityLiving && ((EntityLiving) entity).getAttackTarget() == mc.thePlayer) {
-            smart = Math.max(0.55D, smart - 0.04D);
-        }
-        return smart;
-    }
-
-    private boolean attack(EntityLivingBase entity, boolean multiAttack) {
-        if (entity == null || entity.isDead || entity.getHealth() <= 0.0f) {
-            return false;
-        }
-        if (entity.hurtTime > hurtTime.getValue().intValue()) {
-            return false;
-        }
-        if (!HitSelect.shouldAttack(entity, multiAttack) || !KnockbackDelay.shouldAttack(entity)) {
-            return false;
-        }
-        if (!prepareAttackRotation(entity)) {
-            return false;
-        }
-        preAttackBlock();
-        if (!isLegitMode()) {
-            Criticals.tryCritical(false);
-        }
-        mc.thePlayer.swingItem();
-        mc.playerController.attackEntity(mc.thePlayer, entity);
-        HitSelect.onAttack(entity);
-        BlockHit.onAttack(entity);
-        WTap.onAttack(entity);
-        if (!isLegitMode() && Boolean.TRUE.equals(autoblock.getValue())) {
-            blockWithSword();
-        }
-        if (isLegitMode()) {
-            nextLegitClickAt = System.currentTimeMillis() + randomRange(35L, 95L);
-        }
-        return true;
-    }
-
-    private boolean prepareAttackRotation(EntityLivingBase entity) {
-        boolean shouldRotate = Boolean.TRUE.equals(rotate.getValue());
-        boolean rage = auraMode.getValue() == AuraMode.RAGE;
-        boolean requireRay = Boolean.TRUE.equals(rayCast.getValue()) || auraMode.getValue() == AuraMode.SAFE;
-
-        if (isLegitMode()) {
-            return isLegitAttackReady(entity);
-        }
-        if (shouldRotate && rage) {
-            snapSilentRotation(entity);
-        }
-        if (requireRay && !isRaycastReady(entity)) {
-            return false;
-        }
-        return true;
-    }
-
-    private boolean isRaycastReady(EntityLivingBase expected) {
-        MovingObjectPosition hit = rayTraceEntity(rangeValue.getValue() + 0.2D, rayExpand.getValue(),
-                getAttackYaw(), getAttackPitch());
-        if (hit == null || hit.entityHit != expected) {
-            return false;
-        }
-        mc.objectMouseOver = hit;
-        mc.pointedEntity = expected;
-        return true;
-    }
-
-    private void snapSilentRotation(EntityLivingBase entity) {
-        float[] rotations = getAimRotations(entity);
-        silentYaw = rotations[0];
-        silentPitch = Boolean.TRUE.equals(onlyYaw.getValue()) ? mc.thePlayer.rotationPitch : rotations[1];
-        silentPitch = MathHelper.clamp_float(silentPitch, -90.0f, 90.0f);
-        silentRotationReady = true;
-        rageCurveProgress = 1.0f;
-        syncVisibleRotation(silentYaw);
-    }
-
-    private boolean isLegitAttackReady(EntityLivingBase expected) {
-        long now = System.currentTimeMillis();
-        if ((shouldRequireAttackKey() && !mc.gameSettings.keyBindAttack.isKeyDown()) || now < nextLegitClickAt) {
-            return false;
-        }
-        if (targetAcquiredAt <= 0L || now - targetAcquiredAt < legitReactionMs) {
-            return false;
-        }
-        if (expected == null || !mc.thePlayer.canEntityBeSeen(expected)) {
-            return false;
-        }
-        if (mc.thePlayer.getDistanceToEntity(expected) > getSearchRange() + 0.05D) {
-            return false;
-        }
-        MovingObjectPosition hit = rayTraceEntity(getSearchRange() + 0.05D, 0.015D,
-                mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch);
-        if (hit == null || hit.entityHit != expected) {
-            return false;
-        }
-        float[] rotations = getAimRotations(expected);
-        float yawError = Math.abs(MathHelper.wrapAngleTo180_float(rotations[0] - mc.thePlayer.rotationYaw));
-        float pitchError = Math.abs(MathHelper.wrapAngleTo180_float(rotations[1] - mc.thePlayer.rotationPitch));
-        if (yawError > 4.8f || pitchError > 6.2f) {
-            return false;
-        }
-        mc.objectMouseOver = hit;
-        mc.pointedEntity = expected;
-        return true;
-    }
-
-    private float getAttackYaw() {
-        if (auraMode.getValue() == AuraMode.RAGE && Boolean.TRUE.equals(rotate.getValue()) && silentRotationReady) {
-            return silentYaw;
-        }
-        return mc.thePlayer.rotationYaw;
-    }
-
-    private float getAttackPitch() {
-        if (auraMode.getValue() == AuraMode.RAGE && Boolean.TRUE.equals(rotate.getValue()) && silentRotationReady) {
-            return silentPitch;
-        }
-        return mc.thePlayer.rotationPitch;
-    }
-
-    private MovingObjectPosition rayTraceEntity(double distance, double hitboxExpand, float yaw, float pitch) {
-        if (!isInGame()) {
-            return null;
-        }
-        Entity view = mc.getRenderViewEntity();
-        if (view == null) {
-            return null;
-        }
-        Vec3 eyes = view.getPositionEyes(1.0f);
-        Vec3 look = getVectorForRotation(pitch, yaw);
-        Vec3 end = eyes.addVector(look.xCoord * distance, look.yCoord * distance, look.zCoord * distance);
-        Entity pointed = null;
-        Vec3 hitVec = null;
-        double bestDistance = distance;
-        List<Entity> entities = mc.theWorld.getEntitiesWithinAABBExcludingEntity(view,
-                view.getEntityBoundingBox().addCoord(look.xCoord * distance, look.yCoord * distance,
-                        look.zCoord * distance).expand(1.0D, 1.0D, 1.0D));
-
-        for (Entity entity : entities) {
-            if (!(entity instanceof EntityLivingBase)) {
-                continue;
-            }
-            EntityLivingBase living = (EntityLivingBase) entity;
-            if (!CombatUtil.isValidTarget(living, distance + hitboxExpand, 180.0D, players.getValue(),
-                    mobs.getValue(), animals.getValue(), throughWalls.getValue())) {
-                continue;
-            }
-            double border = entity.getCollisionBorderSize() + hitboxExpand;
-            AxisAlignedBB box = entity.getEntityBoundingBox().expand(border, border, border);
-            MovingObjectPosition intercept = box.calculateIntercept(eyes, end);
-            if (box.isVecInside(eyes)) {
-                if (bestDistance >= 0.0D) {
-                    pointed = entity;
-                    hitVec = intercept == null ? eyes : intercept.hitVec;
-                    bestDistance = 0.0D;
-                }
-            } else if (intercept != null) {
-                double currentDistance = eyes.distanceTo(intercept.hitVec);
-                if (currentDistance < bestDistance || bestDistance == 0.0D) {
-                    if (entity == view.ridingEntity && !entity.canRiderInteract()) {
-                        continue;
+        try {
+            if (channelField == null) {
+                for (String name : new String[]{"channel", "field_150746_k"}) {
+                    try {
+                        channelField = NetworkManager.class.getDeclaredField(name);
+                        channelField.setAccessible(true);
+                        break;
+                    } catch (Throwable ignored) {
                     }
-                    pointed = entity;
-                    hitVec = intercept.hitVec;
-                    bestDistance = currentDistance;
                 }
             }
-        }
-        return pointed == null || hitVec == null ? null : new MovingObjectPosition(pointed, hitVec);
-    }
-
-    private Vec3 getVectorForRotation(float pitch, float yaw) {
-        float yawCos = MathHelper.cos(-yaw * 0.017453292F - (float) Math.PI);
-        float yawSin = MathHelper.sin(-yaw * 0.017453292F - (float) Math.PI);
-        float pitchCos = -MathHelper.cos(-pitch * 0.017453292F);
-        float pitchSin = MathHelper.sin(-pitch * 0.017453292F);
-        return new Vec3(yawSin * pitchCos, pitchSin, yawCos * pitchCos);
-    }
-
-    private void preAttackBlock() {
-        if (isLegitMode() || !Boolean.TRUE.equals(autoblock.getValue())
-                || getEffectiveAutoBlockMode() == AutoBlockMode.LEGIT
-                || getEffectiveAutoBlockMode() == AutoBlockMode.FAKE) {
-            return;
-        }
-        releaseBlock();
-    }
-
-    private void blockWithSword() {
-        if (isLegitMode()) {
-            releaseBlock();
-            return;
-        }
-        ItemStack stack = mc.thePlayer.getCurrentEquippedItem();
-        if (stack == null || !(stack.getItem() instanceof ItemSword)) {
-            releaseBlock();
-            return;
-        }
-        AutoBlockMode currentMode = getEffectiveAutoBlockMode();
-        if (currentMode == AutoBlockMode.FAKE) {
-            blocking = true;
-            serverBlocking = false;
-            return;
-        }
-        if (currentMode == AutoBlockMode.BLINK) {
-            blocking = true;
-            serverBlocking = true;
-            mc.thePlayer.setItemInUse(stack, stack.getMaxItemUseDuration());
-            mc.thePlayer.sendQueue.addToSendQueue(new C08PacketPlayerBlockPlacement(stack));
-            return;
-        }
-        if (currentMode == AutoBlockMode.PACKET) {
-            mc.thePlayer.setItemInUse(stack, stack.getMaxItemUseDuration());
-            mc.thePlayer.sendQueue.addToSendQueue(new C08PacketPlayerBlockPlacement(stack));
-        } else {
-            mc.playerController.sendUseItem(mc.thePlayer, mc.theWorld, stack);
-        }
-        blocking = true;
-        serverBlocking = true;
-    }
-
-    private void releaseBlock() {
-        if (!blocking || !isInGame() || mc.thePlayer.sendQueue == null) {
-            blocking = false;
-            serverBlocking = false;
-            return;
-        }
-        if (serverBlocking) {
-            mc.thePlayer.sendQueue.addToSendQueue(new C07PacketPlayerDigging(
-                    C07PacketPlayerDigging.Action.RELEASE_USE_ITEM, BlockPos.ORIGIN, EnumFacing.DOWN));
-        }
-        mc.thePlayer.clearItemInUse();
-        blocking = false;
-        serverBlocking = false;
-    }
-
-    private void clearTargetState() {
-        releaseBlock();
-        target = null;
-        targets.clear();
-        targetId = -1;
-        rotationState.reset();
-        resetSilentRotation();
-        targetAcquiredAt = 0L;
-        legitReactionMs = 0L;
-        nextLegitClickAt = 0L;
-        nextAimUpdateAt = 0L;
-        aimOffsetX = 0.0D;
-        aimOffsetZ = 0.0D;
-        targetAimOffsetX = 0.0D;
-        targetAimOffsetZ = 0.0D;
-        randomHeightRatio = 0.62D;
-        targetRandomHeightRatio = 0.62D;
-    }
-
-    private boolean isLegitMode() {
-        return auraMode.getValue() == AuraMode.SAFE;
-    }
-
-    private boolean shouldRequireAttackKey() {
-        return isLegitMode() && Boolean.TRUE.equals(legitRequireAttack.getValue());
-    }
-
-    private double getSearchRange() {
-        return isLegitMode() ? Math.min(rangeValue.getValue(), 4.05D) : rangeValue.getValue();
-    }
-
-    private double getSearchFov() {
-        return isLegitMode() ? Math.min(fov.getValue(), 90.0D) : fov.getValue();
-    }
-
-    private int nextAttackDelay() {
-        if (!isLegitMode()) {
-            return CombatUtil.nextDelay(minCps.getValue(), cps.getValue());
-        }
-        double min = Math.min(minCps.getValue(), 7.0D);
-        double max = Math.min(cps.getValue(), 10.5D);
-        if (max < min) {
-            min = Math.max(1.0D, max - 1.0D);
-        }
-        return CombatUtil.nextDelay(min, max) + (int) randomRange(12L, 48L);
-    }
-
-    private AutoBlockMode getEffectiveAutoBlockMode() {
-        AutoBlockMode current = autoBlockMode.getValue();
-        if (isLegitMode() && current != AutoBlockMode.LEGIT) {
-            return AutoBlockMode.LEGIT;
-        }
-        return current;
-    }
-
-    private float getMouseStep() {
-        float sensitivity = MathHelper.clamp_float(mc.gameSettings.mouseSensitivity, 0.0f, 1.0f);
-        float base = sensitivity * 0.6f + 0.2f;
-        return base * base * base * 1.2f;
-    }
-
-    private float getSensitivityScale(float mouseStep) {
-        return MathHelper.clamp_float((float) Math.sqrt(mouseStep / 0.15f), 0.55f, 1.55f);
-    }
-
-    private long randomRange(long first, long second) {
-        long min = Math.max(0L, Math.min(first, second));
-        long max = Math.max(min, Math.max(first, second));
-        if (max <= min) {
-            return min;
-        }
-        return ThreadLocalRandom.current().nextLong(max - min + 1L) + min;
-    }
-
-    private static final class AimProfile {
-        final double heightRatio;
-        final double offsetX;
-        final double offsetZ;
-
-        AimProfile(double heightRatio, double offsetX, double offsetZ) {
-            this.heightRatio = heightRatio;
-            this.offsetX = offsetX;
-            this.offsetZ = offsetZ;
+            Object value = channelField == null ? null : channelField.get(manager);
+            return value instanceof Channel ? (Channel) value : null;
+        } catch (Throwable ignored) {
+            channelField = null;
+            return null;
         }
     }
 
-    public static void assistFaceEntity(Entity entity, float yaw, float pitch) {
-        CombatUtil.faceEntity(entity, yaw, pitch, pitch <= 0.0f, 0.0f);
-    }
-
-    public static float updateRotation(float current, float targetYaw, float maxTurn) {
-        return CombatUtil.updateRotation(current, targetYaw, maxTurn);
-    }
-
-    private static final class PendingPacket {
+    private static final class QueuedPacket {
         final ChannelHandlerContext ctx;
         final Object packet;
         final ChannelPromise promise;
         final long releaseAt;
 
-        PendingPacket(ChannelHandlerContext ctx, Object packet, ChannelPromise promise, long releaseAt) {
+        QueuedPacket(ChannelHandlerContext ctx, Object packet, ChannelPromise promise, long releaseAt) {
             this.ctx = ctx;
             this.packet = packet;
             this.promise = promise;
@@ -1023,17 +552,12 @@ public class KillAura extends Module {
                 C03PacketPlayer replacement = module.rewriteRotationPacket((C03PacketPlayer) msg);
                 if (replacement != null) {
                     super.write(ctx, replacement, promise);
-                    module.releasePendingAttackPacket();
                     return;
                 }
             }
-            if (module.shouldHoldAttackPacket(msg) && module.holdAttackPacket(ctx, msg, promise)) {
+            if (module.shouldBlinkPacket(msg) && module.queueBlinkPacket(ctx, msg, promise)) {
                 return;
             }
-            if (module.shouldBlinkBlockPacket(msg) && module.holdBlinkPacket(ctx, msg, promise)) {
-                return;
-            }
-            module.releasePendingAttackIfDue();
             module.releaseDueBlinkPackets();
             super.write(ctx, msg, promise);
         }
