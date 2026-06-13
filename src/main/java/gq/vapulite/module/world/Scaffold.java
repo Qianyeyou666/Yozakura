@@ -69,7 +69,6 @@ public class Scaffold extends Module {
     private final Option<Boolean> expoPacing = new Option<Boolean>("Expo Pacing", "ExpoPacing", true);
     private final Mode<SwingMode> swing = new Mode<SwingMode>("Swing", "Swing", SwingMode.values(), SwingMode.SILENT);
     private final Numbers<Integer> placeDelay = new Numbers<Integer>("Place Delay", "PlaceDelay", 0, 0, 8, 1);
-    private final Numbers<Double> expand = new Numbers<Double>("Expand", "Expand", 0.85D, 0.0D, 3.0D, 0.05D);
     private final Numbers<Double> rotationSpeed = new Numbers<Double>("Rotation Speed", "RotationSpeed", 28.0D, 4.0D, 90.0D, 1.0D);
 
     private final RotationUtil.State rotationState = new RotationUtil.State();
@@ -103,7 +102,7 @@ public class Scaffold extends Module {
     public Scaffold() {
         super("Scaffold", Keyboard.KEY_NONE, ModuleType.World, "Place blocks under you");
         addValues(tower, spoofHeldItem, autoJump, safeWalk, keepY, noSprint, rayTraceCheck, expoPacing,
-                swing, placeDelay, expand, rotationSpeed);
+                swing, placeDelay, rotationSpeed);
         Chinese = "自动搭路";
     }
 
@@ -182,10 +181,7 @@ public class Scaffold extends Module {
             ticksSinceTarget = 0;
             if (++missingTargetTicks > 4) {
                 silentRotationReady = false;
-                resetVisibleRotation();
                 rotationState.reset();
-            } else if (silentRotationReady) {
-                syncVisibleRotation(silentYaw);
             }
             return;
         }
@@ -244,10 +240,6 @@ public class Scaffold extends Module {
             if (data != null) {
                 return data;
             }
-            data = blockData(pos.down());
-            if (data != null) {
-                return data;
-            }
         }
         return null;
     }
@@ -263,67 +255,7 @@ public class Scaffold extends Module {
     }
 
     private BlockPos[] candidatePositions() {
-        BlockPos base = blockUnder();
-        ArrayList<BlockPos> positions = new ArrayList<BlockPos>();
-        addCandidate(positions, base);
-        double[] direction = moveDirection();
-        if (direction == null) {
-            addCandidate(positions, new BlockPos(mc.thePlayer.posX + mc.thePlayer.motionX * 0.65D, base.getY(),
-                    mc.thePlayer.posZ + mc.thePlayer.motionZ * 0.65D));
-            addCandidate(positions, new BlockPos(mc.thePlayer.posX + mc.thePlayer.motionX * 1.35D, base.getY(),
-                    mc.thePlayer.posZ + mc.thePlayer.motionZ * 1.35D));
-            return positions.toArray(new BlockPos[positions.size()]);
-        }
-        double speed = horizontalSpeed();
-        double baseExpand = Math.max(0.0D, expand.getValue());
-        double sprintBoost = mc.thePlayer.isSprinting() ? 0.45D : 0.0D;
-        double motionLead = MathHelper.clamp_double(speed * 4.4D, 0.35D, 2.05D);
-        double[] steps = new double[]{
-                Math.max(0.30D, baseExpand * 0.50D),
-                Math.max(0.55D, baseExpand),
-                baseExpand + 0.35D,
-                baseExpand + 0.70D + sprintBoost,
-                baseExpand + motionLead + sprintBoost
-        };
-        for (double step : steps) {
-            addCandidate(positions, new BlockPos(mc.thePlayer.posX + direction[0] * step, base.getY(),
-                    mc.thePlayer.posZ + direction[1] * step));
-        }
-        addCandidate(positions, base.offset(EnumFacing.getHorizontal(MathHelper.floor_double(
-                (MathHelper.wrapAngleTo180_float(mc.thePlayer.rotationYaw) + 180.0F) * 4.0F / 360.0F + 0.5D) & 3)));
-        addCandidate(positions, new BlockPos(mc.thePlayer.posX + mc.thePlayer.motionX * 2.7D, base.getY(),
-                mc.thePlayer.posZ + mc.thePlayer.motionZ * 2.7D));
-        return positions.toArray(new BlockPos[positions.size()]);
-    }
-
-    private void addCandidate(List<BlockPos> positions, BlockPos pos) {
-        if (!positions.contains(pos)) {
-            positions.add(pos);
-        }
-    }
-
-    private double[] moveDirection() {
-        float forward = mc.thePlayer.movementInput.moveForward;
-        float strafe = mc.thePlayer.movementInput.moveStrafe;
-        if (forward == 0.0F && strafe == 0.0F) {
-            double dx = mc.thePlayer.posX - mc.thePlayer.prevPosX;
-            double dz = mc.thePlayer.posZ - mc.thePlayer.prevPosZ;
-            double len = Math.sqrt(dx * dx + dz * dz);
-            return len < 0.03D ? null : new double[]{dx / len, dz / len};
-        }
-        float yaw = mc.thePlayer.rotationYaw;
-        if (forward < 0.0F) {
-            yaw += 180.0F;
-        }
-        float factor = forward < 0.0F ? -0.5F : forward > 0.0F ? 0.5F : 1.0F;
-        if (strafe > 0.0F) {
-            yaw -= 90.0F * factor;
-        }
-        if (strafe < 0.0F) {
-            yaw += 90.0F * factor;
-        }
-        double rad = Math.toRadians(yaw);
-        return new double[]{-Math.sin(rad), Math.cos(rad)};
+        return new BlockPos[]{blockUnder()};
     }
 
     private BlockData blockData(BlockPos placePos) {
@@ -359,18 +291,14 @@ public class Scaffold extends Module {
     }
 
     private void rotate(BlockData data) {
-        float[] target = shouldUseFallbackAngles()
-                ? fallbackAngles()
-                : RotationUtil.getRotationsTo(mc, data.hitVec.xCoord, data.hitVec.yCoord, data.hitVec.zCoord);
-        target = shapedAngles(target);
+        float[] target = RotationUtil.getRotationsTo(mc, data.hitVec.xCoord, data.hitVec.yCoord, data.hitVec.zCoord);
+        target[1] = MathHelper.clamp_float(target[1], 58.0F, 88.0F);
         float[] previous = scaffoldAngles != null ? scaffoldAngles
                 : new float[]{silentRotationReady ? silentYaw : mc.thePlayer.rotationYaw,
                 silentRotationReady ? silentPitch : mc.thePlayer.rotationPitch};
         float speed = rotationSpeed.getValue().floatValue();
-        float yawSpeed = MathHelper.clamp_float(speed + Math.abs(MathHelper.wrapAngleTo180_float(target[0] - previous[0])) * 0.22F,
-                6.0F, 120.0F);
-        float pitchSpeed = MathHelper.clamp_float(speed * 0.82F + Math.abs(target[1] - previous[1]) * 0.16F,
-                5.0F, 95.0F);
+        float yawSpeed = MathHelper.clamp_float(speed, 4.0F, 55.0F);
+        float pitchSpeed = MathHelper.clamp_float(speed * 0.72F, 3.0F, 42.0F);
         scaffoldAngles = new float[]{
                 RotationUtil.limitAngleChange(previous[0], target[0], yawSpeed),
                 MathHelper.clamp_float(RotationUtil.limitAngleChange(previous[1], target[1], pitchSpeed), -90.0F, 90.0F)
@@ -397,52 +325,6 @@ public class Scaffold extends Module {
             return;
         }
         syncVisibleRotation(mc.thePlayer.rotationYaw);
-    }
-
-    private boolean shouldUseFallbackAngles() {
-        return lastPlacement == null || ticksSinceTarget <= 1;
-    }
-
-    private float[] fallbackAngles() {
-        double[] direction = moveDirection();
-        float yaw;
-        if (direction != null) {
-            yaw = (float) Math.toDegrees(Math.atan2(direction[1], direction[0])) - 90.0F;
-        } else {
-            yaw = mc.thePlayer.rotationYaw;
-        }
-        yaw += 180.0F + (float) ThreadLocalRandom.current().nextDouble(-1.6D, 1.6D);
-        float pitch = 86.8F + (float) ThreadLocalRandom.current().nextDouble(-0.9D, 0.6D);
-        return new float[]{yaw, pitch};
-    }
-
-    private float[] shapedAngles(float[] target) {
-        ThreadLocalRandom random = ThreadLocalRandom.current();
-        float yaw = target[0] + (float) random.nextDouble(-0.65D, 0.65D);
-        float pitch = target[1] + (float) random.nextDouble(-0.42D, 0.52D);
-        if (repeatedAngles > 2) {
-            yaw += (float) random.nextDouble(-1.15D, 1.15D);
-            pitch += (float) random.nextDouble(-0.7D, 0.7D);
-        }
-        boolean fallback = shouldUseFallbackAngles();
-        boolean highPitchNeeded = fallback || Boolean.TRUE.equals(rayTraceCheck.getValue()) || mc.gameSettings.keyBindJump.isKeyDown();
-        pitch = highPitchNeeded
-                ? MathHelper.clamp_float(pitch, 72.0F, 88.7F)
-                : MathHelper.clamp_float(pitch, 58.0F, 84.0F);
-        float[] clusters = new float[]{30.0F, 35.0F, 45.0F, 90.0F, 135.0F, 180.0F};
-        float baseYaw = silentRotationReady ? silentYaw : mc.thePlayer.rotationYaw;
-        float yawDelta = Math.abs(MathHelper.wrapAngleTo180_float(yaw - baseYaw));
-        for (float cluster : clusters) {
-            float band = cluster >= 90.0F ? 8.5F : 6.5F;
-            if (Math.abs(yawDelta - cluster) < band) {
-                yaw += yawDelta >= cluster ? band + 1.35F : -band - 1.35F;
-                break;
-            }
-        }
-        if (!highPitchNeeded && Math.abs(pitch - 55.0F) < 0.4F) {
-            pitch += pitch > 55.0F ? 0.65F : -0.65F;
-        }
-        return new float[]{yaw, pitch};
     }
 
     private void updateAngleMemory(float[] angles) {
@@ -882,20 +764,17 @@ public class Scaffold extends Module {
         }
 
         private Vec3 calculateHitVec() {
-            ThreadLocalRandom random = ThreadLocalRandom.current();
             double x = support.getX() + 0.5D;
             double y = support.getY() + 0.5D;
             double z = support.getZ() + 0.5D;
 
             if (face.getAxis() == EnumFacing.Axis.X) {
                 x = face == EnumFacing.EAST ? support.getX() + 1.0D : support.getX();
-                z = clampToBlock(mc.thePlayer.posZ, support.getZ()) + random.nextDouble(-0.035D, 0.035D);
-                y = clampToBlock(mc.thePlayer.posY + mc.thePlayer.getEyeHeight() - 0.35D,
-                        support.getY()) + random.nextDouble(-0.025D, 0.025D);
+                z = clampToBlock(mc.thePlayer.posZ, support.getZ());
+                y = support.getY() + 0.58D;
             } else if (face.getAxis() == EnumFacing.Axis.Z) {
-                x = clampToBlock(mc.thePlayer.posX, support.getX()) + random.nextDouble(-0.035D, 0.035D);
-                y = clampToBlock(mc.thePlayer.posY + mc.thePlayer.getEyeHeight() - 0.35D,
-                        support.getY()) + random.nextDouble(-0.025D, 0.025D);
+                x = clampToBlock(mc.thePlayer.posX, support.getX());
+                y = support.getY() + 0.58D;
                 z = face == EnumFacing.SOUTH ? support.getZ() + 1.0D : support.getZ();
             }
 

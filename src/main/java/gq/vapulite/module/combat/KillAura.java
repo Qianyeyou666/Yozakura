@@ -279,6 +279,15 @@ public class KillAura extends Module {
 
     @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent event) {
+        if (event.phase == TickEvent.Phase.END
+                && auraMode.getValue() == AuraMode.RAGE
+                && silentRotationReady
+                && target != null
+                && isInGame()
+                && Boolean.TRUE.equals(rotate.getValue())) {
+            syncVisibleRotation(silentYaw);
+            return;
+        }
         if (event.phase != TickEvent.Phase.END || !isLegitMode() || target == null) {
             return;
         }
@@ -412,6 +421,7 @@ public class KillAura extends Module {
         mc.thePlayer.prevRotationYawHead = yaw;
         mc.thePlayer.renderYawOffset = yaw;
         mc.thePlayer.prevRenderYawOffset = yaw;
+        mc.thePlayer.cameraYaw = 0.0F;
     }
 
     private void resetVisibleRotation() {
@@ -863,10 +873,12 @@ public class KillAura extends Module {
         if (currentMode == AutoBlockMode.BLINK) {
             blocking = true;
             serverBlocking = true;
+            mc.thePlayer.setItemInUse(stack, stack.getMaxItemUseDuration());
             mc.thePlayer.sendQueue.addToSendQueue(new C08PacketPlayerBlockPlacement(stack));
             return;
         }
         if (currentMode == AutoBlockMode.PACKET) {
+            mc.thePlayer.setItemInUse(stack, stack.getMaxItemUseDuration());
             mc.thePlayer.sendQueue.addToSendQueue(new C08PacketPlayerBlockPlacement(stack));
         } else {
             mc.playerController.sendUseItem(mc.thePlayer, mc.theWorld, stack);
@@ -885,6 +897,7 @@ public class KillAura extends Module {
             mc.thePlayer.sendQueue.addToSendQueue(new C07PacketPlayerDigging(
                     C07PacketPlayerDigging.Action.RELEASE_USE_ITEM, BlockPos.ORIGIN, EnumFacing.DOWN));
         }
+        mc.thePlayer.clearItemInUse();
         blocking = false;
         serverBlocking = false;
     }
