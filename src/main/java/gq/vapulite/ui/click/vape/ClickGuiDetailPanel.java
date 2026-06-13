@@ -9,7 +9,9 @@ import gq.vapulite.value.Numbers;
 import gq.vapulite.value.Option;
 import gq.vapulite.value.Value;
 import gq.vapulite.engine.font.FontLoaders;
+import gq.vapulite.engine.render.GLStateManager;
 import gq.vapulite.engine.render.ui.RenderServices;
+import org.lwjgl.opengl.GL11;
 import gq.vapulite.ui.click.ClickGuiIcons;
 import gq.vapulite.ui.UiPanel;
 import gq.vapulite.ui.UiTheme;
@@ -968,10 +970,30 @@ final class ClickGuiDetailPanel {
                 pillX + 10.0f, y + 11.0f,
                 gui.withAlpha(expanded ? gui.guiColors().accent : gui.guiColors().text,
                         (expanded ? 240.0f : 230.0f) * alpha * gui.guiAlpha));
-        // 展开/收起箭头
-        gui.drawFont(expanded ? "^" : "v", pillX + pillW - 15.0f, y + 8.0f,
-                gui.withAlpha(expanded ? gui.guiColors().accent : gui.guiColors().muted,
-                        (expanded ? 220.0f : 185.0f) * alpha * gui.guiAlpha));
+        // 展开/收起箭头 — GL_LINE_STRIP 无重叠 V/^
+        float arrowCX = pillX + pillW - 12.0f;
+        float arrowCY = y + 13.0f;
+        float arrowS = 2.8f;
+        int arrowColor = gui.withAlpha(expanded ? gui.guiColors().accent : gui.guiColors().muted,
+                (expanded ? 220.0f : 185.0f) * alpha * gui.guiAlpha);
+        GLStateManager.begin2D();
+        try {
+            GL11.glLineWidth(1.3f);
+            RenderUtil.glColor(arrowColor);
+            GL11.glBegin(GL11.GL_LINE_STRIP);
+            if (expanded) {
+                GL11.glVertex2f(arrowCX - arrowS, arrowCY + 1.8f);
+                GL11.glVertex2f(arrowCX, arrowCY - 2.0f);
+                GL11.glVertex2f(arrowCX + arrowS, arrowCY + 1.8f);
+            } else {
+                GL11.glVertex2f(arrowCX - arrowS, arrowCY - 1.8f);
+                GL11.glVertex2f(arrowCX, arrowCY + 2.0f);
+                GL11.glVertex2f(arrowCX + arrowS, arrowCY - 1.8f);
+            }
+            GL11.glEnd();
+        } finally {
+            GLStateManager.end2D();
+        }
     }
 
     /** 绘制数值标签（毛玻璃圆角矩形 + 居中文字） */
