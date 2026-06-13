@@ -50,7 +50,7 @@ final class ClickGuiSidePanel {
         if (!gui.sidePanelVisible) {
             return;
         }
-        float y = gui.contentY + introY;
+        float y = gui.sideY + introY;
         drawUserPanel(introY);
         drawOffsetPanel(ClickGUI.sideStatsOffsetX, ClickGUI.sideStatsOffsetY, new PanelDraw() {
             @Override
@@ -466,11 +466,11 @@ final class ClickGuiSidePanel {
     }
 
     private float getSummaryY() {
-        return gui.contentY + STATS_H + 10.0f;
+        return gui.sideY + STATS_H + 10.0f;
     }
 
     private float getStatsY() {
-        return gui.contentY;
+        return gui.sideY;
     }
 
     private float getSummaryH() {
@@ -478,7 +478,7 @@ final class ClickGuiSidePanel {
     }
 
     private float getDesignY() {
-        return gui.contentY + gui.panelH - DESIGN_H;
+        return gui.sideY + gui.panelH - DESIGN_H;
     }
 
     private float getPanelX(Numbers<Double> offsetX) {
