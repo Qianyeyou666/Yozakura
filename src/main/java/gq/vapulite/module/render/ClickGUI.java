@@ -33,6 +33,8 @@ public class ClickGUI extends Module {
 	public static final Numbers<Double> detailOffsetY = new Numbers<Double>("Detail Panel Y", "DetY", 0.0, -600.0, 600.0, 1.0);
 	public static final Numbers<Double> sideOffsetX = new Numbers<Double>("Side Panel X", "SidePX", 0.0, -600.0, 600.0, 1.0);
 	public static final Numbers<Double> sideOffsetY = new Numbers<Double>("Side Panel Y", "SidePY", 0.0, -600.0, 600.0, 1.0);
+	public static final Numbers<Double> userPanelOffsetX = new Numbers<Double>("User Panel X", "UserPX", 0.0, -600.0, 600.0, 1.0);
+	public static final Numbers<Double> userPanelOffsetY = new Numbers<Double>("User Panel Y", "UserPY", 0.0, -600.0, 600.0, 1.0);
 	public static final Numbers<Double> clickGuiAlpha = new Numbers<Double>("Alpha", "Alpha", 1.0, 0.3, 1.0, 0.05);
 	public static final Option<Boolean> glassBackground = new Option<Boolean>("Glass", "Glass", true);
 
@@ -42,7 +44,8 @@ public class ClickGUI extends Module {
 		this.addValues(guiStyle, windowX, windowY, sideStatsOffsetX, sideStatsOffsetY,
 				sideSummaryOffsetX, sideSummaryOffsetY, sideDesignOffsetX, sideDesignOffsetY,
 				moduleOffsetX, moduleOffsetY, detailOffsetX, detailOffsetY,
-				sideOffsetX, sideOffsetY, clickGuiAlpha, glassBackground);
+				sideOffsetX, sideOffsetY, userPanelOffsetX, userPanelOffsetY,
+				clickGuiAlpha, glassBackground);
 		// TODO Auto-generated constructor stub
 	}
 

@@ -140,8 +140,8 @@ final class ClickGuiSidePanel {
      * 绘制用户面板（头像、用户名、Premium 标签）。
      */
     private void drawUserPanel(float introY) {
-        float x = gui.contentX;
-        float y = gui.navY + introY;
+        float x = gui.userPanelX;
+        float y = gui.userPanelY + introY;
         float w = VapeClickGui.CARD_W;
         RenderServices.shapes().shadow(x, y, x + w, y + VapeClickGui.NAV_H,
                 VapeClickGui.PANEL_RADIUS, gui.withAlpha(gui.shadowColor(220),

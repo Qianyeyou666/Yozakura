@@ -239,7 +239,7 @@ final class ClickGuiModuleList {
         if (selected) {
             // 选中状态：高亮毛玻璃卡片，边框直接使用主题强调色
             gui.drawThemedGlass(x, y, x + rowW, y + height, 7.0f, 1.2f,
-                    gui.withAlpha(gui.guiColors().detailSelectedFill, 218.0f * alpha * gui.guiAlpha),
+                    gui.withAlpha(gui.guiColors().detailSelectedFill, 232.0f * alpha * gui.guiAlpha),
                     gui.withAlpha(gui.guiColors().accent, 78.0f * alpha * gui.guiAlpha));
         } else if (enabled) {
             // 启用状态：带主题色混合背景
@@ -274,10 +274,10 @@ final class ClickGuiModuleList {
         drawModuleIcon(module, x + 20.0f, centerY, selected, alpha);
         // 模块名称
         String name = gui.trim(module.getName(), FontLoaders.F14, 66.0f);
-        gui.drawFont(name, x + 42.0f, y + 12.0f,
+        gui.drawFont(name, x + 42.0f, y + 15.0f,
                 gui.withAlpha(enabled ? gui.guiColors().text : gui.guiColors().muted, 255.0f * alpha * gui.guiAlpha));
         // 模块描述
-        gui.drawFont(gui.trim(gui.getDescription(module), FontLoaders.F14, 70.0f), x + 42.0f, y + 27.0f,
+        gui.drawFont(gui.trim(gui.getDescription(module), FontLoaders.F14, 70.0f), x + 42.0f, y + 30.0f,
                 gui.withAlpha(gui.guiColors().muted, 198.0f * alpha * gui.guiAlpha));
         // 开关和收藏星标
         gui.drawSwitch(gui.getModuleSwitchX(x), gui.getModuleSwitchY(y), enabled, alpha, module);
