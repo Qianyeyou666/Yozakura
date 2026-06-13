@@ -32,9 +32,18 @@ public final class ShapeRenderer {
     public void verticalGradient(float x, float y, float x2, float y2, int topColor, int bottomColor) {
         RenderUtil.drawVerticalGradientRect(x, y, x2, y2, topColor, bottomColor);
     }
+    public void roundedGradient(float x, float y, float x2, float y2, float radius,
+                                int topLeft, int bottomLeft, int topRight, int bottomRight) {
+        RenderUtil.drawRoundedGradientRect(x, y, x2, y2, radius, topLeft, bottomLeft, topRight, bottomRight);
+    }
+
 
     public void roundedHue(float x, float y, float x2, float y2, float radius, float alpha) {
         RenderUtil.drawRoundedHueRect(x, y, x2, y2, radius, alpha);
+    }
+
+    public void roundedPalette(float x, float y, float x2, float y2, float radius, float hue, float alpha) {
+        RenderUtil.drawRoundedPaletteRect(x, y, x2, y2, radius, hue, alpha);
     }
 
     public void progressBar(float x, float y, float x2, float y2, float radius,

@@ -51,7 +51,7 @@ final class ClickGuiThemeRenderer {
         float blurRadius = HUD.isSakuraTheme() ? 24.0f : HUD.isLightTheme() ? 26.0f : 30.0f;
         float refraction = 0.76f + Math.min(strength, 1.25f) * 0.20f;
         float highlight = HUD.isLightTheme() || HUD.isSakuraTheme() ? 1.08f : 0.96f;
-        float grain = HUD.isSakuraTheme() ? 0.08f : 0.13f;
+        float grain = HUD.isSakuraTheme() ? 0.012f : 0.018f;
         float eased = gui.easeSmooth(glassProgress);
         LiquidGlassSettings settings = LiquidGlassSettings.defaults()
                 .withBlurRadius(blurRadius)

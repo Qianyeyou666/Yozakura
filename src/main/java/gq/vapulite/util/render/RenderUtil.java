@@ -272,6 +272,38 @@ public class RenderUtil {
             GLStateManager.end2D();
         }
     }
+    public static void drawRoundedGradientRect(float x, float y, float x2, float y2, float radius,
+                                               int topLeft, int bottomLeft, int topRight, int bottomRight) {
+        if (getAlpha(topLeft) <= 0 && getAlpha(bottomLeft) <= 0
+                && getAlpha(topRight) <= 0 && getAlpha(bottomRight) <= 0) {
+            return;
+        }
+        normalizeRect(Rect.tmp, x, y, x2, y2);
+        float width = Rect.tmp.width();
+        float height = Rect.tmp.height();
+        radius = GLStateManager.clampRadius(radius, width, height);
+        GLStateManager.begin2D();
+        try {
+            if (!ShaderRenderer.drawRoundedGradientRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
+                    radius, topLeft, bottomLeft, topRight, bottomRight)) {
+                GL11.glShadeModel(GL11.GL_SMOOTH);
+                GL11.glBegin(GL11.GL_QUADS);
+                glColor(topLeft);
+                GL11.glVertex2f(Rect.tmp.left, Rect.tmp.top);
+                glColor(bottomLeft);
+                GL11.glVertex2f(Rect.tmp.left, Rect.tmp.bottom);
+                glColor(bottomRight);
+                GL11.glVertex2f(Rect.tmp.right, Rect.tmp.bottom);
+                glColor(topRight);
+                GL11.glVertex2f(Rect.tmp.right, Rect.tmp.top);
+                GL11.glEnd();
+                GL11.glShadeModel(GL11.GL_FLAT);
+            }
+        } finally {
+            GLStateManager.end2D();
+        }
+    }
+
 
     public static void drawRoundedHueRect(float x, float y, float x2, float y2, float radius, float alpha) {
         if (alpha <= 0.0f) {
@@ -310,6 +342,40 @@ public class RenderUtil {
         } finally {
             GLStateManager.popScissor();
         }
+    }
+
+    public static void drawRoundedPaletteRect(float x, float y, float x2, float y2, float radius,
+                                              float hue, float alpha) {
+        if (alpha <= 0.0f) {
+            return;
+        }
+        normalizeRect(Rect.tmp, x, y, x2, y2);
+        float width = Rect.tmp.width();
+        float height = Rect.tmp.height();
+        radius = GLStateManager.clampRadius(radius, width, height);
+        GLStateManager.begin2D();
+        try {
+            if (ShaderRenderer.drawRoundedPaletteRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
+                    radius, Math.max(0.0f, Math.min(1.0f, hue)), Math.max(0.0f, Math.min(1.0f, alpha)))) {
+                return;
+            }
+        } finally {
+            GLStateManager.end2D();
+        }
+
+        int hueColor = Color.HSBtoRGB(Math.max(0.0f, Math.min(1.0f, hue)), 1.0f, 1.0f);
+        drawRoundedRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom, radius,
+                applyAlpha(hueColor, Math.round(255.0f * alpha)));
+        drawRoundedGradientRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom, radius,
+                applyAlpha(0x00FFFFFF, Math.round(246.0f * alpha)),
+                applyAlpha(0x00FFFFFF, Math.round(246.0f * alpha)),
+                applyAlpha(0x00FFFFFF, 0),
+                applyAlpha(0x00FFFFFF, 0));
+        drawRoundedGradientRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom, radius,
+                applyAlpha(0x000000, 0),
+                applyAlpha(0x000000, Math.round(226.0f * alpha)),
+                applyAlpha(0x000000, 0),
+                applyAlpha(0x000000, Math.round(226.0f * alpha)));
     }
 
     // ==================== Circle & Arc Drawing ====================

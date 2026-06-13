@@ -14,6 +14,9 @@ final class MaterialModuleCard {
     private static final float COLLAPSED_H = 86.0f;
     private static final float INACTIVE_BORDER_W = 0.65f;
     private static final float ACTIVE_BORDER_W = 1.25f;
+    private static final float VALUE_TOP = 80.0f;
+    private static final float VALUE_CLIP_TOP = 72.0f;
+    private static final float VALUE_BOTTOM_PADDING = 18.0f;
 
     private final MaterialClickGui gui;
     private final MaterialValueRenderer values;
@@ -63,7 +66,8 @@ final class MaterialModuleCard {
             }
         }
         float min = 120.0f * s;
-        float expanded = Math.max(min, 70.0f * s + valueH + (valueH > 0.0f ? 18.0f * s : 20.0f * s));
+        float expanded = Math.max(min, VALUE_TOP * s + valueH
+                + (valueH > 0.0f ? VALUE_BOTTOM_PADDING * s : 20.0f * s));
         float expand = AnimationUtil.ease(gui.moduleExpandProgress(module), AnimationUtil.Ease.IN_OUT_CUBIC);
         return AnimationUtil.lerp(collapsed, expanded, expand);
     }
@@ -81,7 +85,7 @@ final class MaterialModuleCard {
         float hover = gui.easedAnimation("module.hover." + key, hovered ? 1.0f : 0.0f,
                 0.26f, 0.0f, AnimationUtil.Ease.OUT_CUBIC);
         float activeProgress = gui.easedAnimation("module.active." + key, active ? 1.0f : 0.0f,
-                0.24f, active ? 1.0f : 0.0f, AnimationUtil.Ease.OUT_CUBIC);
+                0.24f, active ? 1.0f : 0.0f, AnimationUtil.Ease.IN_OUT_CUBIC);
         float expand = AnimationUtil.ease(gui.moduleExpandProgress(module), AnimationUtil.Ease.IN_OUT_CUBIC);
 
         float borderW = AnimationUtil.lerp(INACTIVE_BORDER_W, ACTIVE_BORDER_W, activeProgress) * s;
@@ -90,8 +94,8 @@ final class MaterialModuleCard {
 
         drawHeader(mouseX, mouseY, activeProgress);
         if (hasSettings() && expand > 0.01f) {
-            float valueY = y + 70.0f * s;
-            gui.beginScissor(x, y + 64.0f * s, w, Math.max(0.0f, h - 64.0f * s));
+            float valueY = y + VALUE_TOP * s;
+            gui.beginScissor(x, y + VALUE_CLIP_TOP * s, w, Math.max(0.0f, h - VALUE_CLIP_TOP * s));
             try {
                 values.render(module, x + 20.0f * s, valueY, w - 40.0f * s, mouseX, mouseY);
             } finally {
@@ -117,14 +121,17 @@ final class MaterialModuleCard {
         String key = gui.isBinding(module) ? "..." : gui.keyName(module.getKey());
         float pillX = x + 20.0f * s;
         float pillY = y + 43.0f * s;
+        float pillH = 18.0f * s;
         float pillW = Math.max(42.0f * s, FontLoaders.C14.getStringWidth(key) + 12.0f * s);
-        boolean hovered = MaterialClickLayout.contains(pillX, pillY, pillX + pillW, pillY + 18.0f * s, mouseX, mouseY);
+        boolean hovered = MaterialClickLayout.contains(pillX, pillY, pillX + pillW, pillY + pillH, mouseX, mouseY);
         float focus = gui.easedAnimation("module.key." + gui.animationKey(module),
-                hovered || gui.isBinding(module) ? 1.0f : 0.0f, 0.28f, 0.0f, AnimationUtil.Ease.OUT_CUBIC);
-        RenderServices.shapes().rounded(pillX, pillY, pillX + pillW, pillY + 18.0f * s, 6.0f * s,
-                alpha(theme.withAlpha(theme.blend(MaterialClickTheme.OUTLINE, MaterialClickTheme.PRIMARY_CONTAINER, focus),
-                        (22.0f + 38.0f * focus) * theme.alpha()), reveal));
-        FontLoaders.C14.drawCenteredString(key, pillX + pillW / 2.0f, pillY + 4.0f * s,
+                hovered || gui.isBinding(module) ? 1.0f : 0.0f, 0.22f, 0.0f, AnimationUtil.Ease.IN_OUT_CUBIC);
+        int fill = theme.blend(theme.withAlpha(0xFFFFFFFF, 26.0f * theme.alpha()),
+                theme.withAlpha(MaterialClickTheme.PRIMARY_CONTAINER, 168.0f * theme.alpha()), focus);
+        RenderServices.shapes().rounded(pillX, pillY, pillX + pillW, pillY + pillH, 6.0f * s,
+                alpha(fill, reveal));
+        float textY = pillY + Math.max(0.0f, pillH - FontLoaders.C14.getStringHeight(key)) / 2.0f + 0.5f * s;
+        FontLoaders.C14.drawCenteredString(key, pillX + pillW / 2.0f, textY,
                 alpha(theme.withAlpha(theme.blend(MaterialClickTheme.MUTED, MaterialClickTheme.ON_PRIMARY_CONTAINER, focus),
                         255.0f * theme.alpha()), reveal));
     }
@@ -166,7 +173,7 @@ final class MaterialModuleCard {
             return true;
         }
         if (gui.isModuleExpanded(module) && hasSettings()
-                && values.mouseClicked(module, x + 20.0f * s, y + 70.0f * s,
+                && values.mouseClicked(module, x + 20.0f * s, y + VALUE_TOP * s,
                 w - 40.0f * s, mouseX, mouseY, button)) {
             return true;
         }
