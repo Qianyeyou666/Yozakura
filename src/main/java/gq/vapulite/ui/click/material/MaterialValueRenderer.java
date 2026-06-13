@@ -10,9 +10,12 @@ import gq.vapulite.value.Option;
 import gq.vapulite.value.Value;
 import org.lwjgl.input.Mouse;
 
+import java.awt.Color;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -23,8 +26,22 @@ import java.util.Set;
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
 final class MaterialValueRenderer {
+    private static final int COLOR_DRAG_NONE = 0;
+    private static final int COLOR_DRAG_SATURATION_VALUE = 1;
+    private static final int COLOR_DRAG_HUE = 2;
+    private static final int COLOR_DRAG_ALPHA = 3;
+
+    private final Map<Value, String> valueTexts = new IdentityHashMap<Value, String>();
+    private final Map<Value, String> previousValueTexts = new IdentityHashMap<Value, String>();
+    private final Map<Value, Double> valueTextNumbers = new IdentityHashMap<Value, Double>();
+    private final Map<Value, Boolean> valueTextIncreasing = new IdentityHashMap<Value, Boolean>();
+    private final Map<Value, Float> valueTextProgress = new IdentityHashMap<Value, Float>();
+    private final Map<Value, Float> colorHues = new IdentityHashMap<Value, Float>();
+
+
     private final MaterialClickGui gui;
     private final Set<Value> expandedModes = new HashSet<Value>();
+    private final Set<Value> expandedColors = new HashSet<Value>();
 
     private Numbers draggingNumber;
     private Numbers draggingPair;
@@ -33,6 +50,15 @@ final class MaterialValueRenderer {
     private float draggingW;
     private double draggingMin;
     private double draggingMax;
+    private Numbers draggingColorRed;
+    private Numbers draggingColorGreen;
+    private Numbers draggingColorBlue;
+    private Numbers draggingColorAlpha;
+    private int draggingColorPart;
+    private float draggingColorX;
+    private float draggingColorY;
+    private float draggingColorW;
+
 
     MaterialValueRenderer(MaterialClickGui gui) {
         this.gui = gui;
@@ -48,8 +74,9 @@ final class MaterialValueRenderer {
                 continue;
             }
             if (isColorStart(module, i)) {
-                total += 82.0f * gui.layout().scale;
-                i += 2;
+                Numbers alpha = colorAlpha(module, values, i);
+                total += colorHeight((Numbers) value, alpha);
+                i += colorValueSpan(module, values, i) - 1;
             } else if (isRangeStart(module, i)) {
                 total += 50.0f * gui.layout().scale;
                 i += 1;
@@ -75,9 +102,12 @@ final class MaterialValueRenderer {
                 continue;
             }
             if (isColorStart(module, i)) {
-                drawColor(module, i, x, y, width, mouseX, mouseY);
-                y += 90.0f * gui.layout().scale;
-                i += 2;
+                Numbers red = (Numbers) values.get(i);
+                Numbers alpha = colorAlpha(module, values, i);
+                drawColor(red, (Numbers) values.get(i + 1),
+                        (Numbers) values.get(i + 2), alpha, x, y, width, mouseX, mouseY);
+                y += colorHeight(red, alpha) + 8.0f * gui.layout().scale;
+                i += colorValueSpan(module, values, i) - 1;
             } else if (isRangeStart(module, i)) {
                 drawRange((Numbers) values.get(i), (Numbers) values.get(i + 1), x, y, width);
                 y += 58.0f * gui.layout().scale;
@@ -109,18 +139,17 @@ final class MaterialValueRenderer {
                 continue;
             }
             if (isColorStart(module, i)) {
-                if (MaterialClickLayout.contains(x, y, x + width, y + 82.0f * gui.layout().scale, mouseX, mouseY)) {
-                    Numbers red = (Numbers) values.get(i);
-                    Numbers green = (Numbers) values.get(i + 1);
-                    Numbers blue = (Numbers) values.get(i + 2);
-                    Numbers target = colorChannelAt(red, green, blue, y, mouseY);
-                    float colorSliderX = x + 18.0f * gui.layout().scale;
-                    beginNumberDrag(target, mouseX, colorSliderX, width - 18.0f * gui.layout().scale,
-                            target.getMinimum().doubleValue(), target.getMaximum().doubleValue(), null, false);
+                Numbers red = (Numbers) values.get(i);
+                Numbers green = (Numbers) values.get(i + 1);
+                Numbers blue = (Numbers) values.get(i + 2);
+                Numbers alpha = colorAlpha(module, values, i);
+                float h = colorHeight(red, alpha);
+                if (MaterialClickLayout.contains(x, y, x + width, y + h, mouseX, mouseY)) {
+                    handleColorClick(red, green, blue, alpha, x, y, width, mouseX, mouseY);
                     return true;
                 }
-                y += 90.0f * gui.layout().scale;
-                i += 2;
+                y += h + 8.0f * gui.layout().scale;
+                i += colorValueSpan(module, values, i) - 1;
                 continue;
             }
             if (isRangeStart(module, i)) {
@@ -172,7 +201,15 @@ final class MaterialValueRenderer {
         return false;
     }
 
-    void updateDragging(int mouseX) {
+    void updateDragging(int mouseX, int mouseY) {
+        if (draggingColorPart != COLOR_DRAG_NONE) {
+            if (!Mouse.isButtonDown(0)) {
+                releaseDrag();
+                return;
+            }
+            updateColorDrag(mouseX, mouseY);
+            return;
+        }
         if (draggingNumber == null) {
             return;
         }
@@ -186,10 +223,16 @@ final class MaterialValueRenderer {
     void releaseDrag() {
         draggingNumber = null;
         draggingPair = null;
+        draggingColorRed = null;
+        draggingColorGreen = null;
+        draggingColorBlue = null;
+        draggingColorAlpha = null;
+        draggingColorPart = COLOR_DRAG_NONE;
     }
 
     void closeDropdown() {
         expandedModes.clear();
+        expandedColors.clear();
         releaseDrag();
     }
 
@@ -222,9 +265,10 @@ final class MaterialValueRenderer {
     private void drawNumber(Numbers value, float x, float y, float width) {
         MaterialClickTheme theme = gui.theme();
         float s = gui.layout().scale;
+        double current = numberValue(value);
+        String text = formatNumber(current);
         FontLoaders.C14.drawString(gui.displayName(value), x, y, theme.muted());
-        FontLoaders.C14.drawString(formatNumber(numberValue(value)), x + width - FontLoaders.C14.getStringWidth(formatNumber(numberValue(value))),
-                y, theme.muted());
+        drawAnimatedValueText(value, text, current, x + width, y, theme.muted());
         String key = gui.animationKey(value);
         float shownPct = gui.animation("value.number." + key, pct(value),
                 draggingNumber == value ? 0.62f : 0.26f, pct(value));
@@ -244,47 +288,174 @@ final class MaterialValueRenderer {
         float maxPct = gui.animation("value.range.max." + maxKey, pct(max, rangeMin, rangeMax),
                 draggingNumber == max ? 0.62f : 0.26f, pct(max, rangeMin, rangeMax));
         String label = rangeLabel(min);
-        String values = formatNumber(numberValue(min)) + " - " + formatNumber(numberValue(max));
+        double minValue = numberValue(min);
+        double maxValue = numberValue(max);
+        String values = formatNumber(minValue) + " - " + formatNumber(maxValue);
         FontLoaders.C14.drawString(label, x, y, theme.muted());
-        FontLoaders.C14.drawString(values, x + width - FontLoaders.C14.getStringWidth(values), y, theme.muted());
+        drawAnimatedValueText(min, values, (minValue + maxValue) * 0.5D, x + width, y, theme.muted());
 
         float sx = sliderX(x, width);
         float sy = y + 24.0f * s;
         float sw = sliderW(width);
-        RenderServices.shapes().rounded(sx, sy, sx + sw, sy + 4.0f * s, 2.0f * s, theme.softFill(24.0f));
-        RenderServices.shapes().rounded(sx + sw * minPct, sy, sx + sw * maxPct, sy + 4.0f * s, 2.0f * s,
-                theme.withAlpha(MaterialClickTheme.PRIMARY, 210.0f * theme.alpha()));
+        drawSliderTrack(sx, sy, sw, minPct, maxPct, theme, draggingNumber == min || draggingNumber == max);
         drawKnob(sx + sw * minPct, sy + 2.0f * s, theme, "value.slider." + minKey, draggingNumber == min);
         drawKnob(sx + sw * maxPct, sy + 2.0f * s, theme, "value.slider." + maxKey, draggingNumber == max);
     }
 
-    private void drawColor(Module module, int index, float x, float y, float width, int mouseX, int mouseY) {
-        List<Value> values = module.getValues();
-        Numbers red = (Numbers) values.get(index);
-        Numbers green = (Numbers) values.get(index + 1);
-        Numbers blue = (Numbers) values.get(index + 2);
+    private void drawColor(Numbers red, Numbers green, Numbers blue, Numbers alpha,
+                           float x, float y, float width, int mouseX, int mouseY) {
         MaterialClickTheme theme = gui.theme();
         float s = gui.layout().scale;
-        String label = colorLabel(red);
-        int color = 0xFF000000 | (clampColor(numberValue(red)) << 16) | (clampColor(numberValue(green)) << 8) | clampColor(numberValue(blue));
+        String key = gui.animationKey(red);
+        int redValue = colorChannel(red);
+        int greenValue = colorChannel(green);
+        int blueValue = colorChannel(blue);
+        int alphaValue = alpha == null ? 255 : colorAlphaValue(alpha);
+        float hue = colorHue(red, green, blue);
+        float saturation = colorSaturation(red, green, blue);
+        float brightness = colorBrightness(red, green, blue);
+        boolean active = draggingColorRed == red;
+        float collapsedH = colorCollapsedHeight();
+        float expand = colorProgress(red);
+        float hover = gui.easedAnimation("value.color.hover." + key,
+                MaterialClickLayout.contains(x, y, x + width, y + collapsedH, mouseX, mouseY) ? 1.0f : 0.0f,
+                0.28f, 0.0f, AnimationUtil.Ease.OUT_CUBIC);
+        float focus = gui.easedAnimation("value.color.focus." + key, active ? 1.0f : 0.0f,
+                0.24f, 0.0f, AnimationUtil.Ease.IN_OUT_CUBIC);
+        float shownHue = gui.animation("value.color.hue." + key, hue, active ? 0.58f : 0.28f, hue);
+        float shownSaturation = gui.animation("value.color.sat." + key, saturation, active ? 0.58f : 0.28f, saturation);
+        float shownBrightness = gui.animation("value.color.bri." + key, brightness, active ? 0.58f : 0.28f, brightness);
+        float shownAlpha = alpha == null ? 1.0f : gui.animation("value.color.alpha." + key,
+                colorAlphaPct(alpha), active ? 0.58f : 0.28f, colorAlphaPct(alpha));
 
-        FontLoaders.C14.drawString(label, x, y, theme.muted());
-        RenderServices.shapes().rounded(x + width - 22.0f * s, y - 2.0f * s, x + width, y + 20.0f * s,
-                7.0f * s, color);
-        drawColorSlider("R", red, x, y + 25.0f * s, width);
-        drawColorSlider("G", green, x, y + 45.0f * s, width);
-        drawColorSlider("B", blue, x, y + 65.0f * s, width);
+        int rgb = 0xFF000000 | (redValue << 16) | (greenValue << 8) | blueValue;
+        int preview = theme.withAlpha(rgb, alphaValue * theme.alpha());
+        int hueColor = 0xFF000000 | (Color.HSBtoRGB(shownHue, 1.0f, 1.0f) & 0x00FFFFFF);
+
+        FontLoaders.C14.drawString(colorLabel(red), x, y + 8.0f * s, theme.muted());
+        float swatch = 24.0f * s;
+        drawColorSwatch(x + width - swatch, y + 4.0f * s, swatch, preview, hover, theme);
+
+        float clipH = colorHeight(red, alpha) - collapsedH;
+        if (clipH <= 0.5f) {
+            return;
+        }
+
+        float controlsAlpha = expand * theme.alpha();
+        float controlY = y - 6.0f * s * (1.0f - expand);
+        float squareX = x;
+        float squareY = colorSquareY(controlY);
+        float squareW = width;
+        float squareH = colorSquareH();
+        float railH = colorRailH();
+        float hueY = colorHueY(controlY);
+        float radius = 10.0f * s;
+
+        gui.beginScissor(x - 8.0f * s, y + collapsedH, width + 16.0f * s, clipH);
+        try {
+            RenderServices.shapes().roundedPalette(squareX, squareY, squareX + squareW, squareY + squareH,
+                    radius, shownHue, controlsAlpha);
+            RenderServices.shapes().roundedBorder(squareX, squareY, squareX + squareW, squareY + squareH,
+                    radius, 0.7f * s, 0, theme.withAlpha(0xFFFFFFFF, 34.0f * controlsAlpha));
+            drawColorCursor(squareX + squareW * shownSaturation,
+                    squareY + squareH * (1.0f - shownBrightness), focus, controlsAlpha, theme);
+
+            RenderServices.shapes().roundedHue(x, hueY, x + width, hueY + railH, railH / 2.0f, controlsAlpha);
+            RenderServices.shapes().roundedBorder(x, hueY, x + width, hueY + railH, railH / 2.0f,
+                    0.65f * s, 0, theme.withAlpha(0xFFFFFFFF, 28.0f * controlsAlpha));
+            drawColorRailThumb(x + width * shownHue, hueY + railH / 2.0f, railH, hueColor, focus, controlsAlpha, theme);
+
+            if (alpha != null) {
+                float alphaLabelY = colorAlphaLabelY(controlY);
+                float alphaY = colorAlphaY(controlY);
+                FontLoaders.C14.drawString(gui.displayName(alpha), x, alphaLabelY,
+                        theme.withAlpha(MaterialClickTheme.MUTED, 255.0f * controlsAlpha));
+                drawAnimatedValueText(alpha, formatNumber(numberValue(alpha)), numberValue(alpha),
+                        x + width, alphaLabelY, theme.withAlpha(MaterialClickTheme.MUTED, 255.0f * controlsAlpha));
+                RenderServices.shapes().rounded(x, alphaY, x + width, alphaY + railH, railH / 2.0f,
+                        theme.withAlpha(MaterialClickTheme.SURFACE_VARIANT, 76.0f * controlsAlpha));
+                RenderServices.shapes().roundedGradient(x, alphaY, x + width, alphaY + railH, railH / 2.0f,
+                        theme.withAlpha(theme.blend(MaterialClickTheme.SURFACE_VARIANT, rgb, 0.18f), 108.0f * controlsAlpha),
+                        theme.withAlpha(theme.blend(MaterialClickTheme.SURFACE_VARIANT, rgb, 0.18f), 108.0f * controlsAlpha),
+                        theme.withAlpha(rgb, 232.0f * controlsAlpha),
+                        theme.withAlpha(rgb, 232.0f * controlsAlpha));
+                RenderServices.shapes().roundedBorder(x, alphaY, x + width, alphaY + railH, railH / 2.0f,
+                        0.65f * s, 0, theme.withAlpha(0xFFFFFFFF, 24.0f * controlsAlpha));
+                drawColorRailThumb(x + width * shownAlpha, alphaY + railH / 2.0f, railH, rgb, focus, controlsAlpha, theme);
+            }
+        } finally {
+            gui.endScissor();
+        }
     }
 
-    private void drawColorSlider(String label, Numbers value, float x, float y, float width) {
-        MaterialClickTheme theme = gui.theme();
+    private void drawColorSwatch(float x, float y, float size, int preview, float hover, MaterialClickTheme theme) {
         float s = gui.layout().scale;
-        FontLoaders.C14.drawString(label, x, y - 5.0f * s, theme.faint());
-        String key = gui.animationKey(value);
-        float shownPct = gui.animation("value.color." + key, pct(value),
-                draggingNumber == value ? 0.62f : 0.26f, pct(value));
-        drawSlider(x + 18.0f * s, y, width - 18.0f * s, shownPct, theme,
-                "value.slider." + key, draggingNumber == value);
+        RenderServices.shapes().rounded(x - 3.0f * s, y - 3.0f * s,
+                x + size + 3.0f * s, y + size + 3.0f * s,
+                10.0f * s, theme.withAlpha(MaterialClickTheme.SURFACE_VARIANT, (42.0f + 18.0f * hover) * theme.alpha()));
+        RenderServices.shapes().rounded(x, y, x + size, y + size, 8.0f * s,
+                theme.withAlpha(MaterialClickTheme.SURFACE, 112.0f * theme.alpha()));
+        RenderServices.shapes().rounded(x, y, x + size, y + size, 8.0f * s, preview);
+        RenderServices.shapes().roundedBorder(x, y, x + size, y + size,
+                8.0f * s, 0.7f * s, 0, theme.withAlpha(0xFFFFFFFF, 44.0f * theme.alpha()));
+    }
+
+    private void drawColorCursor(float centerX, float centerY, float focus, float alpha, MaterialClickTheme theme) {
+        float s = gui.layout().scale;
+        float radius = (4.6f + 1.2f * focus) * s;
+        RenderServices.shapes().circleOutline(centerX, centerY, radius + 1.35f * s,
+                1.0f * s, theme.withAlpha(0xFF000000, 130.0f * alpha));
+        RenderServices.shapes().circleOutline(centerX, centerY, radius,
+                1.35f * s, theme.withAlpha(0xFFFFFFFF, 230.0f * alpha));
+    }
+
+    private void drawColorRailThumb(float centerX, float centerY, float railH, int fill,
+                                    float focus, float alpha, MaterialClickTheme theme) {
+        float s = gui.layout().scale;
+        float halfW = (2.4f + 0.8f * focus) * s;
+        float halfH = railH / 2.0f + (4.2f + 1.4f * focus) * s;
+        RenderServices.shapes().roundedBorder(centerX - halfW, centerY - halfH,
+                centerX + halfW, centerY + halfH, halfW,
+                0.9f * s, theme.withAlpha(fill, 240.0f * alpha),
+                theme.withAlpha(0xFFFFFFFF, 210.0f * alpha));
+    }
+
+    private boolean handleColorClick(Numbers red, Numbers green, Numbers blue, Numbers alpha,
+                                     float x, float y, float width, int mouseX, int mouseY) {
+        float s = gui.layout().scale;
+        float collapsedH = colorCollapsedHeight();
+        if (MaterialClickLayout.contains(x, y, x + width, y + collapsedH, mouseX, mouseY)) {
+            if (expandedColors.contains(red)) {
+                expandedColors.remove(red);
+                releaseDrag();
+            } else {
+                expandedColors.add(red);
+            }
+            return true;
+        }
+        if (!expandedColors.contains(red)) {
+            return false;
+        }
+        float squareY = colorSquareY(y);
+        float squareH = colorSquareH();
+        float hueY = colorHueY(y);
+        float railH = colorRailH();
+        if (MaterialClickLayout.contains(x, squareY, x + width, squareY + squareH, mouseX, mouseY)) {
+            beginColorDrag(red, green, blue, alpha, COLOR_DRAG_SATURATION_VALUE, x, y, width, mouseX, mouseY);
+            return true;
+        }
+        if (MaterialClickLayout.contains(x, hueY - 4.0f * s, x + width, hueY + railH + 4.0f * s, mouseX, mouseY)) {
+            beginColorDrag(red, green, blue, alpha, COLOR_DRAG_HUE, x, y, width, mouseX, mouseY);
+            return true;
+        }
+        if (alpha != null) {
+            float alphaY = colorAlphaY(y);
+            if (MaterialClickLayout.contains(x, alphaY - 4.0f * s, x + width, alphaY + railH + 4.0f * s, mouseX, mouseY)) {
+                beginColorDrag(red, green, blue, alpha, COLOR_DRAG_ALPHA, x, y, width, mouseX, mouseY);
+                return true;
+            }
+        }
+        return false;
     }
 
     private void drawMode(Mode mode, float x, float y, float width, int mouseX, int mouseY) {
@@ -342,11 +513,27 @@ final class MaterialValueRenderer {
     }
 
     private void drawSlider(float x, float y, float width, float pct, MaterialClickTheme theme, String key, boolean active) {
+        drawSliderTrack(x, y, width, 0.0f, pct, theme, active);
+        drawKnob(x + width * MaterialClickTheme.clamp(pct, 0.0f, 1.0f), y + 2.0f * gui.layout().scale, theme, key, active);
+    }
+
+    private void drawSliderTrack(float x, float y, float width, float fromPct, float toPct,
+                                 MaterialClickTheme theme, boolean active) {
         float s = gui.layout().scale;
-        RenderServices.shapes().rounded(x, y, x + width, y + 4.0f * s, 2.0f * s, theme.softFill(24.0f));
-        RenderServices.shapes().rounded(x, y, x + width * pct, y + 4.0f * s, 2.0f * s,
-                theme.withAlpha(MaterialClickTheme.PRIMARY, 210.0f * theme.alpha()));
-        drawKnob(x + width * pct, y + 2.0f * s, theme, key, active);
+        float startPct = MaterialClickTheme.clamp(Math.min(fromPct, toPct), 0.0f, 1.0f);
+        float endPct = MaterialClickTheme.clamp(Math.max(fromPct, toPct), 0.0f, 1.0f);
+        float trackH = 4.0f * s;
+        RenderServices.shapes().rounded(x, y, x + width, y + trackH, trackH / 2.0f, sliderRemaining(theme, active));
+        float fillX = x + width * startPct;
+        float fillRight = x + width * endPct;
+        if (fillRight > fillX + 0.5f * s) {
+            RenderServices.shapes().rounded(fillX, y, fillRight, y + trackH, trackH / 2.0f,
+                    theme.withAlpha(MaterialClickTheme.PRIMARY, 216.0f * theme.alpha()));
+        }
+    }
+
+    private int sliderRemaining(MaterialClickTheme theme, boolean active) {
+        return theme.withAlpha(MaterialClickTheme.SURFACE_VARIANT, (92.0f + (active ? 30.0f : 0.0f)) * theme.alpha());
     }
 
     private void drawKnob(float centerX, float centerY, MaterialClickTheme theme, String key, boolean active) {
@@ -361,6 +548,131 @@ final class MaterialValueRenderer {
         RenderServices.shapes().rounded(centerX - radius, centerY - radius,
                 centerX + radius, centerY + radius, radius,
                 theme.withAlpha(MaterialClickTheme.PRIMARY, 255.0f * theme.alpha()));
+    }
+
+    private void drawAnimatedValueText(Value value, String text, double numericValue, float rightX, float y, int color) {
+        String current = valueTexts.get(value);
+        if (current == null) {
+            valueTexts.put(value, text);
+            valueTextNumbers.put(value, numericValue);
+            valueTextProgress.put(value, 1.0f);
+            FontLoaders.C14.drawString(text, rightX - FontLoaders.C14.getStringWidth(text), y, color);
+            return;
+        }
+
+        if (!current.equals(text)) {
+            Double previousNumber = valueTextNumbers.get(value);
+            previousValueTexts.put(value, current);
+            valueTexts.put(value, text);
+            valueTextNumbers.put(value, numericValue);
+            valueTextIncreasing.put(value, previousNumber == null || numericValue >= previousNumber.doubleValue());
+            valueTextProgress.put(value, 0.0f);
+            current = text;
+        } else {
+            valueTextNumbers.put(value, numericValue);
+        }
+
+        Float storedProgress = valueTextProgress.get(value);
+        float rawProgress = storedProgress == null ? 1.0f : storedProgress.floatValue();
+        if (rawProgress < 1.0f) {
+            rawProgress = gui.animate(rawProgress, 1.0f, 0.30f);
+            if (rawProgress >= 0.94f) {
+                rawProgress = 1.0f;
+            }
+            valueTextProgress.put(value, rawProgress);
+        }
+
+        String previous = previousValueTexts.get(value);
+        if (previous == null || rawProgress >= 1.0f) {
+            previousValueTexts.remove(value);
+            FontLoaders.C14.drawString(current, rightX - FontLoaders.C14.getStringWidth(current), y, color);
+            return;
+        }
+
+        drawDigitFlipText(previous, current, rightX, y, color, rawProgress,
+                Boolean.TRUE.equals(valueTextIncreasing.get(value)));
+    }
+
+    private void drawDigitFlipText(String previous, String current, float rightX, float y,
+                                   int color, float rawProgress, boolean increasing) {
+        float s = gui.layout().scale;
+        float progress = AnimationUtil.ease(rawProgress, AnimationUtil.Ease.IN_OUT_CUBIC);
+        float textH = Math.max(FontLoaders.C14.getStringHeight(previous), FontLoaders.C14.getStringHeight(current));
+        float shift = textH + 4.0f * s;
+        float direction = increasing ? -1.0f : 1.0f;
+        int columns = Math.max(previous.length(), current.length());
+        int previousOffset = columns - previous.length();
+        int currentOffset = columns - current.length();
+        float currentX = rightX - FontLoaders.C14.getStringWidth(current);
+        float columnX = currentX;
+
+        for (int column = 0; column < currentOffset; column++) {
+            int previousIndex = column - previousOffset;
+            if (previousIndex >= 0 && previousIndex < previous.length()) {
+                columnX -= charWidth(previous, previousIndex);
+            }
+        }
+
+        for (int column = 0; column < columns; column++) {
+            int previousIndex = column - previousOffset;
+            int currentIndex = column - currentOffset;
+            boolean previousExists = previousIndex >= 0 && previousIndex < previous.length();
+            boolean currentExists = currentIndex >= 0 && currentIndex < current.length();
+            String previousChar = previousExists ? charString(previous, previousIndex) : null;
+            String currentChar = currentExists ? charString(current, currentIndex) : null;
+            float previousW = previousExists ? FontLoaders.C14.getStringWidth(previousChar) : 0.0f;
+            float currentW = currentExists ? FontLoaders.C14.getStringWidth(currentChar) : 0.0f;
+            float cellW = currentExists ? currentW : previousW;
+            float x = currentExists ? currentX : columnX;
+
+            if (previousExists && currentExists && previous.charAt(previousIndex) == current.charAt(currentIndex)) {
+                FontLoaders.C14.drawString(currentChar, x, y, color);
+            } else {
+                drawChangingValueCharacter(previousChar, currentChar, x, cellW, y, textH, color,
+                        progress, shift, direction, previousW, currentW);
+            }
+
+            if (currentExists) {
+                currentX += currentW;
+            } else {
+                columnX += cellW;
+            }
+        }
+    }
+
+    private void drawChangingValueCharacter(String previousChar, String currentChar, float x, float cellW,
+                                            float y, float textH, int color, float progress, float shift,
+                                            float direction, float previousW, float currentW) {
+        float s = gui.layout().scale;
+        float clipW = Math.max(Math.max(previousW, currentW), cellW) + 4.0f * s;
+        float clipX = x - Math.max(0.0f, clipW - cellW) / 2.0f;
+        gui.beginScissor(clipX, y - 2.0f * s, clipW, textH + 4.0f * s);
+        try {
+            if (previousChar != null) {
+                float previousX = x + (cellW - previousW) / 2.0f;
+                FontLoaders.C14.drawString(previousChar, previousX, y + direction * shift * progress,
+                        alpha(color, 1.0f - progress));
+            }
+            if (currentChar != null) {
+                float currentX = x + (cellW - currentW) / 2.0f;
+                FontLoaders.C14.drawString(currentChar, currentX, y - direction * shift * (1.0f - progress),
+                        alpha(color, progress));
+            }
+        } finally {
+            gui.endScissor();
+        }
+    }
+
+    private String charString(String text, int index) {
+        return String.valueOf(text.charAt(index));
+    }
+
+    private float charWidth(String text, int index) {
+        return FontLoaders.C14.getStringWidth(charString(text, index));
+    }
+
+    private int alpha(int color, float alpha) {
+        return gui.theme().withAlpha(color, ((color >>> 24) & 255) * MaterialClickTheme.clamp(alpha, 0.0f, 1.0f));
     }
 
     private boolean handleModeClick(Mode mode, float x, float y, float width, int mouseX, int mouseY) {
@@ -388,6 +700,46 @@ final class MaterialValueRenderer {
             return true;
         }
         return false;
+    }
+
+    private void beginColorDrag(Numbers red, Numbers green, Numbers blue, Numbers alpha, int part,
+                                float x, float y, float width, int mouseX, int mouseY) {
+        draggingNumber = null;
+        draggingPair = null;
+        draggingColorRed = red;
+        draggingColorGreen = green;
+        draggingColorBlue = blue;
+        draggingColorAlpha = alpha;
+        draggingColorPart = part;
+        draggingColorX = x;
+        draggingColorY = y;
+        draggingColorW = width;
+        updateColorDrag(mouseX, mouseY);
+    }
+
+    private void updateColorDrag(int mouseX, int mouseY) {
+        if (draggingColorRed == null || draggingColorGreen == null || draggingColorBlue == null) {
+            releaseDrag();
+            return;
+        }
+        if (draggingColorPart == COLOR_DRAG_SATURATION_VALUE) {
+            float sat = MaterialClickLayout.clamp((mouseX - draggingColorX) / draggingColorW, 0.0f, 1.0f);
+            float bri = 1.0f - MaterialClickLayout.clamp((mouseY - colorSquareY(draggingColorY)) / colorSquareH(), 0.0f, 1.0f);
+            setColorFromHsb(draggingColorRed, draggingColorGreen, draggingColorBlue,
+                    colorHue(draggingColorRed, draggingColorGreen, draggingColorBlue), sat, bri);
+            return;
+        }
+        if (draggingColorPart == COLOR_DRAG_HUE) {
+            float hue = MaterialClickLayout.clamp((mouseX - draggingColorX) / draggingColorW, 0.0f, 1.0f);
+            setColorFromHsb(draggingColorRed, draggingColorGreen, draggingColorBlue, hue,
+                    colorSaturation(draggingColorRed, draggingColorGreen, draggingColorBlue),
+                    colorBrightness(draggingColorRed, draggingColorGreen, draggingColorBlue));
+            return;
+        }
+        if (draggingColorPart == COLOR_DRAG_ALPHA && draggingColorAlpha != null) {
+            updateAlpha(draggingColorAlpha,
+                    MaterialClickLayout.clamp((mouseX - draggingColorX) / draggingColorW, 0.0f, 1.0f));
+        }
     }
 
     private void beginNumberDrag(Numbers value, int mouseX, float x, float w, double min, double max,
@@ -458,6 +810,152 @@ final class MaterialValueRenderer {
         Object current = value.getValue();
         return current instanceof Number ? ((Number) current).doubleValue() : 0.0D;
     }
+    private float colorHeight(Numbers red, Numbers alpha) {
+        return AnimationUtil.lerp(colorCollapsedHeight(), colorExpandedHeight(alpha), colorProgress(red));
+    }
+
+    private float colorProgress(Numbers red) {
+        return gui.easedAnimation("value.color.expand." + gui.animationKey(red),
+                expandedColors.contains(red) ? 1.0f : 0.0f, 0.24f, 0.0f, AnimationUtil.Ease.IN_OUT_CUBIC);
+    }
+
+    private float colorCollapsedHeight() {
+        return 32.0f * gui.layout().scale;
+    }
+
+    private float colorExpandedHeight(Numbers alpha) {
+        return (alpha == null ? 132.0f : 166.0f) * gui.layout().scale;
+    }
+
+    private float colorSquareY(float y) {
+        return y + 38.0f * gui.layout().scale;
+    }
+
+    private float colorSquareH() {
+        return 66.0f * gui.layout().scale;
+    }
+
+    private float colorRailH() {
+        return 8.0f * gui.layout().scale;
+    }
+
+    private float colorHueY(float y) {
+        return colorSquareY(y) + colorSquareH() + 10.0f * gui.layout().scale;
+    }
+
+    private float colorAlphaLabelY(float y) {
+        return colorHueY(y) + 17.0f * gui.layout().scale;
+    }
+
+    private float colorAlphaY(float y) {
+        return colorAlphaLabelY(y) + 18.0f * gui.layout().scale;
+    }
+
+    private int colorValueSpan(Module module, List<Value> values, int index) {
+        return colorAlpha(module, values, index) == null ? 3 : 4;
+    }
+
+    private Numbers colorAlpha(Module module, List<Value> values, int index) {
+        if (index + 3 >= values.size()) {
+            return null;
+        }
+        Value alpha = values.get(index + 3);
+        return isNumberNamed(alpha, "alpha") && isVisible(module, alpha) ? (Numbers) alpha : null;
+    }
+
+    private int colorChannel(Numbers value) {
+        double max = value.getMaximum().doubleValue();
+        double current = numberValue(value);
+        return max <= 1.0D ? clampColor(current * 255.0D) : clampColor(current);
+    }
+
+    private int colorAlphaValue(Numbers value) {
+        return colorChannel(value);
+    }
+
+    private float colorAlphaPct(Numbers value) {
+        double min = value.getMinimum().doubleValue();
+        double max = value.getMaximum().doubleValue();
+        if (max <= min) {
+            return 1.0f;
+        }
+        return MaterialClickLayout.clamp((float) ((numberValue(value) - min) / (max - min)), 0.0f, 1.0f);
+    }
+
+    private float colorHue(Numbers red, Numbers green, Numbers blue) {
+        float r = colorChannel(red) / 255.0f;
+        float g = colorChannel(green) / 255.0f;
+        float b = colorChannel(blue) / 255.0f;
+        float max = Math.max(r, Math.max(g, b));
+        float min = Math.min(r, Math.min(g, b));
+        float delta = max - min;
+        if (delta <= 0.0001f) {
+            Float stored = colorHues.get(red);
+            return stored == null ? 0.58f : stored.floatValue();
+        }
+        float hue;
+        if (max == r) {
+            hue = (g - b) / delta;
+            if (hue < 0.0f) {
+                hue += 6.0f;
+            }
+        } else if (max == g) {
+            hue = (b - r) / delta + 2.0f;
+        } else {
+            hue = (r - g) / delta + 4.0f;
+        }
+        hue /= 6.0f;
+        colorHues.put(red, hue);
+        return hue;
+    }
+
+    private float colorSaturation(Numbers red, Numbers green, Numbers blue) {
+        float r = colorChannel(red) / 255.0f;
+        float g = colorChannel(green) / 255.0f;
+        float b = colorChannel(blue) / 255.0f;
+        float max = Math.max(r, Math.max(g, b));
+        float min = Math.min(r, Math.min(g, b));
+        return max <= 0.0001f ? 0.0f : (max - min) / max;
+    }
+
+    private float colorBrightness(Numbers red, Numbers green, Numbers blue) {
+        return Math.max(colorChannel(red), Math.max(colorChannel(green), colorChannel(blue))) / 255.0f;
+    }
+
+    private void setColorFromHsb(Numbers red, Numbers green, Numbers blue, float hue, float saturation, float brightness) {
+        hue = MaterialClickLayout.clamp(hue, 0.0f, 1.0f);
+        saturation = MaterialClickLayout.clamp(saturation, 0.0f, 1.0f);
+        brightness = MaterialClickLayout.clamp(brightness, 0.0f, 1.0f);
+        colorHues.put(red, hue);
+        int rgb = Color.HSBtoRGB(hue, saturation, brightness);
+        setColorChannel(red, (rgb >>> 16) & 255);
+        setColorChannel(green, (rgb >>> 8) & 255);
+        setColorChannel(blue, rgb & 255);
+    }
+
+    private void setColorChannel(Numbers value, int channel) {
+        double max = value.getMaximum().doubleValue();
+        double result = max <= 1.0D ? channel / 255.0D : channel;
+        setRoundedNumber(value, result);
+    }
+
+    private void updateAlpha(Numbers value, float pct) {
+        double min = value.getMinimum().doubleValue();
+        double max = value.getMaximum().doubleValue();
+        setRoundedNumber(value, min + (max - min) * pct);
+    }
+
+    private void setRoundedNumber(Numbers value, double result) {
+        double min = value.getMinimum().doubleValue();
+        double max = value.getMaximum().doubleValue();
+        double inc = value.getIncrement().doubleValue();
+        result = Math.max(min, Math.min(max, result));
+        if (inc > 0.0D) {
+            result = Math.round(result / inc) * inc;
+        }
+        setNumberValue(value, result);
+    }
+
 
     private boolean isVisible(Module module, Value value) {
         return value != null && value.isVisible() && !isHiddenPaletteValue(module, value);
@@ -535,16 +1033,6 @@ final class MaterialValueRenderer {
         return raw == null ? "" : raw.replace(" ", "").replace("_", "").replace("-", "").toLowerCase(Locale.ROOT);
     }
 
-    private Numbers colorChannelAt(Numbers red, Numbers green, Numbers blue, float y, int mouseY) {
-        float s = gui.layout().scale;
-        if (mouseY >= y + 56.0f * s) {
-            return blue;
-        }
-        if (mouseY >= y + 36.0f * s) {
-            return green;
-        }
-        return red;
-    }
 
     private int clampColor(double value) {
         return Math.max(0, Math.min(255, (int) Math.round(value)));

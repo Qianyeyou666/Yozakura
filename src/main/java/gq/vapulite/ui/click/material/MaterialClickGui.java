@@ -100,7 +100,7 @@ public final class MaterialClickGui extends GuiScreen {
         theme.setAlpha(AnimationUtil.ease(openProgress, AnimationUtil.Ease.OUT_CUBIC)
                 * ClickGUI.clickGuiAlpha.getValue().floatValue());
 
-        invalidateGlassIfDue();
+        invalidateGlassForFrame();
         drawWindowShell();
         sidebar.render(mouseX, mouseY);
         grid.render(mouseX, mouseY);
@@ -209,8 +209,18 @@ public final class MaterialClickGui extends GuiScreen {
     }
 
     void startBinding(Module module) {
+        if (module == null) {
+            return;
+        }
+        if (bindingModule == null && bindingDisplayModule == null) {
+            animations.snap("binding.overlay", 0.0f);
+        }
         bindingModule = module;
         bindingDisplayModule = module;
+    }
+
+    boolean hasBindingOverlay() {
+        return bindingModule != null || bindingDisplayModule != null;
     }
 
     boolean isBinding(Module module) {
@@ -253,13 +263,14 @@ public final class MaterialClickGui extends GuiScreen {
             return;
         }
         float overlay = easedAnimation("binding.overlay", bindingModule == null ? 0.0f : 1.0f,
-                0.24f, 0.0f, AnimationUtil.Ease.OUT_CUBIC);
+                0.24f, 0.0f, AnimationUtil.Ease.IN_OUT_CUBIC);
         if (overlay <= 0.01f && bindingModule == null) {
             bindingDisplayModule = null;
             return;
         }
         RenderServices.shapes().rect(0.0f, 0.0f, sr.getScaledWidth(), sr.getScaledHeight(),
                 theme.withAlpha(0xFF000000, 96.0f * theme.alpha() * overlay));
+        ShaderRenderer.invalidateFrostedGlass();
         float boxW = 260.0f * layout.scale;
         float boxH = 86.0f * layout.scale;
         float x = (sr.getScaledWidth() - boxW) / 2.0f;
@@ -376,6 +387,15 @@ public final class MaterialClickGui extends GuiScreen {
         }
         float measured = MaterialClickLayout.clamp(elapsed / 16666666.0f, 0.55f, 1.75f);
         frameScale += (measured - frameScale) * 0.18f;
+    }
+
+    private void invalidateGlassForFrame() {
+        if (bindingModule != null || bindingDisplayModule != null) {
+            lastGlassInvalidationNanos = System.nanoTime();
+            ShaderRenderer.invalidateFrostedGlass();
+            return;
+        }
+        invalidateGlassIfDue();
     }
 
     private void invalidateGlassIfDue() {

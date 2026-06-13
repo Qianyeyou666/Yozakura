@@ -44,7 +44,7 @@ final class MaterialModuleGrid {
     }
 
     void render(int mouseX, int mouseY) {
-        valueRenderer.updateDragging(mouseX);
+        valueRenderer.updateDragging(mouseX, mouseY);
         MaterialClickLayout layout = gui.layout();
         MaterialClickTheme theme = gui.theme();
         List<Module> currentModules = modules(gui.currentType());
@@ -61,7 +61,7 @@ final class MaterialModuleGrid {
         } finally {
             gui.endScissor();
         }
-        drawViewportFeather(maxScroll, currentModules);
+        drawViewportFeather(maxScroll);
         drawHeader();
         drawScrollbar(theme, maxScroll);
     }
@@ -174,7 +174,7 @@ final class MaterialModuleGrid {
                 1.5f * layout.scale, theme.withAlpha(MaterialClickTheme.PRIMARY, 92.0f * theme.alpha()));
     }
 
-    private void drawViewportFeather(float maxScroll, List<Module> modules) {
+    private void drawViewportFeather(float maxScroll) {
         if (maxScroll <= 1.0f) {
             return;
         }
@@ -188,14 +188,27 @@ final class MaterialModuleGrid {
         float bottomEnd = clipBottom + 1f;
         float bottomStart = Math.max(clipTop, bottomEnd - featherH);
         float topStrength = MaterialClickLayout.clamp(-scroll / Math.max(1.0f, featherH), 0.0f, 1.0f);
-        float bottomStrength = MaterialClickLayout.clamp((maxScroll + scroll) / Math.max(1.0f, featherH), 0.0f, 1.0f);
-        if (cardsIntersect(layout, modules, bottomStart, bottomEnd)) {
-            bottomStrength = Math.max(bottomStrength, 1.0f);
-        }
+        float remainingScroll = Math.max(0.0f, maxScroll + scroll);
+        float bottomStrength = remainingScroll <= 1.0f * s
+                ? 0.0f
+                : MaterialClickLayout.clamp((remainingScroll - 1.0f * s) / Math.max(1.0f, featherH), 0.0f, 1.0f);
         float x1 = layout.gridX - FEATHER_OUTSET_X * s;
         float x2 = layout.gridX + layout.gridW + (FEATHER_OUTSET_X) * s;
 
         if (topStrength <= 0.01f && bottomStrength <= 0.01f) {
+            return;
+        }
+
+        if (gui.hasBindingOverlay()) {
+            MaterialClickTheme theme = gui.theme();
+            if (topStrength > 0.01f) {
+                RenderServices.shapes().rounded(x1, topStart, x2, topEnd, 0.0f,
+                        theme.withAlpha(MaterialClickTheme.SURFACE, 44.0f * theme.alpha() * topStrength));
+            }
+            if (bottomStrength > 0.01f) {
+                RenderServices.shapes().rounded(x1, bottomStart, x2, bottomEnd, 0.0f,
+                        theme.withAlpha(MaterialClickTheme.SURFACE, 44.0f * theme.alpha() * bottomStrength));
+            }
             return;
         }
 
@@ -257,32 +270,6 @@ final class MaterialModuleGrid {
         return layout.gridX - CLIP_EXTEND_LEFT * layout.scale;
     }
 
-    private boolean cardsIntersect(MaterialClickLayout layout, List<Module> modules, float regionTop, float regionBottom) {
-        if (regionBottom <= regionTop) {
-            return false;
-        }
-        float s = layout.scale;
-        float gap = 16.0f * s;
-        float cardW = (layout.gridW - gap) / 2.0f;
-        float leftY = firstCardY(layout);
-        float rightY = leftY;
-        for (int i = 0; i < modules.size(); i++) {
-            Module module = modules.get(i);
-            float valueH = valueRenderer.measure(module, cardW - 40.0f * s);
-            float h = MaterialModuleCard.measure(gui, module, cardW, valueH);
-            boolean useLeft = i % 2 == 0;
-            float y = useLeft ? leftY : rightY;
-            if (y + h > regionTop && y < regionBottom) {
-                return true;
-            }
-            if (useLeft) {
-                leftY += h + gap;
-            } else {
-                rightY += h + gap;
-            }
-        }
-        return false;
-    }
 
     private boolean inExtendedGrid(MaterialClickLayout layout, float mouseX, float mouseY) {
         return MaterialClickLayout.contains(clipLeft(layout), clipTop(layout),
