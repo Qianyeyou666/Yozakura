@@ -3,6 +3,7 @@ package gq.vapulite.ui.click.material;
 import gq.vapulite.engine.font.FontLoaders;
 import gq.vapulite.engine.render.ui.RenderServices;
 import gq.vapulite.module.ModuleType;
+import gq.vapulite.util.animation.AnimationUtil;
 
 /**
  * 左侧分类导航栏。
@@ -35,10 +36,25 @@ final class MaterialClickSidebar {
 
         float itemY = layout.y + 92.0f * s;
         float itemW = layout.sidebarW - 32.0f * s;
+        drawActiveIndicator(navX, itemY, itemW, 44.0f * s);
         for (ModuleType type : TABS) {
             drawTab(type, navX, itemY, itemW, 44.0f * s, mouseX, mouseY);
             itemY += 50.0f * s;
         }
+    }
+
+    private void drawActiveIndicator(float x, float firstY, float w, float h) {
+        MaterialClickLayout layout = gui.layout();
+        MaterialClickTheme theme = gui.theme();
+        int index = activeIndex();
+        if (index < 0) {
+            return;
+        }
+        float targetY = firstY + index * 50.0f * layout.scale;
+        float indicatorY = gui.animation("sidebar.indicator.y", targetY, 0.28f, targetY);
+        float alpha = gui.easedAnimation("sidebar.indicator.alpha", 1.0f, 0.22f, 0.0f, AnimationUtil.Ease.OUT_CUBIC);
+        RenderServices.shapes().rounded(x, indicatorY, x + w, indicatorY + h, h / 2.0f,
+                theme.withAlpha(MaterialClickTheme.PRIMARY_CONTAINER, 255.0f * theme.alpha() * alpha));
     }
 
     private void drawTab(ModuleType type, float x, float y, float w, float h, int mouseX, int mouseY) {
@@ -46,25 +62,37 @@ final class MaterialClickSidebar {
         MaterialClickTheme theme = gui.theme();
         boolean active = gui.currentType() == type;
         boolean hovered = MaterialClickLayout.contains(x, y, x + w, y + h, mouseX, mouseY);
-        float hover = hovered && !active ? 1.0f : 0.0f;
+        float activeProgress = gui.easedAnimation("sidebar.active." + type.name(), active ? 1.0f : 0.0f,
+                0.24f, 0.0f, AnimationUtil.Ease.OUT_CUBIC);
+        float hover = gui.easedAnimation("sidebar.hover." + type.name(), hovered && !active ? 1.0f : 0.0f,
+                0.28f, 0.0f, AnimationUtil.Ease.OUT_CUBIC);
 
-        if (active) {
+        if (hover > 0.01f) {
             RenderServices.shapes().rounded(x, y, x + w, y + h, h / 2.0f,
-                    theme.withAlpha(MaterialClickTheme.PRIMARY_CONTAINER, 255.0f * theme.alpha()));
-        } else if (hover > 0.0f) {
-            RenderServices.shapes().rounded(x, y, x + w, y + h, h / 2.0f,
-                    theme.withAlpha(0xFFFFFFFF, 10.0f * theme.alpha()));
+                    theme.withAlpha(0xFFFFFFFF, 12.0f * theme.alpha() * hover));
         }
 
         String label = type.toString();
-        int color = active ? theme.withAlpha(MaterialClickTheme.ON_PRIMARY_CONTAINER, 255.0f * theme.alpha()) : theme.muted();
-        if (active) {
+        int inactiveColor = theme.blend(MaterialClickTheme.TEXT, MaterialClickTheme.PRIMARY, hover);
+        int color = theme.withAlpha(theme.blend(inactiveColor, MaterialClickTheme.ON_PRIMARY_CONTAINER, activeProgress),
+                255.0f * theme.alpha());
+        float textX = x + 18.0f * layout.scale;
+        if (activeProgress > 0.5f) {
             float textY = y + Math.max(0.0f, h - FontLoaders.TB18.getStringHeight(label)) / 2.0f + 1.0f * layout.scale;
-            FontLoaders.TB18.drawString(label, x + 18.0f * layout.scale, textY, color);
+            FontLoaders.TB18.drawString(label, textX, textY, color);
         } else {
             float textY = y + Math.max(0.0f, h - FontLoaders.F18.getStringHeight(label)) / 2.0f + 1.0f * layout.scale;
-            FontLoaders.F18.drawString(label, x + 18.0f * layout.scale, textY, color);
+            FontLoaders.F18.drawString(label, textX, textY, color);
         }
+    }
+
+    private int activeIndex() {
+        for (int i = 0; i < TABS.length; i++) {
+            if (gui.currentType() == TABS[i]) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     boolean mouseClicked(int mouseX, int mouseY, int button) {

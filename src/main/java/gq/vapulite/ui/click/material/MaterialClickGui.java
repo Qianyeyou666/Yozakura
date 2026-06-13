@@ -9,6 +9,8 @@ import gq.vapulite.manager.ModuleManager;
 import gq.vapulite.module.Module;
 import gq.vapulite.module.ModuleType;
 import gq.vapulite.module.render.ClickGUI;
+import gq.vapulite.util.animation.AnimationState;
+import gq.vapulite.util.animation.AnimationUtil;
 import gq.vapulite.value.Value;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
@@ -34,15 +36,19 @@ public final class MaterialClickGui extends GuiScreen {
     private final MaterialClickSidebar sidebar = new MaterialClickSidebar(this);
     private final MaterialModuleGrid grid = new MaterialModuleGrid(this);
     private final Set<Module> expandedModules = new HashSet<Module>();
+    private final AnimationState animations = new AnimationState();
 
     private MaterialClickLayout layout;
     private Module bindingModule;
+    private Module bindingDisplayModule;
     private boolean draggingWindow;
     private boolean savedOnClose;
     private float dragOffsetX;
     private float dragOffsetY;
     private float openProgress;
     private float frameScale = 1.0f;
+    private int frameId;
+    private long lastGlassInvalidationNanos;
     private long lastFrameNanos = System.nanoTime();
 
     MaterialClickTheme theme() {
@@ -73,7 +79,10 @@ public final class MaterialClickGui extends GuiScreen {
     public void initGui() {
         layout = MaterialClickLayout.calculate(new ScaledResolution(mc));
         openProgress = 0.0f;
+        animations.clear();
         savedOnClose = false;
+        bindingModule = null;
+        bindingDisplayModule = null;
         expandedModules.clear();
         grid.resetScroll();
         super.initGui();
@@ -82,14 +91,16 @@ public final class MaterialClickGui extends GuiScreen {
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         updateFrameScale();
+        frameId++;
         ScaledResolution sr = new ScaledResolution(mc);
         layout = MaterialClickLayout.calculate(sr);
         updateWindowDrag(mouseX, mouseY, sr);
 
-        openProgress = animate(openProgress, 1.0f, 0.18f);
-        theme.setAlpha(openProgress * ClickGUI.clickGuiAlpha.getValue().floatValue());
+        openProgress = AnimationUtil.approach(openProgress, 1.0f, 0.20f, frameScale);
+        theme.setAlpha(AnimationUtil.ease(openProgress, AnimationUtil.Ease.OUT_CUBIC)
+                * ClickGUI.clickGuiAlpha.getValue().floatValue());
 
-        ShaderRenderer.invalidateFrostedGlass();
+        invalidateGlassIfDue();
         drawWindowShell();
         sidebar.render(mouseX, mouseY);
         grid.render(mouseX, mouseY);
@@ -199,6 +210,7 @@ public final class MaterialClickGui extends GuiScreen {
 
     void startBinding(Module module) {
         bindingModule = module;
+        bindingDisplayModule = module;
     }
 
     boolean isBinding(Module module) {
@@ -209,6 +221,11 @@ public final class MaterialClickGui extends GuiScreen {
         return expandedModules.contains(module);
     }
 
+    float moduleExpandProgress(Module module) {
+        return animation("module.expand." + animationKey(module), isModuleExpanded(module) ? 1.0f : 0.0f,
+                0.16f, 0.0f);
+    }
+
     void toggleModuleExpanded(Module module) {
         if (module == null) {
             return;
@@ -217,6 +234,7 @@ public final class MaterialClickGui extends GuiScreen {
             expandedModules.remove(module);
             return;
         }
+        animations.snap("module.expand." + animationKey(module), 0.0f);
         expandedModules.add(module);
     }
 
@@ -230,21 +248,30 @@ public final class MaterialClickGui extends GuiScreen {
     }
 
     private void drawBindingOverlay(ScaledResolution sr) {
-        if (bindingModule == null) {
+        Module module = bindingModule != null ? bindingModule : bindingDisplayModule;
+        if (module == null) {
+            return;
+        }
+        float overlay = easedAnimation("binding.overlay", bindingModule == null ? 0.0f : 1.0f,
+                0.24f, 0.0f, AnimationUtil.Ease.OUT_CUBIC);
+        if (overlay <= 0.01f && bindingModule == null) {
+            bindingDisplayModule = null;
             return;
         }
         RenderServices.shapes().rect(0.0f, 0.0f, sr.getScaledWidth(), sr.getScaledHeight(),
-                theme.withAlpha(0xFF000000, 96.0f * theme.alpha()));
+                theme.withAlpha(0xFF000000, 96.0f * theme.alpha() * overlay));
         float boxW = 260.0f * layout.scale;
         float boxH = 86.0f * layout.scale;
         float x = (sr.getScaledWidth() - boxW) / 2.0f;
-        float y = (sr.getScaledHeight() - boxH) / 2.0f;
+        float y = (sr.getScaledHeight() - boxH) / 2.0f + (1.0f - overlay) * 12.0f * layout.scale;
         RenderServices.liquidGlass().roundedBorder(x, y, x + boxW, y + boxH, 18.0f * layout.scale,
-                1.0f, theme.withAlpha(MaterialClickTheme.SURFACE, 220.0f * theme.alpha()),
-                theme.withAlpha(MaterialClickTheme.PRIMARY, 78.0f * theme.alpha()));
-        FontLoaders.F20.drawCenteredString("Press a key", x + boxW / 2.0f, y + 20.0f * layout.scale, theme.text());
-        FontLoaders.F16.drawCenteredString(displayName(bindingModule) + "  |  DEL 清除",
-                x + boxW / 2.0f, y + 51.0f * layout.scale, theme.muted());
+                1.0f, theme.withAlpha(MaterialClickTheme.SURFACE, 220.0f * theme.alpha() * overlay),
+                theme.withAlpha(MaterialClickTheme.PRIMARY, 78.0f * theme.alpha() * overlay));
+        FontLoaders.F20.drawCenteredString("Press a key", x + boxW / 2.0f, y + 20.0f * layout.scale,
+                theme.withAlpha(MaterialClickTheme.TEXT, 255.0f * theme.alpha() * overlay));
+        FontLoaders.F16.drawCenteredString(displayName(module) + "  |  DEL 清除",
+                x + boxW / 2.0f, y + 51.0f * layout.scale,
+                theme.withAlpha(MaterialClickTheme.MUTED, 255.0f * theme.alpha() * overlay));
     }
 
     private void saveConfigOnClose() {
@@ -316,12 +343,27 @@ public final class MaterialClickGui extends GuiScreen {
     }
 
     float animate(float current, float target, float speed) {
-        return current + (target - current) * MaterialClickTheme.clamp(speed * frameScale, 0.0f, 1.0f);
+        return AnimationUtil.approach(current, target, speed, frameScale);
     }
 
     float ease(float value) {
-        float v = MaterialClickTheme.clamp(value, 0.0f, 1.0f);
-        return 1.0f - (float) Math.pow(1.0f - v, 3.0D);
+        return AnimationUtil.ease(value, AnimationUtil.Ease.OUT_CUBIC);
+    }
+
+    float animation(String key, float target, float speed, float initialValue) {
+        return animations.animateFrom(key, target, speed, frameScale, initialValue, frameId);
+    }
+
+    float easedAnimation(String key, float target, float speed, float initialValue, AnimationUtil.Ease ease) {
+        return animations.eased(key, target, speed, frameScale, initialValue, ease, frameId);
+    }
+
+    String animationKey(Module module) {
+        return module == null ? "null" : MaterialClickGui.normalize(module.getName()) + "." + System.identityHashCode(module);
+    }
+
+    String animationKey(Value value) {
+        return value == null ? "null" : MaterialClickGui.normalize(value.getName()) + "." + System.identityHashCode(value);
     }
 
     private void updateFrameScale() {
@@ -334,6 +376,15 @@ public final class MaterialClickGui extends GuiScreen {
         }
         float measured = MaterialClickLayout.clamp(elapsed / 16666666.0f, 0.55f, 1.75f);
         frameScale += (measured - frameScale) * 0.18f;
+    }
+
+    private void invalidateGlassIfDue() {
+        long now = System.nanoTime();
+        if (now - lastGlassInvalidationNanos < 33000000L) {
+            return;
+        }
+        lastGlassInvalidationNanos = now;
+        ShaderRenderer.invalidateFrostedGlass();
     }
 
     static String normalize(String text) {
