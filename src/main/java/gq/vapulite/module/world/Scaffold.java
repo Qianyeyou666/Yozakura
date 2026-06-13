@@ -965,7 +965,8 @@ public class Scaffold extends Module {
     }
 
     private boolean isAirBelow() {
-        return isReplaceable(new BlockPos(mc.thePlayer.posX, mc.thePlayer.posY - 1.0D, mc.thePlayer.posZ));
+        AxisAlignedBB box = mc.thePlayer.getEntityBoundingBox().offset(0.0D, -1.0D, 0.0D);
+        return !mc.theWorld.getCollidingBoundingBoxes(mc.thePlayer, box).isEmpty();
     }
 
     private boolean isAirAbove() {
