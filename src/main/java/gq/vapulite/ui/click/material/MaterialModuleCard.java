@@ -81,7 +81,7 @@ final class MaterialModuleCard {
         float hover = gui.easedAnimation("module.hover." + key, hovered ? 1.0f : 0.0f,
                 0.26f, 0.0f, AnimationUtil.Ease.OUT_CUBIC);
         float activeProgress = gui.easedAnimation("module.active." + key, active ? 1.0f : 0.0f,
-                0.24f, active ? 1.0f : 0.0f, AnimationUtil.Ease.OUT_CUBIC);
+                0.24f, active ? 1.0f : 0.0f, AnimationUtil.Ease.IN_OUT_CUBIC);
         float expand = AnimationUtil.ease(gui.moduleExpandProgress(module), AnimationUtil.Ease.IN_OUT_CUBIC);
 
         float borderW = AnimationUtil.lerp(INACTIVE_BORDER_W, ACTIVE_BORDER_W, activeProgress) * s;

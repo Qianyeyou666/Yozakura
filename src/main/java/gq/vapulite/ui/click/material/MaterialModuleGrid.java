@@ -183,9 +183,9 @@ final class MaterialModuleGrid {
         float clipTop = clipTop(layout);
         float clipBottom = clipBottom(layout);
         float featherH = Math.min(FEATHER_HEIGHT * s, (clipBottom - clipTop) / 2.4f);
-        float topStart = clipTop;
+        float topStart = clipTop - 1f;
         float topEnd = Math.min(clipBottom, topStart + featherH);
-        float bottomEnd = clipBottom;
+        float bottomEnd = clipBottom + 1f;
         float bottomStart = Math.max(clipTop, bottomEnd - featherH);
         float topStrength = MaterialClickLayout.clamp(-scroll / Math.max(1.0f, featherH), 0.0f, 1.0f);
         float bottomStrength = MaterialClickLayout.clamp((maxScroll + scroll) / Math.max(1.0f, featherH), 0.0f, 1.0f);
@@ -193,7 +193,7 @@ final class MaterialModuleGrid {
             bottomStrength = Math.max(bottomStrength, 1.0f);
         }
         float x1 = layout.gridX - FEATHER_OUTSET_X * s;
-        float x2 = layout.gridX + layout.gridW + (FEATHER_OUTSET_X + 12.0f) * s;
+        float x2 = layout.gridX + layout.gridW + (FEATHER_OUTSET_X) * s;
 
         if (topStrength <= 0.01f && bottomStrength <= 0.01f) {
             return;

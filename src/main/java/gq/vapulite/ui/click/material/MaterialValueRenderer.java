@@ -199,7 +199,7 @@ final class MaterialValueRenderer {
         boolean active = Boolean.TRUE.equals(value.getValue());
         String key = gui.animationKey(value);
         float activeProgress = gui.easedAnimation("value.option." + key, active ? 1.0f : 0.0f,
-                0.26f, active ? 1.0f : 0.0f, AnimationUtil.Ease.OUT_CUBIC);
+                0.24f, active ? 1.0f : 0.0f, AnimationUtil.Ease.IN_OUT_CUBIC);
         float hover = gui.easedAnimation("value.hover." + key,
                 MaterialClickLayout.contains(x, y, x + width, y + 32.0f * s, mouseX, mouseY) ? 1.0f : 0.0f,
                 0.28f, 0.0f, AnimationUtil.Ease.OUT_CUBIC);
@@ -299,27 +299,38 @@ final class MaterialValueRenderer {
         String current = modeLabel(mode.getModeAsString());
         float pillW = Math.max(68.0f * s, FontLoaders.C14.getStringWidth(current) + 22.0f * s);
         float pillX = x + width - pillW;
-        RenderServices.shapes().rounded(pillX, y + 5.0f * s, pillX + pillW, y + 27.0f * s,
+        float pillY = y + 5.0f * s;
+        float pillH = 22.0f * s;
+        RenderServices.shapes().rounded(pillX, pillY, pillX + pillW, pillY + pillH,
                 8.0f * s, theme.withAlpha(theme.blend(0xFFFFFFFF, MaterialClickTheme.PRIMARY_CONTAINER, expand),
                         (26.0f + 112.0f * expand + 18.0f * hover) * theme.alpha()));
-        FontLoaders.C14.drawCenteredString(current, pillX + pillW / 2.0f, y + 10.0f * s,
+        float currentY = pillY + Math.max(0.0f, pillH - FontLoaders.C14.getStringHeight(current)) / 2.0f + 0.5f * s;
+        FontLoaders.C14.drawCenteredString(current, pillX + pillW / 2.0f, currentY,
                 theme.withAlpha(theme.blend(MaterialClickTheme.MUTED, MaterialClickTheme.ON_PRIMARY_CONTAINER, expand),
                         255.0f * theme.alpha()));
 
-        if (expand <= 0.01f) {
+        Enum[] modes = mode.getModes();
+        float collapsedH = 32.0f * s;
+        float expandedH = (34.0f + modes.length * 23.0f) * s;
+        float optionClipH = AnimationUtil.lerp(collapsedH, expandedH, expand) - collapsedH;
+        if (optionClipH <= 0.5f) {
             return;
         }
-        float optionY = y + (34.0f - 5.0f * (1.0f - expand)) * s;
-        Enum[] modes = mode.getModes();
-        for (Enum option : modes) {
-            boolean active = option.name().equalsIgnoreCase(mode.getModeAsString());
-            RenderServices.shapes().rounded(x, optionY, x + width, optionY + 20.0f * s, 7.0f * s,
-                    theme.withAlpha(active ? MaterialClickTheme.PRIMARY_CONTAINER : 0xFFFFFFFF,
-                            (active ? 120.0f : 16.0f) * theme.alpha() * expand));
-            FontLoaders.C14.drawString(modeLabel(option.name()), x + 9.0f * s, optionY + 5.0f * s,
-                    active ? theme.withAlpha(MaterialClickTheme.ON_PRIMARY_CONTAINER, 255.0f * theme.alpha() * expand)
-                            : theme.withAlpha(MaterialClickTheme.MUTED, 255.0f * theme.alpha() * expand));
-            optionY += 23.0f * s;
+        gui.beginScissor(x, y + collapsedH, width, optionClipH);
+        try {
+            float optionY = y + (34.0f - 5.0f * (1.0f - expand)) * s;
+            for (Enum option : modes) {
+                boolean active = option.name().equalsIgnoreCase(mode.getModeAsString());
+                RenderServices.shapes().rounded(x, optionY, x + width, optionY + 20.0f * s, 7.0f * s,
+                        theme.withAlpha(active ? MaterialClickTheme.PRIMARY_CONTAINER : 0xFFFFFFFF,
+                                (active ? 120.0f : 16.0f) * theme.alpha() * expand));
+                FontLoaders.C14.drawString(modeLabel(option.name()), x + 9.0f * s, optionY + 5.0f * s,
+                        active ? theme.withAlpha(MaterialClickTheme.ON_PRIMARY_CONTAINER, 255.0f * theme.alpha() * expand)
+                                : theme.withAlpha(MaterialClickTheme.MUTED, 255.0f * theme.alpha() * expand));
+                optionY += 23.0f * s;
+            }
+        } finally {
+            gui.endScissor();
         }
     }
 
@@ -421,7 +432,7 @@ final class MaterialValueRenderer {
 
     private float modeProgress(Mode mode) {
         return gui.easedAnimation("value.mode.expand." + gui.animationKey(mode),
-                expandedModes.contains(mode) ? 1.0f : 0.0f, 0.28f, 0.0f, AnimationUtil.Ease.OUT_CUBIC);
+                expandedModes.contains(mode) ? 1.0f : 0.0f, 0.24f, 0.0f, AnimationUtil.Ease.IN_OUT_CUBIC);
     }
 
     private float sliderX(float x, float width) {
