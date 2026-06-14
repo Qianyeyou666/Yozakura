@@ -918,7 +918,7 @@ final class ClickGuiDetailPanel {
         float barX = gui.getSliderBarX(x, w);
         float barW = gui.getSliderBarWidth(w);
         float barY = y + 13.0f;
-        float pillW = 76.0f;
+        float pillW = gui.getDetailValuePillWidth();
         float pillX = x + w - pillW;
         String rangeText = gui.formatNumber(Math.min(first, second)) + " - " + gui.formatNumber(Math.max(first, second));
 
