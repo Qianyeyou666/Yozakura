@@ -224,11 +224,18 @@ final class ClickGuiModuleList {
         boolean hovered = VapeClickGui.isHovered(x, y, x + rowW, y + height, mouseX, mouseY);
         float hover = gui.animateMap(gui.hoverProgress, module, hovered && !gui.closing ? 1.0f : 0.0f, 0.16f);
         float click = gui.animateMap(gui.clickProgress, module, 0.0f, 0.22f);
+        // 选中动画：选中时从 0→1，取消选中时从 1→0
+        float selectRaw = gui.animateMap(gui.selectProgress, module, selected ? 1.0f : 0.0f, 0.14f);
+        float selectAnim = gui.easeSmooth(selectRaw);
         // 选中或悬停时的阴影效果
-        if (selected || hover > 0.04f) {
+        if (selectAnim > 0.02f || hover > 0.04f) {
+            int shadowColor = gui.blendColor(
+                    gui.shadowColor(190),
+                    gui.guiColors().accent,
+                    selectAnim);
+            float shadowStrength = (18.0f + hover * 12.0f) * (1.0f - selectAnim) + 42.0f * selectAnim;
             RenderServices.shapes().shadow(x, y, x + rowW, y + height, 7.0f,
-                    gui.withAlpha(selected ? gui.guiColors().accent : gui.shadowColor(190),
-                            (selected ? 42.0f : 18.0f + hover * 12.0f) * alpha * gui.guiAlpha), 5, 3.0f);
+                    gui.withAlpha(shadowColor, shadowStrength * alpha * gui.guiAlpha), 5, 3.0f);
         }
         // 点击时的脉冲阴影
         if (click > 0.02f) {
@@ -236,46 +243,55 @@ final class ClickGuiModuleList {
                     gui.withAlpha(gui.guiColors().accent, (14.0f + click * 36.0f) * alpha * gui.guiAlpha), 5, 2.8f);
         }
         boolean enabled = module.getState();
-        if (selected) {
-            // 选中状态：高亮毛玻璃卡片，边框直接使用主题强调色
+        // 选中动画：从默认背景渐变到选中背景
+        if (selectAnim > 0.005f) {
+            float fillAlpha = 232.0f * selectAnim * alpha * gui.guiAlpha;
+            float borderAlpha = 78.0f * selectAnim * alpha * gui.guiAlpha;
             gui.drawThemedGlass(x, y, x + rowW, y + height, 7.0f, 1.2f,
-                    gui.withAlpha(gui.guiColors().detailSelectedFill, 232.0f * alpha * gui.guiAlpha),
-                    gui.withAlpha(gui.guiColors().accent, 78.0f * alpha * gui.guiAlpha));
-        } else if (enabled) {
-            // 启用状态：带主题色混合背景
+                    gui.withAlpha(gui.guiColors().detailSelectedFill, fillAlpha),
+                    gui.withAlpha(gui.guiColors().accent, borderAlpha));
+        }
+        if (selectAnim < 0.995f && enabled) {
+            // 启用状态背景：随着选中动画增加而逐渐消失
+            float enabledAlpha = 46.0f * (1.0f - selectAnim) * alpha * gui.guiAlpha;
             int accent = gui.guiColors().accent;
             boolean light = gq.vapulite.module.render.HUD.isLightTheme() || gq.vapulite.module.render.HUD.isSakuraTheme();
             int bgColor = light
-                    ? gui.blendColor(accent, 0xFFFFFFFF, 0.55f)   // 浅色/粉：混白提亮
-                    : gui.blendColor(accent, 0xFF000000, 0.55f);  // 暗色：混黑压深
+                    ? gui.blendColor(accent, 0xFFFFFFFF, 0.55f)
+                    : gui.blendColor(accent, 0xFF000000, 0.55f);
             RenderServices.shapes().rounded(x, y, x + rowW, y + height, VapeClickGui.CARD_RADIUS,
-                    gui.withAlpha(bgColor, 46.0f * alpha * gui.guiAlpha));
+                    gui.withAlpha(bgColor, enabledAlpha));
         }
         // 悬停高亮（非选中状态）
-        if (!selected && hover > 0.01f) {
+        if (selectAnim < 0.8f && hover > 0.01f) {
             int hoverFill = gui.blendColor(new Color(0, 0, 0, 0).getRGB(), gui.guiColors().navDefaultHover, hover);
+            float hoverAlpha = gui.getAlpha(hoverFill) * (1.0f - selectAnim) * alpha * gui.guiAlpha;
             RenderServices.shapes().rounded(x, y, x + rowW, y + height, VapeClickGui.CARD_RADIUS,
-                    gui.withAlpha(hoverFill, gui.getAlpha(hoverFill) * alpha * gui.guiAlpha));
+                    gui.withAlpha(hoverFill, hoverAlpha));
         }
-        // 卡片底部分隔线（非选中状态）
-        if (!selected) {
+        // 卡片底部分隔线（选中动画完成时隐藏）
+        if (selectAnim < 0.5f) {
             RenderServices.shapes().line(x + 9.0f, y + height - 0.5f, x + rowW - 9.0f, y + height - 0.5f, 0.6f,
-                    gui.withAlpha(new Color(102, 110, 128).getRGB(), 22.0f * alpha * gui.guiAlpha));
+                    gui.withAlpha(new Color(102, 110, 128).getRGB(), 22.0f * (1.0f - selectAnim * 2.0f) * alpha * gui.guiAlpha));
         }
-        drawCardHeader(module, x, y, selected, alpha);
+        drawCardHeader(module, x, y, selectAnim, alpha);
     }
 
     /**
      * 绘制卡片头部（图标、名称、描述、开关、星标）。
      */
-    private void drawCardHeader(Module module, float x, float y, boolean selected, float alpha) {
+    private void drawCardHeader(Module module, float x, float y, float selectAnim, float alpha) {
         boolean enabled = module.getState();
         float centerY = y + 24.0f;
-        drawModuleIcon(module, x + 20.0f, centerY, selected, alpha);
-        // 模块名称
+        drawModuleIcon(module, x + 20.0f, centerY, selectAnim, alpha);
+        // 模块名称：选中时颜色从默认渐变到强调色
+        int nameColor = gui.blendColor(
+                enabled ? gui.guiColors().text : gui.guiColors().muted,
+                gui.guiColors().accent,
+                selectAnim * 0.7f);
         String name = gui.trim(module.getName(), FontLoaders.F14, 66.0f);
         gui.drawFont(name, x + 42.0f, y + 15.0f,
-                gui.withAlpha(enabled ? gui.guiColors().text : gui.guiColors().muted, 255.0f * alpha * gui.guiAlpha));
+                gui.withAlpha(nameColor, 255.0f * alpha * gui.guiAlpha));
         // 模块描述
         gui.drawFont(gui.trim(gui.getDescription(module), FontLoaders.F14, 70.0f), x + 42.0f, y + 30.0f,
                 gui.withAlpha(gui.guiColors().muted, 198.0f * alpha * gui.guiAlpha));
@@ -316,10 +332,11 @@ final class ClickGuiModuleList {
     }
 
     /** 绘制模块图标 */
-    private void drawModuleIcon(Module module, float centerX, float centerY, boolean selected, float alpha) {
-        int color = gui.withAlpha(selected || module.getState() ? gui.guiColors().text : gui.guiColors().muted,
-                220.0f * alpha * gui.guiAlpha);
-        gui.drawCenteredIcon(ClickGuiIcons.forModule(module), FontLoaders.I20, centerX, centerY, color);
+    private void drawModuleIcon(Module module, float centerX, float centerY, float selectAnim, float alpha) {
+        int baseColor = module.getState() ? gui.guiColors().text : gui.guiColors().muted;
+        int color = gui.blendColor(baseColor, gui.guiColors().accent, selectAnim * 0.8f);
+        gui.drawCenteredIcon(ClickGuiIcons.forModule(module), FontLoaders.I20, centerX, centerY,
+                gui.withAlpha(color, 220.0f * alpha * gui.guiAlpha));
     }
 
     /** 绘制收藏星标图标 */

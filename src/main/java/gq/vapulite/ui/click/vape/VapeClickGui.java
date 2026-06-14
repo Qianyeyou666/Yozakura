@@ -307,6 +307,7 @@ public class VapeClickGui extends GuiScreen {
     final Map<Module, Float> keyChipHoverProgress = new HashMap<Module, Float>(); // 侧栏按键按钮悬停动画进度
     final Map<Module, Float> keyChipClickProgress = new HashMap<Module, Float>(); // 侧栏按键按钮点击动画进度
     final Map<Module, Float> toggleProgress = new HashMap<Module, Float>();    // 模块开关动画进度
+    final Map<Module, Float> selectProgress = new HashMap<Module, Float>();    // 模块选中动画进度
     final Map<GuiTab, Float> tabHoverProgress = new HashMap<GuiTab, Float>();  // 标签页悬停动画进度
     final Map<Value, Float> valueToggleProgress = new HashMap<Value, Float>(); // 设置值开关动画进度
     final Map<Value, Float> valueActiveProgress = new HashMap<Value, Float>(); // 设置值激活动画进度
