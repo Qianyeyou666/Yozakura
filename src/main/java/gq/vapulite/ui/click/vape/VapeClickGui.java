@@ -787,8 +787,9 @@ public class VapeClickGui extends GuiScreen {
             dragModuleListStartOffsetX = modOX;
             dragModuleListStartOffsetY = modOY;
         }
-        // 详情面板拖拽句柄：面板顶部 36px 区域
-        if (isHovered(detailX, detailY, detailX + detailW, detailY + 36.0f, mouseX, mouseY)) {
+        // 详情面板拖拽句柄：面板顶部 36px 区域（但点击开关时不触发拖拽）
+        if (isHovered(detailX, detailY, detailX + detailW, detailY + 36.0f, mouseX, mouseY)
+                && !isSwitchHit(getDetailSwitchX(), getDetailSwitchY(detailY), mouseX, mouseY)) {
             draggingDetail = true;
             dragDetailStartMouseX = mouseX;
             dragDetailStartMouseY = mouseY;

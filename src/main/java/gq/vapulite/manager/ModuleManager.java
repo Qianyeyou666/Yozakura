@@ -122,7 +122,6 @@ public class ModuleManager {
         addModule("NoJumpDelay", new ModuleFactory() { public Module create() { return new NoJumpDelay(); } });
         addModule("ClickGUI", new ModuleFactory() { public Module create() { return new ClickGUI(); } });
         addModule("IGN", new ModuleFactory() { public Module create() { return new IGN(); } });
-        addModule("StateMessage", new ModuleFactory() { public Module create() { return new StateMessage(); } });
         addModule("HUD", new ModuleFactory() { public Module create() { return new HUD(); } });
         addModule("TargetHUD", new ModuleFactory() { public Module create() { return new TargetHUD(); } });
         addModule("TargetESP", new ModuleFactory() { public Module create() { return new TargetESP(); } });
