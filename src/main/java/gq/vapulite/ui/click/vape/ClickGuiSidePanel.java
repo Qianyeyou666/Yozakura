@@ -461,7 +461,7 @@ final class ClickGuiSidePanel {
     private void drawPanelTitle(String icon, String title, float y) {
         gui.drawCenteredIcon(icon, FontLoaders.I14, gui.sideX + 18.0f, y,
                 gui.withAlpha(gui.guiColors().accent, 220.0f * gui.guiAlpha));
-        gui.drawFont(title, gui.sideX + 30.0f, y - 5.0f,
+        gui.drawFont(title, gui.sideX + 30.0f, y - 1f,
                 gui.withAlpha(gui.guiColors().text, 236.0f * gui.guiAlpha));
     }
 
