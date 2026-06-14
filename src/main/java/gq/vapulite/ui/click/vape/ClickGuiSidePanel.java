@@ -50,7 +50,7 @@ final class ClickGuiSidePanel {
         if (!gui.sidePanelVisible) {
             return;
         }
-        float y = gui.contentY + introY;
+        float y = gui.sideY + introY;
         drawUserPanel(introY);
         drawOffsetPanel(ClickGUI.sideStatsOffsetX, ClickGUI.sideStatsOffsetY, new PanelDraw() {
             @Override
@@ -140,8 +140,8 @@ final class ClickGuiSidePanel {
      * 绘制用户面板（头像、用户名、Premium 标签）。
      */
     private void drawUserPanel(float introY) {
-        float x = gui.contentX;
-        float y = gui.navY + introY;
+        float x = gui.userPanelX;
+        float y = gui.userPanelY + introY;
         float w = VapeClickGui.CARD_W;
         RenderServices.shapes().shadow(x, y, x + w, y + VapeClickGui.NAV_H,
                 VapeClickGui.PANEL_RADIUS, gui.withAlpha(gui.shadowColor(220),
@@ -461,16 +461,16 @@ final class ClickGuiSidePanel {
     private void drawPanelTitle(String icon, String title, float y) {
         gui.drawCenteredIcon(icon, FontLoaders.I14, gui.sideX + 18.0f, y,
                 gui.withAlpha(gui.guiColors().accent, 220.0f * gui.guiAlpha));
-        gui.drawFont(title, gui.sideX + 30.0f, y - 5.0f,
+        gui.drawFont(title, gui.sideX + 30.0f, y - 1f,
                 gui.withAlpha(gui.guiColors().text, 236.0f * gui.guiAlpha));
     }
 
     private float getSummaryY() {
-        return gui.contentY + STATS_H + 10.0f;
+        return gui.sideY + STATS_H + 10.0f;
     }
 
     private float getStatsY() {
-        return gui.contentY;
+        return gui.sideY;
     }
 
     private float getSummaryH() {
@@ -478,7 +478,7 @@ final class ClickGuiSidePanel {
     }
 
     private float getDesignY() {
-        return gui.contentY + gui.panelH - DESIGN_H;
+        return gui.sideY + gui.panelH - DESIGN_H;
     }
 
     private float getPanelX(Numbers<Double> offsetX) {

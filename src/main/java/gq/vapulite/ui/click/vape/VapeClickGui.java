@@ -253,9 +253,9 @@ public class VapeClickGui extends GuiScreen {
     static final float DETAIL_MAX_W = 360.0f;    // 详情面板最大宽度
     static final float SIDE_W = 170.0f;          // 侧边面板宽度
     static final float DETAIL_HEADER_H = 98.0f;  // 详情面板头部高度
-    static final float VALUE_ROW_H = 26.0f;      // 普通值行高度
-    static final float NUMBER_ROW_H = 40.0f;     // 数字滑块行高度
-    static final float RANGE_ROW_H = 44.0f;      // 范围滑块行高度
+    static final float VALUE_ROW_H = 30f;      // 普通值行高度
+    static final float NUMBER_ROW_H = 30.0f;     // 数字滑块行高度
+    static final float RANGE_ROW_H = 30.0f;      // 范围滑块行高度
     static final float MODE_ROW_H = 30.0f;       // 模式选择行高度
     static final float COLOR_ROW_H = 64.0f;      // 颜色选择行高度
     static final float SWITCH_W = 28.0f;         // 开关宽度
@@ -330,11 +330,26 @@ public class VapeClickGui extends GuiScreen {
     float scrollbarAlpha;             // 滚动条透明度
     boolean draggingScrollbar;        // 是否正在拖拽滚动条
     float scrollbarDragOffset;        // 滚动条拖拽偏移
-    String draggingSidePanel;         // 当前正在拖拽的右侧面板
+    String draggingSidePanel;         // 当前正在拖拽的右侧面板子项
     float draggingSidePanelStartMouseX;
     float draggingSidePanelStartMouseY;
     float draggingSidePanelStartOffsetX;
     float draggingSidePanelStartOffsetY;
+    boolean draggingModuleList;       // 是否正在拖拽模块列表面板
+    float dragModuleListStartMouseX;
+    float dragModuleListStartMouseY;
+    float dragModuleListStartOffsetX;
+    float dragModuleListStartOffsetY;
+    boolean draggingDetail;           // 是否正在拖拽详情面板
+    float dragDetailStartMouseX;
+    float dragDetailStartMouseY;
+    float dragDetailStartOffsetX;
+    float dragDetailStartOffsetY;
+    boolean draggingUserPanel;       // 是否正在拖拽用户面板
+    float dragUserPanelStartMouseX;
+    float dragUserPanelStartMouseY;
+    float dragUserPanelStartOffsetX;
+    float dragUserPanelStartOffsetY;
     float openProgress;              // GUI 打开动画进度 0→1
     float guiAlpha;                  // 全局 GUI 透明度
     float navIndicatorX;             // 导航栏指示器 X 坐标
@@ -346,11 +361,15 @@ public class VapeClickGui extends GuiScreen {
     float contentX;                  // 内容区域 X
     float contentY;                  // 内容区域 Y
     float detailX;                   // 详情面板 X
+    float detailY;                   // 详情面板 Y（独立于 contentY，支持单独拖动）
     float detailW;                   // 详情面板宽度
     float sideX;                     // 侧边面板 X
+    float sideY;                     // 侧边面板 Y（独立于 contentY，支持单独拖动）
     float sideW;                     // 侧边面板宽度
     float windowW;                   // 窗口总宽度
     float panelH;                    // 面板高度
+    float userPanelX;                // 用户面板 X（独立于模块列表）
+    float userPanelY;                // 用户面板 Y
     int currentMouseX;               // 当前帧鼠标 X
     int currentMouseY;               // 当前帧鼠标 Y
     boolean sidePanelVisible;        // 侧边面板是否可见（屏幕宽度 >= 900px）
@@ -474,6 +493,7 @@ public class VapeClickGui extends GuiScreen {
         if (!closing) {
             moduleList.updateScrollbarDrag(mouseY);
             sidePanel.updateDrag(mouseX, mouseY);
+            updatePanelDrag(mouseX, mouseY);
             updateScroll(mouseX, mouseY);
         }
         // 颜色拖拽持续更新
@@ -512,14 +532,30 @@ public class VapeClickGui extends GuiScreen {
      */
     void updateLayout(ScaledResolution sr) {
         ClickGuiLayout layout = ClickGuiLayout.calculate(sr);
-        contentX = layout.contentX;
-        contentY = layout.contentY;
+        float modOX = ClickGUI.moduleOffsetX.getValue().floatValue();
+        float modOY = ClickGUI.moduleOffsetY.getValue().floatValue();
+        float detOX = ClickGUI.detailOffsetX.getValue().floatValue();
+        float detOY = ClickGUI.detailOffsetY.getValue().floatValue();
+        float userOX = ClickGUI.userPanelOffsetX.getValue().floatValue();
+        float userOY = ClickGUI.userPanelOffsetY.getValue().floatValue();
+        // 各面板有效坐标 = 布局计算值 + 面板独立偏移
+        // 模块列表
+        contentX = layout.contentX + modOX;
+        contentY = layout.contentY + modOY;
+        // 详情面板（独立拖动，导航栏不动）
+        detailX = layout.detailX + detOX;
+        detailY = layout.contentY + detOY;
+        // 导航栏固定在布局位置，不随详情面板移动
         navX = layout.navX;
         navY = layout.navY;
-        navW = layout.navW;
-        detailX = layout.detailX;
-        detailW = layout.detailW;
+        // 用户面板（独立于模块列表，默认位于模块列表左上方）
+        userPanelX = layout.contentX + userOX;
+        userPanelY = layout.navY + userOY;
+        // 侧面板：子面板各自已有独立偏移
         sideX = layout.sideX;
+        sideY = layout.contentY;
+        navW = layout.navW;
+        detailW = layout.detailW;
         sideW = layout.sideW;
         windowW = layout.windowW;
         panelH = layout.panelH;
@@ -662,7 +698,7 @@ public class VapeClickGui extends GuiScreen {
 
     /** @return 设置值区域的 Y 坐标 */
     float getDetailValuesY(float panelY) {
-        return panelY + DETAIL_HEADER_H + 8.0f;
+        return panelY + DETAIL_HEADER_H +2f;
     }
 
     /** @return 设置值区域的宽度 */
@@ -731,6 +767,76 @@ public class VapeClickGui extends GuiScreen {
      * <p>
      * 优先传递给详情面板（设置区域），如果不在详情区域内则传递给模块列表。
      */
+    /**
+     * 面板拖拽启动。
+     * <p>
+     * 检测鼠标是否在某个面板的拖拽句柄上，如果是则开始拖拽该面板。
+     * 句柄区域：模块列表顶部 24px、详情面板导航栏、侧面板顶部 24px。
+     */
+    private void startPanelDrag(int mouseX, int mouseY) {
+        float modOX = ClickGUI.moduleOffsetX.getValue().floatValue();
+        float modOY = ClickGUI.moduleOffsetY.getValue().floatValue();
+        float detOX = ClickGUI.detailOffsetX.getValue().floatValue();
+        float detOY = ClickGUI.detailOffsetY.getValue().floatValue();
+        // 模块列表拖拽句柄：顶部 24px（contentX/Y 已包含偏移）
+        if (isHovered(contentX, contentY, contentX + CARD_W, contentY + 24.0f, mouseX, mouseY)) {
+            draggingModuleList = true;
+            dragModuleListStartMouseX = mouseX;
+            dragModuleListStartMouseY = mouseY;
+            dragModuleListStartOffsetX = modOX;
+            dragModuleListStartOffsetY = modOY;
+        }
+        // 详情面板拖拽句柄：面板顶部 36px 区域
+        if (isHovered(detailX, detailY, detailX + detailW, detailY + 36.0f, mouseX, mouseY)) {
+            draggingDetail = true;
+            dragDetailStartMouseX = mouseX;
+            dragDetailStartMouseY = mouseY;
+            dragDetailStartOffsetX = detOX;
+            dragDetailStartOffsetY = detOY;
+        }
+        // 用户面板拖拽句柄：整个面板（CARD_W x NAV_H）
+        if (isHovered(userPanelX, userPanelY, userPanelX + CARD_W, userPanelY + NAV_H, mouseX, mouseY)) {
+            draggingUserPanel = true;
+            dragUserPanelStartMouseX = mouseX;
+            dragUserPanelStartMouseY = mouseY;
+            dragUserPanelStartOffsetX = ClickGUI.userPanelOffsetX.getValue().floatValue();
+            dragUserPanelStartOffsetY = ClickGUI.userPanelOffsetY.getValue().floatValue();
+        }
+    }
+
+    /**
+     * 更新面板拖拽位置。
+     * <p>
+     * 每帧调用，将鼠标位移转换为面板偏移并写入 ClickGUI 值。
+     */
+    private void updatePanelDrag(int mouseX, int mouseY) {
+        if (!Mouse.isButtonDown(0)) {
+            draggingModuleList = false;
+            draggingDetail = false;
+            draggingUserPanel = false;
+            return;
+        }
+        float min = -600f, max = 600f;
+        if (draggingModuleList) {
+            float nx = clamp(dragModuleListStartOffsetX + mouseX - dragModuleListStartMouseX, min, max);
+            float ny = clamp(dragModuleListStartOffsetY + mouseY - dragModuleListStartMouseY, min, max);
+            ClickGUI.moduleOffsetX.setValue((double) nx);
+            ClickGUI.moduleOffsetY.setValue((double) ny);
+        }
+        if (draggingDetail) {
+            float nx = clamp(dragDetailStartOffsetX + mouseX - dragDetailStartMouseX, min, max);
+            float ny = clamp(dragDetailStartOffsetY + mouseY - dragDetailStartMouseY, min, max);
+            ClickGUI.detailOffsetX.setValue((double) nx);
+            ClickGUI.detailOffsetY.setValue((double) ny);
+        }
+        if (draggingUserPanel) {
+            float nx = clamp(dragUserPanelStartOffsetX + mouseX - dragUserPanelStartMouseX, min, max);
+            float ny = clamp(dragUserPanelStartOffsetY + mouseY - dragUserPanelStartMouseY, min, max);
+            ClickGUI.userPanelOffsetX.setValue((double) nx);
+            ClickGUI.userPanelOffsetY.setValue((double) ny);
+        }
+    }
+
     void updateScroll(int mouseX, int mouseY) {
         int wheel = Mouse.getDWheel();
         if (draggingScrollbar || draggingSidePanel != null || wheel == 0) {
@@ -753,6 +859,10 @@ public class VapeClickGui extends GuiScreen {
             return;
         }
         ScaledResolution sr = new ScaledResolution(mc);
+        // 面板拖拽检测（在正常点击之前，不影响纯点击行为）
+        if (!closing && mouseButton == 0) {
+            startPanelDrag(mouseX, mouseY);
+        }
         if (closing || searchBar.mouseClicked(mouseX, mouseY, mouseButton) || handleNavClick(mouseX, mouseY)
                 || moduleList.handleScrollbarClick(mouseX, mouseY, mouseButton) || detailPanel.mouseClicked(mouseX, mouseY, mouseButton)
                 || sidePanel.mouseClicked(mouseX, mouseY, mouseButton)) {
@@ -802,6 +912,9 @@ public class VapeClickGui extends GuiScreen {
         clearDraggingColor();
         draggingScrollbar = false;
         draggingSidePanel = null;
+        draggingModuleList = false;
+        draggingDetail = false;
+        draggingUserPanel = false;
         super.mouseReleased(mouseX, mouseY, state);
     }
 
@@ -814,6 +927,12 @@ public class VapeClickGui extends GuiScreen {
         ClickGUI.sideSummaryOffsetY.setValue(0.0);
         ClickGUI.sideDesignOffsetX.setValue(0.0);
         ClickGUI.sideDesignOffsetY.setValue(0.0);
+        ClickGUI.moduleOffsetX.setValue(0.0);
+        ClickGUI.moduleOffsetY.setValue(0.0);
+        ClickGUI.detailOffsetX.setValue(0.0);
+        ClickGUI.detailOffsetY.setValue(0.0);
+        ClickGUI.userPanelOffsetX.setValue(0.0);
+        ClickGUI.userPanelOffsetY.setValue(0.0);
         draggingSidePanel = null;
         designResetButtonPressProgress = 1.0f;
         addToast("UI layout reset");
@@ -1203,7 +1322,7 @@ public class VapeClickGui extends GuiScreen {
     }
 
     float getModuleSwitchY(float cardY) {
-        return cardY + 14.0f;
+        return cardY + 17.0f;
     }
 
     float getDetailSwitchX() {

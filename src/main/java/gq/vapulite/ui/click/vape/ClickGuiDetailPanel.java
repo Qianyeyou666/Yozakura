@@ -9,7 +9,9 @@ import gq.vapulite.value.Numbers;
 import gq.vapulite.value.Option;
 import gq.vapulite.value.Value;
 import gq.vapulite.engine.font.FontLoaders;
+import gq.vapulite.engine.render.GLStateManager;
 import gq.vapulite.engine.render.ui.RenderServices;
+import org.lwjgl.opengl.GL11;
 import gq.vapulite.ui.click.ClickGuiIcons;
 import gq.vapulite.ui.UiPanel;
 import gq.vapulite.ui.UiTheme;
@@ -119,7 +121,7 @@ final class ClickGuiDetailPanel {
             }
         }
         // 面板定位
-        float y = gui.contentY + introY;
+        float y = gui.detailY + introY;
         gui.settingsScroll = gui.animate(gui.settingsScroll, gui.targetSettingsScroll, 0.14f);
         // 绘制面板背
         RenderServices.shapes().shadow(gui.detailX, y, gui.detailX + gui.detailW, y + gui.panelH,
@@ -140,9 +142,9 @@ final class ClickGuiDetailPanel {
 
         // 绘制模块标题区域（图标 + 名称 + 描述 + 开关）
         float headerX = gui.detailX + 20.0f;
-        float headerY = y + 16.0f;
-        drawAnimeGirl(headerX + 200f, headerY - 8f);
-        drawModuleIcon(gui.selectedModule, headerX + 13.0f, headerY + 13.0f);
+        float headerY = y + 20.0f;
+        drawAnimeGirl(headerX + 200f, headerY - 12f);
+        drawModuleIcon(gui.selectedModule, headerX + 13.0f, headerY + 11.0f);
         FontLoaders.F16.drawString(gui.trim(gui.selectedModule.getName(), FontLoaders.F16, gui.detailW - 116.0f),
                 headerX + 38.0f, headerY + 1.0f, gui.withAlpha(gui.guiColors().text, 255.0f * gui.guiAlpha));
         gui.drawFont(gui.trim(gui.getDescription(gui.selectedModule), FontLoaders.F14, gui.detailW - 150.0f),
@@ -207,7 +209,7 @@ final class ClickGuiDetailPanel {
         }
         // 模块开关
         float headerToggleX = gui.getDetailSwitchX();
-        float headerToggleY = gui.getDetailSwitchY(gui.contentY);
+        float headerToggleY = gui.getDetailSwitchY(gui.detailY);
         if (mouseButton == 0 && gui.isSwitchHit(headerToggleX, headerToggleY, mouseX, mouseY)) {
             gui.selectedModule.setState(!gui.selectedModule.getState());
             gui.clickProgress.put(gui.selectedModule, 1.0f);
@@ -219,7 +221,7 @@ final class ClickGuiDetailPanel {
         }
         // 设置值区域点击
         float x = gui.getDetailValuesX();
-        float y = gui.getDetailValuesY(gui.contentY);
+        float y = gui.getDetailValuesY(gui.detailY);
         float w = gui.getDetailValuesWidth();
         float h = gui.getDetailValuesHeight();
         if (!VapeClickGui.isHovered(x - 8.0f, y, x + w + 8.0f, y + h, mouseX, mouseY)) {
@@ -232,8 +234,8 @@ final class ClickGuiDetailPanel {
      * 处理设置区域的滚轮滚动。
      */
     boolean updateScroll(int mouseX, int mouseY, int wheel) {
-        if (wheel == 0 || gui.selectedModule == null || !VapeClickGui.isHovered(gui.getDetailValuesX(), gui.getDetailValuesY(gui.contentY),
-                gui.getDetailValuesX() + gui.getDetailValuesWidth(), gui.getDetailValuesY(gui.contentY) + gui.getDetailValuesHeight(),
+        if (wheel == 0 || gui.selectedModule == null || !VapeClickGui.isHovered(gui.getDetailValuesX(), gui.getDetailValuesY(gui.detailY),
+                gui.getDetailValuesX() + gui.getDetailValuesWidth(), gui.getDetailValuesY(gui.detailY) + gui.getDetailValuesHeight(),
                 mouseX, mouseY)) {
             return false;
         }
@@ -408,7 +410,7 @@ final class ClickGuiDetailPanel {
         }
 
         float contentX = gui.detailX + 13.0f;
-        float contentY = gui.getDetailValuesY(panelY) - 8.0f;
+        float contentY = gui.getDetailValuesY(panelY) - 2f;
         float contentW = gui.detailW - 26.0f;
         float contentH = Math.max(24.0f, gui.panelH - (contentY - panelY) - 10.0f);
         RenderServices.shapes().roundedBorder(contentX, contentY, contentX + contentW, contentY + contentH, 7.0f, 0.6f,
@@ -477,14 +479,17 @@ final class ClickGuiDetailPanel {
         // 标签栏背景
         if (!isUnifiedDarkSurface()) {
             gui.drawThemedGlass(tabX, tabY, tabX + tabW, tabY + tabH, 5.0f, 0.8f,
-                    gui.withAlpha(surfaceColor(true), 96.0f * gui.guiAlpha),
+                    gui.withAlpha(gui.guiColors().detailSelectedFill, 96.0f * gui.guiAlpha),
                     gui.withAlpha(gui.guiColors().glassBorder, 34.0f * gui.guiAlpha));
         }
         float each = tabW / DETAIL_TABS.length;
         // 底部指示线目标位置
         float targetIndicatorX = tabX + each * gui.detailTabIndex + 9.0f;
         if (tabIndicatorX < 0f) tabIndicatorX = targetIndicatorX;
-        tabIndicatorX = gui.animate(tabIndicatorX, targetIndicatorX, 0.14f);
+        // 拖拽面板时跳过动画，直接定位，避免指示线滞后漂动
+        tabIndicatorX = (gui.draggingDetail || gui.draggingModuleList)
+                ? targetIndicatorX
+                : gui.animate(tabIndicatorX, targetIndicatorX, 0.14f);
         for (int i = 0; i < DETAIL_TABS.length; i++) {
             float x = tabX + each * i;
             boolean active = i == gui.detailTabIndex;
@@ -522,7 +527,7 @@ final class ClickGuiDetailPanel {
      */
     private boolean handleTabClick(int mouseX, int mouseY) {
         float tabX = gui.detailX + 6.0f;
-        float tabY = gui.contentY + currentIntroY + 58.0f;
+        float tabY = gui.detailY + currentIntroY + 58.0f;
         float tabW = gui.detailW - 12.0f;
         float tabH = 31.0f;
         if (!VapeClickGui.isHovered(tabX, tabY, tabX + tabW, tabY + tabH, mouseX, mouseY)) {
@@ -851,7 +856,7 @@ final class ClickGuiDetailPanel {
     /** 绘制布尔选项行（标签 + 开关） */
     private void drawOption(Option value, float x, float y, float w, float alpha) {
         boolean enabled = Boolean.TRUE.equals(value.getValue());
-        gui.drawFont(gui.trim(gui.getDisplayName(value), FontLoaders.F14, w - 68.0f), x, y + 8.0f,
+        gui.drawFont(gui.trim(gui.getDisplayName(value), FontLoaders.F14, w - 68.0f), x, y + 12.0f,
                 gui.withAlpha(enabled ? gui.guiColors().text : gui.guiColors().muted, 255.0f * alpha * gui.guiAlpha));
         gui.drawSwitch(gui.getOptionSwitchX(x, w), gui.getOptionSwitchY(y), enabled, alpha, value);
     }
@@ -868,11 +873,11 @@ final class ClickGuiDetailPanel {
         float labelW = gui.getDetailLabelWidth(w);
         float barX = gui.getSliderBarX(x, w);
         float barW = gui.getSliderBarWidth(w);
-        float barY = y + 15.0f;
+        float barY = y + 13.0f;
         float pillW = gui.getDetailValuePillWidth();
         float pillX = x + w - pillW;
         // 标签
-        gui.drawFont(gui.trim(gui.getDisplayName(value), FontLoaders.F14, labelW - 8.0f), x, y + 8.0f,
+        gui.drawFont(gui.trim(gui.getDisplayName(value), FontLoaders.F14, labelW - 8.0f), x, y + 12.0f,
                 gui.withAlpha(gui.guiColors().text, 245.0f * alpha * gui.guiAlpha));
         // 滑块轨道
         RenderServices.shapes().rounded(barX, barY, barX + barW, barY + 2.0f, 2.0f,
@@ -912,14 +917,14 @@ final class ClickGuiDetailPanel {
         float labelW = gui.getDetailLabelWidth(w);
         float barX = gui.getSliderBarX(x, w);
         float barW = gui.getSliderBarWidth(w);
-        float barY = y + 28.0f;
-        float pillW = 76.0f;
+        float barY = y + 13.0f;
+        float pillW = gui.getDetailValuePillWidth();
         float pillX = x + w - pillW;
         String rangeText = gui.formatNumber(Math.min(first, second)) + " - " + gui.formatNumber(Math.max(first, second));
 
         // 标签和数值
         gui.drawFont(gui.trim(gui.getRangeDisplayName(minValue), FontLoaders.F14, labelW - 8.0f),
-                x, y + 8.0f, gui.withAlpha(gui.guiColors().text, 245.0f * alpha * gui.guiAlpha));
+                x, y + 12.0f, gui.withAlpha(gui.guiColors().text, 245.0f * alpha * gui.guiAlpha));
         drawValuePill(rangeText, pillX, y + 3.0f, pillW, alpha);
         // 轨道
         RenderServices.shapes().rounded(barX, barY, barX + barW, barY + 2.2f, 2.0f,
@@ -954,7 +959,7 @@ final class ClickGuiDetailPanel {
         float pillW = Math.min(112.0f, Math.max(72.0f, w - labelW));
         float pillX = x + w - pillW;
         boolean expanded = expandedModes.contains(value);
-        gui.drawFont(gui.trim(gui.getDisplayName(value), FontLoaders.F14, labelW - 8.0f), x, y + 8.0f,
+        gui.drawFont(gui.trim(gui.getDisplayName(value), FontLoaders.F14, labelW - 8.0f), x, y + 12.0f,
                 gui.withAlpha(gui.guiColors().text, 245.0f * alpha * gui.guiAlpha));
         // 下拉按钮（展开时样式不同）
         float borderAlpha = expanded ? 110.0f : 48.0f;
@@ -968,10 +973,30 @@ final class ClickGuiDetailPanel {
                 pillX + 10.0f, y + 11.0f,
                 gui.withAlpha(expanded ? gui.guiColors().accent : gui.guiColors().text,
                         (expanded ? 240.0f : 230.0f) * alpha * gui.guiAlpha));
-        // 展开/收起箭头
-        gui.drawFont(expanded ? "^" : "v", pillX + pillW - 15.0f, y + 8.0f,
-                gui.withAlpha(expanded ? gui.guiColors().accent : gui.guiColors().muted,
-                        (expanded ? 220.0f : 185.0f) * alpha * gui.guiAlpha));
+        // 展开/收起箭头 — GL_LINE_STRIP 无重叠 V/^
+        float arrowCX = pillX + pillW - 12.0f;
+        float arrowCY = y + 13.0f;
+        float arrowS = 2.8f;
+        int arrowColor = gui.withAlpha(expanded ? gui.guiColors().accent : gui.guiColors().muted,
+                (expanded ? 220.0f : 185.0f) * alpha * gui.guiAlpha);
+        GLStateManager.begin2D();
+        try {
+            GL11.glLineWidth(1.3f);
+            RenderUtil.glColor(arrowColor);
+            GL11.glBegin(GL11.GL_LINE_STRIP);
+            if (expanded) {
+                GL11.glVertex2f(arrowCX - arrowS, arrowCY + 1.8f);
+                GL11.glVertex2f(arrowCX, arrowCY - 2.0f);
+                GL11.glVertex2f(arrowCX + arrowS, arrowCY + 1.8f);
+            } else {
+                GL11.glVertex2f(arrowCX - arrowS, arrowCY - 1.8f);
+                GL11.glVertex2f(arrowCX, arrowCY + 2.0f);
+                GL11.glVertex2f(arrowCX + arrowS, arrowCY - 1.8f);
+            }
+            GL11.glEnd();
+        } finally {
+            GLStateManager.end2D();
+        }
     }
 
     /** 绘制数值标签（毛玻璃圆角矩形 + 居中文字） */
@@ -1009,7 +1034,7 @@ final class ClickGuiDetailPanel {
      * 计算给定 Mode 值在当前设置列表中的 Y 坐标。
      */
     private float getModeValueY(Mode value) {
-        float y = gui.getDetailValuesY(gui.contentY + currentIntroY) + gui.settingsScroll;
+        float y = gui.getDetailValuesY(gui.detailY + currentIntroY) + gui.settingsScroll;
         List<Value> values = gui.selectedModule.getValues();
         for (int i = 0; i < values.size(); i++) {
             if (!gui.isDetailValueVisible(gui.selectedModule, i)) {
@@ -1036,7 +1061,7 @@ final class ClickGuiDetailPanel {
         float pillW = Math.min(112.0f, Math.max(72.0f, gui.getDetailValuesWidth() - labelW));
         float pillX = gui.getDetailValuesX() + gui.getDetailValuesWidth() - pillW;
         float valueY = getModeValueY(value);
-        float detailY = gui.getDetailValuesY(gui.contentY + currentIntroY);
+        float detailY = gui.getDetailValuesY(gui.detailY + currentIntroY);
         float detailH = gui.getDetailValuesHeight();
         float dropdownY = valueY + 23.0f;
         float fullDropdownH = modes.length * DROPDOWN_ROW_H;

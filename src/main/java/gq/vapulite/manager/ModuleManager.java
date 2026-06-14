@@ -130,6 +130,8 @@ public class ModuleManager {
         addModule("KeyboardDisplay", new ModuleFactory() { public Module create() { return new KeyboardDisplay(); } });
         addModule("FullBright", new ModuleFactory() { public Module create() { return new FullBright(); } });
         addModule("AutoTools", new ModuleFactory() { public Module create() { return new AutoTools(); } });
+        addModule("InventoryManager", new ModuleFactory() { public Module create() { return new InventoryManager(); } });
+        addModule("ChestStealer", new ModuleFactory() { public Module create() { return new ChestStealer(); } });
         addModule("IQBooster", new ModuleFactory() { public Module create() { return new IQBooster(); } });
         addModule("AutoClicker", new ModuleFactory() { public Module create() { return new AutoClicker(); } });
         addModule("FastPlace", new ModuleFactory() { public Module create() { return new FastPlace(); } });
