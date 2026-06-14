@@ -914,11 +914,12 @@ public final class SakuraClickGui extends GuiScreen {
 
     private <T> float animateStateMap(Map<T, Float> map, T key, float target, float speed) {
         Float current = map.get(key);
-        float value = current == null ? 1.0f - target : current.floatValue();
+        float value = current == null ? 0.0f : current.floatValue();
         value = animate(value, target, speed);
         if (value < 0.01f && target <= 0.0f) {
-            map.remove(key);
-            return 0.0f;
+            value = 0.0f;
+            map.put(key, value);
+            return value;
         }
         if (value > 0.99f && target >= 1.0f) {
             value = 1.0f;

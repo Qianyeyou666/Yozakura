@@ -60,6 +60,11 @@ public class HUD extends Module {
         GRAY
     }
 
+    public enum ArrayListTheme {
+        OLD,
+        SAKURA
+    }
+
     private static final class HudPalette {
         final int text, muted, glass, glassSoft, border, accent, accentAlt;
         final int vapePrimary, vapeSecondary, vapeTertiary;
@@ -128,6 +133,7 @@ public class HUD extends Module {
     private final Option<Boolean> glow = new Option<Boolean>("Glow", "Glow", false);
     private final Mode<HudStyle> hudStyle = new Mode<HudStyle>("HUD Style", "HUDStyle", HudStyle.values(), HudStyle.VAPULITE);
     private final Mode<Theme> theme = new Mode<Theme>("Theme", "Theme", Theme.values(), Theme.DARK);
+    private final Mode<ArrayListTheme> arrayListTheme = new Mode<ArrayListTheme>("ArrayList Theme", "ArrayListTheme", ArrayListTheme.values(), ArrayListTheme.OLD);
     private final Numbers<Double> alpha = new Numbers<Double>("Alpha", "Alpha", 128.0, 45.0, 180.0, 5.0);
     private final Numbers<Double> radius = new Numbers<Double>("Radius", "Radius", 8.0, 3.0, 14.0, 1.0);
     private final Numbers<Double> watermarkX = new Numbers<Double>("Watermark X", "WatermarkX", 6.0, -1.0, 2000.0, 1.0);
@@ -151,7 +157,7 @@ public class HUD extends Module {
         Chinese = "HUD界面";
         instance = this;
         activeStyle = getSelectedStyle();
-        this.addValues(theme, watermark, arrayList, backgrounds, keybinds, parameters, notifications,
+        this.addValues(arrayListTheme, theme, watermark, arrayList, backgrounds, keybinds, parameters, notifications,
                 potionEffects, inventoryDisplay, glow, alpha, radius, watermarkX, watermarkY, watermarkScale,
                 moduleListX, moduleListY, moduleListScale, potionX, potionY, potionScale, inventoryX, inventoryY,
                 inventoryScale);
@@ -468,7 +474,10 @@ public class HUD extends Module {
             return;
         }
 
-        List<ModuleListEntry> entries = buildModuleListEntries(modules, FontLoaders.C18, 4.0f);
+        final boolean sakura = arrayListTheme.getValue() == ArrayListTheme.SAKURA;
+        final CFontRenderer font = sakura ? FontLoaders.C14 : FontLoaders.C18;
+        final float fontSizeGap = sakura ? 3.0f : 4.0f;
+        List<ModuleListEntry> entries = buildModuleListEntries(modules, font, fontSizeGap);
         entries.sort(new Comparator<ModuleListEntry>() {
             @Override
             public int compare(ModuleListEntry first, ModuleListEntry second) {
@@ -476,10 +485,12 @@ public class HUD extends Module {
             }
         });
 
+        final float iconSlotW = sakura ? 18.0f : 22.0f;
+        final float rightPad = sakura ? 14.0f : 17.0f;
         float listW = 88.0f;
         int visibleRows = 0;
         for (ModuleListEntry entry : entries) {
-            listW = Math.max(listW, entry.labelWidth + 39.0f);
+            listW = Math.max(listW, entry.labelWidth + iconSlotW + rightPad);
             visibleRows++;
             if (visibleRows > 22) {
                 break;
@@ -488,8 +499,9 @@ public class HUD extends Module {
         if (modules.isEmpty() && !HudDrag.isEditMode()) {
             return;
         }
-        float rowH = 18.0f;
-        float listH = modules.isEmpty() ? 20.0f : Math.min(23, Math.max(1, visibleRows)) * (rowH + 3.0f) - 3.0f;
+        final float rowH = sakura ? 20.0f : 18.0f;
+        final float rowGap = sakura ? 2.0f : 3.0f;
+        float listH = modules.isEmpty() ? 20.0f : Math.min(23, Math.max(1, visibleRows)) * (rowH + rowGap) - rowGap;
         float uiScale = getScale(moduleListScale);
         ScaledResolution sr = new ScaledResolution(mc);
         float[] pos = HudDrag.update("hud_module_list", moduleListX, moduleListY, moduleListScale,
@@ -501,8 +513,15 @@ public class HUD extends Module {
         if (modules.isEmpty()) {
             beginScaled(pos[0], y, uiScale);
             try {
-                drawGlass(pos[0], y, pos[0] + listW, y + listH, round, getGlassAlpha(), 42);
-                FontLoaders.C14.drawString("Module List", pos[0] + 10.0f, y + 7.0f, withAlpha(palette().muted, 220));
+                if (sakura) {
+                    drawSakuraPanel(pos[0], y, pos[0] + listW, y + listH, round, 0.85f);
+                    drawTextGlow(FontLoaders.C14, "Module List", pos[0] + 12.0f, y + 6.0f, 0.62f);
+                    FontLoaders.C14.drawString("Module List", pos[0] + 12.0f, y + 6.0f,
+                            withAlpha(SAKURA_MUTED, 210));
+                } else {
+                    drawGlass(pos[0], y, pos[0] + listW, y + listH, round, getGlassAlpha(), 42);
+                    FontLoaders.C14.drawString("Module List", pos[0] + 10.0f, y + 7.0f, withAlpha(palette().muted, 220));
+                }
             } finally {
                 endScaled();
             }
@@ -522,14 +541,15 @@ public class HUD extends Module {
 
                 int textW = entry.labelWidth;
                 String icon = ClickGuiIcons.forModule(module);
-                float iconSlotW = 22.0f;
-                float rowW = textW + iconSlotW + 17.0f;
-                float x = right - rowW - (1.0f - progress) * 10.0f;
-                int accent = getCategoryAccent(module);
-                int rowAlpha = Math.round(getGlassAlpha() * progress);
+                float rowW = textW + iconSlotW + rightPad;
+                float x = right - rowW - (1.0f - progress) * 8.0f;
+                int accent = sakura ? SAKURA : getCategoryAccent(module);
 
-
-                if (Boolean.TRUE.equals(backgrounds.getValue())) {
+                if (sakura) {
+                    drawSakuraModuleRow(module, icon, label, x, y, right, rowH,
+                            progress, accent, font, iconSlotW);
+                } else if (Boolean.TRUE.equals(backgrounds.getValue())) {
+                    int rowAlpha = Math.round(getGlassAlpha() * progress);
                     RenderServices.shapes().shadow(x, y, right, y + rowH, round,
                             withAlpha(palette().shadowColor, Math.round(34.0f * progress)), 4, 2.4f);
                     drawThemedFrostedGlass(x, y, right, y + rowH, round, 0.8f,
@@ -547,7 +567,7 @@ public class HUD extends Module {
                             withAlpha(accent, Math.round(245.0f * progress)));
                 }
 
-                y += rowH + 3.0f;
+                y += rowH + rowGap;
                 index++;
                 if (index > 22) {
                     break;
@@ -558,6 +578,71 @@ public class HUD extends Module {
         }
         HudDrag.drawHint("hud_module_list", pos[0], pos[1], listW * uiScale, listH * uiScale, round * uiScale);
         HudDrag.handleScroll("hud_module_list", moduleListScale, pos[0], pos[1], listW * uiScale, listH * uiScale, 0.65f, 1.8f);
+    }
+
+    private void drawSakuraModuleRow(Module module, String icon, ModuleListLabel label,
+                                      float x, float y, float right, float rowH,
+                                      float progress, int accent, CFontRenderer font, float iconSlotW) {
+        boolean enabled = module.getState();
+        float glassAlpha = getGlassAlpha() * 0.01f;
+
+        // Double shadow (black + sakura glow)
+        RenderServices.shapes().shadow(x, y, right, y + rowH, 4.0f,
+                withAlpha(0xFF000000, Math.round(48.0f * progress)), 5, 2.0f);
+        RenderServices.shapes().shadow(x, y, right, y + rowH, 4.0f,
+                withAlpha(SAKURA, Math.round(22.0f * progress)), 4, 1.6f);
+
+        // Dark glass background with sakura border
+        RenderServices.liquidGlass().roundedBorder(x, y, right, y + rowH, 4.0f, 0.50f,
+                withAlpha(SAKURA_GLASS, Math.round(152.0f * glassAlpha * progress)),
+                withAlpha(SAKURA, Math.round(28.0f * progress)), sakuraGlassSettings());
+
+        // Right-edge sakura accent bar
+        float barAlpha = enabled ? 0.78f : 0.35f;
+        RenderServices.shapes().verticalGradient(right - 2.5f, y + 3.5f, right - 1.0f, y + rowH - 3.5f,
+                withAlpha(SAKURA, Math.round(190.0f * barAlpha * progress)),
+                withAlpha(SAKURA_STRONG, Math.round(140.0f * barAlpha * progress)));
+
+        // Icon with sakura tint
+        float iconX = x + iconSlotW / 2.0f + 2.0f;
+        float iconY = y + rowH / 2.0f;
+        int iconColor = enabled ? withAlpha(SAKURA, Math.round(228.0f * progress))
+                : withAlpha(SAKURA_MUTED, Math.round(155.0f * progress));
+        drawCenteredIcon(icon, FontLoaders.I16, iconX, iconY, iconColor);
+
+        // Module name with glow
+        float textX = x + iconSlotW + 2.0f;
+        float textY = y + (rowH - font.getHeight()) / 2.0f + 1.0f;
+        int nameColor = enabled ? withAlpha(SAKURA_TEXT, Math.round(242.0f * progress))
+                : withAlpha(SAKURA_MUTED, Math.round(200.0f * progress));
+        if (enabled) {
+            drawTextGlow(font, label.name, textX, textY, progress * 0.55f);
+        }
+        font.drawString(label.name, textX, textY, nameColor);
+
+        // Parameter and key in muted sakura
+        float cursor = textX + font.getStringWidth(label.name);
+        if (label.parameter.length() > 0) {
+            cursor += 3.0f;
+            font.drawString(label.parameter, cursor, textY,
+                    withAlpha(SAKURA_MUTED, Math.round(170.0f * progress)));
+            cursor += font.getStringWidth(label.parameter);
+        }
+        if (label.key.length() > 0) {
+            cursor += 3.0f;
+            font.drawString(label.key, cursor, textY,
+                    withAlpha(SAKURA_MUTED, Math.round(148.0f * progress)));
+        }
+
+        // Toggle indicator dot
+        if (enabled) {
+            float dotX = right - 8.0f;
+            float dotY = y + rowH / 2.0f;
+            RenderServices.shapes().shadow(dotX - 2.5f, dotY - 2.5f, dotX + 2.5f, dotY + 2.5f,
+                    2.5f, withAlpha(SAKURA, Math.round(42.0f * progress)), 3, 1.2f);
+            RenderServices.shapes().circle(dotX, dotY, 0, 360, 2.2f,
+                    withAlpha(0xFFFFF3FA, Math.round(235.0f * progress)));
+        }
     }
 
     private void drawVapeModuleList(int screenWidth, int screenHeight, float factor, List<Module> modules) {
