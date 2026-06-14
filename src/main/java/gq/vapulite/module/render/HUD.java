@@ -65,6 +65,11 @@ public class HUD extends Module {
         SAKURA
     }
 
+    public enum NotificationTheme {
+        OLD,
+        SAKURA
+    }
+
     private static final class HudPalette {
         final int text, muted, glass, glassSoft, border, accent, accentAlt;
         final int vapePrimary, vapeSecondary, vapeTertiary;
@@ -134,6 +139,7 @@ public class HUD extends Module {
     private final Mode<HudStyle> hudStyle = new Mode<HudStyle>("HUD Style", "HUDStyle", HudStyle.values(), HudStyle.VAPULITE);
     private final Mode<Theme> theme = new Mode<Theme>("Theme", "Theme", Theme.values(), Theme.DARK);
     private final Mode<ArrayListTheme> arrayListTheme = new Mode<ArrayListTheme>("ArrayList Theme", "ArrayListTheme", ArrayListTheme.values(), ArrayListTheme.OLD);
+    private final Mode<NotificationTheme> notificationTheme = new Mode<NotificationTheme>("Notification Theme", "NotificationTheme", NotificationTheme.values(), NotificationTheme.OLD);
     private final Numbers<Double> alpha = new Numbers<Double>("Alpha", "Alpha", 128.0, 45.0, 180.0, 5.0);
     private final Numbers<Double> radius = new Numbers<Double>("Radius", "Radius", 8.0, 3.0, 14.0, 1.0);
     private final Numbers<Double> watermarkX = new Numbers<Double>("Watermark X", "WatermarkX", 6.0, -1.0, 2000.0, 1.0);
@@ -157,7 +163,7 @@ public class HUD extends Module {
         Chinese = "HUD界面";
         instance = this;
         activeStyle = getSelectedStyle();
-        this.addValues(arrayListTheme, theme, watermark, arrayList, backgrounds, keybinds, parameters, notifications,
+        this.addValues(notificationTheme, arrayListTheme, theme, watermark, arrayList, backgrounds, keybinds, parameters, notifications,
                 potionEffects, inventoryDisplay, glow, alpha, radius, watermarkX, watermarkY, watermarkScale,
                 moduleListX, moduleListY, moduleListScale, potionX, potionY, potionScale, inventoryX, inventoryY,
                 inventoryScale);
@@ -1393,6 +1399,13 @@ public class HUD extends Module {
 
     public static boolean isGrayTheme() {
         return getTheme() == Theme.GRAY;
+    }
+
+    public static boolean isNotificationSakura() {
+        if (instance != null && instance.notificationTheme != null) {
+            return instance.notificationTheme.getValue() == NotificationTheme.SAKURA;
+        }
+        return false;
     }
 
     private void beginScaled(float x, float y, float scale) {

@@ -8,6 +8,7 @@ import gq.vapulite.util.render.RenderUtil;
 import gq.vapulite.util.time.TimerUtil;
 import gq.vapulite.engine.font.CFontRenderer;
 import gq.vapulite.engine.font.FontLoaders;
+import gq.vapulite.engine.render.ui.LiquidGlassSettings;
 import gq.vapulite.engine.render.ui.RenderServices;
 import net.minecraft.client.Minecraft;
 
@@ -35,6 +36,17 @@ public class Notification {
     private static int onSurfaceColor() { return isLightStyle() ? 0xFF181A20 : 0xFFFFFFFF; }
     private static int progressTrack() { return isLightStyle() ? 0xFF000000 : 0xFFFFFFFF; }
     private static int shadowColor() { return isLightStyle() ? 0xFFFFFFFF : 0xFF000000; }
+
+    // Sakura-style colors (dark theme, matching SakuraClickGui)
+    private static final int SK_TEXT = 0xFFF5F0F5;
+    private static final int SK_MUTED = 0xFFB8AEB8;
+    private static final int SK_SAKURA = 0xFFFFB7D1;
+    private static final int SK_SAKURA_STRONG = 0xFFFF80B3;
+    private static final int SK_GLASS = 0xFF08080D;
+    private static final int SK_GLASS_SOFT = 0xFF160F15;
+    private static final int SK_BORDER = 0xFFFFB7D1;
+    private static final int SK_ACCENT = 0xFFFFB7D1;
+    private static final int SK_ACCENT_ALT = 0xFFFF80B3;
 
     public static Minecraft mc = Minecraft.getMinecraft();
 
@@ -96,6 +108,11 @@ public class Notification {
 
         if (HUD.useVapeSimpleStyle()) {
             drawVape(x1, y1, x2, y2, bodyAlpha, accent, progress);
+            return;
+        }
+
+        if (HUD.isNotificationSakura()) {
+            drawSakura(x1, y1, x2, y2, bodyAlpha, accent, progress);
             return;
         }
 
@@ -168,6 +185,72 @@ public class Notification {
         RenderServices.shapes().progressBar(x1 + 51.0f, y2 - 5.0f, x2 - 12.0f, y2 - 3.2f, 0.9f, progress,
                 withAlpha(progressTrack(), Math.round(16.0f * bodyAlpha)),
                 withAlpha(accent, Math.round(150.0f * bodyAlpha)));
+    }
+
+    private void drawSakura(float x1, float y1, float x2, float y2, float bodyAlpha, int accent, float progress) {
+        float radius = 8.0f;
+        float sakuraAlpha = bodyAlpha;
+
+        // Double shadow (black + sakura glow)
+        RenderServices.shapes().shadow(x1, y1, x2, y2, radius,
+                withAlpha(0xFF000000, Math.round(64.0f * sakuraAlpha)), 6, 2.4f);
+        RenderServices.shapes().shadow(x1, y1, x2, y2, radius,
+                withAlpha(SK_SAKURA, Math.round(26.0f * sakuraAlpha)), 4, 1.8f);
+
+        // Dark glass background with sakura border
+        RenderServices.liquidGlass().roundedBorder(x1, y1, x2, y2, radius, 0.52f,
+                withAlpha(SK_GLASS, Math.round(158.0f * sakuraAlpha)),
+                withAlpha(SK_BORDER, Math.round(32.0f * sakuraAlpha)),
+                LiquidGlassSettings.defaults()
+                        .withBlurRadius(18.0f)
+                        .withBlurDownscale(0.92f)
+                        .withNoise(0.018f)
+                        .withRefractionScale(1.16f)
+                        .withHighlight(1.05f));
+
+        // Top accent gradient line
+        RenderServices.shapes().horizontalGradient(x1 + 10.0f, y1 + 4.0f, x2 - 10.0f, y1 + 5.1f,
+                withAlpha(SK_SAKURA, Math.round(130.0f * sakuraAlpha)),
+                withAlpha(SK_SAKURA_STRONG, Math.round(80.0f * sakuraAlpha)));
+
+        // Icon well
+        float iconX = x1 + 11.0f;
+        float iconY = y1 + 10.0f;
+        RenderServices.shapes().shadow(iconX, iconY, iconX + 24.0f, iconY + 24.0f, 7.0f,
+                withAlpha(0xFF000000, Math.round(48.0f * sakuraAlpha)), 4, 1.4f);
+        RenderServices.shapes().roundedBorder(iconX, iconY, iconX + 24.0f, iconY + 24.0f, 7.0f, 0.8f,
+                withAlpha(SK_GLASS_SOFT, Math.round(168.0f * sakuraAlpha)),
+                withAlpha(SK_SAKURA, Math.round(58.0f * sakuraAlpha)));
+        drawCenteredIcon(getIcon(), FontLoaders.I18, iconX + 12.0f, iconY + 12.0f,
+                withAlpha(SK_SAKURA, Math.round(230.0f * sakuraAlpha)));
+
+        // Title with glow
+        String titleStr = trim(getTitle(), FontLoaders.C18, width - 52.0f);
+        float titleX = x1 + 43.0f;
+        float titleY = y1 + 11.0f;
+        // Glow offsets
+        int wideGlow = withAlpha(SK_SAKURA, Math.round(22.0f * sakuraAlpha));
+        int nearGlow = withAlpha(0xFFFFDCEB, Math.round(34.0f * sakuraAlpha));
+        FontLoaders.C18.drawString(titleStr, titleX - 0.65f, titleY, wideGlow);
+        FontLoaders.C18.drawString(titleStr, titleX + 0.65f, titleY, wideGlow);
+        FontLoaders.C18.drawString(titleStr, titleX, titleY - 0.65f, wideGlow);
+        FontLoaders.C18.drawString(titleStr, titleX, titleY + 0.65f, wideGlow);
+        FontLoaders.C18.drawString(titleStr, titleX - 0.35f, titleY - 0.35f, nearGlow);
+        FontLoaders.C18.drawString(titleStr, titleX + 0.35f, titleY + 0.35f, nearGlow);
+        FontLoaders.C18.drawString(titleStr, titleX, titleY,
+                withAlpha(SK_TEXT, Math.round(245.0f * sakuraAlpha)));
+
+        // Message in muted sakura
+        if (message.length() > 0) {
+            FontLoaders.C14.drawString(trim(message, FontLoaders.C14, width - 54.0f),
+                    x1 + 43.0f, y1 + 27.0f,
+                    withAlpha(SK_MUTED, Math.round(216.0f * sakuraAlpha)));
+        }
+
+        // Progress bar in sakura pink
+        RenderServices.shapes().progressBar(x1 + 12.0f, y2 - 4.0f, x2 - 12.0f, y2 - 2.3f, 1.5f, progress,
+                withAlpha(0xFF30262F, Math.round(80.0f * sakuraAlpha)),
+                withAlpha(SK_SAKURA, Math.round(210.0f * sakuraAlpha)));
     }
 
     public boolean shouldDelete() {
