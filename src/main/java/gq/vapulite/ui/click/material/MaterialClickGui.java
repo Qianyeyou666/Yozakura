@@ -18,9 +18,12 @@ import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -53,6 +56,9 @@ public final class MaterialClickGui extends GuiScreen {
     private final MaterialModuleGrid grid = new MaterialModuleGrid(this);
     private final Set<Module> expandedModules = new HashSet<Module>();
     private final AnimationState animations = new AnimationState();
+    private final Map<Module, String> moduleAnimationKeys = new IdentityHashMap<Module, String>();
+    private final Map<Value, String> valueAnimationKeys = new IdentityHashMap<Value, String>();
+    private final Set<Module> preparedAnimationModules = Collections.newSetFromMap(new IdentityHashMap<Module, Boolean>());
 
     private MaterialClickLayout layout;
     private Module bindingModule;
@@ -369,6 +375,29 @@ public final class MaterialClickGui extends GuiScreen {
         return name == null ? "KEY " + key : "KEY " + name;
     }
 
+    void prepareModuleAnimations(List<Module> modules) {
+        if (modules == null || modules.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < modules.size(); i++) {
+            Module module = modules.get(i);
+            if (module == null || !preparedAnimationModules.add(module)) {
+                continue;
+            }
+            String key = animationKey(module);
+            animations.ensure("module.hover." + key, 0.0f);
+            animations.ensure("module.active." + key, module.getState() ? 1.0f : 0.0f);
+            animations.ensure("module.key." + key, 0.0f);
+            animations.ensure("module.expand." + key, 0.0f);
+            FontLoaders.TB16.getStringWidth(displayName(module));
+            FontLoaders.C14.getStringWidth(keyName(module.getKey()));
+        }
+    }
+
+    void prepareAnimation(String key, float value) {
+        animations.ensure(key, value);
+    }
+
     float animate(float current, float target, float speed) {
         return AnimationUtil.approach(current, target, speed, frameScale);
     }
@@ -386,11 +415,27 @@ public final class MaterialClickGui extends GuiScreen {
     }
 
     String animationKey(Module module) {
-        return module == null ? "null" : MaterialClickGui.normalize(module.getName()) + "." + System.identityHashCode(module);
+        if (module == null) {
+            return "null";
+        }
+        String key = moduleAnimationKeys.get(module);
+        if (key == null) {
+            key = MaterialClickGui.normalize(module.getName()) + "." + System.identityHashCode(module);
+            moduleAnimationKeys.put(module, key);
+        }
+        return key;
     }
 
     String animationKey(Value value) {
-        return value == null ? "null" : MaterialClickGui.normalize(value.getName()) + "." + System.identityHashCode(value);
+        if (value == null) {
+            return "null";
+        }
+        String key = valueAnimationKeys.get(value);
+        if (key == null) {
+            key = MaterialClickGui.normalize(value.getName()) + "." + System.identityHashCode(value);
+            valueAnimationKeys.put(value, key);
+        }
+        return key;
     }
 
     private void updateFrameScale() {

@@ -8,8 +8,10 @@ import java.util.Map;
  * Keyed animation progress storage for retained-mode UI widgets.
  */
 public final class AnimationState {
-    private final Map<String, Float> values = new HashMap<String, Float>();
-    private final Map<String, Integer> updatedFrames = new HashMap<String, Integer>();
+    private static final int EXPECTED_UI_ANIMATION_KEYS = 512;
+
+    private final Map<String, Float> values = new HashMap<String, Float>(EXPECTED_UI_ANIMATION_KEYS);
+    private final Map<String, Integer> updatedFrames = new HashMap<String, Integer>(EXPECTED_UI_ANIMATION_KEYS);
 
     public float animate(String key, float target, float speed, float frameScale) {
         return animateFrom(key, target, speed, frameScale, target);
@@ -46,6 +48,12 @@ public final class AnimationState {
 
     public void snap(String key, float value) {
         values.put(key, value);
+    }
+
+    public void ensure(String key, float value) {
+        if (!values.containsKey(key)) {
+            values.put(key, value);
+        }
     }
 
     public void clear() {

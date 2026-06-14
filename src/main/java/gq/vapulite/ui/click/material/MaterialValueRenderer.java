@@ -11,6 +11,7 @@ import gq.vapulite.value.Value;
 import org.lwjgl.input.Mouse;
 
 import java.awt.Color;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -42,6 +43,7 @@ final class MaterialValueRenderer {
     private final MaterialClickGui gui;
     private final Set<Value> expandedModes = new HashSet<Value>();
     private final Set<Value> expandedColors = new HashSet<Value>();
+    private final Set<Module> preparedModules = Collections.newSetFromMap(new IdentityHashMap<Module, Boolean>());
 
     private Numbers draggingNumber;
     private Numbers draggingPair;
@@ -92,6 +94,128 @@ final class MaterialValueRenderer {
             count++;
         }
         return count == 0 ? 0.0f : total + Math.max(0, count - 1) * 8.0f * gui.layout().scale;
+    }
+
+    void prepare(Module module) {
+        if (module == null || !preparedModules.add(module)) {
+            return;
+        }
+        List<Value> values = module.getValues();
+        for (int i = 0; i < values.size(); i++) {
+            Value value = values.get(i);
+            if (!isVisible(module, value)) {
+                continue;
+            }
+            if (isColorStart(module, i)) {
+                Numbers red = (Numbers) value;
+                Numbers green = (Numbers) values.get(i + 1);
+                Numbers blue = (Numbers) values.get(i + 2);
+                Numbers alpha = colorAlpha(module, values, i);
+                prepareColor(module, red, green, blue, alpha);
+                i += colorValueSpan(module, values, i) - 1;
+            } else if (isRangeStart(module, i)) {
+                prepareRange((Numbers) values.get(i), (Numbers) values.get(i + 1));
+                i += 1;
+            } else if (value instanceof Mode) {
+                prepareMode((Mode) value);
+            } else if (value instanceof Numbers) {
+                prepareNumber((Numbers) value);
+            } else if (value instanceof Option) {
+                prepareOption((Option) value);
+            } else {
+                preparePlainValue(value);
+            }
+        }
+    }
+
+    private void prepareOption(Option value) {
+        String key = gui.animationKey(value);
+        boolean active = Boolean.TRUE.equals(value.getValue());
+        gui.prepareAnimation("value.option." + key, active ? 1.0f : 0.0f);
+        gui.prepareAnimation("value.hover." + key, 0.0f);
+        preparePlainValue(value);
+    }
+
+    private void prepareNumber(Numbers value) {
+        String key = gui.animationKey(value);
+        double current = numberValue(value);
+        String text = formatNumber(current);
+        gui.prepareAnimation("value.number." + key, pct(value));
+        gui.prepareAnimation("value.slider." + key + ".focus", 0.0f);
+        prepareValueText(value, text, current);
+        preparePlainValue(value);
+    }
+
+    private void prepareRange(Numbers min, Numbers max) {
+        double rangeMin = Math.min(min.getMinimum().doubleValue(), max.getMinimum().doubleValue());
+        double rangeMax = Math.max(min.getMaximum().doubleValue(), max.getMaximum().doubleValue());
+        String minKey = gui.animationKey(min);
+        String maxKey = gui.animationKey(max);
+        double minValue = numberValue(min);
+        double maxValue = numberValue(max);
+        String values = formatNumber(minValue) + " - " + formatNumber(maxValue);
+        gui.prepareAnimation("value.range.min." + minKey, pct(min, rangeMin, rangeMax));
+        gui.prepareAnimation("value.range.max." + maxKey, pct(max, rangeMin, rangeMax));
+        gui.prepareAnimation("value.slider." + minKey + ".focus", 0.0f);
+        gui.prepareAnimation("value.slider." + maxKey + ".focus", 0.0f);
+        prepareValueText(min, values, (minValue + maxValue) * 0.5D);
+        FontLoaders.C14.getStringWidth(rangeLabel(min));
+        FontLoaders.C14.getStringWidth(values);
+    }
+
+    private void prepareMode(Mode mode) {
+        String key = gui.animationKey(mode);
+        gui.prepareAnimation("value.mode.hover." + key, 0.0f);
+        gui.prepareAnimation("value.mode.expand." + key, 0.0f);
+        FontLoaders.C14.getStringWidth(gui.displayName(mode));
+        FontLoaders.C14.getStringWidth(modeLabel(mode.getModeAsString()));
+        Enum[] modes = mode.getModes();
+        for (Enum option : modes) {
+            if (option != null) {
+                FontLoaders.C14.getStringWidth(modeLabel(option.name()));
+            }
+        }
+    }
+
+    private void prepareColor(Module module, Numbers red, Numbers green, Numbers blue, Numbers alpha) {
+        String key = gui.animationKey(red);
+        gui.prepareAnimation("value.color.expand." + key, 0.0f);
+        gui.prepareAnimation("value.color.hover." + key, 0.0f);
+        gui.prepareAnimation("value.color.focus." + key, 0.0f);
+        gui.prepareAnimation("value.color.hue." + key, colorHue(red, green, blue));
+        gui.prepareAnimation("value.color.sat." + key, colorSaturation(red, green, blue));
+        gui.prepareAnimation("value.color.bri." + key, colorBrightness(red, green, blue));
+        if (alpha != null) {
+            double alphaValue = numberValue(alpha);
+            gui.prepareAnimation("value.color.alpha." + key, colorAlphaPct(alpha));
+            prepareValueText(alpha, formatNumber(alphaValue), alphaValue);
+            FontLoaders.C14.getStringWidth(gui.displayName(alpha));
+        }
+        preparePlainValue(red);
+        preparePlainValue(green);
+        preparePlainValue(blue);
+        if (alpha != null) {
+            preparePlainValue(alpha);
+        }
+        FontLoaders.C14.getStringWidth(colorLabel(red));
+    }
+
+    private void preparePlainValue(Value value) {
+        gui.animationKey(value);
+        FontLoaders.C14.getStringWidth(gui.displayName(value));
+        Object raw = value.getValue();
+        if (raw != null) {
+            FontLoaders.C14.getStringWidth(String.valueOf(raw));
+        }
+    }
+
+    private void prepareValueText(Value value, String text, double numericValue) {
+        if (!valueTexts.containsKey(value)) {
+            valueTexts.put(value, text);
+            valueTextNumbers.put(value, numericValue);
+            valueTextProgress.put(value, 1.0f);
+        }
+        FontLoaders.C14.getStringWidth(text);
     }
 
     void render(Module module, float x, float y, float width, int mouseX, int mouseY) {

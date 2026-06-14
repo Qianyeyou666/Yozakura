@@ -8,7 +8,9 @@ import gq.vapulite.module.Module;
 import gq.vapulite.module.ModuleType;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 右侧模块卡片网格。
@@ -31,6 +33,10 @@ final class MaterialModuleGrid {
     private final MaterialValueRenderer valueRenderer;
     private float scroll;
     private float targetScroll;
+    private final List<CardLayout> cardLayouts = new ArrayList<CardLayout>();
+    private final Map<ModuleType, List<Module>> moduleCache = new EnumMap<ModuleType, List<Module>>(ModuleType.class);
+    private float lastMaxScroll;
+    private boolean lastMaxScrollValid;
 
     MaterialModuleGrid(MaterialClickGui gui) {
         this.gui = gui;
@@ -40,6 +46,8 @@ final class MaterialModuleGrid {
     void resetScroll() {
         scroll = 0.0f;
         targetScroll = 0.0f;
+        lastMaxScroll = 0.0f;
+        lastMaxScrollValid = false;
         valueRenderer.closeDropdown();
     }
 
@@ -48,7 +56,10 @@ final class MaterialModuleGrid {
         MaterialClickLayout layout = gui.layout();
         MaterialClickTheme theme = gui.theme();
         List<Module> currentModules = modules(gui.currentType());
-        float maxScroll = maxScroll(layout, currentModules);
+        gui.prepareModuleAnimations(currentModules);
+        float maxScroll = rebuildCardLayouts(layout, currentModules);
+        lastMaxScroll = maxScroll;
+        lastMaxScrollValid = true;
         targetScroll = MaterialClickLayout.clamp(targetScroll, -maxScroll, 0.0f);
         scroll = gui.animate(scroll, targetScroll, 0.22f);
 
@@ -57,7 +68,7 @@ final class MaterialModuleGrid {
         float clipLeft = clipLeft(layout);
         gui.beginScissor(clipLeft, clipTop, layout.gridX + layout.gridW - clipLeft, clipBottom - clipTop);
         try {
-            drawCards(currentModules, mouseX, mouseY, clipTop, clipBottom, scroll);
+            drawCards(mouseX, mouseY, clipTop, clipBottom, scroll);
         } finally {
             gui.endScissor();
         }
@@ -79,32 +90,19 @@ final class MaterialModuleGrid {
                 theme.text());
     }
 
-    private void drawCards(List<Module> modules, int mouseX, int mouseY, float clipTop, float clipBottom,
+    private void drawCards(int mouseX, int mouseY, float clipTop, float clipBottom,
                            float renderScroll) {
-        if (modules == null || modules.isEmpty()) {
+        if (cardLayouts.isEmpty()) {
             return;
         }
         MaterialClickLayout layout = gui.layout();
-        float s = layout.scale;
-        float gap = 16.0f * s;
-        float cardW = (layout.gridW - gap) / 2.0f;
-        float leftY = firstCardY(layout, renderScroll);
-        float rightY = leftY;
-        for (int i = 0; i < modules.size(); i++) {
-            Module module = modules.get(i);
-            float valueH = valueRenderer.measure(module, cardW - 40.0f * s);
-            float h = MaterialModuleCard.measure(gui, module, cardW, valueH);
-            boolean useLeft = i % 2 == 0;
-            float x = useLeft ? layout.gridX : layout.gridX + cardW + gap;
-            float y = useLeft ? leftY : rightY;
-            if (y + h >= clipTop && y <= clipBottom) {
-                new MaterialModuleCard(gui, valueRenderer, module, x, y,
-                        cardW, h, 1.0f, valueH).render(mouseX, mouseY);
-            }
-            if (useLeft) {
-                leftY += h + gap;
-            } else {
-                rightY += h + gap;
+        float baseY = firstCardY(layout, renderScroll);
+        for (int i = 0; i < cardLayouts.size(); i++) {
+            CardLayout card = cardLayouts.get(i);
+            float y = baseY + card.yOffset;
+            if (y + card.h >= clipTop && y <= clipBottom) {
+                card.card.setLayout(card.x, y, card.w, card.h, 1.0f, card.valueH);
+                card.card.render(mouseX, mouseY);
             }
         }
     }
@@ -115,28 +113,16 @@ final class MaterialModuleGrid {
             valueRenderer.closeDropdown();
             return false;
         }
-        float s = layout.scale;
-        float gap = 16.0f * s;
-        float cardW = (layout.gridW - gap) / 2.0f;
-        float leftY = firstCardY(layout);
-        float rightY = leftY;
         List<Module> modules = modules(gui.currentType());
+        rebuildCardLayouts(layout, modules);
+        float baseY = firstCardY(layout);
 
-        for (int i = 0; i < modules.size(); i++) {
-            Module module = modules.get(i);
-            float valueH = valueRenderer.measure(module, cardW - 40.0f * s);
-            float h = MaterialModuleCard.measure(gui, module, cardW, valueH);
-            boolean useLeft = i % 2 == 0;
-            float x = useLeft ? layout.gridX : layout.gridX + cardW + gap;
-            float y = useLeft ? leftY : rightY;
-            MaterialModuleCard card = new MaterialModuleCard(gui, valueRenderer, module, x, y, cardW, h, 1.0f, valueH);
-            if (card.mouseClicked(mouseX, mouseY, button)) {
+        for (int i = 0; i < cardLayouts.size(); i++) {
+            CardLayout card = cardLayouts.get(i);
+            float y = baseY + card.yOffset;
+            card.card.setLayout(card.x, y, card.w, card.h, 1.0f, card.valueH);
+            if (card.card.mouseClicked(mouseX, mouseY, button)) {
                 return true;
-            }
-            if (useLeft) {
-                leftY += h + gap;
-            } else {
-                rightY += h + gap;
             }
         }
         valueRenderer.closeDropdown();
@@ -149,8 +135,11 @@ final class MaterialModuleGrid {
             return;
         }
         targetScroll += wheel / 6.0f;
-        float maxScroll = maxScroll(layout);
-        targetScroll = MaterialClickLayout.clamp(targetScroll, -maxScroll, 0.0f);
+        if (lastMaxScrollValid) {
+            targetScroll = MaterialClickLayout.clamp(targetScroll, -lastMaxScroll, 0.0f);
+        } else if (targetScroll > 0.0f) {
+            targetScroll = 0.0f;
+        }
     }
 
     void mouseReleased() {
@@ -212,6 +201,7 @@ final class MaterialModuleGrid {
             return;
         }
 
+        ShaderRenderer.prepareViewportFeatherBlur();
         if (topStrength > 0.01f) {
             ShaderRenderer.drawViewportFeatherBlur(x1, topStart, x2, topEnd, true, topStrength);
         }
@@ -220,24 +210,58 @@ final class MaterialModuleGrid {
         }
     }
 
-    private float contentHeight(List<Module> modules) {
-        MaterialClickLayout layout = gui.layout();
-        float gap = 16.0f * layout.scale;
+    private float rebuildCardLayouts(MaterialClickLayout layout, List<Module> modules) {
+        float s = layout.scale;
+        float gap = 16.0f * s;
         float cardW = (layout.gridW - gap) / 2.0f;
-        float leftH = 0.0f;
-        float rightH = 0.0f;
-        for (int i = 0; i < modules.size(); i++) {
+        float leftY = 0.0f;
+        float rightY = 0.0f;
+        int count = modules == null ? 0 : modules.size();
+        for (int i = 0; i < count; i++) {
             Module module = modules.get(i);
-            float valueH = valueRenderer.measure(module, cardW - 40.0f * layout.scale);
-            float cardH = MaterialModuleCard.measure(gui, module, cardW, valueH);
-            if (i % 2 == 0) {
-                leftH += cardH + gap;
+            valueRenderer.prepare(module);
+            float valueH = valueRenderer.measure(module, cardW - 40.0f * s);
+            float h = MaterialModuleCard.measure(gui, module, cardW, valueH);
+            boolean useLeft = i % 2 == 0;
+            float x = useLeft ? layout.gridX : layout.gridX + cardW + gap;
+            float yOffset = useLeft ? leftY : rightY;
+            CardLayout card = cardLayoutAt(i, module);
+            card.update(x, yOffset, cardW, h, valueH);
+            if (useLeft) {
+                leftY += h + gap;
             } else {
-                rightH += cardH + gap;
+                rightY += h + gap;
             }
         }
-        float cardsH = Math.max(0.0f, Math.max(leftH, rightH) - gap);
-        return CARD_TOP_PADDING * layout.scale + cardsH + CARD_BOTTOM_PADDING * layout.scale;
+        trimCardLayouts(count);
+        float cardsH = Math.max(0.0f, Math.max(leftY, rightY) - gap);
+        float contentHeight = CARD_TOP_PADDING * s + cardsH + CARD_BOTTOM_PADDING * s;
+        return maxScrollFromContentHeight(layout, contentHeight);
+    }
+
+    private CardLayout cardLayoutAt(int index, Module module) {
+        if (index < cardLayouts.size()) {
+            CardLayout card = cardLayouts.get(index);
+            if (card.module == module) {
+                return card;
+            }
+            card = new CardLayout(gui, valueRenderer, module);
+            cardLayouts.set(index, card);
+            return card;
+        }
+        CardLayout card = new CardLayout(gui, valueRenderer, module);
+        cardLayouts.add(card);
+        return card;
+    }
+
+    private void trimCardLayouts(int count) {
+        for (int i = cardLayouts.size() - 1; i >= count; i--) {
+            cardLayouts.remove(i);
+        }
+    }
+
+    private float maxScrollFromContentHeight(MaterialClickLayout layout, float contentHeight) {
+        return Math.max(0.0f, contentHeight - (clipBottom(layout) - layout.gridY));
     }
 
     private float firstCardY(MaterialClickLayout layout) {
@@ -246,14 +270,6 @@ final class MaterialModuleGrid {
 
     private float firstCardY(MaterialClickLayout layout, float renderScroll) {
         return layout.gridY + CARD_TOP_PADDING * layout.scale + renderScroll;
-    }
-
-    private float maxScroll(MaterialClickLayout layout) {
-        return maxScroll(layout, modules(gui.currentType()));
-    }
-
-    private float maxScroll(MaterialClickLayout layout, List<Module> modules) {
-        return Math.max(0.0f, contentHeight(modules) - (clipBottom(layout) - layout.gridY));
     }
 
     private float clipTop(MaterialClickLayout layout) {
@@ -276,13 +292,41 @@ final class MaterialModuleGrid {
                 layout.gridX + layout.gridW, clipBottom(layout), mouseX, mouseY);
     }
 
+    private static final class CardLayout {
+        private final Module module;
+        private final MaterialModuleCard card;
+        private float x;
+        private float yOffset;
+        private float w;
+        private float h;
+        private float valueH;
+
+        private CardLayout(MaterialClickGui gui, MaterialValueRenderer valueRenderer, Module module) {
+            this.module = module;
+            this.card = new MaterialModuleCard(gui, valueRenderer, module, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
+        }
+
+        private void update(float x, float yOffset, float w, float h, float valueH) {
+            this.x = x;
+            this.yOffset = yOffset;
+            this.w = w;
+            this.h = h;
+            this.valueH = valueH;
+        }
+    }
+
     private List<Module> modules(ModuleType type) {
+        List<Module> cached = moduleCache.get(type);
+        if (cached != null) {
+            return cached;
+        }
         List<Module> output = new ArrayList<Module>();
         for (Module module : ModuleManager.getModulesInType(type)) {
             if (module != null) {
                 output.add(module);
             }
         }
+        moduleCache.put(type, output);
         return output;
     }
 }

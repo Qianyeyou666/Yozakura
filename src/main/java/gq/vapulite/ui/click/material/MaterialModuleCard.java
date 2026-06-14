@@ -21,12 +21,12 @@ final class MaterialModuleCard {
     private final MaterialClickGui gui;
     private final MaterialValueRenderer values;
     private final Module module;
-    private final float x;
-    private final float y;
-    private final float w;
-    private final float h;
-    private final float reveal;
-    private final float valueHeight;
+    private float x;
+    private float y;
+    private float w;
+    private float h;
+    private float reveal;
+    private float valueHeight;
 
     MaterialModuleCard(MaterialClickGui gui, MaterialValueRenderer values, Module module,
                        float x, float y, float w, float h) {
@@ -43,6 +43,15 @@ final class MaterialModuleCard {
         this.gui = gui;
         this.values = values;
         this.module = module;
+        this.x = x;
+        this.y = y;
+        this.w = w;
+        this.h = h;
+        this.reveal = MaterialClickTheme.clamp(reveal, 0.0f, 1.0f);
+        this.valueHeight = valueHeight;
+    }
+
+    void setLayout(float x, float y, float w, float h, float reveal, float valueHeight) {
         this.x = x;
         this.y = y;
         this.w = w;

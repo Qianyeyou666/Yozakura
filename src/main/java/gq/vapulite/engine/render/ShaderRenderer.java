@@ -425,6 +425,7 @@ public final class ShaderRenderer {
         }
 
         ShaderState shaderState = beginProgram(program);
+        TextureState texture1State = saveTextureState(GL13.GL_TEXTURE1);
         try {
             setActiveTexture(GL13.GL_TEXTURE0);
             GL11.glEnable(GL11.GL_TEXTURE_2D);
@@ -441,8 +442,40 @@ public final class ShaderRenderer {
             program.set1f("opacity", Math.max(0.0f, Math.min(1.0f, opacity)));
             drawQuad(left, top, right, bottom, 0.0f);
         } finally {
+            restoreTextureState(GL13.GL_TEXTURE1, texture1State);
+            endProgram(shaderState);
+        }
+        return true;
+    }
+
+    public static boolean prepareViewportFeatherBlur() {
+        Program program = getViewportFeatherBlurProgram();
+        if (program == null) {
+            return false;
+        }
+        BlurCache blurCache = ensureFrostedGlassTexture(VIEWPORT_FEATHER_BLUR_PRESET);
+        if (blurCache == null || !blurCache.ready) {
+            return false;
+        }
+        ShaderState shaderState = beginProgram(program);
+        TextureState texture1State = saveTextureState(GL13.GL_TEXTURE1);
+        try {
+            setActiveTexture(GL13.GL_TEXTURE0);
+            GL11.glEnable(GL11.GL_TEXTURE_2D);
+            bindTexture(blurCache.textureB);
+            program.set1i("screenTex", 0);
             setActiveTexture(GL13.GL_TEXTURE1);
-            bindTexture(0);
+            GL11.glEnable(GL11.GL_TEXTURE_2D);
+            bindTexture(blurCache.sourceTexture);
+            program.set1i("sourceTex", 1);
+            setActiveTexture(GL13.GL_TEXTURE0);
+            program.set2f("screenSize", Math.max(1.0f, blurCache.blurWidth), Math.max(1.0f, blurCache.blurHeight));
+            program.set2f("viewportSize", Math.max(1.0f, blurCache.sourceWidth), Math.max(1.0f, blurCache.sourceHeight));
+            program.set1f("topEdge", 1.0f);
+            program.set1f("opacity", 1.0f);
+            drawQuad(-4.0f, -4.0f, -3.0f, -3.0f, 0.0f);
+        } finally {
+            restoreTextureState(GL13.GL_TEXTURE1, texture1State);
             endProgram(shaderState);
         }
         return true;
@@ -1139,6 +1172,23 @@ public final class ShaderRenderer {
             return;
         }
         setActiveTexture(GL13.GL_TEXTURE0);
+        bindTexture(state.texture);
+        setActiveTexture(state.activeTexture);
+    }
+
+    private static TextureState saveTextureState(int textureUnit) {
+        int activeTexture = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
+        setActiveTexture(textureUnit);
+        int texture = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+        setActiveTexture(activeTexture);
+        return new TextureState(activeTexture, texture);
+    }
+
+    private static void restoreTextureState(int textureUnit, TextureState state) {
+        if (state == null) {
+            return;
+        }
+        setActiveTexture(textureUnit);
         bindTexture(state.texture);
         setActiveTexture(state.activeTexture);
     }
