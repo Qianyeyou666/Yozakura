@@ -213,6 +213,9 @@ public final class Blur {
     }
 
     private static void setGaussianWeights(Program program, float radius) {
+        if (Math.abs(program.weightsRadius - radius) < 0.001f) {
+            return;
+        }
         float sigma = Math.max(radius / 2.0f, 0.001f);
         WEIGHTS.clear();
         for (int i = 0; i < 256; i++) {
@@ -220,6 +223,7 @@ public final class Blur {
         }
         WEIGHTS.flip();
         GL20.glUniform1(program.uniform("weights"), WEIGHTS);
+        program.weightsRadius = radius;
     }
 
     private static float calculateGaussianValue(float x, float sigma) {
@@ -295,6 +299,7 @@ public final class Blur {
     private static final class Program {
         private final int id;
         private final Map<String, Integer> uniformCache = new HashMap<String, Integer>();
+        private float weightsRadius = -1.0f;
 
         private Program(int id) {
             this.id = id;

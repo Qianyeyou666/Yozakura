@@ -468,20 +468,18 @@ public class HUD extends Module {
             return;
         }
 
-        modules.sort(new Comparator<Module>() {
+        List<ModuleListEntry> entries = buildModuleListEntries(modules, FontLoaders.C18, 4.0f);
+        entries.sort(new Comparator<ModuleListEntry>() {
             @Override
-            public int compare(Module first, Module second) {
-                return getModuleLabelWidth(getModuleListLabel(second), FontLoaders.C18, 4.0f)
-                        - getModuleLabelWidth(getModuleListLabel(first), FontLoaders.C18, 4.0f);
+            public int compare(ModuleListEntry first, ModuleListEntry second) {
+                return second.labelWidth - first.labelWidth;
             }
         });
 
         float listW = 88.0f;
         int visibleRows = 0;
-        for (Module module : modules) {
-            ModuleListLabel label = getModuleListLabel(module);
-            int textW = getModuleLabelWidth(label, FontLoaders.C18, 4.0f);
-            listW = Math.max(listW, textW + 39.0f);
+        for (ModuleListEntry entry : entries) {
+            listW = Math.max(listW, entry.labelWidth + 39.0f);
             visibleRows++;
             if (visibleRows > 22) {
                 break;
@@ -514,14 +512,15 @@ public class HUD extends Module {
         }
         beginScaled(pos[0], y, uiScale);
         try {
-            for (Module module : modules) {
-                ModuleListLabel label = getModuleListLabel(module);
+            for (ModuleListEntry entry : entries) {
+                Module module = entry.module;
+                ModuleListLabel label = entry.label;
                 float progress = animateModule(module, factor);
                 if (progress <= 0.01f) {
                     continue;
                 }
 
-                int textW = getModuleLabelWidth(label, FontLoaders.C18, 4.0f);
+                int textW = entry.labelWidth;
                 String icon = ClickGuiIcons.forModule(module);
                 float iconSlotW = 22.0f;
                 float rowW = textW + iconSlotW + 17.0f;
@@ -544,7 +543,7 @@ public class HUD extends Module {
                             withAlpha(palette().text, Math.round(242.0f * progress)),
                             withAlpha(palette().muted, Math.round(216.0f * progress)), 4.0f);
                 } else {
-                    FontLoaders.C18.drawString(label.fullText(), right - textW, y + 4.0f,
+                    FontLoaders.C18.drawString(entry.fullText, right - textW, y + 4.0f,
                             withAlpha(accent, Math.round(245.0f * progress)));
                 }
 
@@ -565,21 +564,18 @@ public class HUD extends Module {
         final CFontRenderer font = FontLoaders.TB14;
         final float rowH = 24.0f;
         final float lineW = 2.4f;
-        modules.sort(new Comparator<Module>() {
+        List<ModuleListEntry> entries = buildModuleListEntries(modules, font, 3.0f);
+        entries.sort(new Comparator<ModuleListEntry>() {
             @Override
-            public int compare(Module first, Module second) {
-                return getModuleLabelWidth(getModuleListLabel(second), font, 3.0f)
-                        - getModuleLabelWidth(getModuleListLabel(first), font, 3.0f);
+            public int compare(ModuleListEntry first, ModuleListEntry second) {
+                return second.labelWidth - first.labelWidth;
             }
         });
 
         int visibleRows = 0;
         float listW = 134.0f;
-        for (Module module : modules) {
-            ModuleListLabel label = getModuleListLabel(module);
-            String sideText = getModuleSideText(label);
-            int sideW = sideText.length() == 0 ? 0 : font.getStringWidth(sideText);
-            listW = Math.max(listW, font.getStringWidth(label.name) + sideW + 34.0f + lineW);
+        for (ModuleListEntry entry : entries) {
+            listW = Math.max(listW, entry.nameWidth + entry.sideWidth + 34.0f + lineW);
             visibleRows++;
             if (visibleRows >= 12) {
                 break;
@@ -615,11 +611,12 @@ public class HUD extends Module {
             } else {
                 int index = 0;
                 float drawY = y;
-                for (Module module : modules) {
+                for (ModuleListEntry entry : entries) {
                     if (index >= 12) {
                         break;
                     }
-                    ModuleListLabel label = getModuleListLabel(module);
+                    Module module = entry.module;
+                    ModuleListLabel label = entry.label;
                     float progress = animateModule(module, factor);
                     if (progress <= 0.01f) {
                         continue;
@@ -638,10 +635,10 @@ public class HUD extends Module {
                         RenderServices.shapes().rect(pulseLineX, rowTop + 4.0f, pulseLineX + lineW, rowBottom - 4.0f,
                                 withAlpha(getCategoryAccent(module), Math.round((150.0f + index * 4.0f) * progress)));
                     }
-                    String sideText = getModuleSideText(label);
+                    String sideText = entry.sideText;
                     float contentLeft = x + (rightSide ? 11.0f : lineW + 12.0f);
                     float contentRight = x + listW - (rightSide ? lineW + 12.0f : 11.0f);
-                    float sideW = sideText.length() == 0 ? 0.0f : font.getStringWidth(sideText);
+                    float sideW = entry.sideWidth;
                     String name = trim(label.name, font, contentRight - contentLeft - sideW - 8.0f);
                     font.drawString(name, contentLeft, drawY + 7.0f,
                             withAlpha(palette().vapeOnSurface, Math.round(246.0f * progress)));
@@ -941,6 +938,28 @@ public class HUD extends Module {
         return modules;
     }
 
+    private List<ModuleListEntry> buildModuleListEntries(List<Module> modules, CFontRenderer font, float gap) {
+        ArrayList<ModuleListEntry> entries = new ArrayList<ModuleListEntry>(modules.size());
+        int roundedGap = Math.round(gap);
+        for (Module module : modules) {
+            ModuleListLabel label = getModuleListLabel(module);
+            int nameWidth = font.getStringWidth(label.name);
+            int parameterWidth = label.parameter.length() == 0 ? 0 : font.getStringWidth(label.parameter);
+            int keyWidth = label.key.length() == 0 ? 0 : font.getStringWidth(label.key);
+            int labelWidth = nameWidth;
+            if (parameterWidth > 0) {
+                labelWidth += roundedGap + parameterWidth;
+            }
+            if (keyWidth > 0) {
+                labelWidth += roundedGap + keyWidth;
+            }
+            String sideText = getModuleSideText(label);
+            int sideWidth = sideText.length() == 0 ? 0 : font.getStringWidth(sideText);
+            entries.add(new ModuleListEntry(module, label, labelWidth, nameWidth, sideText, sideWidth, label.fullText()));
+        }
+        return entries;
+    }
+
     private ModuleListLabel getModuleListLabel(Module module) {
         String parameter = Boolean.TRUE.equals(parameters.getValue()) ? getModuleParameter(module) : "";
         String key = "";
@@ -1178,6 +1197,27 @@ public class HUD extends Module {
                 text += " " + key;
             }
             return text;
+        }
+    }
+
+    private static final class ModuleListEntry {
+        private final Module module;
+        private final ModuleListLabel label;
+        private final int labelWidth;
+        private final int nameWidth;
+        private final String sideText;
+        private final int sideWidth;
+        private final String fullText;
+
+        private ModuleListEntry(Module module, ModuleListLabel label, int labelWidth, int nameWidth,
+                                String sideText, int sideWidth, String fullText) {
+            this.module = module;
+            this.label = label;
+            this.labelWidth = labelWidth;
+            this.nameWidth = nameWidth;
+            this.sideText = sideText == null ? "" : sideText;
+            this.sideWidth = sideWidth;
+            this.fullText = fullText == null ? "" : fullText;
         }
     }
 

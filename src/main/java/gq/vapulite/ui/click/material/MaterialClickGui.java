@@ -32,6 +32,22 @@ import java.util.Set;
 public final class MaterialClickGui extends GuiScreen {
     private static ModuleType currentType = ModuleType.Combat;
 
+    public static void warmResources() {
+        warmFonts();
+        ShaderRenderer.warmMaterialClickGuiResources();
+    }
+
+    private static void warmFonts() {
+        FontLoaders.F16.getHeight();
+        FontLoaders.F18.getHeight();
+        FontLoaders.F20.getHeight();
+        FontLoaders.F30.getHeight();
+        FontLoaders.C14.getHeight();
+        FontLoaders.TB16.getHeight();
+        FontLoaders.TB18.getHeight();
+        FontLoaders.getFontRender(28).getHeight();
+    }
+
     private final MaterialClickTheme theme = new MaterialClickTheme();
     private final MaterialClickSidebar sidebar = new MaterialClickSidebar(this);
     private final MaterialModuleGrid grid = new MaterialModuleGrid(this);
@@ -48,7 +64,6 @@ public final class MaterialClickGui extends GuiScreen {
     private float openProgress;
     private float frameScale = 1.0f;
     private int frameId;
-    private long lastGlassInvalidationNanos;
     private long lastFrameNanos = System.nanoTime();
 
     MaterialClickTheme theme() {
@@ -77,6 +92,7 @@ public final class MaterialClickGui extends GuiScreen {
 
     @Override
     public void initGui() {
+        warmResources();
         layout = MaterialClickLayout.calculate(new ScaledResolution(mc));
         openProgress = 0.0f;
         animations.clear();
@@ -390,20 +406,6 @@ public final class MaterialClickGui extends GuiScreen {
     }
 
     private void invalidateGlassForFrame() {
-        if (bindingModule != null || bindingDisplayModule != null) {
-            lastGlassInvalidationNanos = System.nanoTime();
-            ShaderRenderer.invalidateFrostedGlass();
-            return;
-        }
-        invalidateGlassIfDue();
-    }
-
-    private void invalidateGlassIfDue() {
-        long now = System.nanoTime();
-        if (now - lastGlassInvalidationNanos < 33000000L) {
-            return;
-        }
-        lastGlassInvalidationNanos = now;
         ShaderRenderer.invalidateFrostedGlass();
     }
 

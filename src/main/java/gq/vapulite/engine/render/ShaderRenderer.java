@@ -28,11 +28,18 @@ public final class ShaderRenderer {
      * <p>Parameter meanings and tunable default values live in {@link LiquidGlassSettings#defaults()}.</p>
      */
     public static final LiquidGlassSettings LIQUID_GLASS_PRESET = LiquidGlassSettings.defaults();
+    private static final LiquidGlassSettings FROSTED_GLASS_PRESET =
+            LIQUID_GLASS_PRESET.withBlurRadius(10.0f);
+    private static final LiquidGlassSettings VIEWPORT_FEATHER_BLUR_PRESET =
+            LIQUID_GLASS_PRESET.withBlurIterations(2)
+                    .withBlurRadius(5.0f)
+                    .withBlurDownscale(0.90f);
     private static final float MAX_LIQUID_GLASS_BLUR_RADIUS = 64.0f;
     private static final float MIN_LIQUID_GLASS_BLUR_DOWNSCALE = 0.1f;
     private static final float MAX_LIQUID_GLASS_BLUR_DOWNSCALE = 1.0f;
     private static final float MAX_GAUSSIAN_PASS_RADIUS = 10.0f;
     private static final int MAX_GAUSSIAN_ITERATIONS = 10;
+    private static final int BLUR_KEY_SCALE = 1000;
     private static final int SHADER_ATTRIB_MASK = GL11.GL_ENABLE_BIT
             | GL11.GL_COLOR_BUFFER_BIT
             | GL11.GL_CURRENT_BIT
@@ -62,32 +69,108 @@ public final class ShaderRenderer {
     private static final String KILL_SHATTER_FRAGMENT_RESOURCE =
             "/assets/minecraft/vapulite/shaders/kill_shatter.frag";
     private static final IntBuffer VIEWPORT_BUFFER = BufferUtils.createIntBuffer(16);
+    private static final Map<BlurKey, BlurCache> BLUR_CACHES = new HashMap<BlurKey, BlurCache>();
     private static int screenTexture;
-    private static int blurTextureA;
-    private static int blurTextureB;
-    private static int blurFramebufferA;
-    private static int blurFramebufferB;
     private static int capturedWidth;
     private static int capturedHeight;
-    private static int blurWidth;
-    private static int blurHeight;
-    private static float frostedBlurRadius = -1.0f;
-    private static float frostedBlurDownscale = -1.0f;
-    private static int frostedBlurIterations = -1;
-    private static boolean frostedBlurReady;
-    private static boolean frostedGlassDirty = true;
+    private static int glassCaptureVersion = 1;
+    private static boolean screenTextureConfigured;
     private static boolean loggedFailure;
 
     private ShaderRenderer() {
     }
 
     public static void invalidateFrostedGlass() {
-        frostedGlassDirty = true;
+        glassCaptureVersion++;
+        if (glassCaptureVersion == Integer.MAX_VALUE) {
+            glassCaptureVersion = 1;
+            for (BlurCache cache : BLUR_CACHES.values()) {
+                cache.sourceVersion = 0;
+            }
+        }
         Blur.invalidate();
     }
 
     public static LiquidGlassSettings defaultLiquidGlassSettings() {
         return LIQUID_GLASS_PRESET;
+    }
+
+    public static void warmMaterialClickGuiResources() {
+        if (!supportsShaders()) {
+            return;
+        }
+        TextureState textureState = null;
+        int previousFramebuffer = 0;
+        boolean restoreFramebuffer = false;
+        try {
+            Program solid = getSolidProgram();
+            Program gradient = getGradientProgram();
+            Program rounded = getRoundedProgram();
+            Program roundedGradient = getRoundedGradientProgram();
+            Program roundedHue = getRoundedHueProgram();
+            Program roundedPalette = getRoundedPaletteProgram();
+            Program roundedBorder = getRoundedBorderProgram();
+            Program roundedShadow = getRoundedShadowProgram();
+            Program circle = getCircleProgram();
+            Program arc = getArcProgram();
+            Program line = getLineProgram();
+            Program circleBadge = getCircleBadgeProgram();
+            Program frostedGlass = getFrostedGlassProgram();
+            Program liquidGlass = getLiquidGlassProgram();
+            Program viewportFeather = getViewportFeatherBlurProgram();
+            Program gaussian = getGaussianBlurProgram();
+
+            warmUniforms(solid, "color");
+            warmUniforms(gradient, "color1", "color2", "color3", "color4");
+            warmUniforms(rounded, "rectSize", "color", "radius", "padding", "softness");
+            warmUniforms(roundedGradient, "rectSize", "color1", "color2", "color3", "color4",
+                    "radius", "padding", "softness");
+            warmUniforms(roundedHue, "rectSize", "radius", "padding", "softness", "alpha");
+            warmUniforms(roundedPalette, "rectSize", "radius", "padding", "softness", "hue", "alpha");
+            warmUniforms(roundedBorder, "rectSize", "radius", "padding", "softness",
+                    "borderWidth", "fillColor", "borderColor");
+            warmUniforms(roundedShadow, "rectSize", "radius", "padding", "softness", "shadowSize", "color");
+            warmUniforms(circle, "circleRadius", "padding", "softness", "color");
+            warmUniforms(arc, "circleRadius", "lineWidth", "startAngle", "endAngle", "padding", "softness", "color");
+            warmUniforms(line, "lineWidth", "color");
+            warmUniforms(circleBadge, "circleRadius", "ringWidth", "progress", "padding", "softness",
+                    "fillColor", "trackColor", "progressColor");
+            warmUniforms(frostedGlass, "rectSize", "radius", "padding", "softness", "borderWidth",
+                    "grainStrength", "blurRadius", "screenSize", "viewportSize", "screenTex",
+                    "fillColor", "borderColor");
+            warmUniforms(liquidGlass, "rectSize", "radius", "padding", "softness", "borderWidth",
+                    "refraction", "edge", "highlight", "u_powerFactor", "u_fPower", "u_a", "u_b",
+                    "u_c", "u_d", "u_noise", "u_glowWeight", "u_glowBias", "u_glowEdge0",
+                    "u_glowEdge1", "screenSize", "viewportSize", "screenTex", "fillColor", "borderColor");
+            warmUniforms(viewportFeather, "screenTex", "sourceTex", "screenSize", "viewportSize",
+                    "topEdge", "opacity");
+            warmUniforms(gaussian, "screenTex", "u_resolution", "u_direction", "u_radius");
+
+            if (!supportsFramebufferBlur()) {
+                return;
+            }
+            textureState = saveTexture0State();
+            previousFramebuffer = GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
+            restoreFramebuffer = true;
+            VIEWPORT_BUFFER.clear();
+            GL11.glGetInteger(GL11.GL_VIEWPORT, VIEWPORT_BUFFER);
+            int viewportW = VIEWPORT_BUFFER.get(2);
+            int viewportH = VIEWPORT_BUFFER.get(3);
+            if (viewportW <= 0 || viewportH <= 0) {
+                return;
+            }
+            setActiveTexture(GL13.GL_TEXTURE0);
+            warmBlurCacheTargets(LIQUID_GLASS_PRESET, viewportW, viewportH);
+            warmBlurCacheTargets(FROSTED_GLASS_PRESET, viewportW, viewportH);
+            warmBlurCacheTargets(VIEWPORT_FEATHER_BLUR_PRESET, viewportW, viewportH);
+        } catch (Throwable ignored) {
+        } finally {
+            if (restoreFramebuffer) {
+                GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, previousFramebuffer);
+            }
+            restoreTexture0State(textureState);
+            GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+        }
     }
 
     public static boolean drawRect(float left, float top, float right, float bottom, int color) {
@@ -250,8 +333,11 @@ public final class ShaderRenderer {
     public static boolean drawFrostedGlass(float left, float top, float right, float bottom, float radius,
                                            float borderWidth, int fillColor, int borderColor) {
         Program program = getFrostedGlassProgram();
-        LiquidGlassSettings settings = LIQUID_GLASS_PRESET.withBlurRadius(10.0f);
-        if (program == null || right <= left || bottom <= top || !ensureFrostedGlassTexture(settings)) {
+        if (program == null || right <= left || bottom <= top) {
+            return false;
+        }
+        BlurCache blurCache = ensureFrostedGlassTexture(FROSTED_GLASS_PRESET);
+        if (blurCache == null) {
             return false;
         }
 
@@ -262,16 +348,16 @@ public final class ShaderRenderer {
         try {
             setActiveTexture(GL13.GL_TEXTURE0);
             GL11.glEnable(GL11.GL_TEXTURE_2D);
-            int sourceTexture = frostedBlurReady ? blurTextureB : screenTexture;
-            int sourceWidth = frostedBlurReady ? blurWidth : capturedWidth;
-            int sourceHeight = frostedBlurReady ? blurHeight : capturedHeight;
+            int sourceTexture = blurCache.ready ? blurCache.textureB : blurCache.sourceTexture;
+            int sourceWidth = blurCache.ready ? blurCache.blurWidth : blurCache.sourceWidth;
+            int sourceHeight = blurCache.ready ? blurCache.blurHeight : blurCache.sourceHeight;
             bindTexture(sourceTexture);
             setRoundedUniforms(program, width, height, radius);
             program.set1f("borderWidth", clampedBorder);
             program.set1f("grainStrength", 0.0f);
             program.set1f("blurRadius", 13.5f);
             program.set2f("screenSize", sourceWidth, sourceHeight);
-            program.set2f("viewportSize", capturedWidth, capturedHeight);
+            program.set2f("viewportSize", blurCache.sourceWidth, blurCache.sourceHeight);
             program.set1i("screenTex", 0);
             setColor(program, "fillColor", fillColor);
             setColor(program, "borderColor", borderColor);
@@ -293,8 +379,11 @@ public final class ShaderRenderer {
                                           LiquidGlassSettings settings) {
         LiquidGlassSettings resolvedSettings = liquidGlassSettingsOrDefault(settings);
         Program program = getLiquidGlassProgram();
-        if (program == null || right <= left || bottom <= top
-                || !ensureFrostedGlassTexture(resolvedSettings) || !frostedBlurReady) {
+        if (program == null || right <= left || bottom <= top) {
+            return false;
+        }
+        BlurCache blurCache = ensureFrostedGlassTexture(resolvedSettings);
+        if (blurCache == null || !blurCache.ready) {
             return false;
         }
 
@@ -305,15 +394,15 @@ public final class ShaderRenderer {
         try {
             setActiveTexture(GL13.GL_TEXTURE0);
             GL11.glEnable(GL11.GL_TEXTURE_2D);
-            int sourceTexture = blurTextureB;
-            int sourceWidth = blurWidth;
-            int sourceHeight = blurHeight;
+            int sourceTexture = blurCache.textureB;
+            int sourceWidth = blurCache.blurWidth;
+            int sourceHeight = blurCache.blurHeight;
             bindTexture(sourceTexture);
             setRoundedUniforms(program, width, height, radius);
             program.set1f("borderWidth", clampedBorder);
             uploadLiquidGlassSettings(program, resolvedSettings);
             program.set2f("screenSize", sourceWidth, sourceHeight);
-            program.set2f("viewportSize", capturedWidth, capturedHeight);
+            program.set2f("viewportSize", blurCache.sourceWidth, blurCache.sourceHeight);
             program.set1i("screenTex", 0);
             setColor(program, "fillColor", fillColor);
             setColor(program, "borderColor", borderColor);
@@ -327,11 +416,11 @@ public final class ShaderRenderer {
     public static boolean drawViewportFeatherBlur(float left, float top, float right, float bottom,
                                                   boolean topEdge, float opacity) {
         Program program = getViewportFeatherBlurProgram();
-        LiquidGlassSettings settings = LIQUID_GLASS_PRESET.withBlurIterations(2)
-                .withBlurRadius(5.0f)
-                .withBlurDownscale(0.90f);
-        if (program == null || right <= left || bottom <= top || opacity <= 0.0f
-                || !ensureFrostedGlassTexture(settings) || !frostedBlurReady) {
+        if (program == null || right <= left || bottom <= top || opacity <= 0.0f) {
+            return false;
+        }
+        BlurCache blurCache = ensureFrostedGlassTexture(VIEWPORT_FEATHER_BLUR_PRESET);
+        if (blurCache == null || !blurCache.ready) {
             return false;
         }
 
@@ -339,15 +428,15 @@ public final class ShaderRenderer {
         try {
             setActiveTexture(GL13.GL_TEXTURE0);
             GL11.glEnable(GL11.GL_TEXTURE_2D);
-            bindTexture(blurTextureB);
+            bindTexture(blurCache.textureB);
             program.set1i("screenTex", 0);
             setActiveTexture(GL13.GL_TEXTURE1);
             GL11.glEnable(GL11.GL_TEXTURE_2D);
-            bindTexture(screenTexture);
+            bindTexture(blurCache.sourceTexture);
             program.set1i("sourceTex", 1);
             setActiveTexture(GL13.GL_TEXTURE0);
-            program.set2f("screenSize", Math.max(1.0f, blurWidth), Math.max(1.0f, blurHeight));
-            program.set2f("viewportSize", Math.max(1.0f, capturedWidth), Math.max(1.0f, capturedHeight));
+            program.set2f("screenSize", Math.max(1.0f, blurCache.blurWidth), Math.max(1.0f, blurCache.blurHeight));
+            program.set2f("viewportSize", Math.max(1.0f, blurCache.sourceWidth), Math.max(1.0f, blurCache.sourceHeight));
             program.set1f("topEdge", topEdge ? 1.0f : 0.0f);
             program.set1f("opacity", Math.max(0.0f, Math.min(1.0f, opacity)));
             drawQuad(left, top, right, bottom, 0.0f);
@@ -507,9 +596,9 @@ public final class ShaderRenderer {
         return true;
     }
 
-    private static boolean ensureFrostedGlassTexture(LiquidGlassSettings settings) {
+    private static BlurCache ensureFrostedGlassTexture(LiquidGlassSettings settings) {
         if (!supportsShaders()) {
-            return false;
+            return null;
         }
         LiquidGlassSettings resolvedSettings = liquidGlassSettingsOrDefault(settings);
         TextureState textureState = saveTexture0State();
@@ -521,44 +610,26 @@ public final class ShaderRenderer {
             int viewportW = VIEWPORT_BUFFER.get(2);
             int viewportH = VIEWPORT_BUFFER.get(3);
             if (viewportW <= 0 || viewportH <= 0) {
-                return false;
+                return null;
             }
-            if (screenTexture == 0) {
-                screenTexture = GL11.glGenTextures();
-                frostedGlassDirty = true;
-            }
+
+            BlurKey key = BlurKey.from(resolvedSettings);
+            BlurCache cache = blurCacheFor(key);
+            int targetWidth = Math.max(1, Math.round(viewportW * key.blurDownscale()));
+            int targetHeight = Math.max(1, Math.round(viewportH * key.blurDownscale()));
             setActiveTexture(GL13.GL_TEXTURE0);
-            bindTexture(screenTexture);
-            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
-            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
-            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
-            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
-            if (capturedWidth != viewportW || capturedHeight != viewportH) {
-                GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGB, viewportW, viewportH, 0,
-                        GL11.GL_RGB, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
-                capturedWidth = viewportW;
-                capturedHeight = viewportH;
-                frostedGlassDirty = true;
-                frostedBlurReady = false;
+            if (!cache.ensureSourceTexture(viewportW, viewportH)) {
+                return null;
             }
-            float blurRadius = clampLiquidGlassBlurRadius(resolvedSettings.blurRadius());
-            float blurDownscale = clampLiquidGlassBlurDownscale(resolvedSettings.blurDownscale());
-            int blurIterations = clampGaussianIterations(resolvedSettings.blurIterations());
-            if (Math.abs(frostedBlurRadius - blurRadius) > 0.01f
-                    || Math.abs(frostedBlurDownscale - blurDownscale) > 0.001f
-                    || frostedBlurIterations != blurIterations) {
-                frostedGlassDirty = true;
-                frostedBlurReady = false;
-            }
-            if (frostedGlassDirty) {
+            if (cache.sourceVersion != glassCaptureVersion || cache.blurWidth != targetWidth
+                    || cache.blurHeight != targetHeight) {
+                bindTexture(cache.sourceTexture);
                 GL11.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, viewportX, viewportY, viewportW, viewportH);
-                frostedBlurReady = buildFrostedBlur(viewportW, viewportH, blurRadius, blurIterations, blurDownscale);
-                frostedBlurRadius = blurRadius;
-                frostedBlurDownscale = blurDownscale;
-                frostedBlurIterations = blurIterations;
-                frostedGlassDirty = false;
+                cache.ready = buildFrostedBlur(cache, viewportW, viewportH,
+                        key.blurRadius(), key.blurIterations(), key.blurDownscale());
+                cache.sourceVersion = glassCaptureVersion;
             }
-            return true;
+            return cache;
         } finally {
             restoreTexture0State(textureState);
         }
@@ -579,24 +650,10 @@ public final class ShaderRenderer {
             if (viewportW <= 0 || viewportH <= 0) {
                 return false;
             }
-            if (screenTexture == 0) {
-                screenTexture = GL11.glGenTextures();
-            }
-            GL13.glActiveTexture(GL13.GL_TEXTURE0);
-            GL11.glBindTexture(GL11.GL_TEXTURE_2D, screenTexture);
-            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
-            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
-            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
-            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
-            if (capturedWidth != viewportW || capturedHeight != viewportH) {
-                GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGB, viewportW, viewportH, 0,
-                        GL11.GL_RGB, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
-                capturedWidth = viewportW;
-                capturedHeight = viewportH;
-                frostedGlassDirty = true;
-                frostedBlurReady = false;
-            }
             setActiveTexture(GL13.GL_TEXTURE0);
+            if (!ensureScreenTextureStorage(viewportW, viewportH)) {
+                return false;
+            }
             bindTexture(screenTexture);
             GL11.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, viewportX, viewportY, viewportW, viewportH);
             return true;
@@ -605,9 +662,26 @@ public final class ShaderRenderer {
         }
     }
 
-    private static boolean buildFrostedBlur(int width, int height, float blurRadius,
-                                            int blurIterations, float blurDownscale) {
-        if (!supportsFramebufferBlur() || width <= 0 || height <= 0 || getGaussianBlurProgram() == null) {
+    private static boolean ensureScreenTextureStorage(int viewportW, int viewportH) {
+        if (screenTexture == 0) {
+            screenTexture = GL11.glGenTextures();
+            screenTextureConfigured = false;
+        }
+        bindTexture(screenTexture);
+        configureScreenTexture();
+        if (capturedWidth != viewportW || capturedHeight != viewportH) {
+            GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGB, viewportW, viewportH, 0,
+                    GL11.GL_RGB, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
+            capturedWidth = viewportW;
+            capturedHeight = viewportH;
+        }
+        return true;
+    }
+
+    private static boolean buildFrostedBlur(BlurCache cache, int width, int height, float blurRadius,
+                                           int blurIterations, float blurDownscale) {
+        if (cache == null || !supportsFramebufferBlur() || width <= 0 || height <= 0
+                || getGaussianBlurProgram() == null) {
             return false;
         }
         int targetWidth = Math.max(1, Math.round(width * blurDownscale));
@@ -620,32 +694,32 @@ public final class ShaderRenderer {
         int previousViewportW = VIEWPORT_BUFFER.get(2);
         int previousViewportH = VIEWPORT_BUFFER.get(3);
         try {
-            if (!ensureBlurTargets(targetWidth, targetHeight)) {
+            if (!cache.ensureTargets(targetWidth, targetHeight)) {
+                cache.ready = false;
                 return false;
             }
-            blurWidth = targetWidth;
-            blurHeight = targetHeight;
             int iterations = clampGaussianIterations(blurIterations);
             if (iterations == 0) {
-                runBlurPass(screenTexture, blurFramebufferB, targetWidth, targetHeight,
+                runBlurPass(cache.sourceTexture, cache.framebufferB, targetWidth, targetHeight,
                         width, height, 0.0f, 0.0f, 0.0f);
                 return true;
             }
             float passRadius = clampGaussianPassRadius(blurRadius / Math.max(1, iterations));
-            int sourceTexture = screenTexture;
+            int sourceTexture = cache.sourceTexture;
             int sourceWidth = width;
             int sourceHeight = height;
             for (int i = 0; i < iterations; i++) {
-                runBlurPass(sourceTexture, blurFramebufferA, targetWidth, targetHeight,
+                runBlurPass(sourceTexture, cache.framebufferA, targetWidth, targetHeight,
                         sourceWidth, sourceHeight, passRadius, 1.0f, 0.0f);
-                runBlurPass(blurTextureA, blurFramebufferB, targetWidth, targetHeight,
+                runBlurPass(cache.textureA, cache.framebufferB, targetWidth, targetHeight,
                         targetWidth, targetHeight, passRadius, 0.0f, 1.0f);
-                sourceTexture = blurTextureB;
+                sourceTexture = cache.textureB;
                 sourceWidth = targetWidth;
                 sourceHeight = targetHeight;
             }
             return true;
         } catch (Throwable throwable) {
+            cache.ready = false;
             logFailure(throwable);
             return false;
         } finally {
@@ -654,22 +728,25 @@ public final class ShaderRenderer {
         }
     }
 
-    private static boolean ensureBlurTargets(int width, int height) {
-        if (blurTextureA == 0) {
-            blurTextureA = GL11.glGenTextures();
+    private static BlurCache blurCacheFor(BlurKey key) {
+        BlurCache cache = BLUR_CACHES.get(key);
+        if (cache == null) {
+            cache = new BlurCache();
+            BLUR_CACHES.put(key, cache);
         }
-        if (blurTextureB == 0) {
-            blurTextureB = GL11.glGenTextures();
+        return cache;
+    }
+
+    private static void warmBlurCacheTargets(LiquidGlassSettings settings, int viewportW, int viewportH) {
+        if (settings == null || viewportW <= 0 || viewportH <= 0 || !supportsFramebufferBlur()) {
+            return;
         }
-        if (blurFramebufferA == 0) {
-            blurFramebufferA = GL30.glGenFramebuffers();
-        }
-        if (blurFramebufferB == 0) {
-            blurFramebufferB = GL30.glGenFramebuffers();
-        }
-        setupBlurTexture(blurTextureA, width, height);
-        setupBlurTexture(blurTextureB, width, height);
-        return attachBlurTarget(blurFramebufferA, blurTextureA) && attachBlurTarget(blurFramebufferB, blurTextureB);
+        BlurKey key = BlurKey.from(settings);
+        BlurCache cache = blurCacheFor(key);
+        int targetWidth = Math.max(1, Math.round(viewportW * key.blurDownscale()));
+        int targetHeight = Math.max(1, Math.round(viewportH * key.blurDownscale()));
+        cache.ensureSourceTexture(viewportW, viewportH);
+        cache.ensureTargets(targetWidth, targetHeight);
     }
 
     private static void setupBlurTexture(int texture, int width, int height) {
@@ -680,6 +757,17 @@ public final class ShaderRenderer {
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
         GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGB, width, height, 0,
                 GL11.GL_RGB, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
+    }
+
+    private static void configureScreenTexture() {
+        if (screenTextureConfigured) {
+            return;
+        }
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+        screenTextureConfigured = true;
     }
 
     private static boolean attachBlurTarget(int framebuffer, int texture) {
@@ -1114,6 +1202,145 @@ public final class ShaderRenderer {
             GL11.glMatrixMode(GL11.GL_PROJECTION);
             GL11.glPopMatrix();
             GL11.glMatrixMode(GL11.GL_MODELVIEW);
+        }
+    }
+
+    private static void warmUniforms(Program program, String... names) {
+        if (program == null || names == null) {
+            return;
+        }
+        for (String name : names) {
+            if (name != null) {
+                program.uniform(name);
+            }
+        }
+    }
+
+    private static final class BlurKey {
+        private final int radius;
+        private final int downscale;
+        private final int iterations;
+
+        private BlurKey(int radius, int downscale, int iterations) {
+            this.radius = radius;
+            this.downscale = downscale;
+            this.iterations = iterations;
+        }
+
+        private static BlurKey from(LiquidGlassSettings settings) {
+            LiquidGlassSettings resolvedSettings = liquidGlassSettingsOrDefault(settings);
+            return new BlurKey(
+                    Math.round(clampLiquidGlassBlurRadius(resolvedSettings.blurRadius()) * BLUR_KEY_SCALE),
+                    Math.round(clampLiquidGlassBlurDownscale(resolvedSettings.blurDownscale()) * BLUR_KEY_SCALE),
+                    clampGaussianIterations(resolvedSettings.blurIterations()));
+        }
+
+        private float blurRadius() {
+            return radius / (float) BLUR_KEY_SCALE;
+        }
+
+        private float blurDownscale() {
+            return downscale / (float) BLUR_KEY_SCALE;
+        }
+
+        private int blurIterations() {
+            return iterations;
+        }
+
+        @Override
+        public boolean equals(Object object) {
+            if (this == object) {
+                return true;
+            }
+            if (!(object instanceof BlurKey)) {
+                return false;
+            }
+            BlurKey other = (BlurKey) object;
+            return radius == other.radius && downscale == other.downscale && iterations == other.iterations;
+        }
+
+        @Override
+        public int hashCode() {
+            int result = radius;
+            result = 31 * result + downscale;
+            result = 31 * result + iterations;
+            return result;
+        }
+    }
+
+    private static final class BlurCache {
+        private int sourceTexture;
+        private int sourceWidth;
+        private int sourceHeight;
+        private boolean sourceConfigured;
+        private int textureA;
+        private int textureB;
+        private int framebufferA;
+        private int framebufferB;
+        private int blurWidth;
+        private int blurHeight;
+        private boolean targetsReady;
+        private boolean ready;
+        private int sourceVersion = -1;
+
+        private boolean ensureSourceTexture(int width, int height) {
+            if (sourceTexture == 0) {
+                sourceTexture = GL11.glGenTextures();
+                sourceConfigured = false;
+                sourceVersion = -1;
+                ready = false;
+            }
+            bindTexture(sourceTexture);
+            if (!sourceConfigured) {
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+                sourceConfigured = true;
+            }
+            if (sourceWidth != width || sourceHeight != height) {
+                GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGB, width, height, 0,
+                        GL11.GL_RGB, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
+                sourceWidth = width;
+                sourceHeight = height;
+                sourceVersion = -1;
+                ready = false;
+            }
+            return true;
+        }
+
+        private boolean ensureTargets(int width, int height) {
+            boolean created = false;
+            if (textureA == 0) {
+                textureA = GL11.glGenTextures();
+                created = true;
+            }
+            if (textureB == 0) {
+                textureB = GL11.glGenTextures();
+                created = true;
+            }
+            if (framebufferA == 0) {
+                framebufferA = GL30.glGenFramebuffers();
+                created = true;
+            }
+            if (framebufferB == 0) {
+                framebufferB = GL30.glGenFramebuffers();
+                created = true;
+            }
+            boolean sizeChanged = blurWidth != width || blurHeight != height;
+            if (!created && !sizeChanged && targetsReady) {
+                return true;
+            }
+            setupBlurTexture(textureA, width, height);
+            setupBlurTexture(textureB, width, height);
+            blurWidth = width;
+            blurHeight = height;
+            targetsReady = attachBlurTarget(framebufferA, textureA)
+                    && attachBlurTarget(framebufferB, textureB);
+            if (!targetsReady) {
+                ready = false;
+            }
+            return targetsReady;
         }
     }
 

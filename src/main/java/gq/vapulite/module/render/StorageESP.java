@@ -56,6 +56,7 @@ public class StorageESP extends Module {
     }
 
     private static Minecraft mc;
+    private static Field timerField;
 
     public static void re(final BlockPos bp, final int color) {
         if (bp == null) {
@@ -75,8 +76,9 @@ public class StorageESP extends Module {
         final float g = (color >> 8 & 0xFF) / 255.0f;
         final float b = (color & 0xFF) / 255.0f;
         GL11.glColor4d((double)r, (double)g, (double)b, (double)a);
-        RenderGlobal.drawSelectionBoundingBox(new AxisAlignedBB(x, y, z, x + 1.0, y + 1.0, z + 1.0));
-        dbb(new AxisAlignedBB(x, y, z, x + 1.0, y + 1.0, z + 1.0), r, g, b);
+        final AxisAlignedBB box = new AxisAlignedBB(x, y, z, x + 1.0, y + 1.0, z + 1.0);
+        RenderGlobal.drawSelectionBoundingBox(box);
+        dbb(box, r, g, b);
         GL11.glEnable(3553);
         GL11.glEnable(2929);
         GL11.glDepthMask(true);
@@ -84,21 +86,25 @@ public class StorageESP extends Module {
     }
     public static Timer gt() {
         try {
-            final Class<Minecraft> c = Minecraft.class;
-            final Field f = c.getDeclaredField(new String(new char[] { 't', 'i', 'm', 'e', 'r' }));
-            f.setAccessible(true);
-            return (Timer)f.get(mc);
+            if (timerField == null) {
+                timerField = resolveTimerField();
+            }
+            return (Timer) timerField.get(mc);
+        } catch (Exception er) {
+            timerField = null;
+            return null;
         }
-        catch (Exception er) {
-            try {
-                final Class<Minecraft> c2 = Minecraft.class;
-                final Field f2 = c2.getDeclaredField(new String(new char[] { 'f', 'i', 'e', 'l', 'd', '_', '7', '1', '4', '2', '8', '_', 'T' }));
-                f2.setAccessible(true);
-                return (Timer)f2.get(mc);
-            }
-            catch (Exception er2) {
-                return null;
-            }
+    }
+
+    private static Field resolveTimerField() throws NoSuchFieldException {
+        try {
+            Field field = Minecraft.class.getDeclaredField(new String(new char[] { 't', 'i', 'm', 'e', 'r' }));
+            field.setAccessible(true);
+            return field;
+        } catch (NoSuchFieldException ignored) {
+            Field field = Minecraft.class.getDeclaredField(new String(new char[] { 'f', 'i', 'e', 'l', 'd', '_', '7', '1', '4', '2', '8', '_', 'T' }));
+            field.setAccessible(true);
+            return field;
         }
     }
 
@@ -106,9 +112,18 @@ public class StorageESP extends Module {
         if (e == null) {
             return;
         }
-        final double x = e.lastTickPosX + (e.posX - e.lastTickPosX) * gt().renderPartialTicks - StorageESP.mc.getRenderManager().viewerPosX;
-        final double y = e.lastTickPosY + (e.posY - e.lastTickPosY) * gt().renderPartialTicks - StorageESP.mc.getRenderManager().viewerPosY;
-        final double z = e.lastTickPosZ + (e.posZ - e.lastTickPosZ) * gt().renderPartialTicks - StorageESP.mc.getRenderManager().viewerPosZ;
+        final float partialTicks = gt().renderPartialTicks;
+        final double x = e.lastTickPosX + (e.posX - e.lastTickPosX) * partialTicks - StorageESP.mc.getRenderManager().viewerPosX;
+        final double y = e.lastTickPosY + (e.posY - e.lastTickPosY) * partialTicks - StorageESP.mc.getRenderManager().viewerPosY;
+        final double z = e.lastTickPosZ + (e.posZ - e.lastTickPosZ) * partialTicks - StorageESP.mc.getRenderManager().viewerPosZ;
+        final AxisAlignedBB sourceBox = e.getEntityBoundingBox();
+        final AxisAlignedBB renderBox = new AxisAlignedBB(
+                sourceBox.minX - 0.05 - e.posX + (e.posX - StorageESP.mc.getRenderManager().viewerPosX),
+                sourceBox.minY - e.posY + (e.posY - StorageESP.mc.getRenderManager().viewerPosY),
+                sourceBox.minZ - 0.05 - e.posZ + (e.posZ - StorageESP.mc.getRenderManager().viewerPosZ),
+                sourceBox.maxX + 0.05 - e.posX + (e.posX - StorageESP.mc.getRenderManager().viewerPosX),
+                sourceBox.maxY + 0.1 - e.posY + (e.posY - StorageESP.mc.getRenderManager().viewerPosY),
+                sourceBox.maxZ + 0.05 - e.posZ + (e.posZ - StorageESP.mc.getRenderManager().viewerPosZ));
         if (e instanceof EntityPlayer && damage && ((EntityPlayer)e).hurtTime != 0) {
             color = Color.RED.getRGB();
         }
@@ -125,8 +140,8 @@ public class StorageESP extends Module {
             GL11.glDepthMask(false);
             GL11.glLineWidth(3.0f);
             GL11.glColor4f(r, g, b, a);
-            RenderGlobal.drawSelectionBoundingBox(new AxisAlignedBB(e.getEntityBoundingBox().minX - 0.05 - e.posX + (e.posX - StorageESP.mc.getRenderManager().viewerPosX), e.getEntityBoundingBox().minY - e.posY + (e.posY - StorageESP.mc.getRenderManager().viewerPosY), e.getEntityBoundingBox().minZ - 0.05 - e.posZ + (e.posZ - StorageESP.mc.getRenderManager().viewerPosZ), e.getEntityBoundingBox().maxX + 0.05 - e.posX + (e.posX - StorageESP.mc.getRenderManager().viewerPosX), e.getEntityBoundingBox().maxY + 0.1 - e.posY + (e.posY - StorageESP.mc.getRenderManager().viewerPosY), e.getEntityBoundingBox().maxZ + 0.05 - e.posZ + (e.posZ - StorageESP.mc.getRenderManager().viewerPosZ)));
-            dbb(new AxisAlignedBB(e.getEntityBoundingBox().minX - 0.05 - e.posX + (e.posX - StorageESP.mc.getRenderManager().viewerPosX), e.getEntityBoundingBox().minY - e.posY + (e.posY - StorageESP.mc.getRenderManager().viewerPosY), e.getEntityBoundingBox().minZ - 0.05 - e.posZ + (e.posZ - StorageESP.mc.getRenderManager().viewerPosZ), e.getEntityBoundingBox().maxX + 0.05 - e.posX + (e.posX - StorageESP.mc.getRenderManager().viewerPosX), e.getEntityBoundingBox().maxY + 0.1 - e.posY + (e.posY - StorageESP.mc.getRenderManager().viewerPosY), e.getEntityBoundingBox().maxZ + 0.05 - e.posZ + (e.posZ - StorageESP.mc.getRenderManager().viewerPosZ)), r, g, b);
+            RenderGlobal.drawSelectionBoundingBox(renderBox);
+            dbb(renderBox, r, g, b);
             GL11.glEnable(3553);
             GL11.glEnable(2929);
             GL11.glDepthMask(true);
@@ -144,10 +159,10 @@ public class StorageESP extends Module {
             GL11.glDepthMask(false);
             GL11.glColor4d((double)r, (double)g, (double)b, (double)a);
             if (mode) {
-                RenderGlobal.drawSelectionBoundingBox(new AxisAlignedBB(e.getEntityBoundingBox().minX - 0.05 - e.posX + (e.posX - StorageESP.mc.getRenderManager().viewerPosX), e.getEntityBoundingBox().minY - e.posY + (e.posY - StorageESP.mc.getRenderManager().viewerPosY), e.getEntityBoundingBox().minZ - 0.05 - e.posZ + (e.posZ - StorageESP.mc.getRenderManager().viewerPosZ), e.getEntityBoundingBox().maxX + 0.05 - e.posX + (e.posX - StorageESP.mc.getRenderManager().viewerPosX), e.getEntityBoundingBox().maxY + 0.1 - e.posY + (e.posY - StorageESP.mc.getRenderManager().viewerPosY), e.getEntityBoundingBox().maxZ + 0.05 - e.posZ + (e.posZ - StorageESP.mc.getRenderManager().viewerPosZ)));
+                RenderGlobal.drawSelectionBoundingBox(renderBox);
             }
             else {
-                dbb(new AxisAlignedBB(e.getEntityBoundingBox().minX - 0.05 - e.posX + (e.posX - StorageESP.mc.getRenderManager().viewerPosX), e.getEntityBoundingBox().minY - e.posY + (e.posY - StorageESP.mc.getRenderManager().viewerPosY), e.getEntityBoundingBox().minZ - 0.05 - e.posZ + (e.posZ - StorageESP.mc.getRenderManager().viewerPosZ), e.getEntityBoundingBox().maxX + 0.05 - e.posX + (e.posX - StorageESP.mc.getRenderManager().viewerPosX), e.getEntityBoundingBox().maxY + 0.1 - e.posY + (e.posY - StorageESP.mc.getRenderManager().viewerPosY), e.getEntityBoundingBox().maxZ + 0.05 - e.posZ + (e.posZ - StorageESP.mc.getRenderManager().viewerPosZ)), r, g, b);
+                dbb(renderBox, r, g, b);
             }
             GL11.glEnable(3553);
             GL11.glEnable(2929);
@@ -186,8 +201,6 @@ public class StorageESP extends Module {
         vb.pos(abb.maxX, abb.maxY, abb.maxZ).color(r, g, b, a).endVertex();
         vb.pos(abb.minX, abb.minY, abb.maxZ).color(r, g, b, a).endVertex();
         vb.pos(abb.minX, abb.maxY, abb.maxZ).color(r, g, b, a).endVertex();
-        ts.draw();
-        vb.begin(7, DefaultVertexFormats.POSITION_COLOR);
         vb.pos(abb.maxX, abb.maxY, abb.minZ).color(r, g, b, a).endVertex();
         vb.pos(abb.maxX, abb.minY, abb.minZ).color(r, g, b, a).endVertex();
         vb.pos(abb.minX, abb.maxY, abb.minZ).color(r, g, b, a).endVertex();
@@ -196,8 +209,6 @@ public class StorageESP extends Module {
         vb.pos(abb.minX, abb.minY, abb.maxZ).color(r, g, b, a).endVertex();
         vb.pos(abb.maxX, abb.maxY, abb.maxZ).color(r, g, b, a).endVertex();
         vb.pos(abb.maxX, abb.minY, abb.maxZ).color(r, g, b, a).endVertex();
-        ts.draw();
-        vb.begin(7, DefaultVertexFormats.POSITION_COLOR);
         vb.pos(abb.minX, abb.maxY, abb.minZ).color(r, g, b, a).endVertex();
         vb.pos(abb.maxX, abb.maxY, abb.minZ).color(r, g, b, a).endVertex();
         vb.pos(abb.maxX, abb.maxY, abb.maxZ).color(r, g, b, a).endVertex();
@@ -206,8 +217,6 @@ public class StorageESP extends Module {
         vb.pos(abb.minX, abb.maxY, abb.maxZ).color(r, g, b, a).endVertex();
         vb.pos(abb.maxX, abb.maxY, abb.maxZ).color(r, g, b, a).endVertex();
         vb.pos(abb.maxX, abb.maxY, abb.minZ).color(r, g, b, a).endVertex();
-        ts.draw();
-        vb.begin(7, DefaultVertexFormats.POSITION_COLOR);
         vb.pos(abb.minX, abb.minY, abb.minZ).color(r, g, b, a).endVertex();
         vb.pos(abb.maxX, abb.minY, abb.minZ).color(r, g, b, a).endVertex();
         vb.pos(abb.maxX, abb.minY, abb.maxZ).color(r, g, b, a).endVertex();
@@ -216,8 +225,6 @@ public class StorageESP extends Module {
         vb.pos(abb.minX, abb.minY, abb.maxZ).color(r, g, b, a).endVertex();
         vb.pos(abb.maxX, abb.minY, abb.maxZ).color(r, g, b, a).endVertex();
         vb.pos(abb.maxX, abb.minY, abb.minZ).color(r, g, b, a).endVertex();
-        ts.draw();
-        vb.begin(7, DefaultVertexFormats.POSITION_COLOR);
         vb.pos(abb.minX, abb.minY, abb.minZ).color(r, g, b, a).endVertex();
         vb.pos(abb.minX, abb.maxY, abb.minZ).color(r, g, b, a).endVertex();
         vb.pos(abb.minX, abb.minY, abb.maxZ).color(r, g, b, a).endVertex();
@@ -226,8 +233,6 @@ public class StorageESP extends Module {
         vb.pos(abb.maxX, abb.maxY, abb.maxZ).color(r, g, b, a).endVertex();
         vb.pos(abb.maxX, abb.minY, abb.minZ).color(r, g, b, a).endVertex();
         vb.pos(abb.maxX, abb.maxY, abb.minZ).color(r, g, b, a).endVertex();
-        ts.draw();
-        vb.begin(7, DefaultVertexFormats.POSITION_COLOR);
         vb.pos(abb.minX, abb.maxY, abb.maxZ).color(r, g, b, a).endVertex();
         vb.pos(abb.minX, abb.minY, abb.maxZ).color(r, g, b, a).endVertex();
         vb.pos(abb.minX, abb.maxY, abb.minZ).color(r, g, b, a).endVertex();
@@ -243,9 +248,10 @@ public class StorageESP extends Module {
         if (e == null) {
             return;
         }
-        final double x = e.lastTickPosX + (e.posX - e.lastTickPosX) * gt().renderPartialTicks - StorageESP.mc.getRenderManager().viewerPosX;
-        final double y = e.getEyeHeight() + e.lastTickPosY + (e.posY - e.lastTickPosY) * gt().renderPartialTicks - StorageESP.mc.getRenderManager().viewerPosY;
-        final double z = e.lastTickPosZ + (e.posZ - e.lastTickPosZ) * gt().renderPartialTicks - StorageESP.mc.getRenderManager().viewerPosZ;
+        final float partialTicks = gt().renderPartialTicks;
+        final double x = e.lastTickPosX + (e.posX - e.lastTickPosX) * partialTicks - StorageESP.mc.getRenderManager().viewerPosX;
+        final double y = e.getEyeHeight() + e.lastTickPosY + (e.posY - e.lastTickPosY) * partialTicks - StorageESP.mc.getRenderManager().viewerPosY;
+        final double z = e.lastTickPosZ + (e.posZ - e.lastTickPosZ) * partialTicks - StorageESP.mc.getRenderManager().viewerPosZ;
         final float a = (color >> 24 & 0xFF) / 255.0f;
         final float r = (color >> 16 & 0xFF) / 255.0f;
         final float g = (color >> 8 & 0xFF) / 255.0f;

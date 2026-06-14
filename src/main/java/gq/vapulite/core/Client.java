@@ -4,6 +4,8 @@ import gq.vapulite.manager.FileManager;
 import gq.vapulite.manager.NotificationManager;
 import gq.vapulite.module.Module;
 import gq.vapulite.manager.ModuleManager;
+import gq.vapulite.module.render.ClickGUI;
+import gq.vapulite.ui.click.material.MaterialClickGui;
 import gq.vapulite.util.color.ColorUtils;
 import gq.vapulite.util.minecraft.Helper;
 import gq.vapulite.command.Bind;
@@ -56,6 +58,7 @@ public class Client {
     public static Client instance;
     public static boolean state = false;
     private static boolean shutdownHookRegistered;
+    private boolean materialClickGuiResourcesWarmed;
     public static Random rand=new Random();
     public final FileManager fileManager = new FileManager();
     public static ModuleManager moduleManager = new ModuleManager();
@@ -131,6 +134,18 @@ public class Client {
             Client.instance.fileManager.markDirty();
         }
     }
+
+    @SubscribeEvent
+    public void onRenderTick(TickEvent.RenderTickEvent event) {
+        if (materialClickGuiResourcesWarmed || event.phase != TickEvent.Phase.END
+                || mc.theWorld == null || mc.thePlayer == null || mc.currentScreen != null
+                || ClickGUI.guiStyle.getValue() != ClickGUI.GuiStyle.MATERIAL) {
+            return;
+        }
+        MaterialClickGui.warmResources();
+        materialClickGuiResourcesWarmed = true;
+    }
+
 
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event) {

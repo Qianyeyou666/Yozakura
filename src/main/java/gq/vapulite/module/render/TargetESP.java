@@ -978,6 +978,10 @@ public class TargetESP extends Module {
         private static int program;
         private static boolean disabled;
         private static boolean loggedFailure;
+        private static int primaryUniform = -1;
+        private static int secondaryUniform = -1;
+        private static int timeUniform = -1;
+        private static int hurtPulseUniform = -1;
 
         static boolean begin(int primary, int secondary, float alpha, float time, float hurtPulse) {
             if (disabled || !supportsShaders()) {
@@ -990,10 +994,10 @@ public class TargetESP extends Module {
                 }
             }
             GL20.glUseProgram(program);
-            setColor("primary", primary, alpha);
-            setColor("secondary", secondary, alpha);
-            GL20.glUniform1f(GL20.glGetUniformLocation(program, "time"), time);
-            GL20.glUniform1f(GL20.glGetUniformLocation(program, "hurtPulse"), hurtPulse);
+            setColor(primaryUniform, primary, alpha);
+            setColor(secondaryUniform, secondary, alpha);
+            GL20.glUniform1f(timeUniform, time);
+            GL20.glUniform1f(hurtPulseUniform, hurtPulse);
             return true;
         }
 
@@ -1015,10 +1019,12 @@ public class TargetESP extends Module {
                 if (GL20.glGetProgrami(linked, GL20.GL_LINK_STATUS) == 0) {
                     throw new IllegalStateException(GL20.glGetProgramInfoLog(linked, 4096));
                 }
+                cacheUniformLocations(linked);
                 return linked;
             } catch (Throwable throwable) {
                 disabled = true;
                 logFailure(throwable);
+                resetUniformLocations();
                 if (linked != 0) {
                     GL20.glDeleteProgram(linked);
                 }
@@ -1059,8 +1065,21 @@ public class TargetESP extends Module {
             }
         }
 
-        private static void setColor(String uniform, int color, float alpha) {
-            int location = GL20.glGetUniformLocation(program, uniform);
+        private static void cacheUniformLocations(int linked) {
+            primaryUniform = GL20.glGetUniformLocation(linked, "primary");
+            secondaryUniform = GL20.glGetUniformLocation(linked, "secondary");
+            timeUniform = GL20.glGetUniformLocation(linked, "time");
+            hurtPulseUniform = GL20.glGetUniformLocation(linked, "hurtPulse");
+        }
+
+        private static void resetUniformLocations() {
+            primaryUniform = -1;
+            secondaryUniform = -1;
+            timeUniform = -1;
+            hurtPulseUniform = -1;
+        }
+
+        private static void setColor(int location, int color, float alpha) {
             GL20.glUniform4f(location,
                     ((color >> 16) & 255) / 255.0f,
                     ((color >> 8) & 255) / 255.0f,

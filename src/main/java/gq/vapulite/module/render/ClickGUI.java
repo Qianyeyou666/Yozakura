@@ -45,6 +45,7 @@ public class ClickGUI extends Module {
 		} else if (guiStyle.getValue() == GuiStyle.VAPE) {
 			mc.displayGuiScreen(new VapeClickGui());
 		} else {
+			MaterialClickGui.warmResources();
 			mc.displayGuiScreen(new MaterialClickGui());
 		}
 		this.setState(false);
