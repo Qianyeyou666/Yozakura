@@ -5,11 +5,11 @@ plugins {
     id 'xyz.wagyourtail.unimined' version '1.4.1'
 }
 
-group = 'gq.yozakura'
+group = 'gq.vapulite'
 version = '1.5.0'
 
 base {
-    archivesName = 'Yozakura'
+    archivesName = 'VapuLite'
 }
 
 java {
@@ -87,7 +87,7 @@ jar {
     manifest {
         attributes(
             'Manifest-Version': '1.0',
-            'Agent-Class': 'gq.yozakura.YozakuraAttachPoint'
+            'Agent-Class': 'gq.vapulite.VapuAttachPoint'
         )
     }
 }
@@ -103,7 +103,7 @@ tasks.register('syncRuntimeJar', Copy) {
     dependsOn tasks.named('remapJar')
     from tasks.named('remapJar').flatMap { it.archiveFile }
     into layout.buildDirectory.dir('libs')
-    rename { 'Yozakura.jar' }
+    rename { 'VapuLite.jar' }
 }
 
 tasks.named('build') {

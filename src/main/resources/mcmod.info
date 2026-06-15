@@ -1,14 +1,14 @@
 [
 {
-  "modid": "Yozakura",
-  "name": "Yozakura",
-  "description": "Yozakura Client",
+  "modid": "VapuLite",
+  "name": "VapuLite",
+  "description": "VapuLite Client",
   "version": "${version}",
   "mcversion": "${mcversion}",
   "url": "",
   "updateUrl": "",
-  "authorList": ["Yozakura Client Community"],
-  "credits": "Yozakura Client Team",
+  "authorList": ["Vapu Client Community"],
+  "credits": "Vapu Client Team",
   "logoFile": "",
   "screenshots": [],
   "dependencies": []
