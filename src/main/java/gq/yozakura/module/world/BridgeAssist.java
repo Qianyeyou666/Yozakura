@@ -36,6 +36,7 @@ public class BridgeAssist extends Module {
     private static final int ROTATION_PRIORITY = 1;
     private static final float MIN_PRE_PLACE_PITCH = 60.0F;
     private static final float MAX_PRE_PLACE_PITCH = 90.0F;
+    private static final long PRE_PLACE_DELAY_MILLIS = 45L;
 
     private final Option<Boolean> prePlace = new Option<Boolean>("Pre Place", "PrePlace", false);
     private final Numbers<Double> edgeOffset =
@@ -64,6 +65,7 @@ public class BridgeAssist extends Module {
     private float prePlaceYaw;
     private float prePlacePitch;
     private MovingObjectPosition prePlaceMouseOver;
+    private long lastPrePlaceMillis;
 
     public BridgeAssist() {
         super("BridgeAssist", Keyboard.KEY_NONE, ModuleType.World, "Assist edge sneaking while bridging");
@@ -100,7 +102,7 @@ public class BridgeAssist extends Module {
     public void onRightClick(RightClickMouseEvent event) {
         if (canUsePrePlaceMouseOver()) {
             mc.objectMouseOver = prePlaceMouseOver;
-            if (placePrePlace(prePlaceMouseOver)) {
+            if (placePrePlaceNow()) {
                 placed = true;
                 event.setCancelled(true);
             }
@@ -230,13 +232,15 @@ public class BridgeAssist extends Module {
                 ROTATION_PRIORITY);
         event.setPervRotation(nextYaw, ROTATION_PRIORITY);
         VisualRotationState.publish("BridgeAssist", nextYaw, nextPitch, ROTATION_PRIORITY);
-        applyClientPrePlaceRotation(nextYaw, nextPitch);
 
         MovingObjectPosition hit = RotationUtil.rayTrace(nextYaw, nextPitch,
                 mc.playerController.getBlockReachDistance(), 1.0F);
         if (isPrePlaceHit(hit, target)) {
             prePlaceMouseOver = hit;
             mc.objectMouseOver = hit;
+            if (isUsePressed()) {
+                placePrePlaceNow();
+            }
         } else {
             prePlaceMouseOver = null;
         }
@@ -315,6 +319,7 @@ public class BridgeAssist extends Module {
     private void resetPrePlace() {
         hasPrePlaceRotation = false;
         prePlaceMouseOver = null;
+        lastPrePlaceMillis = 0L;
         VisualRotationState.clearSource("BridgeAssist");
     }
 
@@ -370,10 +375,10 @@ public class BridgeAssist extends Module {
     private TargetResult findTarget(float yaw, float currentPitch, double reach) {
         AxisAlignedBB box = mc.thePlayer.getEntityBoundingBox();
         int standY = MathHelper.floor_double(box.minY) - 1;
-        int minX = MathHelper.floor_double(box.minX);
-        int maxX = MathHelper.floor_double(box.maxX);
-        int minZ = MathHelper.floor_double(box.minZ);
-        int maxZ = MathHelper.floor_double(box.maxZ);
+        int minX = MathHelper.floor_double(box.minX) - 1;
+        int maxX = MathHelper.floor_double(box.maxX) + 1;
+        int minZ = MathHelper.floor_double(box.minZ) - 1;
+        int maxZ = MathHelper.floor_double(box.maxZ) + 1;
 
         ArrayList<FaceTarget> targets = new ArrayList<FaceTarget>();
         for (int x = minX; x <= maxX; x++) {
@@ -438,11 +443,23 @@ public class BridgeAssist extends Module {
                 && hit.sideHit == target.face;
     }
 
-    private void applyClientPrePlaceRotation(float yaw, float pitch) {
-        mc.thePlayer.rotationYaw = yaw;
-        mc.thePlayer.rotationPitch = pitch;
-        mc.thePlayer.rotationYawHead = yaw;
-        mc.thePlayer.renderYawOffset = yaw;
+    private boolean placePrePlaceNow() {
+        if (!canUsePrePlaceMouseOver()) {
+            return false;
+        }
+        long now = System.currentTimeMillis();
+        if (now - lastPrePlaceMillis < PRE_PLACE_DELAY_MILLIS) {
+            return false;
+        }
+        if (!BlockUtil.isReplaceable(prePlaceMouseOver.getBlockPos().offset(prePlaceMouseOver.sideHit))) {
+            return false;
+        }
+        boolean placedBlock = placePrePlace(prePlaceMouseOver);
+        if (placedBlock) {
+            placed = true;
+            lastPrePlaceMillis = now;
+        }
+        return placedBlock;
     }
 
     private boolean placePrePlace(MovingObjectPosition hit) {
@@ -510,6 +527,10 @@ public class BridgeAssist extends Module {
 
     private boolean isJumpPressed() {
         return isPhysicalKeyDown(mc.gameSettings.keyBindJump.getKeyCode());
+    }
+
+    private boolean isUsePressed() {
+        return isPhysicalKeyDown(mc.gameSettings.keyBindUseItem.getKeyCode());
     }
 
     private boolean isManualSneak() {

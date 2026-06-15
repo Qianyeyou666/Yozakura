@@ -1,5 +1,8 @@
 package gq.yozakura.module.combat;
 
+import gq.yozakura.event.bridge.LeftClickMouseEvent;
+import gq.yozakura.event.bus.EventTarget;
+import gq.yozakura.event.bus.types.EventType;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.Module;
 import gq.yozakura.value.Numbers;
@@ -43,9 +46,26 @@ public class Reach extends Module {
         Chinese = "长臂猿";
     }
 
+    @Override
+    public void disable() {
+        lastReachHit = null;
+    }
+
     @SubscribeEvent
     public void onTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END || !isInGame()) {
+            lastReachHit = null;
+            return;
+        }
+        if (!mc.gameSettings.keyBindAttack.isKeyDown()) {
+            return;
+        }
+        applyReach(1.0f);
+    }
+
+    @EventTarget
+    public void onBridgeTick(gq.yozakura.event.bridge.TickEvent event) {
+        if (event.getType() != EventType.POST || !isInGame()) {
             lastReachHit = null;
             return;
         }
@@ -60,9 +80,20 @@ public class Reach extends Module {
         if (event.button != 0 || !event.buttonstate || !isInGame()) {
             return;
         }
+        handleLeftClick();
+    }
+
+    @EventTarget
+    public void onBridgeLeftClick(LeftClickMouseEvent event) {
+        if (!isInGame()) {
+            return;
+        }
+        handleLeftClick();
+    }
+
+    private void handleLeftClick() {
         if (lastReachHit != null) {
-            mc.objectMouseOver = lastReachHit;
-            mc.pointedEntity = lastReachHit.entityHit;
+            applyHit(lastReachHit);
             return;
         }
         applyReach(1.0f);
@@ -78,6 +109,10 @@ public class Reach extends Module {
             return;
         }
         lastReachHit = hit;
+        applyHit(hit);
+    }
+
+    private void applyHit(MovingObjectPosition hit) {
         mc.objectMouseOver = hit;
         mc.pointedEntity = hit.entityHit;
     }

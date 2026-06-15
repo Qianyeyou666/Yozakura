@@ -62,6 +62,7 @@ public final class StandaloneEventBridge {
         MovementInputBridge.install();
         StandaloneGuiIngame.install(mc);
         StandaloneEntityRenderer.install(mc);
+        StandaloneLivingRendererBridge.install(mc);
         injectPacketHandler();
         dispatchForgeTick(gq.yozakura.bridge.forge.TickEvent.Phase.START);
         dispatchMouseButtons();

@@ -1,5 +1,8 @@
 package gq.yozakura.module.combat;
 
+import gq.yozakura.event.bridge.LeftClickMouseEvent;
+import gq.yozakura.event.bus.EventTarget;
+import gq.yozakura.event.bus.types.EventType;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.Module;
 import gq.yozakura.value.Numbers;
@@ -35,26 +38,64 @@ public class HitBoxes extends Module {
         Chinese = "变胖";
     }
 
+    @Override
+    public void disable() {
+        expandedHit = null;
+    }
+
     @SubscribeEvent
     public void onTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END || !isInGame()) {
             expandedHit = null;
             return;
         }
-        expandedHit = getExpandedMouseOver(1.0f);
-        if (expandedHit != null && expandedHit.entityHit != null && mc.objectMouseOver != null
-                && mc.objectMouseOver.entityHit == null) {
-            mc.objectMouseOver = expandedHit;
-            mc.pointedEntity = expandedHit.entityHit;
+        updateExpandedHit();
+    }
+
+    @EventTarget
+    public void onBridgeTick(gq.yozakura.event.bridge.TickEvent event) {
+        if (event.getType() != EventType.POST || !isInGame()) {
+            expandedHit = null;
+            return;
         }
+        updateExpandedHit();
     }
 
     @SubscribeEvent
     public void onMouse(MouseEvent event) {
         if (event.button == 0 && event.buttonstate && expandedHit != null) {
-            mc.objectMouseOver = expandedHit;
-            mc.pointedEntity = expandedHit.entityHit;
+            applyExpandedHit();
         }
+    }
+
+    @EventTarget
+    public void onBridgeLeftClick(LeftClickMouseEvent event) {
+        if (!isInGame()) {
+            return;
+        }
+        if (expandedHit == null) {
+            expandedHit = getExpandedMouseOver(1.0f);
+        }
+        if (expandedHit != null) {
+            applyExpandedHit();
+        }
+    }
+
+    private void updateExpandedHit() {
+        expandedHit = getExpandedMouseOver(1.0f);
+        if (shouldApplyExpandedHit()) {
+            applyExpandedHit();
+        }
+    }
+
+    private boolean shouldApplyExpandedHit() {
+        return expandedHit != null && expandedHit.entityHit != null && mc.objectMouseOver != null
+                && mc.objectMouseOver.entityHit == null;
+    }
+
+    private void applyExpandedHit() {
+        mc.objectMouseOver = expandedHit;
+        mc.pointedEntity = expandedHit.entityHit;
     }
 
     private MovingObjectPosition getExpandedMouseOver(float partialTicks) {

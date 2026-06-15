@@ -61,6 +61,7 @@ public class StandaloneEntityRenderer extends EntityRenderer {
     }
 
     private void renderWorldHook(float partialTicks, long finishTimeNano) {
+        StandaloneLivingRendererBridge.install(Minecraft.getMinecraft());
         super.renderWorld(partialTicks, finishTimeNano);
         dispatchRender3D(partialTicks);
         // On Lunar Client, StandaloneGuiIngame.install() is a no-op to preserve
