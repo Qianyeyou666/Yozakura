@@ -1,4 +1,4 @@
-package gq.yozakura.ui.click.vape;
+package gq.yozakura.ui.click.yozakura;
 
 import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.module.Module;
@@ -22,13 +22,13 @@ import java.util.List;
  *   <li>处理滚轮滚动（列表滚动）</li>
  *   <li>处理滚动条拖拽</li>
  * </ul>
- * 包级私有（package-private），仅供 {@link VapeClickGui} 内部使用。
+ * 包级私有（package-private），仅供 {@link YozakuraClickGui} 内部使用。
  */
 final class ClickGuiModuleList {
     /** 关联的主 GUI 实例 */
-    private final VapeClickGui gui;
+    private final YozakuraClickGui gui;
 
-    ClickGuiModuleList(VapeClickGui gui) {
+    ClickGuiModuleList(YozakuraClickGui gui) {
         this.gui = gui;
     }
 
@@ -49,31 +49,31 @@ final class ClickGuiModuleList {
         float modulePanelHeight = gui.getModulePanelHeight();
         float panelY = gui.contentY + introY;
         // 绘制列表面板背景
-        RenderServices.shapes().shadow(gui.contentX, panelY, gui.contentX + VapeClickGui.CARD_W,
-                panelY + modulePanelHeight, VapeClickGui.PANEL_RADIUS,
+        RenderServices.shapes().shadow(gui.contentX, panelY, gui.contentX + YozakuraClickGui.CARD_W,
+                panelY + modulePanelHeight, YozakuraClickGui.PANEL_RADIUS,
                 gui.withAlpha(gui.shadowColor(220), 88.0f * gui.guiAlpha), 9, 6.0f);
-        gui.drawPanelGlass(gui.contentX, panelY, gui.contentX + VapeClickGui.CARD_W, panelY + modulePanelHeight,
-                VapeClickGui.PANEL_RADIUS, 1.0f,
+        gui.drawPanelGlass(gui.contentX, panelY, gui.contentX + YozakuraClickGui.CARD_W, panelY + modulePanelHeight,
+                YozakuraClickGui.PANEL_RADIUS, 1.0f,
                 gui.withAlpha(gui.guiColors().glassFill, gui.getAlpha(gui.guiColors().glassFill) * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, gui.getAlpha(gui.guiColors().glassBorder) * gui.guiAlpha));
 
         // 在裁剪区域内渲染模块卡片
         float drawContentY = gui.getModuleListY() + introY;
-        gui.beginScissor(gui.contentX + 8.0f, drawContentY, VapeClickGui.CARD_W - 16.0f, listHeight);
+        gui.beginScissor(gui.contentX + 8.0f, drawContentY, YozakuraClickGui.CARD_W - 16.0f, listHeight);
         try {
             float rowY = drawContentY + gui.listScroll;
             List<Module> modules = gui.getVisibleModules();
             for (int i = 0; i < modules.size(); i++) {
                 Module module = modules.get(i);
                 // 仅渲染可见范围内的卡片（视口裁剪优化）
-                if (rowY + VapeClickGui.CARD_H >= drawContentY - 2 && rowY <= drawContentY + listHeight + 2) {
+                if (rowY + YozakuraClickGui.CARD_H >= drawContentY - 2 && rowY <= drawContentY + listHeight + 2) {
                     // 错位入场动画：每个后续卡片延迟出现
                     float stagger = Math.min(1.0f, Math.max(0.0f, gui.contentFade - i * 0.035f));
                     float eased = gui.easeSmooth(gui.easeOut(stagger));
                     drawModuleCard(module, gui.contentX + 10.0f, rowY + (1.0f - eased) * 8.0f,
-                            VapeClickGui.CARD_H, mouseX, mouseY, eased);
+                            YozakuraClickGui.CARD_H, mouseX, mouseY, eased);
                 }
-                rowY += VapeClickGui.CARD_H + 6.0f;
+                rowY += YozakuraClickGui.CARD_H + 6.0f;
             }
         } finally {
             gui.endScissor();
@@ -90,7 +90,7 @@ final class ClickGuiModuleList {
      */
     boolean mouseClicked(int mouseX, int mouseY, int mouseButton) {
         // 检查鼠标是否在列表区域内
-        if (!VapeClickGui.isHovered(gui.contentX, gui.getModuleListY(), gui.contentX + VapeClickGui.CARD_W,
+        if (!YozakuraClickGui.isHovered(gui.contentX, gui.getModuleListY(), gui.contentX + YozakuraClickGui.CARD_W,
                 gui.getModuleListY() + gui.getListHeight(), mouseX, mouseY)) {
             return false;
         }
@@ -99,8 +99,8 @@ final class ClickGuiModuleList {
         for (int i = 0; i < modules.size(); i++) {
             Module module = modules.get(i);
             float x = gui.contentX + 10.0f;
-            if (VapeClickGui.isHovered(x, rowY, x + getRowWidth(),
-                    rowY + VapeClickGui.CARD_H, mouseX, mouseY)) {
+            if (YozakuraClickGui.isHovered(x, rowY, x + getRowWidth(),
+                    rowY + YozakuraClickGui.CARD_H, mouseX, mouseY)) {
                 if (mouseButton == 2) {
                     // 中键：开始按键绑定
                     gui.startBinding(module);
@@ -130,14 +130,14 @@ final class ClickGuiModuleList {
                 }
                 if (mouseButton == 0) {
                     // 左键：选中模块
-                    VapeClickGui.selectModule(module);
+                    YozakuraClickGui.selectModule(module);
                     gui.clickProgress.put(module, 1.0f);
                 }
                 gui.targetListScroll = gui.clamp(gui.targetListScroll,
                         -Math.max(0.0f, gui.getContentHeight() - gui.getListHeight()), 0.0f);
                 return true;
             }
-            rowY += VapeClickGui.CARD_H + 6.0f;
+            rowY += YozakuraClickGui.CARD_H + 6.0f;
         }
         return false;
     }
@@ -146,8 +146,8 @@ final class ClickGuiModuleList {
      * 处理鼠标滚轮滚动。
      */
     boolean updateScroll(int mouseX, int mouseY, int wheel) {
-        if (wheel == 0 || !VapeClickGui.isHovered(gui.contentX, gui.getModuleListY(),
-                gui.contentX + VapeClickGui.CARD_W, gui.getModuleListY() + gui.getListHeight(), mouseX, mouseY)) {
+        if (wheel == 0 || !YozakuraClickGui.isHovered(gui.contentX, gui.getModuleListY(),
+                gui.contentX + YozakuraClickGui.CARD_W, gui.getModuleListY() + gui.getListHeight(), mouseX, mouseY)) {
             return false;
         }
         gui.targetListScroll += wheel > 0 ? 34.0f : -34.0f;
@@ -163,17 +163,17 @@ final class ClickGuiModuleList {
         if (mouseButton != 0) {
             return false;
         }
-        VapeClickGui.ScrollbarMetrics metrics = gui.getScrollbarMetrics(gui.getModuleListY(), gui.getListHeight());
+        YozakuraClickGui.ScrollbarMetrics metrics = gui.getScrollbarMetrics(gui.getModuleListY(), gui.getListHeight());
         if (!metrics.visible) {
             return false;
         }
-        boolean onTrack = VapeClickGui.isHovered(metrics.trackX - 4.0f, metrics.trackY, metrics.trackX + 6.0f,
+        boolean onTrack = YozakuraClickGui.isHovered(metrics.trackX - 4.0f, metrics.trackY, metrics.trackX + 6.0f,
                 metrics.trackY + metrics.trackHeight, mouseX, mouseY);
         if (!onTrack) {
             return false;
         }
         // 判断是点击在滑块上（精确定位）还是轨道上（跳到点击位置）
-        boolean onThumb = VapeClickGui.isHovered(metrics.trackX - 4.0f, metrics.thumbY, metrics.trackX + 6.0f,
+        boolean onThumb = YozakuraClickGui.isHovered(metrics.trackX - 4.0f, metrics.thumbY, metrics.trackX + 6.0f,
                 metrics.thumbY + metrics.thumbHeight, mouseX, mouseY);
         gui.draggingScrollbar = true;
         gui.scrollbarDragOffset = onThumb ? mouseY - metrics.thumbY : metrics.thumbHeight / 2.0f;
@@ -195,7 +195,7 @@ final class ClickGuiModuleList {
             gui.draggingScrollbar = false;
             return;
         }
-        VapeClickGui.ScrollbarMetrics metrics = gui.getScrollbarMetrics(gui.getModuleListY(), gui.getListHeight());
+        YozakuraClickGui.ScrollbarMetrics metrics = gui.getScrollbarMetrics(gui.getModuleListY(), gui.getListHeight());
         if (!metrics.visible) {
             gui.draggingScrollbar = false;
             return;
@@ -221,7 +221,7 @@ final class ClickGuiModuleList {
     private void drawModuleCard(Module module, float x, float y, float height, int mouseX, int mouseY, float alpha) {
         boolean selected = gui.selectedModule == module;
         float rowW = getRowWidth();
-        boolean hovered = VapeClickGui.isHovered(x, y, x + rowW, y + height, mouseX, mouseY);
+        boolean hovered = YozakuraClickGui.isHovered(x, y, x + rowW, y + height, mouseX, mouseY);
         float hover = gui.animateMap(gui.hoverProgress, module, hovered && !gui.closing ? 1.0f : 0.0f, 0.16f);
         float click = gui.animateMap(gui.clickProgress, module, 0.0f, 0.22f);
         // 选中动画：选中时从 0→1，取消选中时从 1→0
@@ -259,14 +259,14 @@ final class ClickGuiModuleList {
             int bgColor = light
                     ? gui.blendColor(accent, 0xFFFFFFFF, 0.55f)
                     : gui.blendColor(accent, 0xFF000000, 0.55f);
-            RenderServices.shapes().rounded(x, y, x + rowW, y + height, VapeClickGui.CARD_RADIUS,
+            RenderServices.shapes().rounded(x, y, x + rowW, y + height, YozakuraClickGui.CARD_RADIUS,
                     gui.withAlpha(bgColor, enabledAlpha));
         }
         // 悬停高亮（非选中状态）
         if (selectAnim < 0.8f && hover > 0.01f) {
             int hoverFill = gui.blendColor(new Color(0, 0, 0, 0).getRGB(), gui.guiColors().navDefaultHover, hover);
             float hoverAlpha = gui.getAlpha(hoverFill) * (1.0f - selectAnim) * alpha * gui.guiAlpha;
-            RenderServices.shapes().rounded(x, y, x + rowW, y + height, VapeClickGui.CARD_RADIUS,
+            RenderServices.shapes().rounded(x, y, x + rowW, y + height, YozakuraClickGui.CARD_RADIUS,
                     gui.withAlpha(hoverFill, hoverAlpha));
         }
         // 卡片底部分隔线（选中动画完成时隐藏）
@@ -316,7 +316,7 @@ final class ClickGuiModuleList {
 
     /** @return 卡片行宽度 */
     private float getRowWidth() {
-        return VapeClickGui.CARD_W - 20.0f;
+        return YozakuraClickGui.CARD_W - 20.0f;
     }
 
     /** @return 收藏星标的中心 X 坐标 */
@@ -328,7 +328,7 @@ final class ClickGuiModuleList {
     private boolean isStarHit(float rowX, float rowY, int mouseX, int mouseY) {
         float centerX = getStarCenterX(rowX);
         float centerY = rowY + 24.0f;
-        return VapeClickGui.isHovered(centerX - 11.0f, centerY - 11.0f, centerX + 11.0f, centerY + 11.0f, mouseX, mouseY);
+        return YozakuraClickGui.isHovered(centerX - 11.0f, centerY - 11.0f, centerX + 11.0f, centerY + 11.0f, mouseX, mouseY);
     }
 
     /** 绘制模块图标 */
@@ -353,7 +353,7 @@ final class ClickGuiModuleList {
      * 包含轨道、滑块和拖拽高亮效果。滚动条 alpha 有独立的渐隐动画。
      */
     private void drawScrollbar(float drawContentY, float listHeight) {
-        VapeClickGui.ScrollbarMetrics metrics = gui.getScrollbarMetrics(drawContentY, listHeight);
+        YozakuraClickGui.ScrollbarMetrics metrics = gui.getScrollbarMetrics(drawContentY, listHeight);
         // 滚动条渐隐动画
         gui.scrollbarAlpha = gui.animate(gui.scrollbarAlpha, metrics.visible ? 1.0f : 0.0f, 0.18f);
         if (gui.scrollbarAlpha <= 0.01f) {

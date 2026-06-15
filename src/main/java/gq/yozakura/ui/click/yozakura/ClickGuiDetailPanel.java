@@ -1,4 +1,4 @@
-package gq.yozakura.ui.click.vape;
+package gq.yozakura.ui.click.yozakura;
 
 import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.module.Module;
@@ -37,7 +37,7 @@ import java.util.Set;
  *   <li>Mode 下拉栏的展开/收起动画</li>
  *   <li>设置区域的滚动条</li>
  * </ul>
- * 包级私有（package-private），仅供 {@link VapeClickGui} 内部使用。
+ * 包级私有（package-private），仅供 {@link YozakuraClickGui} 内部使用。
  */
 final class ClickGuiDetailPanel {
     /** 详情标签页名称 */
@@ -51,7 +51,7 @@ final class ClickGuiDetailPanel {
     /** 颜色面板标记半径 */
     private static final float PALETTE_MARKER_RADIUS = 4.8f;
     /** 关联的主 GUI 实例 */
-    private final VapeClickGui gui;
+    private final YozakuraClickGui gui;
     /** 记录每个 Red 值对应的色相（用于颜色面板标记定位） */
     private final Map<Numbers, Float> paletteHueByRed = new HashMap<Numbers, Float>();
     /** 记录每个 Red 值对应的当前颜色值（用于检测颜色是否被外部改变） */
@@ -82,7 +82,7 @@ final class ClickGuiDetailPanel {
         return expandedModeProperties.contains(value);
     }
 
-    ClickGuiDetailPanel(VapeClickGui gui) {
+    ClickGuiDetailPanel(YozakuraClickGui gui) {
         this.gui = gui;
     }
 
@@ -103,9 +103,9 @@ final class ClickGuiDetailPanel {
     void render(int mouseX, int mouseY, float introY) {
         this.currentIntroY = introY;
         // 游戏重启后恢复所有展开的 mode 下拉栏
-        String savedKeys = VapeClickGui.savedExpandedModeKeys;
+        String savedKeys = YozakuraClickGui.savedExpandedModeKeys;
         if (!savedKeys.isEmpty()) {
-            VapeClickGui.savedExpandedModeKeys = "";
+            YozakuraClickGui.savedExpandedModeKeys = "";
             for (String entry : savedKeys.split(";")) {
                 String trimmed = entry.trim();
                 if (trimmed.isEmpty()) continue;
@@ -136,9 +136,9 @@ final class ClickGuiDetailPanel {
         gui.settingsScroll = gui.animate(gui.settingsScroll, gui.targetSettingsScroll, 0.14f);
         // 绘制面板背
         RenderServices.shapes().shadow(gui.detailX, y, gui.detailX + gui.detailW, y + gui.panelH,
-                VapeClickGui.PANEL_RADIUS, gui.withAlpha(gui.shadowColor(230), 92.0f * gui.guiAlpha), 10, 7.0f);
+                YozakuraClickGui.PANEL_RADIUS, gui.withAlpha(gui.shadowColor(230), 92.0f * gui.guiAlpha), 10, 7.0f);
         gui.drawPanelGlass(gui.detailX, y, gui.detailX + gui.detailW, y + gui.panelH,
-                VapeClickGui.PANEL_RADIUS, 1.0f,
+                YozakuraClickGui.PANEL_RADIUS, 1.0f,
                 gui.withAlpha(detailPanelFill(), gui.getAlpha(detailPanelFill()) * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, gui.getAlpha(gui.guiColors().glassBorder) * gui.guiAlpha));
         drawPanelSurfaces(y);
@@ -270,7 +270,7 @@ final class ClickGuiDetailPanel {
         float y = gui.getDetailValuesY(gui.detailY);
         float w = gui.getDetailValuesWidth();
         float h = gui.getDetailValuesHeight();
-        if (!VapeClickGui.isHovered(x - 8.0f, y, x + w + 8.0f, y + h, mouseX, mouseY)) {
+        if (!YozakuraClickGui.isHovered(x - 8.0f, y, x + w + 8.0f, y + h, mouseX, mouseY)) {
             return false;
         }
         return handleInlineValueClick(gui.selectedModule, x, y + gui.settingsScroll, w, mouseX, mouseY, mouseButton);
@@ -280,7 +280,7 @@ final class ClickGuiDetailPanel {
      * 处理设置区域的滚轮滚动。
      */
     boolean updateScroll(int mouseX, int mouseY, int wheel) {
-        if (wheel == 0 || gui.selectedModule == null || !VapeClickGui.isHovered(gui.getDetailValuesX(), gui.getDetailValuesY(gui.detailY),
+        if (wheel == 0 || gui.selectedModule == null || !YozakuraClickGui.isHovered(gui.getDetailValuesX(), gui.getDetailValuesY(gui.detailY),
                 gui.getDetailValuesX() + gui.getDetailValuesWidth(), gui.getDetailValuesY(gui.detailY) + gui.getDetailValuesHeight(),
                 mouseX, mouseY)) {
             return false;
@@ -354,7 +354,7 @@ final class ClickGuiDetailPanel {
             }
             Value value = values.get(i);
             float valueH = gui.getValueHeight(module, i);
-            if (VapeClickGui.isHovered(x, valueY, x + width, valueY + valueH, mouseX, mouseY)) {
+            if (YozakuraClickGui.isHovered(x, valueY, x + width, valueY + valueH, mouseX, mouseY)) {
                 // 颜色面板点击
                 if (gui.isColorStart(module, i) && mouseButton == 0) {
                     Numbers red = (Numbers) values.get(i);
@@ -586,7 +586,7 @@ final class ClickGuiDetailPanel {
         float tabY = gui.detailY + currentIntroY + 58.0f;
         float tabW = gui.detailW - 12.0f;
         float tabH = 31.0f;
-        if (!VapeClickGui.isHovered(tabX, tabY, tabX + tabW, tabY + tabH, mouseX, mouseY)) {
+        if (!YozakuraClickGui.isHovered(tabX, tabY, tabX + tabW, tabY + tabH, mouseX, mouseY)) {
             return false;
         }
         int index = (int) ((mouseX - tabX) / (tabW / DETAIL_TABS.length));
@@ -627,7 +627,7 @@ final class ClickGuiDetailPanel {
     private boolean handlePaletteClick(Module module, Numbers red, Numbers green, Numbers blue,
                                        float x, float y, float w, int mouseX, int mouseY) {
         float[] bounds = getPaletteBounds(x, y, w);
-        if (!VapeClickGui.isHovered(bounds[0], bounds[1], bounds[0] + bounds[2], bounds[1] + bounds[3],
+        if (!YozakuraClickGui.isHovered(bounds[0], bounds[1], bounds[0] + bounds[2], bounds[1] + bounds[3],
                 mouseX, mouseY)) {
             return false;
         }
@@ -1185,7 +1185,7 @@ final class ClickGuiDetailPanel {
             int hoveredIndex = -1;
             for (int i = 0; i < modes.length; i++) {
                 float rowY = dropdownY + i * DROPDOWN_ROW_H;
-                if (VapeClickGui.isHovered(pillX, rowY, pillX + pillW, rowY + DROPDOWN_ROW_H, mouseX, mouseY)) {
+                if (YozakuraClickGui.isHovered(pillX, rowY, pillX + pillW, rowY + DROPDOWN_ROW_H, mouseX, mouseY)) {
                     hoveredIndex = i;
                     break;
                 }
@@ -1244,7 +1244,7 @@ final class ClickGuiDetailPanel {
         for (int i = 0; i < modes.length; i++) {
             float rowY = dropdownY + i * DROPDOWN_ROW_H;
             if (rowY >= dropdownY + visibleH) break;
-            if (VapeClickGui.isHovered(pillX, rowY, pillX + pillW, rowY + DROPDOWN_ROW_H,
+            if (YozakuraClickGui.isHovered(pillX, rowY, pillX + pillW, rowY + DROPDOWN_ROW_H,
                     mouseX, mouseY)) {
                 value.setValue(modes[i]);
                 expandedModes.remove(value);
@@ -1309,7 +1309,7 @@ final class ClickGuiDetailPanel {
             int hoveredIndex = -1;
             for (int i = 0; i < modes.length; i++) {
                 float rowY = dropdownY + i * DROPDOWN_ROW_H;
-                if (VapeClickGui.isHovered(pillX, rowY, pillX + pillW, rowY + DROPDOWN_ROW_H, mouseX, mouseY)) {
+                if (YozakuraClickGui.isHovered(pillX, rowY, pillX + pillW, rowY + DROPDOWN_ROW_H, mouseX, mouseY)) {
                     hoveredIndex = i;
                     break;
                 }
@@ -1358,7 +1358,7 @@ final class ClickGuiDetailPanel {
         for (int i = 0; i < modes.length; i++) {
             float rowY = dropdownY + i * DROPDOWN_ROW_H;
             if (rowY >= dropdownY + visibleH) break;
-            if (VapeClickGui.isHovered(pillX, rowY, pillX + pillW, rowY + DROPDOWN_ROW_H,
+            if (YozakuraClickGui.isHovered(pillX, rowY, pillX + pillW, rowY + DROPDOWN_ROW_H,
                     mouseX, mouseY)) {
                 value.setValue(i);
                 expandedModeProperties.remove(value);
