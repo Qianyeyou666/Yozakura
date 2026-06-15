@@ -1,509 +1,565 @@
 package gq.yozakura.module.world;
 
-import gq.yozakura.module.ModuleType;
+import gq.yozakura.bridge.MinecraftAccessor;
+import gq.yozakura.event.bus.EventTarget;
+import gq.yozakura.event.bus.types.EventType;
+import gq.yozakura.event.bus.types.Priority;
+import gq.yozakura.event.bridge.PacketEvent;
+import gq.yozakura.event.bridge.RightClickMouseEvent;
+import gq.yozakura.event.bridge.UpdateEvent;
+import gq.yozakura.manager.VisualRotationState;
 import gq.yozakura.module.Module;
-import gq.yozakura.util.minecraft.RotationUtil;
-import gq.yozakura.value.Mode;
+import gq.yozakura.module.ModuleType;
+import gq.yozakura.util.module.BlockUtil;
+import gq.yozakura.util.module.ItemUtil;
+import gq.yozakura.util.module.RotationUtil;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockAir;
-import net.minecraft.block.BlockLiquid;
 import net.minecraft.client.settings.KeyBinding;
-import net.minecraft.item.ItemBlock;
 import net.minecraft.item.ItemStack;
+import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.BlockPos;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.MathHelper;
-import net.minecraft.util.Vec3;
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
-import net.minecraftforge.fml.common.gameevent.TickEvent;
+import net.minecraft.util.MovingObjectPosition;
 import org.lwjgl.input.Keyboard;
+import org.lwjgl.input.Mouse;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class BridgeAssist extends Module {
-    public enum BridgeMode {
-        SAFE,
-        GOD_BRIDGE
-    }
+    private static final EnumFacing[] SIDES = new EnumFacing[]{
+            EnumFacing.NORTH, EnumFacing.SOUTH, EnumFacing.EAST, EnumFacing.WEST
+    };
+    private static final int ROTATION_PRIORITY = 1;
+    private static final float MIN_PRE_PLACE_PITCH = 60.0F;
+    private static final float MAX_PRE_PLACE_PITCH = 90.0F;
 
-    public enum GodAimMode {
-        OFF,
-        ASSIST,
-        LEGIT
-    }
+    private final Option<Boolean> prePlace = new Option<Boolean>("Pre Place", "PrePlace", false);
+    private final Numbers<Double> edgeOffset =
+            new Numbers<Double>("Edge Offset", "EdgeOffset", 0.0D, 0.0D, 0.3D, 0.01D);
+    private final Numbers<Double> unsneakDelay =
+            new Numbers<Double>("Unsneak Delay", "UnsneakDelay", 50.0D, 50.0D, 300.0D, 5.0D);
+    private final Numbers<Double> sneakOnJump =
+            new Numbers<Double>("Sneak On Jump", "SneakOnJump", 0.0D, 0.0D, 500.0D, 5.0D);
+    private final Option<Boolean> sneakKeyPressed =
+            new Option<Boolean>("Sneak Key Pressed", "SneakKeyPressed", false);
+    private final Option<Boolean> holdingBlocks =
+            new Option<Boolean>("Holding Blocks", "HoldingBlocks", false);
+    private final Option<Boolean> lookingDown =
+            new Option<Boolean>("Looking Down", "LookingDown", false);
+    private final Option<Boolean> notMovingForward =
+            new Option<Boolean>("Not Moving Forward", "NotMovingForward", false);
 
-    private static final EnumFacing[] HORIZONTAL_FACES =
-            new EnumFacing[]{EnumFacing.NORTH, EnumFacing.SOUTH, EnumFacing.WEST, EnumFacing.EAST};
-
-    private final Mode<BridgeMode> mode =
-            new Mode<BridgeMode>("Mode", "Mode", BridgeMode.values(), BridgeMode.SAFE);
-    private final Numbers<Double> edgeDistance = new Numbers<Double>("Edge Distance", "EdgeDistance", 0.28, 0.05, 0.75, 0.01);
-    private final Numbers<Double> slowPercent = new Numbers<Double>("Slow Percent", "SlowPercent", 55.0, 10.0, 100.0, 1.0);
-    private final Numbers<Double> predictTicks = new Numbers<Double>("Prediction", "Prediction", 2.0, 0.0, 5.0, 1.0);
-    private final Numbers<Double> godAimSpeed = new Numbers<Double>("God Aim Speed", "GodAimSpeed", 14.0, 2.0, 45.0, 1.0);
-    private final Mode<GodAimMode> godAim =
-            new Mode<GodAimMode>("God Aim", "GodAim", GodAimMode.values(), GodAimMode.LEGIT);
-    private final Option<Boolean> onlyBlocks = new Option<Boolean>("Only Blocks", "OnlyBlocks", true);
-    private final Option<Boolean> holdSneak = new Option<Boolean>("Hold Sneak", "HoldSneak", true);
-    private final Option<Boolean> motionGuard = new Option<Boolean>("Motion Guard", "MotionGuard", true);
-    private final Option<Boolean> groundOnly = new Option<Boolean>("Ground Only", "GroundOnly", true);
-    private final Option<Boolean> godStrafe = new Option<Boolean>("God Strafe", "GodStrafe", true);
-
-    private boolean holdingSneak;
-    private boolean holdingGodLeft;
-    private boolean holdingGodRight;
-    private int godSide;
-    private int eagleTicks;
-    private int godInactiveTicks;
-    private int lockedAimTicks;
-    private boolean bridgeLineLocked;
-    private double bridgeLineX;
-    private double bridgeLineZ;
-    private double bridgeLineRightX;
-    private double bridgeLineRightZ;
-    private float bridgeLineYaw;
-    private float stableGodYaw;
-    private float stableGodPitch;
-    private boolean stableGodLook;
-    private BridgeAim lockedAim;
-    private final RotationUtil.State godAimState = new RotationUtil.State();
+    private boolean sneakingFromModule;
+    private boolean placed;
+    private boolean forceRelease;
+    private int sneakJumpDelayTicks = -1;
+    private int sneakJumpStartTick = -1;
+    private int unsneakDelayTicks = -1;
+    private int unsneakStartTick = -1;
+    private boolean hasPrePlaceRotation;
+    private float prePlaceYaw;
+    private float prePlacePitch;
+    private MovingObjectPosition prePlaceMouseOver;
 
     public BridgeAssist() {
-        super("BridgeAssist", Keyboard.KEY_NONE, ModuleType.World, "Assist safe edge movement while bridging");
-        holdSneak.visibleWhen(() -> mode.getValue() == BridgeMode.SAFE);
-        motionGuard.visibleWhen(() -> mode.getValue() == BridgeMode.SAFE);
-        slowPercent.visibleWhen(() -> mode.getValue() == BridgeMode.SAFE && Boolean.TRUE.equals(motionGuard.getValue()));
-        godAim.visibleWhen(() -> mode.getValue() == BridgeMode.GOD_BRIDGE);
-        godStrafe.visibleWhen(() -> mode.getValue() == BridgeMode.GOD_BRIDGE);
-        godAimSpeed.visibleWhen(() -> mode.getValue() == BridgeMode.GOD_BRIDGE && currentGodAimMode() != GodAimMode.OFF);
-        this.addValues(mode, edgeDistance, slowPercent, predictTicks, godAim, godAimSpeed, onlyBlocks,
-                holdSneak, motionGuard, groundOnly, godStrafe);
+        super("BridgeAssist", Keyboard.KEY_NONE, ModuleType.World, "Assist edge sneaking while bridging");
+        this.addValues(prePlace, edgeOffset, unsneakDelay, sneakOnJump,
+                sneakKeyPressed, holdingBlocks, lookingDown, notMovingForward);
         Chinese = "搭桥辅助";
     }
 
     @Override
     public void disable() {
-        releaseSneak();
-        releaseGodStrafe();
-        resetGodBridgeState();
+        releaseModuleSneak();
+        resetUnsneak();
+        resetPrePlace();
+        placed = false;
+        forceRelease = false;
     }
 
-    @SubscribeEvent
-    public void onTick(TickEvent.ClientTickEvent event) {
-        if (event.phase == TickEvent.Phase.START) {
-            if (mode.getValue() == BridgeMode.GOD_BRIDGE) {
-                updateGodBridge();
-            } else {
-                releaseGodStrafe();
-                resetGodBridgeState();
-            }
-            return;
-        }
-        if (event.phase != TickEvent.Phase.END) {
+    @EventTarget(Priority.LOW)
+    public void onUpdate(UpdateEvent event) {
+        if (!getState() || event.getType() != EventType.PRE) {
             return;
         }
         if (!canAssist()) {
-            releaseSneak();
-            releaseGodStrafe();
-            resetGodBridgeState();
-            return;
-        }
-        if (mode.getValue() == BridgeMode.GOD_BRIDGE) {
-            releaseSneak();
+            releaseModuleSneak();
+            resetUnsneak();
             return;
         }
 
-        boolean unsafe = isNearUnsafeEdge();
-        setSneak(Boolean.TRUE.equals(holdSneak.getValue()) && unsafe);
-        if (unsafe && Boolean.TRUE.equals(motionGuard.getValue())) {
-            double scale = Math.max(0.1D, Math.min(1.0D, slowPercent.getValue() / 100.0D));
-            mc.thePlayer.motionX *= scale;
-            mc.thePlayer.motionZ *= scale;
+        handleSneakAssist();
+        handlePrePlace(event);
+    }
+
+    @EventTarget(Priority.LOWEST)
+    public void onRightClick(RightClickMouseEvent event) {
+        if (canUsePrePlaceMouseOver()) {
+            mc.objectMouseOver = prePlaceMouseOver;
+            if (placePrePlace(prePlaceMouseOver)) {
+                placed = true;
+                event.setCancelled(true);
+            }
         }
     }
 
-    private void updateGodBridge() {
-        if (!canAssist() || !isGodBridgeActive()) {
-            releaseGodStrafe();
-            releaseSneak();
-            if (++godInactiveTicks > 3) {
-                resetGodBridgeState();
-            }
+    @EventTarget
+    public void onPacket(PacketEvent event) {
+        if (event.getType() != EventType.SEND || !(event.getPacket() instanceof C08PacketPlayerBlockPlacement)) {
             return;
         }
-        godInactiveTicks = 0;
-        updateBridgeLineLock();
-        GodAimMode aimMode = currentGodAimMode();
-        if (aimMode == GodAimMode.LEGIT) {
-            updateLegitEagle();
-        } else {
-            releaseSneak();
-            eagleTicks = 0;
-        }
-        if (Boolean.TRUE.equals(godStrafe.getValue()) || aimMode == GodAimMode.LEGIT) {
-            maintainGodStrafe();
-            applyBridgeLineCorrection(aimMode);
-        } else {
-            releaseGodStrafe();
-        }
-        if (aimMode == GodAimMode.OFF) {
-            godAimState.reset();
-            return;
-        }
-        BridgeAim aim = findGodBridgeAim(aimMode);
-        if (aim != null) {
-            aimAt(aim, aimMode);
+        C08PacketPlayerBlockPlacement packet = (C08PacketPlayerBlockPlacement) event.getPacket();
+        if (packet.getPlacedBlockDirection() != 255
+                && sneakingFromModule
+                && Boolean.TRUE.equals(sneakKeyPressed.getValue())) {
+            placed = true;
         }
     }
 
     private boolean canAssist() {
-        if (!isInGame() || mc.currentScreen != null || mc.thePlayer.capabilities.isFlying) {
-            return false;
-        }
-        if (Boolean.TRUE.equals(groundOnly.getValue()) && !mc.thePlayer.onGround) {
-            return false;
-        }
-        return !Boolean.TRUE.equals(onlyBlocks.getValue()) || isHoldingBlock();
+        return isInGame()
+                && mc.currentScreen == null
+                && mc.playerController != null
+                && !mc.thePlayer.capabilities.isFlying;
     }
 
-    private boolean isHoldingBlock() {
-        ItemStack stack = mc.thePlayer.getHeldItem();
-        return stack != null && stack.getItem() instanceof ItemBlock;
-    }
+    private void handleSneakAssist() {
+        float forward = getForwardInput();
+        float strafe = getStrafeInput();
+        boolean moving = forward != 0.0F || strafe != 0.0F;
+        boolean manualSneak = isManualSneak();
+        boolean requireSneak = Boolean.TRUE.equals(sneakKeyPressed.getValue());
 
-    private boolean isGodBridgeActive() {
-        boolean edge = isNearUnsafeEdge();
-        boolean sideInput = isPhysicalKeyDown(mc.gameSettings.keyBindLeft)
-                || isPhysicalKeyDown(mc.gameSettings.keyBindRight);
-        boolean movementInput = sideInput
-                || isPhysicalKeyDown(mc.gameSettings.keyBindForward)
-                || isPhysicalKeyDown(mc.gameSettings.keyBindBack)
-                || Math.abs(mc.thePlayer.moveForward) > 0.01f
-                || Math.abs(mc.thePlayer.moveStrafing) > 0.01f;
-        return sideInput
-                || edge && movementInput
-                || mc.gameSettings.keyBindUseItem.isKeyDown() && (edge || movementInput);
-    }
-
-    private void maintainGodStrafe() {
-        int side = getGodSide();
-        if (side < 0) {
-            setMovementKey(mc.gameSettings.keyBindLeft, true);
-            setMovementKey(mc.gameSettings.keyBindRight, false);
-            holdingGodLeft = true;
-            holdingGodRight = false;
-        } else {
-            setMovementKey(mc.gameSettings.keyBindRight, true);
-            setMovementKey(mc.gameSettings.keyBindLeft, false);
-            holdingGodRight = true;
-            holdingGodLeft = false;
-        }
-    }
-
-    private int getGodSide() {
-        if (isPhysicalKeyDown(mc.gameSettings.keyBindLeft)) {
-            godSide = -1;
-        } else if (isPhysicalKeyDown(mc.gameSettings.keyBindRight)) {
-            godSide = 1;
-        } else if (godSide == 0) {
-            godSide = 1;
-        }
-        return godSide;
-    }
-
-    private void updateBridgeLineLock() {
-        if (bridgeLineLocked) {
+        if (manualSneak && !requireSneak) {
+            resetUnsneak();
             return;
         }
-        double forwardX = mc.thePlayer.motionX;
-        double forwardZ = mc.thePlayer.motionZ;
-        double speed = Math.sqrt(forwardX * forwardX + forwardZ * forwardZ);
-        if (speed < 0.035D) {
-            double yaw = Math.toRadians(mc.thePlayer.rotationYaw);
-            forwardX = -Math.sin(yaw);
-            forwardZ = Math.cos(yaw);
-            if (isPhysicalKeyDown(mc.gameSettings.keyBindBack) || mc.thePlayer.moveForward < -0.01f) {
-                forwardX = -forwardX;
-                forwardZ = -forwardZ;
+
+        if (requireSneak && (!manualSneak || !moving)) {
+            if (!manualSneak) {
+                resetUnsneak();
             }
-            speed = Math.sqrt(forwardX * forwardX + forwardZ * forwardZ);
-        }
-        if (speed < 0.001D) {
+            repressSneak();
             return;
         }
-        double lineForwardX = forwardX / speed;
-        double lineForwardZ = forwardZ / speed;
-        bridgeLineRightX = lineForwardZ;
-        bridgeLineRightZ = -lineForwardX;
-        bridgeLineYaw = yawFromForward(lineForwardX, lineForwardZ);
-        bridgeLineX = mc.thePlayer.posX;
-        bridgeLineZ = mc.thePlayer.posZ;
-        bridgeLineLocked = true;
+
+        if (Boolean.TRUE.equals(notMovingForward.getValue()) && forward > 0.0F) {
+            clearSneak();
+            return;
+        }
+        if (Boolean.TRUE.equals(lookingDown.getValue()) && mc.thePlayer.rotationPitch < 70.0F) {
+            clearSneak();
+            return;
+        }
+        if (Boolean.TRUE.equals(holdingBlocks.getValue()) && !ItemUtil.isBlock(mc.thePlayer.getHeldItem())) {
+            clearSneak();
+            return;
+        }
+
+        if (isJumpPressed()
+                && mc.thePlayer.onGround
+                && moving
+                && sneakOnJump.getValue() > 0.0D
+                && (!requireSneak || forceRelease)) {
+            sneakJumpStartTick = mc.thePlayer.ticksExisted;
+            sneakJumpDelayTicks = ticksFromMillis(sneakOnJump.getValue());
+            pressSneak(true);
+            return;
+        }
+
+        double offset = computeEdgeOffset(predictInputBox(forward, strafe));
+        if (Double.isNaN(offset)) {
+            if (isJumpPressed() && (sneakOnJump.getValue() <= 0.0D || !moving)) {
+                if (sneakingFromModule) {
+                    tryReleaseSneak(true);
+                }
+            } else if (mc.thePlayer.onGround) {
+                pressSneak(true);
+            } else if (sneakingFromModule) {
+                tryReleaseSneak(true);
+            }
+            return;
+        }
+
+        if (offset > edgeOffset.getValue()) {
+            pressSneak(true);
+        } else if (sneakingFromModule) {
+            tryReleaseSneak(true);
+        }
     }
 
-    private void applyBridgeLineCorrection(GodAimMode aimMode) {
-        if (!bridgeLineLocked || !mc.thePlayer.onGround) {
+    private void handlePrePlace(UpdateEvent event) {
+        if (!Boolean.TRUE.equals(prePlace.getValue())) {
+            resetPrePlace();
             return;
         }
-        double deltaX = mc.thePlayer.posX - bridgeLineX;
-        double deltaZ = mc.thePlayer.posZ - bridgeLineZ;
-        double lateralError = deltaX * bridgeLineRightX + deltaZ * bridgeLineRightZ;
-        double lateralMotion = mc.thePlayer.motionX * bridgeLineRightX + mc.thePlayer.motionZ * bridgeLineRightZ;
-        if (Math.abs(lateralError) < 0.012D && Math.abs(lateralMotion) < 0.006D) {
+        if (!ItemUtil.isBlock(mc.thePlayer.getHeldItem())) {
+            resetPrePlace();
             return;
         }
-        double stiffness = aimMode == GodAimMode.LEGIT ? 0.16D : 0.11D;
-        double damping = aimMode == GodAimMode.LEGIT ? 0.48D : 0.36D;
-        double limit = aimMode == GodAimMode.LEGIT ? 0.020D : 0.015D;
-        double correction = clamp(-lateralError * stiffness - lateralMotion * damping, -limit, limit);
-        mc.thePlayer.motionX += bridgeLineRightX * correction;
-        mc.thePlayer.motionZ += bridgeLineRightZ * correction;
+        if (Boolean.TRUE.equals(lookingDown.getValue()) && mc.thePlayer.rotationPitch < 70.0F) {
+            resetPrePlace();
+            return;
+        }
+        if (Boolean.TRUE.equals(notMovingForward.getValue()) && getForwardInput() > 0.0F) {
+            resetPrePlace();
+            return;
+        }
+
+        float yaw = event.getNewYaw();
+        float basePitch = hasPrePlaceRotation ? prePlacePitch : event.getNewPitch();
+        TargetResult target = findTarget(yaw, basePitch, mc.playerController.getBlockReachDistance());
+        if (target == null) {
+            resetPrePlace();
+            return;
+        }
+
+        float nextYaw = stepAngle(hasPrePlaceRotation ? prePlaceYaw : yaw, target.yaw, 15.0F);
+        float nextPitch = stepLinear(basePitch, target.pitch, 20.0F);
+        nextYaw = RotationUtil.quantizeAngle(nextYaw);
+        nextPitch = RotationUtil.quantizeAngle(MathHelper.clamp_float(nextPitch, -90.0F, 90.0F));
+
+        prePlaceYaw = nextYaw;
+        prePlacePitch = nextPitch;
+        hasPrePlaceRotation = true;
+        event.setRotation(nextYaw, nextPitch,
+                ROTATION_PRIORITY);
+        event.setPervRotation(nextYaw, ROTATION_PRIORITY);
+        VisualRotationState.publish("BridgeAssist", nextYaw, nextPitch, ROTATION_PRIORITY);
+        applyClientPrePlaceRotation(nextYaw, nextPitch);
+
+        MovingObjectPosition hit = RotationUtil.rayTrace(nextYaw, nextPitch,
+                mc.playerController.getBlockReachDistance(), 1.0F);
+        if (isPrePlaceHit(hit, target)) {
+            prePlaceMouseOver = hit;
+            mc.objectMouseOver = hit;
+        } else {
+            prePlaceMouseOver = null;
+        }
     }
 
-    private BridgeAim findGodBridgeAim(GodAimMode aimMode) {
-        Vec3 predicted = new Vec3(mc.thePlayer.posX + mc.thePlayer.motionX * predictTicks.getValue(),
-                mc.thePlayer.posY, mc.thePlayer.posZ + mc.thePlayer.motionZ * predictTicks.getValue());
-        if (lockedAim != null && lockedAimTicks > 0 && isLockedAimValid(lockedAim, predicted)) {
-            lockedAimTicks--;
-            return lockedAim;
+    private void pressSneak(boolean resetDelay) {
+        setSneakState(true);
+        sneakingFromModule = true;
+        if (resetDelay) {
+            unsneakStartTick = -1;
         }
-        BlockPos base = new BlockPos(predicted.xCoord, mc.thePlayer.posY - 1.0D, predicted.zCoord);
-        BridgeAim best = null;
-        double bestScore = Double.MAX_VALUE;
+        repressSneak();
+    }
 
-        for (int x = -2; x <= 2; x++) {
-            for (int z = -2; z <= 2; z++) {
-                BlockPos support = base.add(x, 0, z);
-                if (!isSolidSupport(support)) {
+    private void tryReleaseSneak(boolean resetDelay) {
+        int existed = mc.thePlayer.ticksExisted;
+        if (unsneakStartTick == -1 && sneakJumpStartTick == -1) {
+            unsneakStartTick = existed;
+            unsneakDelayTicks = ticksFromMillis(Math.max(0.0D, unsneakDelay.getValue() - 50.0D));
+        }
+
+        if (sneakJumpStartTick != -1 && existed - sneakJumpStartTick < sneakJumpDelayTicks) {
+            pressSneak(false);
+            return;
+        }
+        if (unsneakStartTick != -1 && existed - unsneakStartTick < unsneakDelayTicks) {
+            pressSneak(false);
+            return;
+        }
+
+        releaseSneak(resetDelay);
+    }
+
+    private void releaseSneak(boolean resetDelay) {
+        if (!Boolean.TRUE.equals(sneakKeyPressed.getValue())) {
+            setSneakState(isManualSneak());
+        } else if (sneakingFromModule && isManualSneak() && (placed || !mc.thePlayer.onGround)) {
+            setSneakState(false);
+            forceRelease = true;
+        } else if (forceRelease) {
+            setSneakState(false);
+        }
+
+        sneakingFromModule = false;
+        placed = false;
+        if (resetDelay) {
+            resetUnsneak();
+        }
+    }
+
+    private void repressSneak() {
+        if (forceRelease && isManualSneak()) {
+            setSneakState(true);
+        }
+        forceRelease = false;
+    }
+
+    private void clearSneak() {
+        if (sneakingFromModule) {
+            releaseModuleSneak();
+        }
+        sneakingFromModule = false;
+        resetUnsneak();
+        if (Boolean.TRUE.equals(sneakKeyPressed.getValue())) {
+            repressSneak();
+        }
+    }
+
+    private void resetUnsneak() {
+        unsneakStartTick = -1;
+        sneakJumpStartTick = -1;
+        sneakJumpDelayTicks = -1;
+        unsneakDelayTicks = -1;
+    }
+
+    private void resetPrePlace() {
+        hasPrePlaceRotation = false;
+        prePlaceMouseOver = null;
+        VisualRotationState.clearSource("BridgeAssist");
+    }
+
+    private AxisAlignedBB predictInputBox(float forward, float strafe) {
+        AxisAlignedBB box = mc.thePlayer.getEntityBoundingBox();
+        double x = mc.thePlayer.motionX;
+        double z = mc.thePlayer.motionZ;
+        double[] input = inputMotion(forward, strafe, 0.12D);
+        return box.offset(x + input[0], 0.0D, z + input[1]);
+    }
+
+    private double[] inputMotion(float forward, float strafe, double speed) {
+        double input = forward * forward + strafe * strafe;
+        if (input < 1.0E-4D) {
+            return new double[]{0.0D, 0.0D};
+        }
+        input = Math.sqrt(input);
+        if (input < 1.0D) {
+            input = 1.0D;
+        }
+        input = speed / input;
+        strafe *= input;
+        forward *= input;
+        float yaw = mc.thePlayer.rotationYaw;
+        float sin = MathHelper.sin(yaw * (float) Math.PI / 180.0F);
+        float cos = MathHelper.cos(yaw * (float) Math.PI / 180.0F);
+        return new double[]{strafe * cos - forward * sin, forward * cos + strafe * sin};
+    }
+
+    private double computeEdgeOffset(AxisAlignedBB simBox) {
+        AxisAlignedBB groundCheck = new AxisAlignedBB(
+                simBox.minX, simBox.minY - 0.01D, simBox.minZ,
+                simBox.maxX, simBox.minY, simBox.maxZ
+        );
+        List<AxisAlignedBB> groundBoxes = mc.theWorld.getCollidingBoundingBoxes(mc.thePlayer, groundCheck);
+        if (groundBoxes.isEmpty()) {
+            return Double.NaN;
+        }
+
+        double feetX = (simBox.minX + simBox.maxX) * 0.5D;
+        double feetZ = (simBox.minZ + simBox.maxZ) * 0.5D;
+        double minDistance = Double.MAX_VALUE;
+        for (AxisAlignedBB box : groundBoxes) {
+            double closestX = MathHelper.clamp_double(feetX, box.minX, box.maxX);
+            double closestZ = MathHelper.clamp_double(feetZ, box.minZ, box.maxZ);
+            double dx = Math.abs(feetX - closestX);
+            double dz = Math.abs(feetZ - closestZ);
+            minDistance = Math.min(minDistance, Math.max(dx, dz));
+        }
+        return minDistance;
+    }
+
+    private TargetResult findTarget(float yaw, float currentPitch, double reach) {
+        AxisAlignedBB box = mc.thePlayer.getEntityBoundingBox();
+        int standY = MathHelper.floor_double(box.minY) - 1;
+        int minX = MathHelper.floor_double(box.minX);
+        int maxX = MathHelper.floor_double(box.maxX);
+        int minZ = MathHelper.floor_double(box.minZ);
+        int maxZ = MathHelper.floor_double(box.maxZ);
+
+        ArrayList<FaceTarget> targets = new ArrayList<FaceTarget>();
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                BlockPos standBlock = new BlockPos(x, standY, z);
+                if (BlockUtil.isReplaceable(standBlock)) {
                     continue;
                 }
-                for (EnumFacing side : HORIZONTAL_FACES) {
-                    BlockPos place = support.offset(side);
-                    if (!isReplaceable(place)) {
-                        continue;
-                    }
-                    Vec3 hitVec = hitVecForSide(support, side);
-                    float[] rotations = RotationUtil.getRotationsTo(mc, hitVec.xCoord, hitVec.yCoord, hitVec.zCoord);
-                    float yawDiff = Math.abs(MathHelper.wrapAngleTo180_float(rotations[0] - mc.thePlayer.rotationYaw));
-                    double placeDx = place.getX() + 0.5D - predicted.xCoord;
-                    double placeDz = place.getZ() + 0.5D - predicted.zCoord;
-                    double placeDistance = Math.sqrt(placeDx * placeDx + placeDz * placeDz);
-                    double targetPitch = aimMode == GodAimMode.LEGIT ? 73.0D : 76.0D;
-                    double pitchPenalty = Math.abs(rotations[1] - targetPitch) * 0.045D;
-                    double sidePenalty = aimMode == GodAimMode.LEGIT
-                            ? legitSidePenalty(place, predicted, rotations[0]) : 0.0D;
-                    double godYawPenalty = aimMode == GodAimMode.LEGIT
-                            ? Math.abs(MathHelper.wrapAngleTo180_float(rotations[0] - getGodSideYaw())) * 0.08D : 0.0D;
-                    double score = placeDistance * 5.0D + yawDiff * 0.035D
-                            + pitchPenalty + sidePenalty + godYawPenalty;
-                    if (score < bestScore) {
-                        bestScore = score;
-                        best = new BridgeAim(support, side, place, hitVec);
+                for (EnumFacing side : SIDES) {
+                    BlockPos placedBlock = standBlock.offset(side);
+                    if (BlockUtil.isReplaceable(placedBlock)) {
+                        targets.add(new FaceTarget(standBlock, side));
                     }
                 }
             }
         }
-        lockedAim = best;
-        lockedAimTicks = best == null ? 0 : aimMode == GodAimMode.LEGIT ? 5 : 3;
-        return best;
+        if (targets.isEmpty()) {
+            return null;
+        }
+
+        float bestDelta = Float.MAX_VALUE;
+        float bestPitch = Float.NaN;
+        BlockPos bestSupport = null;
+        EnumFacing bestFace = null;
+        for (float pitch = MIN_PRE_PLACE_PITCH; pitch <= MAX_PRE_PLACE_PITCH; pitch += 1.0F) {
+            MovingObjectPosition mop = RotationUtil.rayTrace(yaw, pitch, reach, 1.0F);
+            if (mop == null || mop.sideHit == EnumFacing.UP || mop.sideHit == EnumFacing.DOWN) {
+                continue;
+            }
+            BlockPos hitBlock = mop.getBlockPos();
+            for (FaceTarget target : targets) {
+                if (hitBlock.equals(target.block) && mop.sideHit == target.face) {
+                    float delta = Math.abs(pitch - currentPitch);
+                    if (delta < bestDelta) {
+                        bestDelta = delta;
+                        bestPitch = pitch;
+                        bestSupport = target.block;
+                        bestFace = target.face;
+                    }
+                    break;
+                }
+            }
+        }
+
+        if (bestSupport == null || bestFace == null || Float.isNaN(bestPitch)) {
+            return null;
+        }
+        return new TargetResult(yaw, bestPitch, bestSupport, bestFace);
     }
 
-    private boolean isLockedAimValid(BridgeAim aim, Vec3 predicted) {
-        if (aim == null || !isSolidSupport(aim.support) || !isReplaceable(aim.place)) {
+    private boolean canUsePrePlaceMouseOver() {
+        return Boolean.TRUE.equals(prePlace.getValue())
+                && canAssist()
+                && ItemUtil.isBlock(mc.thePlayer.getHeldItem())
+                && prePlaceMouseOver != null;
+    }
+
+    private boolean isPrePlaceHit(MovingObjectPosition hit, TargetResult target) {
+        return hit != null
+                && hit.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK
+                && hit.getBlockPos().equals(target.support)
+                && hit.sideHit == target.face;
+    }
+
+    private void applyClientPrePlaceRotation(float yaw, float pitch) {
+        mc.thePlayer.rotationYaw = yaw;
+        mc.thePlayer.rotationPitch = pitch;
+        mc.thePlayer.rotationYawHead = yaw;
+        mc.thePlayer.renderYawOffset = yaw;
+    }
+
+    private boolean placePrePlace(MovingObjectPosition hit) {
+        if (hit == null || hit.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK) {
             return false;
         }
-        double dx = aim.place.getX() + 0.5D - predicted.xCoord;
-        double dz = aim.place.getZ() + 0.5D - predicted.zCoord;
-        if (dx * dx + dz * dz > 4.2D) {
+        ItemStack stack = mc.thePlayer.getHeldItem();
+        if (!ItemUtil.isBlock(stack)) {
             return false;
         }
-        float[] rotations = RotationUtil.getRotationsTo(mc, aim.hitVec.xCoord, aim.hitVec.yCoord, aim.hitVec.zCoord);
-        return Math.abs(MathHelper.wrapAngleTo180_float(rotations[0] - mc.thePlayer.rotationYaw)) < 78.0f;
+        int slot = mc.thePlayer.inventory.currentItem;
+        int oldSize = stack.stackSize;
+        MinecraftAccessor.syncCurrentPlayItem(mc.playerController);
+        boolean placed = mc.playerController.onPlayerRightClick(mc.thePlayer, mc.theWorld, stack,
+                hit.getBlockPos(), hit.sideHit, hit.hitVec);
+        if (!placed) {
+            return false;
+        }
+        mc.thePlayer.swingItem();
+        if (stack.stackSize <= 0) {
+            mc.thePlayer.inventory.mainInventory[slot] = null;
+        } else if (stack.stackSize != oldSize || mc.playerController.isInCreativeMode()) {
+            mc.entityRenderer.itemRenderer.resetEquippedProgress();
+        }
+        return true;
     }
 
-    private Vec3 hitVecForSide(BlockPos support, EnumFacing side) {
-        double x = support.getX() + 0.5D + side.getFrontOffsetX() * 0.485D;
-        double z = support.getZ() + 0.5D + side.getFrontOffsetZ() * 0.485D;
-        double y = support.getY() + 0.78D;
-        return new Vec3(x, y, z);
+    private float stepAngle(float current, float target, float maxStep) {
+        float diff = MathHelper.wrapAngleTo180_float(target - current);
+        return current + MathHelper.clamp_float(diff, -maxStep, maxStep);
     }
 
-    private double legitSidePenalty(BlockPos place, Vec3 predicted, float targetYaw) {
-        int side = getGodSide();
-        float yawDiff = MathHelper.wrapAngleTo180_float(targetYaw - mc.thePlayer.rotationYaw);
-        double rightX = bridgeLineLocked ? bridgeLineRightX : Math.cos(Math.toRadians(mc.thePlayer.rotationYaw));
-        double rightZ = bridgeLineLocked ? bridgeLineRightZ : Math.sin(Math.toRadians(mc.thePlayer.rotationYaw));
-        double lateral = (place.getX() + 0.5D - predicted.xCoord) * rightX
-                + (place.getZ() + 0.5D - predicted.zCoord) * rightZ;
-        double sideMismatch = side < 0 ? Math.max(0.0D, lateral) : Math.max(0.0D, -lateral);
-        return sideMismatch * 2.1D + Math.max(0.0D, Math.abs(yawDiff) - 55.0f) * 0.025D;
+    private float stepLinear(float current, float target, float maxStep) {
+        float diff = target - current;
+        return current + MathHelper.clamp_float(diff, -maxStep, maxStep);
     }
 
-    private void aimAt(BridgeAim aim, GodAimMode aimMode) {
-        float[] rotations = aimMode == GodAimMode.LEGIT
-                ? getLegitGodRotations(aim)
-                : RotationUtil.getRotationsTo(mc, aim.hitVec.xCoord, aim.hitVec.yCoord, aim.hitVec.zCoord);
-        float speed = godAimSpeed.getValue().floatValue();
-        if (aimMode == GodAimMode.LEGIT) {
-            float yawSpeed = Math.min(Math.max(2.4f, speed * 0.62f), 8.0f);
-            float pitchSpeed = Math.min(Math.max(1.9f, speed * 0.34f), 4.8f);
-            RotationUtil.applyToPlayer(mc, rotations[0], rotations[1], yawSpeed, pitchSpeed,
-                    false, 0.20f, godAimState, 0.15f, 0.018f, true);
+    private int ticksFromMillis(double millis) {
+        double raw = millis / 50.0D;
+        int base = (int) raw;
+        return base + (Math.random() < raw - base ? 1 : 0);
+    }
+
+    private float getForwardInput() {
+        float forward = 0.0F;
+        if (isPhysicalKeyDown(mc.gameSettings.keyBindForward.getKeyCode())) {
+            forward += 1.0F;
+        }
+        if (isPhysicalKeyDown(mc.gameSettings.keyBindBack.getKeyCode())) {
+            forward -= 1.0F;
+        }
+        return forward;
+    }
+
+    private float getStrafeInput() {
+        float strafe = 0.0F;
+        if (isPhysicalKeyDown(mc.gameSettings.keyBindLeft.getKeyCode())) {
+            strafe += 1.0F;
+        }
+        if (isPhysicalKeyDown(mc.gameSettings.keyBindRight.getKeyCode())) {
+            strafe -= 1.0F;
+        }
+        return strafe;
+    }
+
+    private boolean isJumpPressed() {
+        return isPhysicalKeyDown(mc.gameSettings.keyBindJump.getKeyCode());
+    }
+
+    private boolean isManualSneak() {
+        return isPhysicalKeyDown(mc.gameSettings.keyBindSneak.getKeyCode());
+    }
+
+    private void setSneakState(boolean sneak) {
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindSneak.getKeyCode(), sneak);
+        if (mc.thePlayer != null && mc.thePlayer.movementInput != null) {
+            mc.thePlayer.movementInput.sneak = sneak;
+        }
+    }
+
+    private void releaseModuleSneak() {
+        if (!sneakingFromModule && !forceRelease) {
             return;
         }
-        RotationUtil.applyToPlayer(mc, rotations[0], rotations[1], speed, Math.max(3.0f, speed * 0.72f),
-                false, 0.18f, godAimState, 0.30f, 0.05f, true);
+        setSneakState(isManualSneak());
+        sneakingFromModule = false;
     }
 
-    private float[] getLegitGodRotations(BridgeAim aim) {
-        float[] blockRotations = RotationUtil.getRotationsTo(mc,
-                aim.hitVec.xCoord, aim.hitVec.yCoord, aim.hitVec.zCoord);
-        float baseYaw = getGodSideYaw();
-        float yawAssist = MathHelper.clamp_float(
-                MathHelper.wrapAngleTo180_float(blockRotations[0] - baseYaw), -14.0f, 14.0f) * 0.34f;
-        float targetYaw = baseYaw + yawAssist;
-        float targetPitch = 75.2f
-                + MathHelper.clamp_float(blockRotations[1] - 75.2f, -5.5f, 5.5f) * 0.32f;
-        if (!stableGodLook) {
-            stableGodYaw = targetYaw;
-            stableGodPitch = targetPitch;
-            stableGodLook = true;
-        } else {
-            stableGodYaw = RotationUtil.limitAngleChange(stableGodYaw, targetYaw, 3.4f);
-            stableGodPitch = RotationUtil.limitAngleChange(stableGodPitch, targetPitch, 1.8f);
-        }
-        return new float[]{stableGodYaw, MathHelper.clamp_float(stableGodPitch, 69.0f, 82.0f)};
-    }
-
-    private float getGodSideYaw() {
-        float lineYaw = bridgeLineLocked ? bridgeLineYaw : mc.thePlayer.rotationYaw;
-        return lineYaw - getGodSide() * 90.0f;
-    }
-
-    private void updateLegitEagle() {
-        double edgeGuard = Math.min(0.24D, Math.max(0.08D, edgeDistance.getValue() * 0.72D));
-        boolean shouldSneak = isNearUnsafeEdge(edgeGuard, 0.45D);
-        if (shouldSneak) {
-            eagleTicks = 3;
-        } else if (eagleTicks > 0) {
-            eagleTicks--;
-        }
-        setSneak(eagleTicks > 0);
-    }
-
-    private boolean isNearUnsafeEdge() {
-        return isNearUnsafeEdge(edgeDistance.getValue(), predictTicks.getValue());
-    }
-
-    private boolean isNearUnsafeEdge(double guard, double prediction) {
-        AxisAlignedBB box = mc.thePlayer.getEntityBoundingBox();
-        double xOffset = clamp(mc.thePlayer.motionX * prediction, -guard, guard);
-        double zOffset = clamp(mc.thePlayer.motionZ * prediction, -guard, guard);
-        double y = box.minY - 0.05D;
-
-        return !hasSupportAt(box.minX + xOffset, y, box.minZ + zOffset)
-                || !hasSupportAt(box.minX + xOffset, y, box.maxZ + zOffset)
-                || !hasSupportAt(box.maxX + xOffset, y, box.minZ + zOffset)
-                || !hasSupportAt(box.maxX + xOffset, y, box.maxZ + zOffset);
-    }
-
-    private boolean hasSupportAt(double x, double y, double z) {
-        return isSolidSupport(new BlockPos(x, y, z));
-    }
-
-    private boolean isSolidSupport(BlockPos pos) {
-        Block block = mc.theWorld.getBlockState(pos).getBlock();
-        return block != null
-                && !(block instanceof BlockAir)
-                && !(block instanceof BlockLiquid)
-                && !block.isReplaceable(mc.theWorld, pos)
-                && block.getCollisionBoundingBox(mc.theWorld, pos, mc.theWorld.getBlockState(pos)) != null;
-    }
-
-    private boolean isReplaceable(BlockPos pos) {
-        Block block = mc.theWorld.getBlockState(pos).getBlock();
-        return block == null || block instanceof BlockAir || block instanceof BlockLiquid
-                || block.isReplaceable(mc.theWorld, pos);
-    }
-
-    private void setSneak(boolean sneak) {
-        if (sneak) {
-            KeyBinding.setKeyBindState(mc.gameSettings.keyBindSneak.getKeyCode(), true);
-            holdingSneak = true;
-        } else {
-            releaseSneak();
+    private boolean isPhysicalKeyDown(int key) {
+        try {
+            return key < 0 ? Mouse.isCreated() && Mouse.isButtonDown(key + 100) : Keyboard.isKeyDown(key);
+        } catch (Throwable ignored) {
+            return false;
         }
     }
 
-    private void releaseSneak() {
-        if (!holdingSneak) {
-            return;
-        }
-        int key = mc.gameSettings.keyBindSneak.getKeyCode();
-        KeyBinding.setKeyBindState(key, key > 0 && Keyboard.isKeyDown(key));
-        holdingSneak = false;
-    }
+    private static final class FaceTarget {
+        final BlockPos block;
+        final EnumFacing face;
 
-    private void releaseGodStrafe() {
-        if (holdingGodLeft) {
-            restoreMovementKey(mc.gameSettings.keyBindLeft);
-            holdingGodLeft = false;
-        }
-        if (holdingGodRight) {
-            restoreMovementKey(mc.gameSettings.keyBindRight);
-            holdingGodRight = false;
+        FaceTarget(BlockPos block, EnumFacing face) {
+            this.block = block;
+            this.face = face;
         }
     }
 
-    private void setMovementKey(KeyBinding keyBinding, boolean down) {
-        KeyBinding.setKeyBindState(keyBinding.getKeyCode(), down);
-    }
-
-    private void restoreMovementKey(KeyBinding keyBinding) {
-        int key = keyBinding.getKeyCode();
-        KeyBinding.setKeyBindState(key, key > 0 && Keyboard.isKeyDown(key));
-    }
-
-    private boolean isPhysicalKeyDown(KeyBinding keyBinding) {
-        int key = keyBinding.getKeyCode();
-        return key > 0 && Keyboard.isKeyDown(key);
-    }
-
-    private GodAimMode currentGodAimMode() {
-        return godAim.getValue() == null ? GodAimMode.ASSIST : godAim.getValue();
-    }
-
-    private void resetGodBridgeState() {
-        godAimState.reset();
-        godSide = 0;
-        eagleTicks = 0;
-        godInactiveTicks = 0;
-        lockedAimTicks = 0;
-        bridgeLineLocked = false;
-        stableGodLook = false;
-        lockedAim = null;
-    }
-
-    private float yawFromForward(double forwardX, double forwardZ) {
-        return (float) Math.toDegrees(Math.atan2(-forwardX, forwardZ));
-    }
-
-    private double clamp(double value, double min, double max) {
-        return Math.max(min, Math.min(max, value));
-    }
-
-    private static final class BridgeAim {
+    private static final class TargetResult {
+        final float yaw;
+        final float pitch;
         final BlockPos support;
-        final EnumFacing side;
-        final BlockPos place;
-        final Vec3 hitVec;
+        final EnumFacing face;
 
-        BridgeAim(BlockPos support, EnumFacing side, BlockPos place, Vec3 hitVec) {
+        TargetResult(float yaw, float pitch, BlockPos support, EnumFacing face) {
+            this.yaw = yaw;
+            this.pitch = pitch;
             this.support = support;
-            this.side = side;
-            this.place = place;
-            this.hitVec = hitVec;
+            this.face = face;
         }
     }
 }
