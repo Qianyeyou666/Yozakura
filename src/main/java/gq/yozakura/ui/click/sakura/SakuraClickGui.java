@@ -10,6 +10,7 @@ import gq.yozakura.module.Module;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.render.ClickGUI;
 import gq.yozakura.ui.click.ClickGuiIcons;
+import gq.yozakura.util.animation.AnimationUtil;
 import gq.yozakura.value.Mode;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
@@ -41,12 +42,17 @@ public final class SakuraClickGui extends GuiScreen {
     private static final Map<ModuleType, Float> listScrollByType = new HashMap<ModuleType, Float>();
     private static final Map<Module, Float> detailScrollByModule = new HashMap<Module, Float>();
     private final Map<ModuleType, Float> typeHoverProgress = new HashMap<ModuleType, Float>();
+    private final Map<ModuleType, Float> typeSelectProgress = new HashMap<ModuleType, Float>();
     private final Map<Module, Float> moduleHoverProgress = new HashMap<Module, Float>();
     private final Map<Module, Float> moduleToggleProgress = new HashMap<Module, Float>();
+    private final Map<Module, Float> moduleSelectProgress = new HashMap<Module, Float>();
     private final Map<Value, Float> valueHoverProgress = new HashMap<Value, Float>();
     private final Map<Numbers, Float> numberProgress = new HashMap<Numbers, Float>();
     private final Map<Mode, Float> modeExpandProgress = new HashMap<Mode, Float>();
     private final Map<ModeProperty, Float> modePropertyExpandProgress = new HashMap<ModeProperty, Float>();
+    private final Map<Value, Float> modeSelectionPulse = new HashMap<Value, Float>();
+    private final Map<String, Float> modeRowHoverProgress = new HashMap<String, Float>();
+    private final Map<String, Float> modeRowSelectProgress = new HashMap<String, Float>();
     private final Map<Option, SwitchAnim> optionSwitchProgress = new HashMap<Option, SwitchAnim>();
 
     private float x;
@@ -69,10 +75,14 @@ public final class SakuraClickGui extends GuiScreen {
     private double draggingMin;
     private double draggingMax;
     private Module bindingModule;
+    private Module bindingAnimationModule;
     private Mode expandedMode;
     private ModeProperty expandedModeProperty;
     private Module detailAnimationModule;
     private float detailProgress;
+    private float listTransitionProgress = 1.0f;
+    private float bindingOverlayProgress;
+    private boolean closing;
     private long lastFrameNanos = System.nanoTime();
     private float frameScale = 1.0f;
 
@@ -87,13 +97,17 @@ public final class SakuraClickGui extends GuiScreen {
         ScaledResolution sr = new ScaledResolution(mc);
         updateLayout(sr);
         openProgress = 0.0f;
+        closing = false;
+        listTransitionProgress = 1.0f;
+        bindingOverlayProgress = bindingModule == null ? 0.0f : 1.0f;
         listScroll = scrollForType(currentType);
         listScrollDisplay = listScroll;
         detailScroll = scrollForModule(selectedModule);
         detailScrollDisplay = detailScroll;
         detailAnimationModule = selectedModule;
-        detailProgress = selectedModule == null ? 0.0f : 1.0f;
+        detailProgress = selectedModule == null ? 0.0f : 0.0f;
         bindingModule = null;
+        bindingAnimationModule = null;
         draggingNumber = null;
         super.initGui();
     }
@@ -106,8 +120,14 @@ public final class SakuraClickGui extends GuiScreen {
         updateDrag(sr, mouseX, mouseY);
         updateNumberDrag(mouseX);
         updateScrollAnimations();
-        openProgress = 1.0f;
-        guiAlpha = openProgress * ClickGUI.clickGuiAlpha.getValue().floatValue();
+        openProgress = animate(openProgress, closing ? 0.0f : 1.0f, closing ? 0.24f : 0.18f);
+        if (closing && openProgress <= 0.015f) {
+            mc.displayGuiScreen(null);
+            return;
+        }
+        listTransitionProgress = animate(listTransitionProgress, 1.0f, 0.20f);
+        bindingOverlayProgress = animate(bindingOverlayProgress, bindingModule == null ? 0.0f : 1.0f, 0.20f);
+        guiAlpha = easeOut(openProgress) * ClickGUI.clickGuiAlpha.getValue().floatValue();
 
         ShaderRenderer.invalidateFrostedGlass();
         drawBackdrop(sr);
@@ -176,8 +196,8 @@ public final class SakuraClickGui extends GuiScreen {
                 ModuleType type = types[i];
                 boolean selected = type == currentType;
                 boolean hovered = isHovered(rowX, rowY, rowX + 114.0f, rowY + 28.0f, mouseX, mouseY);
-                float hover = animateMap(typeHoverProgress, type, hovered ? 1.0f : 0.0f, 0.20f);
-                float active = selected ? 1.0f : 0.0f;
+                float hover = easeSmooth(animateMap(typeHoverProgress, type, hovered ? 1.0f : 0.0f, 0.20f));
+                float active = easeSmooth(animateMap(typeSelectProgress, type, selected ? 1.0f : 0.0f, 0.18f));
                 float intensity = Math.max(hover, active);
                 if (intensity > 0.01f) {
                     RenderServices.shapes().shadow(rowX, rowY, rowX + 114.0f, rowY + 28.0f,
@@ -222,10 +242,19 @@ public final class SakuraClickGui extends GuiScreen {
             beginScissorScaled(listX, listY + 36.0f, listW, listH - 44.0f);
             float rowY = listY + 40.0f - listScrollDisplay;
             List<Module> modules = ModuleManager.getModulesInType(currentType);
-            for (Module module : modules) {
-                drawModuleRow(module, listX + 10.0f, rowY, listW - 20.0f, mouseX, mouseY);
+            float listEase = easeOut(listTransitionProgress);
+            float oldAlpha = guiAlpha;
+            for (int i = 0; i < modules.size(); i++) {
+                Module module = modules.get(i);
+                float rowEase = clamp((listEase - i * 0.035f) / 0.82f, 0.0f, 1.0f);
+                if (rowEase > 0.01f) {
+                    guiAlpha = oldAlpha * easeOut(rowEase);
+                    drawModuleRow(module, listX + 10.0f, rowY + (1.0f - rowEase) * 8.0f,
+                            listW - 20.0f, mouseX, mouseY);
+                }
                 rowY += 42.0f;
             }
+            guiAlpha = oldAlpha;
             endScissor();
         } finally {
             popScale();
@@ -236,9 +265,9 @@ public final class SakuraClickGui extends GuiScreen {
         boolean selected = module == selectedModule;
         boolean enabled = module.getState();
         boolean hovered = isHovered(rowX, rowY, rowX + rowW, rowY + 34.0f, mouseX, mouseY);
-        float hover = animateMap(moduleHoverProgress, module, hovered ? 1.0f : 0.0f, 0.20f);
-        float toggle = animateStateMap(moduleToggleProgress, module, enabled ? 1.0f : 0.0f, 0.18f);
-        float selectedEase = selected ? 1.0f : 0.0f;
+        float hover = easeSmooth(animateMap(moduleHoverProgress, module, hovered ? 1.0f : 0.0f, 0.20f));
+        float toggle = easeSmooth(animateStateMap(moduleToggleProgress, module, enabled ? 1.0f : 0.0f, 0.18f));
+        float selectedEase = easeSmooth(animateMap(moduleSelectProgress, module, selected ? 1.0f : 0.0f, 0.16f));
         float rowIntensity = Math.max(Math.max(hover, toggle), selectedEase);
         if (rowIntensity > 0.01f) {
             RenderServices.shapes().shadow(rowX, rowY, rowX + rowW, rowY + 34.0f,
@@ -291,11 +320,12 @@ public final class SakuraClickGui extends GuiScreen {
                 detailAnimationModule = selectedModule;
                 detailProgress = 0.0f;
             }
-            detailProgress = 1.0f;
-            float detailEase = detailProgress;
+            detailProgress = animate(detailProgress, 1.0f, 0.20f);
+            float detailEase = easeOut(detailProgress);
             GL11.glPushMatrix();
             float oldAlpha = guiAlpha;
             guiAlpha *= detailEase;
+            GL11.glTranslatef((1.0f - detailEase) * 10.0f, 0.0f, 0.0f);
             drawDetailHeader(dx, dy, dw);
             beginScissorScaled(dx, dy + 70.0f, dw, dh - 78.0f);
             float valueY = dy + 78.0f - detailScrollDisplay;
@@ -304,12 +334,21 @@ public final class SakuraClickGui extends GuiScreen {
                 drawGlowText(FontLoaders.C14, "No settings", dx + 16.0f, valueY,
                         alpha(MUTED, 205.0f * guiAlpha), 0.3f);
             }
+            int visibleIndex = 0;
             for (Value value : values) {
                 if (!value.isVisible()) {
                     continue;
                 }
-                drawValue(value, dx + 16.0f, valueY, dw - 32.0f, mouseX, mouseY);
+                float rowEase = clamp((detailEase - visibleIndex * 0.025f) / 0.86f, 0.0f, 1.0f);
+                float rowAlpha = guiAlpha;
+                if (rowEase > 0.01f) {
+                    guiAlpha = oldAlpha * easeOut(rowEase) * detailEase;
+                    drawValue(value, dx + 16.0f, valueY + (1.0f - rowEase) * 5.0f,
+                            dw - 32.0f, mouseX, mouseY);
+                    guiAlpha = rowAlpha;
+                }
                 valueY += valueHeight(value);
+                visibleIndex++;
             }
             endScissor();
             guiAlpha = oldAlpha;
@@ -352,8 +391,8 @@ public final class SakuraClickGui extends GuiScreen {
 
     private void drawOption(Option value, float vx, float vy, float vw, int mouseX, int mouseY) {
         boolean enabled = Boolean.TRUE.equals(value.getValue());
-        float hover = animateValue(value, isHovered(vx, vy, vx + vw, vy + 30.0f, mouseX, mouseY) ? 1.0f : 0.0f);
-        float active = animateOptionSwitch(value, enabled);
+        float hover = easeSmooth(animateValue(value, isHovered(vx, vy, vx + vw, vy + 30.0f, mouseX, mouseY) ? 1.0f : 0.0f));
+        float active = easeSmooth(animateOptionSwitch(value, enabled));
         if (hover > 0.02f) {
             RenderServices.shapes().rounded(vx - 7.0f, vy + 1.0f, vx + vw + 7.0f, vy + 31.0f,
                     7.0f, alpha(0xFF120D12, 70.0f * hover * guiAlpha));
@@ -373,7 +412,7 @@ public final class SakuraClickGui extends GuiScreen {
 
     private void drawNumber(Numbers value, float vx, float vy, float vw, int mouseX, int mouseY) {
         double current = numberValue(value);
-        float hover = animateValue(value, isHovered(vx, vy, vx + vw, vy + 42.0f, mouseX, mouseY) ? 1.0f : 0.0f);
+        float hover = easeSmooth(animateValue(value, isHovered(vx, vy, vx + vw, vy + 42.0f, mouseX, mouseY) ? 1.0f : 0.0f));
         if (hover > 0.02f) {
             RenderServices.shapes().rounded(vx - 7.0f, vy - 5.0f, vx + vw + 7.0f, vy + 40.0f,
                     7.0f, alpha(0xFF120D12, 58.0f * hover * guiAlpha));
@@ -398,10 +437,11 @@ public final class SakuraClickGui extends GuiScreen {
     }
 
     private void drawMode(Mode mode, float vx, float vy, float vw, int mouseX, int mouseY) {
-        float hover = animateValue(mode, isHovered(vx, vy, vx + vw, vy + 30.0f, mouseX, mouseY) ? 1.0f : 0.0f);
+        float hover = easeSmooth(animateValue(mode, isHovered(vx, vy, vx + vw, vy + 30.0f, mouseX, mouseY) ? 1.0f : 0.0f));
         boolean expanded = mode == expandedMode;
-        float expand = animateMap(modeExpandProgress, mode, expanded ? 1.0f : 0.0f, 0.18f);
-        boolean showDropdown = expanded;
+        float expandRaw = animateMap(modeExpandProgress, mode, expanded ? 1.0f : 0.0f, 0.20f);
+        float expand = easeSmooth(expandRaw);
+        float pulse = animateMap(modeSelectionPulse, mode, 0.0f, 0.16f);
         if (hover > 0.02f) {
             RenderServices.shapes().rounded(vx - 7.0f, vy + 1.0f, vx + vw + 7.0f, vy + 31.0f,
                     7.0f, alpha(0xFF120D12, 62.0f * hover * guiAlpha));
@@ -411,52 +451,68 @@ public final class SakuraClickGui extends GuiScreen {
         String label = modeLabel(mode.getModeAsString());
         float pillW = Math.max(88.0f, FontLoaders.C14.getStringWidth(label) + 34.0f);
         float px = vx + vw - pillW;
+        if (pulse > 0.02f) {
+            RenderServices.shapes().shadow(px, vy + 5.0f, px + pillW, vy + 27.0f, 8.0f,
+                    alpha(SAKURA, 50.0f * pulse * guiAlpha), 4, 1.8f);
+        }
         drawMiniGlass(px, vy + 5.0f, px + pillW, vy + 27.0f, 7.0f,
-                alpha(GLASS_SOFT, (150.0f + 28.0f * hover + 30.0f * expand) * guiAlpha),
-                alpha(SAKURA, (38.0f + 30.0f * hover + 42.0f * expand) * guiAlpha));
-        drawGlowCentered(FontLoaders.C14, label, px + pillW * 0.5f - 5.0f, vy + 10.0f,
-                alpha(SAKURA, (226.0f + 18.0f * hover) * guiAlpha), 0.42f + 0.36f * hover);
-        drawGlowText(FontLoaders.C14, expanded ? "v" : ">", px + pillW - 14.0f, vy + 10.0f,
+                alpha(GLASS_SOFT, (150.0f + 28.0f * hover + 30.0f * expand + 30.0f * pulse) * guiAlpha),
+                alpha(SAKURA, (38.0f + 30.0f * hover + 42.0f * expand + 54.0f * pulse) * guiAlpha));
+        drawGlowCentered(FontLoaders.C14, label, px + pillW * 0.5f - 5.0f, vy + 10.0f - pulse * 1.2f,
+                alpha(SAKURA, (226.0f + 18.0f * hover + 22.0f * pulse) * guiAlpha), 0.42f + 0.36f * hover + 0.24f * pulse);
+        drawChevron(FontLoaders.C14, px + pillW - 11.0f, vy + 15.0f, expand,
                 alpha(TEXT, (198.0f + 34.0f * expand) * guiAlpha), 0.36f + 0.36f * expand);
 
         Enum[] modes = mode.getModes();
-        if (modes == null || modes.length == 0 || !showDropdown) {
+        if (modes == null || modes.length == 0 || expand <= 0.012f) {
             return;
         }
         float rowH = 22.0f;
         float dropY = vy + 32.0f;
-        float dropH = modes.length * rowH + 8.0f;
+        float fullDropH = modes.length * rowH + 8.0f;
+        float dropH = Math.max(7.0f, fullDropH * expand);
         RenderServices.shapes().shadow(vx, dropY, vx + vw, dropY + dropH, 8.0f,
-                alpha(SAKURA, 34.0f * guiAlpha), 4, 1.8f);
+                alpha(SAKURA, 34.0f * expand * guiAlpha), 4, 1.8f);
         drawMiniGlass(vx, dropY, vx + vw, dropY + dropH, 8.0f,
-                alpha(0xFF120D12, 178.0f * guiAlpha), alpha(SAKURA, 52.0f * guiAlpha));
+                alpha(0xFF120D12, 178.0f * expand * guiAlpha), alpha(SAKURA, 52.0f * expand * guiAlpha));
         for (int i = 0; i < modes.length; i++) {
             Enum option = modes[i];
             String name = option.name();
             String optionLabel = modeLabel(name);
-            float rowY = dropY + 4.0f + i * rowH;
+            float rowReveal = easeOut(clamp((fullDropH * expand - 4.0f - i * rowH) / rowH, 0.0f, 1.0f));
+            if (rowReveal <= 0.01f) {
+                continue;
+            }
+            float rowY = dropY + 4.0f + i * rowH + (1.0f - rowReveal) * 5.0f;
             boolean selected = name.equalsIgnoreCase(mode.getModeAsString());
-            boolean rowHover = isHovered(vx + 4.0f, rowY, vx + vw - 4.0f, rowY + rowH, mouseX, mouseY);
-            float rowActive = selected ? 1.0f : rowHover ? 0.55f : 0.0f;
+            boolean rowHover = expanded && rowReveal > 0.80f
+                    && isHovered(vx + 4.0f, rowY, vx + vw - 4.0f, rowY + rowH, mouseX, mouseY);
+            String rowKey = modeRowKey(mode, name);
+            float rowHoverAnim = easeSmooth(animateMap(modeRowHoverProgress, rowKey, rowHover ? 1.0f : 0.0f, 0.18f));
+            float rowSelectedAnim = easeSmooth(animateMap(modeRowSelectProgress, rowKey, selected ? 1.0f : 0.0f, 0.18f));
+            float rowActive = Math.max(rowSelectedAnim, rowHoverAnim * 0.62f);
             if (rowActive > 0.01f) {
                 RenderServices.shapes().rounded(vx + 5.0f, rowY + 2.0f, vx + vw - 5.0f, rowY + rowH - 2.0f,
-                        6.0f, alpha(selected ? 0xFF26151F : 0xFF1B1218, (96.0f + 58.0f * rowActive) * expand * guiAlpha));
+                        6.0f, alpha(selected ? 0xFF26151F : 0xFF1B1218,
+                                (96.0f + 58.0f * rowActive) * rowReveal * guiAlpha));
             }
             drawGlowText(FontLoaders.C14, optionLabel, vx + 12.0f, rowY + 7.0f,
-                    alpha(selected ? TEXT : blend(MUTED, TEXT, rowHover ? 0.45f : 0.0f),
-                            (190.0f + 42.0f * rowActive) * guiAlpha),
+                    alpha(rowSelectedAnim > 0.45f ? TEXT : blend(MUTED, TEXT, rowHoverAnim * 0.45f),
+                            (190.0f + 42.0f * rowActive) * rowReveal * guiAlpha),
                     0.28f + 0.34f * rowActive);
-            if (selected) {
-                drawSakuraFlower(vx + vw - 14.0f, rowY + rowH * 0.5f, 2.0f, 0.75f);
+            if (rowSelectedAnim > 0.02f) {
+                drawSakuraFlower(vx + vw - 14.0f, rowY + rowH * 0.5f, 2.0f,
+                        0.75f * rowSelectedAnim * rowReveal);
             }
         }
     }
 
     private void drawModeProperty(ModeProperty mode, float vx, float vy, float vw, int mouseX, int mouseY) {
-        float hover = animateValue(mode, isHovered(vx, vy, vx + vw, vy + 30.0f, mouseX, mouseY) ? 1.0f : 0.0f);
+        float hover = easeSmooth(animateValue(mode, isHovered(vx, vy, vx + vw, vy + 30.0f, mouseX, mouseY) ? 1.0f : 0.0f));
         boolean expanded = mode == expandedModeProperty;
-        float expand = animateMap(modePropertyExpandProgress, mode, expanded ? 1.0f : 0.0f, 0.18f);
-        boolean showDropdown = expanded;
+        float expandRaw = animateMap(modePropertyExpandProgress, mode, expanded ? 1.0f : 0.0f, 0.20f);
+        float expand = easeSmooth(expandRaw);
+        float pulse = animateMap(modeSelectionPulse, mode, 0.0f, 0.16f);
         if (hover > 0.02f) {
             RenderServices.shapes().rounded(vx - 7.0f, vy + 1.0f, vx + vw + 7.0f, vy + 31.0f,
                     7.0f, alpha(0xFF120D12, 62.0f * hover * guiAlpha));
@@ -466,68 +522,92 @@ public final class SakuraClickGui extends GuiScreen {
         String label = modeLabel(mode.getModeString());
         float pillW = Math.max(88.0f, FontLoaders.C14.getStringWidth(label) + 34.0f);
         float px = vx + vw - pillW;
+        if (pulse > 0.02f) {
+            RenderServices.shapes().shadow(px, vy + 5.0f, px + pillW, vy + 27.0f, 8.0f,
+                    alpha(SAKURA, 50.0f * pulse * guiAlpha), 4, 1.8f);
+        }
         drawMiniGlass(px, vy + 5.0f, px + pillW, vy + 27.0f, 7.0f,
-                alpha(GLASS_SOFT, (150.0f + 28.0f * hover + 30.0f * expand) * guiAlpha),
-                alpha(SAKURA, (38.0f + 30.0f * hover + 42.0f * expand) * guiAlpha));
-        drawGlowCentered(FontLoaders.C14, label, px + pillW * 0.5f - 5.0f, vy + 10.0f,
-                alpha(SAKURA, (226.0f + 18.0f * hover) * guiAlpha), 0.42f + 0.36f * hover);
-        drawGlowText(FontLoaders.C14, expanded ? "v" : ">", px + pillW - 14.0f, vy + 10.0f,
+                alpha(GLASS_SOFT, (150.0f + 28.0f * hover + 30.0f * expand + 30.0f * pulse) * guiAlpha),
+                alpha(SAKURA, (38.0f + 30.0f * hover + 42.0f * expand + 54.0f * pulse) * guiAlpha));
+        drawGlowCentered(FontLoaders.C14, label, px + pillW * 0.5f - 5.0f, vy + 10.0f - pulse * 1.2f,
+                alpha(SAKURA, (226.0f + 18.0f * hover + 22.0f * pulse) * guiAlpha), 0.42f + 0.36f * hover + 0.24f * pulse);
+        drawChevron(FontLoaders.C14, px + pillW - 11.0f, vy + 15.0f, expand,
                 alpha(TEXT, (198.0f + 34.0f * expand) * guiAlpha), 0.36f + 0.36f * expand);
 
         String[] modes = mode.getModes();
-        if (modes == null || modes.length == 0 || !showDropdown) {
+        if (modes == null || modes.length == 0 || expand <= 0.012f) {
             return;
         }
         float rowH = 22.0f;
         float dropY = vy + 32.0f;
-        float dropH = modes.length * rowH + 8.0f;
+        float fullDropH = modes.length * rowH + 8.0f;
+        float dropH = Math.max(7.0f, fullDropH * expand);
         RenderServices.shapes().shadow(vx, dropY, vx + vw, dropY + dropH, 8.0f,
-                alpha(SAKURA, 34.0f * guiAlpha), 4, 1.8f);
+                alpha(SAKURA, 34.0f * expand * guiAlpha), 4, 1.8f);
         drawMiniGlass(vx, dropY, vx + vw, dropY + dropH, 8.0f,
-                alpha(0xFF120D12, 178.0f * guiAlpha), alpha(SAKURA, 52.0f * guiAlpha));
+                alpha(0xFF120D12, 178.0f * expand * guiAlpha), alpha(SAKURA, 52.0f * expand * guiAlpha));
         for (int i = 0; i < modes.length; i++) {
             String name = modes[i];
             String optionLabel = modeLabel(name);
-            float rowY = dropY + 4.0f + i * rowH;
+            float rowReveal = easeOut(clamp((fullDropH * expand - 4.0f - i * rowH) / rowH, 0.0f, 1.0f));
+            if (rowReveal <= 0.01f) {
+                continue;
+            }
+            float rowY = dropY + 4.0f + i * rowH + (1.0f - rowReveal) * 5.0f;
             boolean selected = name.equalsIgnoreCase(mode.getModeString());
-            boolean rowHover = isHovered(vx + 4.0f, rowY, vx + vw - 4.0f, rowY + rowH, mouseX, mouseY);
-            float rowActive = selected ? 1.0f : rowHover ? 0.55f : 0.0f;
+            boolean rowHover = expanded && rowReveal > 0.80f
+                    && isHovered(vx + 4.0f, rowY, vx + vw - 4.0f, rowY + rowH, mouseX, mouseY);
+            String rowKey = modeRowKey(mode, name);
+            float rowHoverAnim = easeSmooth(animateMap(modeRowHoverProgress, rowKey, rowHover ? 1.0f : 0.0f, 0.18f));
+            float rowSelectedAnim = easeSmooth(animateMap(modeRowSelectProgress, rowKey, selected ? 1.0f : 0.0f, 0.18f));
+            float rowActive = Math.max(rowSelectedAnim, rowHoverAnim * 0.62f);
             if (rowActive > 0.01f) {
                 RenderServices.shapes().rounded(vx + 5.0f, rowY + 2.0f, vx + vw - 5.0f, rowY + rowH - 2.0f,
-                        6.0f, alpha(selected ? 0xFF26151F : 0xFF1B1218, (96.0f + 58.0f * rowActive) * expand * guiAlpha));
+                        6.0f, alpha(selected ? 0xFF26151F : 0xFF1B1218,
+                                (96.0f + 58.0f * rowActive) * rowReveal * guiAlpha));
             }
             drawGlowText(FontLoaders.C14, optionLabel, vx + 12.0f, rowY + 7.0f,
-                    alpha(selected ? TEXT : blend(MUTED, TEXT, rowHover ? 0.45f : 0.0f),
-                            (190.0f + 42.0f * rowActive) * guiAlpha),
+                    alpha(rowSelectedAnim > 0.45f ? TEXT : blend(MUTED, TEXT, rowHoverAnim * 0.45f),
+                            (190.0f + 42.0f * rowActive) * rowReveal * guiAlpha),
                     0.28f + 0.34f * rowActive);
-            if (selected) {
-                drawSakuraFlower(vx + vw - 14.0f, rowY + rowH * 0.5f, 2.0f, 0.75f);
+            if (rowSelectedAnim > 0.02f) {
+                drawSakuraFlower(vx + vw - 14.0f, rowY + rowH * 0.5f, 2.0f,
+                        0.75f * rowSelectedAnim * rowReveal);
             }
         }
     }
 
     private void drawBindingOverlay(ScaledResolution sr) {
-        if (bindingModule == null) {
+        Module target = bindingModule == null ? bindingAnimationModule : bindingModule;
+        float progress = easeSmooth(bindingOverlayProgress);
+        if (target == null || progress <= 0.02f) {
             return;
         }
-        RenderServices.shapes().rect(0.0f, 0.0f, sr.getScaledWidth(), sr.getScaledHeight(), alpha(0xFF000000, 120.0f));
+        float oldAlpha = guiAlpha;
+        guiAlpha *= progress;
+        RenderServices.shapes().rect(0.0f, 0.0f, sr.getScaledWidth(), sr.getScaledHeight(), alpha(0xFF000000, 120.0f * guiAlpha));
         float bw = 250.0f;
         float bh = 84.0f;
         float bx = (sr.getScaledWidth() - bw) * 0.5f;
-        float by = (sr.getScaledHeight() - bh) * 0.5f;
+        float by = (sr.getScaledHeight() - bh) * 0.5f + (1.0f - progress) * 8.0f;
         drawSakuraPanel(bx, by, bx + bw, by + bh, 10.0f, 1.0f);
-        drawGlowCentered(FontLoaders.C20, "Press a key", bx + bw * 0.5f, by + 20.0f, alpha(TEXT, 245.0f), 0.72f);
-        drawGlowCentered(FontLoaders.C14, displayName(bindingModule) + " / DEL clear",
-                bx + bw * 0.5f, by + 50.0f, alpha(MUTED, 220.0f), 0.42f);
+        drawGlowCentered(FontLoaders.C20, "Press a key", bx + bw * 0.5f, by + 20.0f,
+                alpha(TEXT, 245.0f * guiAlpha), 0.72f);
+        drawGlowCentered(FontLoaders.C14, displayName(target) + " / DEL clear",
+                bx + bw * 0.5f, by + 50.0f, alpha(MUTED, 220.0f * guiAlpha), 0.42f);
+        guiAlpha = oldAlpha;
     }
 
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int mouseButton) throws IOException {
+        if (closing) {
+            return;
+        }
         if (bindingModule != null) {
             return;
         }
         float sx = unscaleX(x);
-        float sy = unscaleY(y);
+        float sy = unscaleY(y + introOffset());
         if (mouseButton == 0 && isHovered(sx, sy, sx + w / scale, sy + 52.0f, mouseX, mouseY)) {
             draggingWindow = true;
             dragOffsetX = mouseX - x;
@@ -551,15 +631,18 @@ public final class SakuraClickGui extends GuiScreen {
             return false;
         }
         float sx = unscaleX(x);
-        float sy = unscaleY(y);
+        float sy = unscaleY(y + introOffset());
         float rowX = sx + 15.0f;
         float rowY = sy + 64.0f;
         for (ModuleType type : ModuleType.values()) {
             if (isHovered(rowX, rowY, rowX + 114.0f, rowY + 28.0f, mouseX, mouseY)) {
                 listScrollByType.put(currentType, listScroll);
-                currentType = type;
-                listScroll = scrollForType(type);
-                listScrollDisplay = listScroll;
+                if (currentType != type) {
+                    currentType = type;
+                    listScroll = scrollForType(type);
+                    listScrollDisplay = listScroll;
+                    listTransitionProgress = 0.0f;
+                }
                 return true;
             }
             rowY += 34.0f;
@@ -569,7 +652,7 @@ public final class SakuraClickGui extends GuiScreen {
 
     private boolean handleModuleClick(int mouseX, int mouseY, int button) {
         float sx = unscaleX(x);
-        float sy = unscaleY(y);
+        float sy = unscaleY(y + introOffset());
         float listX = sx + 154.0f;
         float rowY = sy + 104.0f - listScrollDisplay;
         for (Module module : ModuleManager.getModulesInType(currentType)) {
@@ -594,6 +677,7 @@ public final class SakuraClickGui extends GuiScreen {
                     detailScroll = scrollForModule(module);
                     detailScrollDisplay = detailScroll;
                     bindingModule = module;
+                    bindingAnimationModule = module;
                     return true;
                 }
             }
@@ -607,7 +691,7 @@ public final class SakuraClickGui extends GuiScreen {
             return false;
         }
         float sx = unscaleX(x);
-        float sy = unscaleY(y);
+        float sy = unscaleY(y + introOffset());
         float dx = sx + 388.0f;
         float dy = sy + 142.0f - detailScrollDisplay;
         float dw = w / scale - 420.0f;
@@ -660,7 +744,7 @@ public final class SakuraClickGui extends GuiScreen {
 
     private void handleWheel(int mouseX, int mouseY, int wheel) {
         float sx = unscaleX(x);
-        float sy = unscaleY(y);
+        float sy = unscaleY(y + introOffset());
         if (isHovered(sx + 144.0f, sy + 64.0f, sx + 358.0f, sy + h / scale - 22.0f, mouseX, mouseY)) {
             listScroll = clamp(listScroll - Math.signum(wheel) * 24.0f, 0.0f, maxListScroll());
             listScrollByType.put(currentType, listScroll);
@@ -680,7 +764,7 @@ public final class SakuraClickGui extends GuiScreen {
             return;
         }
         if (keyCode == Keyboard.KEY_ESCAPE || keyCode == Keyboard.KEY_RSHIFT) {
-            mc.displayGuiScreen(null);
+            requestClose();
             return;
         }
         super.keyTyped(typedChar, keyCode);
@@ -758,24 +842,19 @@ public final class SakuraClickGui extends GuiScreen {
                     float rowY = dropY + 4.0f + i * rowH;
                     if (isHovered(x + 4.0f, rowY, x + w - 4.0f, rowY + rowH, mouseX, mouseY)) {
                         mode.setMode(modes[i].name());
-                        modeExpandProgress.put(mode, Float.valueOf(0.0f));
+                        modeSelectionPulse.put(mode, Float.valueOf(1.0f));
                         expandedMode = null;
                         return true;
                     }
                 }
             }
             if (isHovered(x, y, x + w, y + 30.0f, mouseX, mouseY)) {
-                modeExpandProgress.put(mode, Float.valueOf(0.0f));
                 expandedMode = null;
                 return true;
             }
             return true;
         }
-        if (expandedMode != null) {
-            modeExpandProgress.put(expandedMode, Float.valueOf(0.0f));
-        }
         if (expandedModeProperty != null) {
-            modePropertyExpandProgress.put(expandedModeProperty, Float.valueOf(0.0f));
             expandedModeProperty = null;
         }
         modeExpandProgress.put(mode, Float.valueOf(0.0f));
@@ -793,25 +872,20 @@ public final class SakuraClickGui extends GuiScreen {
                     float rowY = dropY + 4.0f + i * rowH;
                     if (isHovered(x + 4.0f, rowY, x + w - 4.0f, rowY + rowH, mouseX, mouseY)) {
                         mode.setMode(modes[i]);
-                        modePropertyExpandProgress.put(mode, Float.valueOf(0.0f));
+                        modeSelectionPulse.put(mode, Float.valueOf(1.0f));
                         expandedModeProperty = null;
                         return true;
                     }
                 }
             }
             if (isHovered(x, y, x + w, y + 30.0f, mouseX, mouseY)) {
-                modePropertyExpandProgress.put(mode, Float.valueOf(0.0f));
                 expandedModeProperty = null;
                 return true;
             }
             return true;
         }
         if (expandedMode != null) {
-            modeExpandProgress.put(expandedMode, Float.valueOf(0.0f));
             expandedMode = null;
-        }
-        if (expandedModeProperty != null) {
-            modePropertyExpandProgress.put(expandedModeProperty, Float.valueOf(0.0f));
         }
         modePropertyExpandProgress.put(mode, Float.valueOf(0.0f));
         expandedModeProperty = mode;
@@ -820,20 +894,17 @@ public final class SakuraClickGui extends GuiScreen {
 
     private float valueHeight(Value value) {
         if (value instanceof ModeProperty) {
-            if (value == expandedModeProperty) {
-                String[] modes = ((ModeProperty) value).getModes();
-                int count = modes == null ? 0 : modes.length;
-                return 38.0f + count * 22.0f + 8.0f;
-            }
-            return 38.0f;
+            String[] modes = ((ModeProperty) value).getModes();
+            int count = modes == null ? 0 : modes.length;
+            return 38.0f + (count * 22.0f + 8.0f) * animatedModeHeight((ModeProperty) value);
         }
         if (value instanceof Numbers) {
             return 52.0f;
         }
-        if (value instanceof Mode && value == expandedMode) {
+        if (value instanceof Mode) {
             Enum[] modes = ((Mode) value).getModes();
             int count = modes == null ? 0 : modes.length;
-            return 38.0f + count * 22.0f + 8.0f;
+            return 38.0f + (count * 22.0f + 8.0f) * animatedModeHeight((Mode) value);
         }
         return 38.0f;
     }
@@ -913,6 +984,20 @@ public final class SakuraClickGui extends GuiScreen {
     private void drawGlowCentered(gq.yozakura.engine.font.CFontRenderer font, String text, float centerX, float y,
                                   int color, float strength) {
         drawGlowText(font, text, centerX - font.getStringWidth(text) * 0.5f, y, color, strength);
+    }
+
+    private void drawChevron(gq.yozakura.engine.font.CFontRenderer font, float centerX, float centerY,
+                             float expand, int color, float strength) {
+        String glyph = ">";
+        GL11.glPushMatrix();
+        try {
+            GL11.glTranslatef(centerX, centerY, 0.0f);
+            GL11.glRotatef(90.0f * clamp(expand, 0.0f, 1.0f), 0.0f, 0.0f, 1.0f);
+            drawGlowText(font, glyph, -font.getStringWidth(glyph) * 0.5f,
+                    -font.getHeight() * 0.5f, color, strength);
+        } finally {
+            GL11.glPopMatrix();
+        }
     }
 
     private void drawSakuraFlower(float centerX, float centerY, float size, float alpha) {
@@ -1114,8 +1199,41 @@ public final class SakuraClickGui extends GuiScreen {
         return animateMap(valueHoverProgress, value, target, 0.20f);
     }
 
+    private float easeOut(float value) {
+        return AnimationUtil.ease(value, AnimationUtil.Ease.OUT_CUBIC);
+    }
+
+    private float easeSmooth(float value) {
+        return AnimationUtil.ease(value, AnimationUtil.Ease.IN_OUT_CUBIC);
+    }
+
+    private float animatedModeHeight(Mode mode) {
+        Float value = modeExpandProgress.get(mode);
+        return easeSmooth(value == null ? (mode == expandedMode ? 1.0f : 0.0f) : value.floatValue());
+    }
+
+    private float animatedModeHeight(ModeProperty mode) {
+        Float value = modePropertyExpandProgress.get(mode);
+        return easeSmooth(value == null ? (mode == expandedModeProperty ? 1.0f : 0.0f) : value.floatValue());
+    }
+
+    private String modeRowKey(Value owner, String name) {
+        return System.identityHashCode(owner) + ":" + (name == null ? "" : name);
+    }
+
+    private void requestClose() {
+        if (closing) {
+            return;
+        }
+        closing = true;
+        draggingWindow = false;
+        draggingNumber = null;
+        expandedMode = null;
+        expandedModeProperty = null;
+    }
+
     private float introOffset() {
-        return 0.0f;
+        return (1.0f - easeOut(openProgress)) * 14.0f;
     }
 
     private int blend(int from, int to, float progress) {

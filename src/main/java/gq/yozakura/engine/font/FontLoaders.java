@@ -239,7 +239,7 @@ public abstract class FontLoaders {
         INTER(new ResourceLocation("font/Inter.ttf"), new ResourceLocation("font/Inter-Italic.ttf")),
         ALIBABA(new ResourceLocation("font/AlibabaSans-Regular.otf"), null),
         TENACITY_BOLD(new ResourceLocation("font/tenacity-bold.ttf"), null),
-        ICON(new ResourceLocation("font/NovICON.ttf"), null);
+        ICON(new ResourceLocation("font/TenacityIcon.ttf"), null);
 
         private final ResourceLocation location;
         private final ResourceLocation italicLocation;
