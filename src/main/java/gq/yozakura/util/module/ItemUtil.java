@@ -1,4 +1,4 @@
-package gq.vapulite.util.module;
+package gq.yozakura.util.module;
 
 import com.google.common.collect.Multimap;
 import net.minecraft.block.Block;

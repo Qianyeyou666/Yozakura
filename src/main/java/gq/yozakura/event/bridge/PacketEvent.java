@@ -1,8 +1,8 @@
-package gq.vapulite.event.bridge;
+package gq.yozakura.event.bridge;
 
 import net.minecraft.network.Packet;
-import gq.vapulite.event.bus.events.callables.EventCancellable;
-import gq.vapulite.event.bus.types.EventType;
+import gq.yozakura.event.bus.events.callables.EventCancellable;
+import gq.yozakura.event.bus.types.EventType;
 
 public class PacketEvent extends EventCancellable {
     private final EventType type;

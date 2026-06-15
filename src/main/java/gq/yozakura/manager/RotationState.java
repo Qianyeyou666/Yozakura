@@ -1,4 +1,4 @@
-package gq.vapulite.manager;
+package gq.yozakura.manager;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.MathHelper;

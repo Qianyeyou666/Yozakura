@@ -1,7 +1,7 @@
-package gq.vapulite.engine.font.api;
+package gq.yozakura.engine.font.api;
 
-import gq.vapulite.engine.font.CFontRenderer;
-import gq.vapulite.engine.font.FontResourceLoader;
+import gq.yozakura.engine.font.CFontRenderer;
+import gq.yozakura.engine.font.FontResourceLoader;
 import net.minecraft.util.ResourceLocation;
 
 import java.awt.Font;

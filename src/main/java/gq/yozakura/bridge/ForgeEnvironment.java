@@ -1,4 +1,4 @@
-package gq.vapulite.bridge;
+package gq.yozakura.bridge;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;

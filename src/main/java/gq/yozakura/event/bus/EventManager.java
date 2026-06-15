@@ -1,6 +1,6 @@
-package gq.vapulite.event.bus;
+package gq.yozakura.event.bus;
 
-import gq.vapulite.event.bus.events.EventStoppable;
+import gq.yozakura.event.bus.events.EventStoppable;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -113,7 +113,7 @@ public final class EventManager {
     private static void sort(Class<?> eventClass) {
         List<MethodData> old = REGISTRY.get(eventClass);
         List<MethodData> sorted = new CopyOnWriteArrayList<MethodData>();
-        for (byte priority : gq.vapulite.event.bus.types.Priority.VALUE_ARRAY) {
+        for (byte priority : gq.yozakura.event.bus.types.Priority.VALUE_ARRAY) {
             for (MethodData data : old) {
                 if (data.priority == priority) {
                     sorted.add(data);
@@ -129,7 +129,7 @@ public final class EventManager {
         }
         for (Annotation annotation : method.getAnnotations()) {
             String name = annotation.annotationType().getName();
-            if ("gq.vapulite.bridge.forge.SubscribeEvent".equals(name)
+            if ("gq.yozakura.bridge.forge.SubscribeEvent".equals(name)
                     || "net.minecraftforge.fml.common.eventhandler.SubscribeEvent".equals(name)) {
                 return true;
             }
@@ -144,7 +144,7 @@ public final class EventManager {
         }
         for (Annotation annotation : method.getAnnotations()) {
             String name = annotation.annotationType().getName();
-            if (!"gq.vapulite.bridge.forge.SubscribeEvent".equals(name)
+            if (!"gq.yozakura.bridge.forge.SubscribeEvent".equals(name)
                     && !"net.minecraftforge.fml.common.eventhandler.SubscribeEvent".equals(name)) {
                 continue;
             }
@@ -156,23 +156,23 @@ public final class EventManager {
             } catch (Throwable ignored) {
             }
         }
-        return gq.vapulite.event.bus.types.Priority.MEDIUM;
+        return gq.yozakura.event.bus.types.Priority.MEDIUM;
     }
 
     private static byte mapPriority(String priority) {
         if ("HIGHEST".equals(priority)) {
-            return gq.vapulite.event.bus.types.Priority.HIGHEST;
+            return gq.yozakura.event.bus.types.Priority.HIGHEST;
         }
         if ("HIGH".equals(priority)) {
-            return gq.vapulite.event.bus.types.Priority.HIGH;
+            return gq.yozakura.event.bus.types.Priority.HIGH;
         }
         if ("LOW".equals(priority)) {
-            return gq.vapulite.event.bus.types.Priority.LOW;
+            return gq.yozakura.event.bus.types.Priority.LOW;
         }
         if ("LOWEST".equals(priority)) {
-            return gq.vapulite.event.bus.types.Priority.LOWEST;
+            return gq.yozakura.event.bus.types.Priority.LOWEST;
         }
-        return gq.vapulite.event.bus.types.Priority.MEDIUM;
+        return gq.yozakura.event.bus.types.Priority.MEDIUM;
     }
 
     private static String methodSignature(Method method) {
@@ -189,7 +189,7 @@ public final class EventManager {
 
     private static void log(String message, Throwable throwable) {
         try {
-            File log = new File(System.getProperty("java.io.tmpdir"), "VapuLiteEventBus.log");
+            File log = new File(System.getProperty("java.io.tmpdir"), "YozakuraEventBus.log");
             PrintWriter writer = new PrintWriter(new FileWriter(log, true));
             try {
                 writer.println(message);
@@ -242,16 +242,16 @@ public final class EventManager {
 
     private static boolean isWatchedEvent(Class<?> eventClass) {
         String name = eventClass == null ? "" : eventClass.getName();
-        return "gq.vapulite.event.bridge.Render2DEvent".equals(name)
-                || "gq.vapulite.bridge.forge.RenderGameOverlayEvent$Text".equals(name)
+        return "gq.yozakura.event.bridge.Render2DEvent".equals(name)
+                || "gq.yozakura.bridge.forge.RenderGameOverlayEvent$Text".equals(name)
                 || "net.minecraftforge.client.event.RenderGameOverlayEvent$Text".equals(name)
-                || "gq.vapulite.event.bridge.Render3DEvent".equals(name)
-                || "gq.vapulite.bridge.forge.RenderWorldLastEvent".equals(name)
+                || "gq.yozakura.event.bridge.Render3DEvent".equals(name)
+                || "gq.yozakura.bridge.forge.RenderWorldLastEvent".equals(name)
                 || "net.minecraftforge.client.event.RenderWorldLastEvent".equals(name)
-                || "gq.vapulite.event.bridge.AttackEvent".equals(name)
-                || "gq.vapulite.bridge.forge.AttackEntityEvent".equals(name)
+                || "gq.yozakura.event.bridge.AttackEvent".equals(name)
+                || "gq.yozakura.bridge.forge.AttackEntityEvent".equals(name)
                 || "net.minecraftforge.event.entity.player.AttackEntityEvent".equals(name)
-                || "gq.vapulite.bridge.forge.TickEvent$ClientTickEvent".equals(name)
+                || "gq.yozakura.bridge.forge.TickEvent$ClientTickEvent".equals(name)
                 || "net.minecraftforge.fml.common.gameevent.TickEvent$ClientTickEvent".equals(name);
     }
 

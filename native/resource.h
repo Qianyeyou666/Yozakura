@@ -1,3 +1,3 @@
 #pragma once
 
-#define IDR_VAPULITE_JAR 101
+#define IDR_YOZAKURA_JAR 101

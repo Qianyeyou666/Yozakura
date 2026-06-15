@@ -6,13 +6,13 @@ import net.minecraftforge.fml.relauncher.IFMLLoadingPlugin;
 import net.minecraftforge.fml.relauncher.IFMLLoadingPlugin.Name;;
 
 
-// -Dfml.coreMods.load=com.xue.vapu.ForgePlugin -DFORGE_FORCE_FRAME_RECALC=true
+// -Dfml.coreMods.load=com.xue.yozakura.ForgePlugin -DFORGE_FORCE_FRAME_RECALC=true
 @Name("YozakuraForgePlugin")
 public class ForgePlugin implements IFMLLoadingPlugin {
 
 	@Override
 	public String[] getASMTransformerClass() {
-		return new String[] {"com.xue.vapu.ClassTransformer"};
+		return new String[] {"com.xue.yozakura.ClassTransformer"};
 	}
 
 	@Override

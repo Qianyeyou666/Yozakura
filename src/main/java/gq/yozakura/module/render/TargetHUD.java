@@ -1,17 +1,20 @@
-package gq.vapulite.module.render;
+package gq.yozakura.module.render;
 
-import gq.vapulite.engine.font.CFontRenderer;
-import gq.vapulite.engine.font.FontLoaders;
-import gq.vapulite.engine.render.ui.LiquidGlassSettings;
-import gq.vapulite.engine.render.ui.RenderServices;
-import gq.vapulite.module.Module;
-import gq.vapulite.module.ModuleType;
-import gq.vapulite.module.combat.Backtrack;
-import gq.vapulite.module.combat.KillAura;
-import gq.vapulite.util.render.HudDrag;
-import gq.vapulite.util.render.RenderUtil;
-import gq.vapulite.value.Numbers;
-import gq.vapulite.value.Option;
+import gq.yozakura.bridge.YozakuraEventBridge;
+import gq.yozakura.engine.font.CFontRenderer;
+import gq.yozakura.engine.font.FontLoaders;
+import gq.yozakura.engine.render.ui.LiquidGlassSettings;
+import gq.yozakura.engine.render.ui.RenderServices;
+import gq.yozakura.event.bridge.Render2DEvent;
+import gq.yozakura.event.bus.EventTarget;
+import gq.yozakura.module.Module;
+import gq.yozakura.module.ModuleType;
+import gq.yozakura.module.combat.Backtrack;
+import gq.yozakura.module.combat.KillAura;
+import gq.yozakura.util.render.HudDrag;
+import gq.yozakura.util.render.RenderUtil;
+import gq.yozakura.value.Numbers;
+import gq.yozakura.value.Option;
 import net.minecraft.client.entity.AbstractClientPlayer;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.ScaledResolution;
@@ -31,6 +34,7 @@ import net.minecraft.util.MovingObjectPosition;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.event.entity.player.AttackEntityEvent;
+import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.GL11;
@@ -108,8 +112,19 @@ public class TargetHUD extends Module {
         switchPulse = 1.0f;
     }
 
-    @SubscribeEvent
+    @EventTarget
+    public void onRender(Render2DEvent event) {
+        renderOverlay();
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onRender(RenderGameOverlayEvent.Text event) {
+        if (!YozakuraEventBridge.hasRenderedOverlayThisFrame()) {
+            renderOverlay();
+        }
+    }
+
+    private void renderOverlay() {
         if (!isInGame()) {
             return;
         }
@@ -222,25 +237,18 @@ public class TargetHUD extends Module {
         }
         CFontRenderer nameFont = FontLoaders.regular(Math.max(12, Math.round(18.0f * uiScale)));
         CFontRenderer smallFont = FontLoaders.regular(Math.max(9, Math.round(11.0f * uiScale)));
-        CFontRenderer percentFont = FontLoaders.regular(Math.max(12, Math.round(16.0f * uiScale)));
         String name = target == null ? "Steve" : target.getName();
         String ping = target == null ? "--" : pingText(target);
-        int percent = Math.round(clamp01(healthAnimation) * 100.0f);
-        float nameX = x + 54.0f * uiScale;
+        float nameX = textStartX(x, uiScale);
         float nameY = y + 9.0f * uiScale;
         float right = x + width - 11.0f * uiScale;
+        float pingWidth = smallFont.getStringWidth(ping);
+        float nameMaxWidth = Math.max(48.0f * uiScale, right - nameX - pingWidth - 8.0f * uiScale);
 
-        nameFont.drawString(trim(name, nameFont, 104.0f * uiScale), nameX, nameY,
+        nameFont.drawString(trim(name, nameFont, nameMaxWidth), nameX, nameY,
                 withAlpha(TEXT, Math.round(248.0f * alpha)));
-        smallFont.drawString(ping, right - smallFont.getStringWidth(ping), y + 8.0f * uiScale,
+        smallFont.drawString(ping, right - pingWidth, y + 8.0f * uiScale,
                 withAlpha(SAKURA, Math.round(218.0f * alpha)));
-
-        String percentText = percent + "%";
-        float percentX = right - percentFont.getStringWidth(percentText);
-        float percentY = y + 21.0f * uiScale;
-        drawTextGlow(percentFont, percentText, percentX, percentY, uiScale, alpha);
-        percentFont.drawString(percentText, percentX, percentY,
-                withAlpha(0xFFFFB9D4, Math.round(248.0f * alpha)));
     }
 
     private void drawTextGlow(CFontRenderer font, String text, float x, float y, float uiScale, float alpha) {
@@ -330,6 +338,10 @@ public class TargetHUD extends Module {
         }
         GL11.glEnd();
         GlStateManager.enableTexture2D();
+    }
+
+    private float textStartX(float x, float uiScale) {
+        return x + (Boolean.TRUE.equals(showAvatar.getValue()) ? 54.0f : 14.0f) * uiScale;
     }
 
     private void drawMovingBarSheen(float x, float y, float width, float height, float alpha) {

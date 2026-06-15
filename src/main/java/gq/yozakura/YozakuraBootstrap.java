@@ -1,18 +1,18 @@
-package gq.vapulite;
+package gq.yozakura;
 
-import gq.vapulite.bridge.ForgeEnvironment;
-import gq.vapulite.bridge.VanillaRemapClassLoader;
+import gq.yozakura.bridge.ForgeEnvironment;
+import gq.yozakura.bridge.VanillaRemapClassLoader;
 
 import java.io.File;
 import java.io.FileWriter;
 import java.io.PrintWriter;
 import java.net.URL;
 
-public final class VapuBootstrap {
+public final class YozakuraBootstrap {
     private static boolean vanillaStarted;
     private static boolean lunarStarted;
 
-    public VapuBootstrap() {
+    public YozakuraBootstrap() {
         start();
     }
 
@@ -24,28 +24,28 @@ public final class VapuBootstrap {
                     log("Forge client is already running");
                     return;
                 }
-                startClass("gq.vapulite.core.Client");
+                startClass("gq.yozakura.core.Client");
             } else if (isLunarClient()) {
                 log("Detected Lunar environment");
                 if (lunarStarted) {
                     log("Lunar remapped client is already running");
                     return;
                 }
-                startMappedClass("gq.vapulite.core.StandaloneClient", true, "lunar");
+                startMappedClass("gq.yozakura.core.StandaloneClient", true, "lunar");
             } else if (isVanillaObfuscated()) {
                 log("Detected vanilla obfuscated environment");
                 if (vanillaStarted) {
                     log("Vanilla remapped client is already running");
                     return;
                 }
-                startMappedClass("gq.vapulite.core.StandaloneClient", false, "vanilla");
+                startMappedClass("gq.yozakura.core.StandaloneClient", false, "vanilla");
             } else {
                 log("Detected standalone named environment");
                 if (isStandaloneRunning()) {
                     log("Standalone client is already running");
                     return;
                 }
-                startClass("gq.vapulite.core.StandaloneClient");
+                startClass("gq.yozakura.core.StandaloneClient");
             }
         } catch (Throwable throwable) {
             log("Bootstrap failed", throwable);
@@ -56,7 +56,7 @@ public final class VapuBootstrap {
     private static void startClass(String className) throws Exception {
         ClassLoader loader = Thread.currentThread().getContextClassLoader();
         if (loader == null) {
-            loader = VapuBootstrap.class.getClassLoader();
+            loader = YozakuraBootstrap.class.getClassLoader();
         }
         Class<?> clientClass = Class.forName(className, true, loader);
         clientClass.newInstance();
@@ -65,7 +65,7 @@ public final class VapuBootstrap {
 
     private static void startMappedClass(String className, boolean keepMinecraftClassNames, String label) throws Exception {
         ClassLoader parent = currentLoader();
-        URL jar = VapuBootstrap.class.getProtectionDomain().getCodeSource().getLocation();
+        URL jar = YozakuraBootstrap.class.getProtectionDomain().getCodeSource().getLocation();
         VanillaRemapClassLoader remapLoader = new VanillaRemapClassLoader(new URL[]{jar}, parent, keepMinecraftClassNames);
         Thread.currentThread().setContextClassLoader(remapLoader);
         Class<?> clientClass = Class.forName(className, true, remapLoader);
@@ -80,7 +80,7 @@ public final class VapuBootstrap {
 
     private static boolean isForgeClientRunning() {
         try {
-            Class<?> clientClass = Class.forName("gq.vapulite.core.Client", false, currentLoader());
+            Class<?> clientClass = Class.forName("gq.yozakura.core.Client", false, currentLoader());
             return clientClass.getField("state").getBoolean(null);
         } catch (Throwable ignored) {
             return false;
@@ -89,7 +89,7 @@ public final class VapuBootstrap {
 
     private static boolean isStandaloneRunning() {
         try {
-            Class<?> clientClass = Class.forName("gq.vapulite.core.StandaloneClient", false, currentLoader());
+            Class<?> clientClass = Class.forName("gq.yozakura.core.StandaloneClient", false, currentLoader());
             return ((Boolean) clientClass.getMethod("isState").invoke(null)).booleanValue();
         } catch (Throwable ignored) {
             return false;
@@ -124,7 +124,7 @@ public final class VapuBootstrap {
 
     private static ClassLoader currentLoader() {
         ClassLoader loader = Thread.currentThread().getContextClassLoader();
-        return loader == null ? VapuBootstrap.class.getClassLoader() : loader;
+        return loader == null ? YozakuraBootstrap.class.getClassLoader() : loader;
     }
 
     private static void log(String message) {
@@ -133,7 +133,7 @@ public final class VapuBootstrap {
 
     private static void log(String message, Throwable throwable) {
         try {
-            File log = new File(System.getProperty("java.io.tmpdir"), "VapuLiteBootstrap.log");
+            File log = new File(System.getProperty("java.io.tmpdir"), "YozakuraBootstrap.log");
             PrintWriter writer = new PrintWriter(new FileWriter(log, true));
             try {
                 writer.println(message);

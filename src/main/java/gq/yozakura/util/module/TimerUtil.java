@@ -1,4 +1,4 @@
-package gq.vapulite.util.module;
+package gq.yozakura.util.module;
 
 public class TimerUtil {
     private long lastMS = 0L;

@@ -1,3 +1,0 @@
-#include "resource.h"
-
-IDR_VAPULITE_JAR RCDATA "build/libs/VapuLite.jar"

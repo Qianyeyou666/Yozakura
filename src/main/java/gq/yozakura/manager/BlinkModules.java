@@ -1,4 +1,4 @@
-package gq.vapulite.manager;
+package gq.yozakura.manager;
 
 public enum BlinkModules {
     NONE,

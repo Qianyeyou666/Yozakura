@@ -15,7 +15,7 @@ public class ModList<T> extends ArrayList<T> {
 
 			int index = -1;
 			for(int i = 0; i < super.size(); i++) {
-				if (super.get(i).getClass().getName().equals("com.xue.vapu.ClassTransformer")) {
+				if (super.get(i).getClass().getName().equals("com.xue.yozakura.ClassTransformer")) {
 					index = i;
 					break;
 				}

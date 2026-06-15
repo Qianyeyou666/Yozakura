@@ -1,8 +1,8 @@
-package gq.vapulite.module.render.runtime;
+package gq.yozakura.module.render.runtime;
 
-import gq.vapulite.module.runtime.Module;
-import gq.vapulite.value.properties.BooleanProperty;
-import gq.vapulite.value.properties.FloatProperty;
+import gq.yozakura.module.runtime.Module;
+import gq.yozakura.value.properties.BooleanProperty;
+import gq.yozakura.value.properties.FloatProperty;
 
 import java.awt.Color;
 

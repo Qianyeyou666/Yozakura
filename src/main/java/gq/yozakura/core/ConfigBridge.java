@@ -1,6 +1,6 @@
-package gq.vapulite.core;
+package gq.yozakura.core;
 
-import gq.vapulite.manager.FileManager;
+import gq.yozakura.manager.FileManager;
 
 import java.io.IOException;
 
@@ -41,7 +41,7 @@ public final class ConfigBridge {
     }
 
     public static void autoSaveTick() {
-        if (VapuClientState.consumeStandaloneDirty()) {
+        if (YozakuraClientState.consumeStandaloneDirty()) {
             getFileManager().markDirty();
         }
         getFileManager().autoSaveTick();

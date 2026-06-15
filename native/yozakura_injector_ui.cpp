@@ -33,7 +33,7 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg
 
 namespace {
 
-const wchar_t* kClassName = L"VapuLiteInjectorImGuiWindow";
+const wchar_t* kClassName = L"YozakuraInjectorImGuiWindow";
 const UINT kInjectDone = WM_APP + 1;
 const float kPi = 3.1415926535f;
 const int kBootWidth = 430;
@@ -230,13 +230,13 @@ std::wstring resolveAssetPath(const wchar_t* fileName) {
 bool resolveDllPath(wchar_t* output, DWORD outputChars) {
     std::wstring dir = exeDirectory();
     const wchar_t* names[] = {
-        L"\\VapuLiteLoader-x64.dll",
-        L"\\build\\libs\\VapuLiteLoader-x64.dll",
-        L"\\VapuLiteLoader.dll",
-        L"\\build\\libs\\VapuLiteLoader.dll",
-        L"\\VapuLiteReobf-x64.dll",
-        L"\\build\\libs\\VapuLiteReobf-x64.dll",
-        L"\\VapuLiteReobf.dll"
+        L"\\YozakuraLoader-x64.dll",
+        L"\\build\\libs\\YozakuraLoader-x64.dll",
+        L"\\YozakuraLoader.dll",
+        L"\\build\\libs\\YozakuraLoader.dll",
+        L"\\YozakuraReobf-x64.dll",
+        L"\\build\\libs\\YozakuraReobf-x64.dll",
+        L"\\YozakuraReobf.dll"
     };
     for (int i = 0; i < 7; ++i) {
         std::wstring candidate = dir + names[i];
@@ -589,7 +589,7 @@ std::wstring stagedDllCopy(const wchar_t* dllPath) {
     }
     wchar_t staged[MAX_PATH] = {};
     swprintf_s(staged,
-               L"%sVapuLiteLoader-%lu-%llu.dll",
+               L"%sYozakuraLoader-%lu-%llu.dll",
                tempDir,
                GetCurrentProcessId(),
                GetTickCount64());
@@ -1144,7 +1144,7 @@ void drawLogo(ImDrawList* draw, ImVec2 center, float width, float alpha) {
     if (!g_logoTexture || g_logoSize.x <= 0.0f || g_logoSize.y <= 0.0f) {
         draw->AddCircleFilled(center, width * 0.28f, colAlpha(199, 149, 237, 0.18f * alpha), 48);
         draw->AddText(fontOrDefault(g_fonts.title), 28.0f, center - ImVec2(52.0f, 16.0f),
-                      colAlpha(255, 255, 255, alpha), "VapuLite");
+                      colAlpha(255, 255, 255, alpha), "Yozakura");
         return;
     }
 
@@ -1389,7 +1389,7 @@ bool drawInjectionLoadingOverlay(ImDrawList* draw, ImVec2 size, float alpha) {
     drawLiquidGlassEdges(draw, cardMin, cardMax, 22.0f, alpha);
 
     draw->AddCircleFilled(cardMin + ImVec2(34.0f, 46.0f), 4.0f, colAlpha(235, 165, 255, 0.95f * loadingPageAlpha), 16);
-    draw->AddText(fontOrDefault(g_fonts.medium), 16.0f, cardMin + ImVec2(50.0f, 36.0f), colAlpha(255, 255, 255, 0.82f * loadingPageAlpha), "VapuLite");
+    draw->AddText(fontOrDefault(g_fonts.medium), 16.0f, cardMin + ImVec2(50.0f, 36.0f), colAlpha(255, 255, 255, 0.82f * loadingPageAlpha), "Yozakura");
     draw->AddText(fontOrDefault(g_fonts.medium), 14.0f, cardMin + ImVec2(50.0f, 68.0f), colAlpha(255, 255, 255, 0.36f * loadingPageAlpha), "Liquid Glass");
     draw->AddText(fontOrDefault(g_fonts.medium), 16.0f, cardMax - ImVec2(74.0f, 394.0f), colAlpha(255, 255, 255, 0.52f * loadingPageAlpha), "v2.5.0");
     draw->AddText(fontOrDefault(g_fonts.medium), 14.0f, cardMax - ImVec2(146.0f, 362.0f), colAlpha(255, 255, 255, 0.42f * loadingPageAlpha), "Sakura Theme");
@@ -1400,7 +1400,7 @@ bool drawInjectionLoadingOverlay(ImDrawList* draw, ImVec2 size, float alpha) {
     draw->AddCircleFilled(logoCenter, 42.0f, colAlpha(244, 178, 255, 0.12f * loadingPageAlpha), 72);
     drawLogo(draw, logoCenter, 96.0f, loadingPageAlpha);
 
-    draw->AddText(fontOrDefault(g_fonts.title), 38.0f, cardMin + ImVec2(330.0f, 164.0f), colAlpha(255, 220, 255, 0.94f * loadingPageAlpha), "VapuLite");
+    draw->AddText(fontOrDefault(g_fonts.title), 38.0f, cardMin + ImVec2(330.0f, 164.0f), colAlpha(255, 220, 255, 0.94f * loadingPageAlpha), "Yozakura");
     draw->AddText(fontOrDefault(g_fonts.medium), 20.0f, cardMin + ImVec2(306.0f, 220.0f), colAlpha(255, 255, 255, 0.45f * loadingPageAlpha), "Loading your experience...");
 
     ImVec2 barMin(cardMin.x + 194.0f, cardMin.y + 272.0f);
@@ -1467,7 +1467,7 @@ bool drawInjectionLoadingOverlay(ImDrawList* draw, ImVec2 size, float alpha) {
             draw->AddLine(markCenter + ImVec2(12.0f, -12.0f), markCenter + ImVec2(-12.0f, 12.0f), accent, 2.8f);
         }
         const char* title = success ? "Injection Complete" : "Injection Failed";
-        const char* subtitle = success ? "VapuLite is now attached to the selected client." : g_app.status;
+        const char* subtitle = success ? "Yozakura is now attached to the selected client." : g_app.status;
         ImFont* titleFont = fontOrDefault(g_fonts.title);
         ImFont* bodyFont = fontOrDefault(g_fonts.medium);
         ImVec2 titleSize = titleFont->CalcTextSizeA(30.0f, 10000.0f, 0.0f, title);
@@ -1685,7 +1685,7 @@ void drawMainUi(HWND hwnd) {
     ImGuiIO& io = ImGui::GetIO();
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(io.DisplaySize);
-    ImGui::Begin("VapuLite Injector", nullptr,
+    ImGui::Begin("Yozakura Injector", nullptr,
                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                  ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
 
@@ -1786,7 +1786,7 @@ void drawMainUi(HWND hwnd) {
     draw->AddCircleFilled(logoCenter, 46.0f, colAlpha(199, 149, 237, 0.10f * ca), 48);
     drawLogo(draw, logoCenter, 86.0f, ca);
     draw->AddText(fontOrDefault(g_fonts.title), 30.0f, shellMin + ImVec2(122.0f, 35.0f),
-                  colAlpha(255, 230, 255, 0.96f * ca), "VapuLite");
+                  colAlpha(255, 230, 255, 0.96f * ca), "Yozakura");
     draw->AddText(fontOrDefault(g_fonts.medium), 15.0f, shellMin + ImVec2(124.0f, 72.0f),
                   colAlpha(255, 255, 255, 0.42f * ca), "Sakura Injector");
     draw->AddText(fontOrDefault(g_fonts.medium), 15.0f, shellMax - ImVec2(98.0f, shellMax.y - shellMin.y - 68.0f),
@@ -1897,11 +1897,11 @@ void drawMainUi(HWND hwnd) {
     draw->AddBezierCubic(launchMin + ImVec2(20.0f, 6.0f), launchMin + ImVec2(122.0f, -2.0f),
                          launchMax - ImVec2(140.0f, 48.0f), launchMax - ImVec2(24.0f, 48.0f),
                          colAlpha(255, 238, 255, 0.18f * ca), 0.85f, 30);
-    ImVec2 launchTextSize = fontOrDefault(g_fonts.medium)->CalcTextSizeA(21.0f, 10000.0f, 0.0f, "Inject VapuLite");
+    ImVec2 launchTextSize = fontOrDefault(g_fonts.medium)->CalcTextSizeA(21.0f, 10000.0f, 0.0f, "Inject Yozakura");
     drawLogo(draw, ImVec2(launchMin.x + 68.0f, (launchMin.y + launchMax.y) * 0.5f), 46.0f, ca);
     draw->AddText(fontOrDefault(g_fonts.medium), 21.0f,
                   ImVec2((launchMin.x + launchMax.x - launchTextSize.x) * 0.5f, launchMin.y + 15.0f),
-                  colAlpha(255, 255, 255, 0.92f * ca), "Inject VapuLite");
+                  colAlpha(255, 255, 255, 0.92f * ca), "Inject Yozakura");
     draw->AddText(fontOrDefault(g_fonts.medium), 30.0f, launchMax - ImVec2(48.0f, 43.0f),
                   colAlpha(255, 255, 255, 0.72f * ca), ">");
     if (launchClicked) {
@@ -2001,7 +2001,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
 
     WNDCLASSEXW wc = {sizeof(wc), CS_CLASSDC, wndProc, 0L, 0L, instance, nullptr, nullptr, nullptr, nullptr, kClassName, nullptr};
     RegisterClassExW(&wc);
-    HWND hwnd = CreateWindowW(kClassName, L"VapuLite Injector", WS_POPUP, 100, 100, kBootWidth, kBootHeight, nullptr, nullptr, instance, nullptr);
+    HWND hwnd = CreateWindowW(kClassName, L"Yozakura Injector", WS_POPUP, 100, 100, kBootWidth, kBootHeight, nullptr, nullptr, instance, nullptr);
     if (!createDeviceD3D(hwnd)) {
         cleanupDeviceD3D();
         UnregisterClassW(kClassName, instance);
@@ -2009,7 +2009,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         return 1;
     }
 
-    std::wstring logoPath = resolveAssetPath(L"vapu_logo.png");
+    std::wstring logoPath = resolveAssetPath(L"yozakura_logo.png");
     if (!logoPath.empty()) {
         loadTextureFromFile(logoPath.c_str(), &g_logoTexture, &g_logoSize);
     }

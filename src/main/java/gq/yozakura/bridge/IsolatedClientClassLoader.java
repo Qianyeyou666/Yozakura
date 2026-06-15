@@ -1,4 +1,4 @@
-package gq.vapulite.bridge;
+package gq.yozakura.bridge;
 
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -27,7 +27,7 @@ public final class IsolatedClientClassLoader extends URLClassLoader {
     }
 
     private static boolean shouldLoadChildFirst(String name) {
-        return name.startsWith("gq.vapulite.")
-                && !name.equals("gq.vapulite.bridge.IsolatedClientClassLoader");
+        return name.startsWith("gq.yozakura.")
+                && !name.equals("gq.yozakura.bridge.IsolatedClientClassLoader");
     }
 }

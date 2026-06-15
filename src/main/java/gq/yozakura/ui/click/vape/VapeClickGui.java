@@ -1,25 +1,25 @@
-package gq.vapulite.ui.click.vape;
+package gq.yozakura.ui.click.vape;
 
-import gq.vapulite.manager.ModuleManager;
-import gq.vapulite.core.Client;
-import gq.vapulite.module.ModuleType;
-import gq.vapulite.module.Module;
-import gq.vapulite.module.render.ClickGUI;
-import gq.vapulite.value.Mode;
-import gq.vapulite.value.Numbers;
-import gq.vapulite.value.Option;
-import gq.vapulite.value.Value;
-import gq.vapulite.value.properties.ModeProperty;
-import gq.vapulite.engine.font.CFontRenderer;
-import gq.vapulite.engine.font.FontLoaders;
-import gq.vapulite.engine.render.GLStateManager;
-import gq.vapulite.engine.render.ShaderRenderer;
-import gq.vapulite.engine.render.ui.RenderServices;
-import gq.vapulite.ui.click.ClickGuiIcons;
-import gq.vapulite.ui.UiTextField;
-import gq.vapulite.ui.UiTheme;
-import gq.vapulite.ui.UiToggle;
-import gq.vapulite.util.animation.AnimUtil;
+import gq.yozakura.manager.ModuleManager;
+import gq.yozakura.core.Client;
+import gq.yozakura.module.ModuleType;
+import gq.yozakura.module.Module;
+import gq.yozakura.module.render.ClickGUI;
+import gq.yozakura.value.Mode;
+import gq.yozakura.value.Numbers;
+import gq.yozakura.value.Option;
+import gq.yozakura.value.Value;
+import gq.yozakura.value.properties.ModeProperty;
+import gq.yozakura.engine.font.CFontRenderer;
+import gq.yozakura.engine.font.FontLoaders;
+import gq.yozakura.engine.render.GLStateManager;
+import gq.yozakura.engine.render.ShaderRenderer;
+import gq.yozakura.engine.render.ui.RenderServices;
+import gq.yozakura.ui.click.ClickGuiIcons;
+import gq.yozakura.ui.UiTextField;
+import gq.yozakura.ui.UiTheme;
+import gq.yozakura.ui.UiToggle;
+import gq.yozakura.util.animation.AnimUtil;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
 import org.lwjgl.input.Keyboard;
@@ -39,7 +39,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * VapuLite ClickGUI 主界面类，继承 Minecraft 的 {@link GuiScreen}。
+ * Yozakura ClickGUI 主界面类，继承 Minecraft 的 {@link GuiScreen}。
  * <p>
  * 实现了一个 Material Design 3 风格的模块配置界面，包含以下主要区域：
  * <ul>
@@ -205,13 +205,13 @@ public class VapeClickGui extends GuiScreen {
     /** 根据 HUD 模块设置获取当前 GUI 配色 */
     GuiPalette guiColors() {
         try {
-            if (gq.vapulite.module.render.HUD.getTheme() == gq.vapulite.module.render.HUD.Theme.SAKURA) {
+            if (gq.yozakura.module.render.HUD.getTheme() == gq.yozakura.module.render.HUD.Theme.SAKURA) {
                 return GuiPalette.SAKURA;
             }
-            if (gq.vapulite.module.render.HUD.getTheme() == gq.vapulite.module.render.HUD.Theme.GRAY) {
+            if (gq.yozakura.module.render.HUD.getTheme() == gq.yozakura.module.render.HUD.Theme.GRAY) {
                 return GuiPalette.GRAY;
             }
-            return gq.vapulite.module.render.HUD.isLightTheme() ? GuiPalette.LIGHT : GuiPalette.DARK;
+            return gq.yozakura.module.render.HUD.isLightTheme() ? GuiPalette.LIGHT : GuiPalette.DARK;
         } catch (Exception e) {
             return GuiPalette.DARK;
         }
@@ -220,7 +220,7 @@ public class VapeClickGui extends GuiScreen {
     /** 获取阴影颜色（浅色主题用白色半透明阴影，暗色用黑色阴影） */
     int shadowColor(int alpha) {
         try {
-            return gq.vapulite.module.render.HUD.isLightTheme() || gq.vapulite.module.render.HUD.isSakuraTheme()
+            return gq.yozakura.module.render.HUD.isLightTheme() || gq.yozakura.module.render.HUD.isSakuraTheme()
                     ? withAlpha(0xFFFFFFFF, alpha)
                     : new Color(0, 0, 0, alpha).getRGB();
         } catch (Exception e) {
@@ -305,6 +305,7 @@ public class VapeClickGui extends GuiScreen {
     Module bindingModule;               // 当前正在绑定的模块
     final Map<Module, Float> hoverProgress = new HashMap<Module, Float>();     // 模块悬停动画进度
     final Map<Module, Float> clickProgress = new HashMap<Module, Float>();     // 模块点击动画进度
+    final Map<Module, Float> selectProgress = new HashMap<Module, Float>();    // 模块选中动画进度
     final Map<Module, Float> keyChipHoverProgress = new HashMap<Module, Float>(); // 侧栏按键按钮悬停动画进度
     final Map<Module, Float> keyChipClickProgress = new HashMap<Module, Float>(); // 侧栏按键按钮点击动画进度
     final Map<Module, Float> toggleProgress = new HashMap<Module, Float>();    // 模块开关动画进度
@@ -395,11 +396,11 @@ public class VapeClickGui extends GuiScreen {
     float fpsGraphSmoothed;          // FPS 平滑值
     float frameScale = 1.0f;         // 帧缩放因子（用于帧率无关动画）
     final AnimUtil navBounce = new AnimUtil(280f);  // 导航栏选中指示器弹跳动画
-    gq.vapulite.module.render.HUD.Theme lastTheme = gq.vapulite.module.render.HUD.Theme.DARK;
+    gq.yozakura.module.render.HUD.Theme lastTheme = gq.yozakura.module.render.HUD.Theme.DARK;
     float themeFadeProgress = 0.0f;
-    final Map<gq.vapulite.module.render.HUD.Theme, Float> themeSwatchProgress = new HashMap<gq.vapulite.module.render.HUD.Theme, Float>();
-    final Map<gq.vapulite.module.render.HUD.Theme, Float> themeSwatchHoverProgress = new HashMap<gq.vapulite.module.render.HUD.Theme, Float>();
-    final Map<gq.vapulite.module.render.HUD.Theme, Float> designSwatchHoverProgress = new HashMap<gq.vapulite.module.render.HUD.Theme, Float>();
+    final Map<gq.yozakura.module.render.HUD.Theme, Float> themeSwatchProgress = new HashMap<gq.yozakura.module.render.HUD.Theme, Float>();
+    final Map<gq.yozakura.module.render.HUD.Theme, Float> themeSwatchHoverProgress = new HashMap<gq.yozakura.module.render.HUD.Theme, Float>();
+    final Map<gq.yozakura.module.render.HUD.Theme, Float> designSwatchHoverProgress = new HashMap<gq.yozakura.module.render.HUD.Theme, Float>();
     float designThemeButtonHoverProgress = 0.0f;
     float designResetButtonHoverProgress = 0.0f;
     float designResetButtonPressProgress = 0.0f;
@@ -453,7 +454,7 @@ public class VapeClickGui extends GuiScreen {
         fpsGraphLastSample = 0L;
         fpsGraphSmoothed = 0.0f;
         frameScale = 1.0f;
-        lastTheme = gq.vapulite.module.render.HUD.getTheme();
+        lastTheme = gq.yozakura.module.render.HUD.getTheme();
         themeFadeProgress = 0.0f;
         themeRenderer.resetGlassAnimation();
     }
@@ -480,7 +481,7 @@ public class VapeClickGui extends GuiScreen {
         ensureSelectedModule();
         // 打开/关闭动画
         openProgress = animate(openProgress, closing ? 0.0f : 1.0f, closing ? 0.20f : 0.16f);
-        guiAlpha = openProgress * gq.vapulite.module.render.ClickGUI.clickGuiAlpha.getValue().floatValue();
+        guiAlpha = openProgress * gq.yozakura.module.render.ClickGUI.clickGuiAlpha.getValue().floatValue();
         contentFade = animate(contentFade, closing ? 0.0f : 1.0f, closing ? 0.18f : 0.14f);
         if (closing && openProgress <= CLOSE_END_PROGRESS) {
             mc.displayGuiScreen(null);
@@ -573,7 +574,7 @@ public class VapeClickGui extends GuiScreen {
     }
 
     void updateThemeTransition() {
-        gq.vapulite.module.render.HUD.Theme current = gq.vapulite.module.render.HUD.getTheme();
+        gq.yozakura.module.render.HUD.Theme current = gq.yozakura.module.render.HUD.getTheme();
         if (current != lastTheme) {
             lastTheme = current;
             themeFadeProgress = 1.0f;

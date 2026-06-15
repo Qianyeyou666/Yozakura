@@ -40,7 +40,7 @@ public class Backtrack extends Module {
         HYBRID
     }
 
-    private static final String HANDLER_NAME = "vapulite_backtrack";
+    private static final String HANDLER_NAME = "yozakura_backtrack";
     private static final int MAX_HISTORY = 40;
     private static final int MAX_QUEUED_PACKETS = 128;
     private static Backtrack INSTANCE;

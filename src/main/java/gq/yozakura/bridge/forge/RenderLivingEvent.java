@@ -1,4 +1,4 @@
-package gq.vapulite.bridge.forge;
+package gq.yozakura.bridge.forge;
 
 import net.minecraft.entity.Entity;
 

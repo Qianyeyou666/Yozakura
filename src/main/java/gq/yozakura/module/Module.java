@@ -1,12 +1,12 @@
-package gq.vapulite.module;
+package gq.yozakura.module;
 
-import gq.vapulite.bridge.ForgeEnvironment;
-import gq.vapulite.core.VapuClientState;
-import gq.vapulite.event.bus.EventManager;
-import gq.vapulite.manager.NotificationManager;
-import gq.vapulite.module.ModuleType;
-import gq.vapulite.util.minecraft.Helper;
-import gq.vapulite.value.Value;
+import gq.yozakura.bridge.ForgeEnvironment;
+import gq.yozakura.core.YozakuraClientState;
+import gq.yozakura.event.bus.EventManager;
+import gq.yozakura.manager.NotificationManager;
+import gq.yozakura.module.ModuleType;
+import gq.yozakura.util.minecraft.Helper;
+import gq.yozakura.value.Value;
 import net.minecraft.client.Minecraft;
 
 import java.util.ArrayList;
@@ -64,7 +64,7 @@ public class Module {
 
     public void toggle() {
         if(NoToggle){
-            if(VapuClientState.isMessageOn()){
+            if(YozakuraClientState.isMessageOn()){
                 if (this.state) {
                     Helper.sendMessage("Module" + " "+ this.getName() + " Disabled");
                 } else {
@@ -103,11 +103,11 @@ public class Module {
             }
         }
 
-        if (playSound && VapuClientState.isMessageOn() && !NoToggle) {
+        if (playSound && YozakuraClientState.isMessageOn() && !NoToggle) {
             NotificationManager.show(this.getName(), state ? "Enabled" : "Disabled", this);
         }
         if (!NoToggle) {
-            VapuClientState.markConfigDirty();
+            YozakuraClientState.markConfigDirty();
         }
     }
 
@@ -179,7 +179,7 @@ public class Module {
             return;
         }
         this.key = key;
-        VapuClientState.markConfigDirty();
+        YozakuraClientState.markConfigDirty();
     }
 
     public ModuleType getCategory() {

@@ -1,4 +1,4 @@
-package gq.vapulite.event.bus.events;
+package gq.yozakura.event.bus.events;
 
 /**
  * Simple interface which should be implemented in events that can be cancelled.

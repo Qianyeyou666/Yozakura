@@ -1,4 +1,4 @@
-# VapuLite 更新报告 - 2026-06-10
+# Yozakura 更新报告 - 2026-06-10
 
 ## 本次更新重点
 
@@ -29,12 +29,12 @@
 - `.\gradlew.bat --no-daemon compileJava` 通过。
 - `.\gradlew.bat --no-daemon build` 通过。
 - `git diff --check` 通过，仅有 Windows 换行提示，无空白错误。
-- 已确认新 class 打入 `build\libs\VapuLite.jar`。
+- 已确认新 class 打入 `build\libs\Yozakura.jar`。
 
 ## 构建产物
 
-- `build\libs\VapuLite.jar`
-- `build\libs\VapuLite-1.5.0.jar`
+- `build\libs\Yozakura.jar`
+- `build\libs\Yozakura-1.5.0.jar`
 - SHA256: `9C2570A5EC9A18C05822C82243DD3BDDA511414ABC3E42857C7770DC5342E742`
 
 ## 后续建议

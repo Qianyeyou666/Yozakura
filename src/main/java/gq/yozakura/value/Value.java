@@ -1,9 +1,9 @@
 /*
  * Decompiled with CFR 0_132.
  */
-package gq.vapulite.value;
+package gq.yozakura.value;
 
-import gq.vapulite.core.VapuClientState;
+import gq.yozakura.core.YozakuraClientState;
 
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
@@ -40,7 +40,7 @@ public abstract class Value<V> {
             return;
         }
         this.value = value;
-        VapuClientState.markConfigDirty();
+        YozakuraClientState.markConfigDirty();
     }
 
     public Value<V> visibleWhen(BooleanSupplier visibleWhen) {

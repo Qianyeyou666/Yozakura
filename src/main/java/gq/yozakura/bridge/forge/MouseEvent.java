@@ -1,4 +1,4 @@
-package gq.vapulite.bridge.forge;
+package gq.yozakura.bridge.forge;
 
 public class MouseEvent extends Event {
     public final int button;

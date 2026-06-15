@@ -1,7 +1,7 @@
-package gq.vapulite.event.bridge;
+package gq.yozakura.event.bridge;
 
 import net.minecraft.entity.Entity;
-import gq.vapulite.event.bus.events.Event;
+import gq.yozakura.event.bus.events.Event;
 
 public class AttackEvent implements Event {
     private final Entity target;

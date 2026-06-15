@@ -1,20 +1,20 @@
-package gq.vapulite.ui.click.sakura;
+package gq.yozakura.ui.click.sakura;
 
-import gq.vapulite.core.Client;
-import gq.vapulite.engine.font.FontLoaders;
-import gq.vapulite.engine.render.ShaderRenderer;
-import gq.vapulite.engine.render.ui.LiquidGlassSettings;
-import gq.vapulite.engine.render.ui.RenderServices;
-import gq.vapulite.manager.ModuleManager;
-import gq.vapulite.module.Module;
-import gq.vapulite.module.ModuleType;
-import gq.vapulite.module.render.ClickGUI;
-import gq.vapulite.ui.click.ClickGuiIcons;
-import gq.vapulite.value.Mode;
-import gq.vapulite.value.Numbers;
-import gq.vapulite.value.Option;
-import gq.vapulite.value.Value;
-import gq.vapulite.value.properties.ModeProperty;
+import gq.yozakura.core.Client;
+import gq.yozakura.engine.font.FontLoaders;
+import gq.yozakura.engine.render.ShaderRenderer;
+import gq.yozakura.engine.render.ui.LiquidGlassSettings;
+import gq.yozakura.engine.render.ui.RenderServices;
+import gq.yozakura.manager.ModuleManager;
+import gq.yozakura.module.Module;
+import gq.yozakura.module.ModuleType;
+import gq.yozakura.module.render.ClickGUI;
+import gq.yozakura.ui.click.ClickGuiIcons;
+import gq.yozakura.value.Mode;
+import gq.yozakura.value.Numbers;
+import gq.yozakura.value.Option;
+import gq.yozakura.value.Value;
+import gq.yozakura.value.properties.ModeProperty;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
 import org.lwjgl.input.Keyboard;
@@ -877,7 +877,7 @@ public final class SakuraClickGui extends GuiScreen {
                 alpha(TEXT, 220.0f * guiAlpha), 0.34f);
     }
 
-    private void drawGlowText(gq.vapulite.engine.font.CFontRenderer font, String text, float x, float y,
+    private void drawGlowText(gq.yozakura.engine.font.CFontRenderer font, String text, float x, float y,
                               int color, float strength) {
         if (text == null || text.length() == 0 || strength <= 0.0f) {
             font.drawString(text, x, y, color);
@@ -894,7 +894,7 @@ public final class SakuraClickGui extends GuiScreen {
         font.drawString(text, x, y, color);
     }
 
-    private void drawGlowIcon(gq.vapulite.engine.font.CFontRenderer font, String text, float x, float y,
+    private void drawGlowIcon(gq.yozakura.engine.font.CFontRenderer font, String text, float x, float y,
                               int color, float strength) {
         if (text == null || text.length() == 0 || strength <= 0.0f) {
             font.drawString(text, x, y, color);
@@ -910,7 +910,7 @@ public final class SakuraClickGui extends GuiScreen {
         font.drawString(text, x, y, color);
     }
 
-    private void drawGlowCentered(gq.vapulite.engine.font.CFontRenderer font, String text, float centerX, float y,
+    private void drawGlowCentered(gq.yozakura.engine.font.CFontRenderer font, String text, float centerX, float y,
                                   int color, float strength) {
         drawGlowText(font, text, centerX - font.getStringWidth(text) * 0.5f, y, color, strength);
     }
@@ -1197,7 +1197,7 @@ public final class SakuraClickGui extends GuiScreen {
         return text.endsWith(".") ? text.substring(0, text.length() - 1) : text;
     }
 
-    private String trim(String text, gq.vapulite.engine.font.CFontRenderer font, float maxWidth) {
+    private String trim(String text, gq.yozakura.engine.font.CFontRenderer font, float maxWidth) {
         if (text == null) {
             return "";
         }

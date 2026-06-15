@@ -1,4 +1,4 @@
-package gq.yozakura.ui.click.yozakura;
+package gq.yozakura.ui.click.vape;
 
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.engine.font.FontLoaders;

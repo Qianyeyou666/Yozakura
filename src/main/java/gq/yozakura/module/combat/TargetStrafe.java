@@ -1,6 +1,6 @@
-package gq.vapulite.module.combat;
+package gq.yozakura.module.combat;
 
-import gq.vapulite.module.runtime.Module;
+import gq.yozakura.module.runtime.Module;
 
 public class TargetStrafe extends Module {
     public TargetStrafe() {

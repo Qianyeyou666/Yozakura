@@ -1,4 +1,4 @@
-package gq.vapulite.bridge;
+package gq.yozakura.bridge;
 
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelDuplexHandler;
@@ -17,37 +17,40 @@ import net.minecraftforge.client.event.RenderPlayerEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.FMLCommonHandler;
+import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
-import gq.vapulite.runtime.VapuRuntime;
-import gq.vapulite.engine.render.ShaderRenderer;
-import gq.vapulite.event.bus.EventManager;
-import gq.vapulite.event.bus.types.EventType;
-import gq.vapulite.event.bridge.HitBlockEvent;
-import gq.vapulite.event.bridge.LeftClickMouseEvent;
-import gq.vapulite.event.bridge.LivingUpdateEvent;
-import gq.vapulite.event.bridge.MoveInputEvent;
-import gq.vapulite.event.bridge.PacketEvent;
-import gq.vapulite.event.bridge.Render2DEvent;
-import gq.vapulite.event.bridge.Render3DEvent;
-import gq.vapulite.event.bridge.RightClickMouseEvent;
-import gq.vapulite.event.bridge.SafeWalkEvent;
-import gq.vapulite.event.bridge.StrafeEvent;
-import gq.vapulite.event.bridge.SwapItemEvent;
-import gq.vapulite.event.bridge.UpdateEvent;
-import gq.vapulite.manager.RotationState;
-import gq.vapulite.util.module.PacketUtil;
+import gq.yozakura.runtime.YozakuraRuntime;
+import gq.yozakura.engine.render.ShaderRenderer;
+import gq.yozakura.event.bus.EventManager;
+import gq.yozakura.event.bus.types.EventType;
+import gq.yozakura.event.bridge.HitBlockEvent;
+import gq.yozakura.event.bridge.LeftClickMouseEvent;
+import gq.yozakura.event.bridge.LivingUpdateEvent;
+import gq.yozakura.event.bridge.MoveInputEvent;
+import gq.yozakura.event.bridge.PacketEvent;
+import gq.yozakura.event.bridge.Render2DEvent;
+import gq.yozakura.event.bridge.Render3DEvent;
+import gq.yozakura.event.bridge.RightClickMouseEvent;
+import gq.yozakura.event.bridge.SafeWalkEvent;
+import gq.yozakura.event.bridge.StrafeEvent;
+import gq.yozakura.event.bridge.SwapItemEvent;
+import gq.yozakura.event.bridge.UpdateEvent;
+import gq.yozakura.manager.RotationState;
+import gq.yozakura.util.module.PacketUtil;
 
 import java.lang.reflect.Field;
 
-public final class VapuEventBridge {
+public final class YozakuraEventBridge {
     private static final Minecraft mc = Minecraft.getMinecraft();
-    private static final String HANDLER_NAME = "vapulite_event_bridge";
-    private static final VapuEventBridge INSTANCE = new VapuEventBridge();
+    private static final String HANDLER_NAME = "yozakura_event_bridge";
+    private static final YozakuraEventBridge INSTANCE = new YozakuraEventBridge();
     private static boolean registered;
     private static Field channelField;
+    private static int lastOverlayCounter = Integer.MIN_VALUE;
+    private static long lastOverlayNanos;
     private Channel channel;
     private boolean forcedSneak;
     private boolean renderingPlayer;
@@ -58,11 +61,11 @@ public final class VapuEventBridge {
     private float savedPrevRenderYawOffset;
     private float savedRenderYawOffset;
 
-    private VapuEventBridge() {
+    private YozakuraEventBridge() {
     }
 
     public static void init() {
-        VapuRuntime.init();
+        YozakuraRuntime.init();
         if (registered) {
             return;
         }
@@ -87,14 +90,14 @@ public final class VapuEventBridge {
         }
         injectPacketHandler();
         if (event.phase == TickEvent.Phase.START) {
-            EventManager.call(new gq.vapulite.event.bridge.TickEvent(EventType.PRE));
+            EventManager.call(new gq.yozakura.event.bridge.TickEvent(EventType.PRE));
             dispatchPreUpdate();
             dispatchMoveInput();
             dispatchStrafe();
             dispatchSafeWalk();
             syncAuraTarget();
         } else {
-            EventManager.call(new gq.vapulite.event.bridge.TickEvent(EventType.POST));
+            EventManager.call(new gq.yozakura.event.bridge.TickEvent(EventType.POST));
             EventManager.call(new UpdateEvent(EventType.POST, mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch,
                     mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch));
             dispatchSafeWalk();
@@ -109,11 +112,36 @@ public final class VapuEventBridge {
         }
     }
 
-    @SubscribeEvent
+    public static boolean hasRenderedOverlayThisFrame() {
+        try {
+            Minecraft minecraft = Minecraft.getMinecraft();
+            if (minecraft == null || minecraft.ingameGUI == null) {
+                return false;
+            }
+            return minecraft.ingameGUI.getUpdateCounter() == lastOverlayCounter
+                    && System.nanoTime() - lastOverlayNanos < 100000000L;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private static void markOverlayRendered() {
+        try {
+            Minecraft minecraft = Minecraft.getMinecraft();
+            if (minecraft != null && minecraft.ingameGUI != null) {
+                lastOverlayCounter = minecraft.ingameGUI.getUpdateCounter();
+                lastOverlayNanos = System.nanoTime();
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onRender2D(RenderGameOverlayEvent.Text event) {
         if (isInGame()) {
             ShaderRenderer.beginOverlayFrame();
             EventManager.call(new Render2DEvent(event.partialTicks));
+            markOverlayRendered();
         }
     }
 
@@ -247,10 +275,10 @@ public final class VapuEventBridge {
     }
 
     private void syncAuraTarget() {
-        gq.vapulite.module.Module module = gq.vapulite.manager.ModuleManager.getModule("KillAura");
-        if (module instanceof gq.vapulite.module.combat.KillAura) {
-            gq.vapulite.module.combat.KillAura.target =
-                    ((gq.vapulite.module.combat.KillAura) module).getTarget();
+        gq.yozakura.module.Module module = gq.yozakura.manager.ModuleManager.getModule("KillAura");
+        if (module instanceof gq.yozakura.module.combat.KillAura) {
+            gq.yozakura.module.combat.KillAura.target =
+                    ((gq.yozakura.module.combat.KillAura) module).getTarget();
         }
     }
 
@@ -332,11 +360,11 @@ public final class VapuEventBridge {
                 if (event.isCancelled()) {
                     return;
                 }
-                if (VapuRuntime.playerStateManager != null) {
-                    VapuRuntime.playerStateManager.handlePacket(packet);
+                if (YozakuraRuntime.playerStateManager != null) {
+                    YozakuraRuntime.playerStateManager.handlePacket(packet);
                 }
-                if (VapuRuntime.blinkManager != null && VapuRuntime.blinkManager.isBlinking()
-                        && VapuRuntime.blinkManager.offerPacket(packet)) {
+                if (YozakuraRuntime.blinkManager != null && YozakuraRuntime.blinkManager.isBlinking()
+                        && YozakuraRuntime.blinkManager.offerPacket(packet)) {
                     return;
                 }
                 if (packet instanceof C03PacketPlayer) {

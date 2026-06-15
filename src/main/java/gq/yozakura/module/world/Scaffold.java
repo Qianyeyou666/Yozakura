@@ -1,9 +1,9 @@
-package gq.vapulite.module.world;
+package gq.yozakura.module.world;
 
-import gq.vapulite.engine.font.CFontRenderer;
-import gq.vapulite.engine.font.FontLoaders;
-import gq.vapulite.engine.render.ui.LiquidGlassSettings;
-import gq.vapulite.engine.render.ui.RenderServices;
+import gq.yozakura.engine.font.CFontRenderer;
+import gq.yozakura.engine.font.FontLoaders;
+import gq.yozakura.engine.render.ui.LiquidGlassSettings;
+import gq.yozakura.engine.render.ui.RenderServices;
 import net.minecraft.block.Block;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
@@ -17,26 +17,26 @@ import net.minecraft.potion.Potion;
 import net.minecraft.util.*;
 import net.minecraft.util.MovingObjectPosition.MovingObjectType;
 import net.minecraft.world.WorldSettings.GameType;
-import gq.vapulite.module.ModuleType;
+import gq.yozakura.module.ModuleType;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.GL11;
-import gq.vapulite.bridge.MinecraftAccessor;
-import gq.vapulite.runtime.VapuRuntime;
-import gq.vapulite.event.bus.EventManager;
-import gq.vapulite.event.bus.EventTarget;
-import gq.vapulite.event.bus.types.EventType;
-import gq.vapulite.event.bus.types.Priority;
-import gq.vapulite.event.bridge.*;
-import gq.vapulite.manager.RotationState;
-import gq.vapulite.module.runtime.Module;
-import gq.vapulite.module.world.BedNuker;
-import gq.vapulite.module.movement.LongJump;
-import gq.vapulite.module.render.runtime.HUD;
-import gq.vapulite.value.properties.BooleanProperty;
-import gq.vapulite.value.properties.FloatProperty;
-import gq.vapulite.value.properties.ModeProperty;
-import gq.vapulite.value.properties.PercentProperty;
-import gq.vapulite.util.module.*;
+import gq.yozakura.bridge.MinecraftAccessor;
+import gq.yozakura.runtime.YozakuraRuntime;
+import gq.yozakura.event.bus.EventManager;
+import gq.yozakura.event.bus.EventTarget;
+import gq.yozakura.event.bus.types.EventType;
+import gq.yozakura.event.bus.types.Priority;
+import gq.yozakura.event.bridge.*;
+import gq.yozakura.manager.RotationState;
+import gq.yozakura.module.runtime.Module;
+import gq.yozakura.module.world.BedNuker;
+import gq.yozakura.module.movement.LongJump;
+import gq.yozakura.module.render.runtime.HUD;
+import gq.yozakura.value.properties.BooleanProperty;
+import gq.yozakura.value.properties.FloatProperty;
+import gq.yozakura.value.properties.ModeProperty;
+import gq.yozakura.value.properties.PercentProperty;
+import gq.yozakura.util.module.*;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -142,11 +142,11 @@ public class Scaffold extends Module {
     }
 
     private boolean canPlace() {
-        BedNuker bedNuker = (BedNuker) VapuRuntime.moduleManager.modules.get(BedNuker.class);
+        BedNuker bedNuker = (BedNuker) YozakuraRuntime.moduleManager.modules.get(BedNuker.class);
         if (bedNuker.isEnabled() && bedNuker.isReady()) {
             return false;
         } else {
-            LongJump longJump = (LongJump) VapuRuntime.moduleManager.modules.get(LongJump.class);
+            LongJump longJump = (LongJump) YozakuraRuntime.moduleManager.modules.get(LongJump.class);
             return !longJump.isEnabled() || !longJump.isAutoMode() || longJump.isJumping();
         }
     }
@@ -1023,7 +1023,7 @@ public class Scaffold extends Module {
             return;
         }
 
-        HUD hud = (HUD) VapuRuntime.moduleManager.modules.get(HUD.class);
+        HUD hud = (HUD) YozakuraRuntime.moduleManager.modules.get(HUD.class);
         float uiScale = MathHelper.clamp_float(hud.scale.getValue() * 0.80F, 0.58F, 1.10F);
         ScaledResolution sr = new ScaledResolution(mc);
         float width = 108.0F * uiScale;

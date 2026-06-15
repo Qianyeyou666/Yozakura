@@ -20,7 +20,7 @@ public class LoadConfig extends Module {
             Helper.sendMessage("Configs Loaded.");
         } catch (Throwable throwable) {
             throwable.printStackTrace();
-            Helper.sendMessage("Config load failed. Check VapuLiteConfig.log.");
+            Helper.sendMessage("Config load failed. Check YozakuraConfig.log.");
             state=false;
         }
         state=false;

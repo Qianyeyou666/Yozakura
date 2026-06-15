@@ -1,6 +1,6 @@
-package gq.vapulite.module.player;
+package gq.yozakura.module.player;
 
-import gq.vapulite.module.runtime.Module;
+import gq.yozakura.module.runtime.Module;
 
 public class AutoHeal extends Module {
     public AutoHeal() {

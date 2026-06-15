@@ -1,16 +1,16 @@
-package gq.vapulite.module.runtime;
+package gq.yozakura.module.runtime;
 
-import gq.vapulite.module.ModuleType;
-import gq.vapulite.value.Value;
+import gq.yozakura.module.ModuleType;
+import gq.yozakura.value.Value;
 import org.lwjgl.input.Keyboard;
-import gq.vapulite.event.bus.EventManager;
+import gq.yozakura.event.bus.EventManager;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.HashSet;
 import java.util.Set;
 
-public abstract class Module extends gq.vapulite.module.Module {
+public abstract class Module extends gq.yozakura.module.Module {
     private boolean valuesBound;
 
     protected Module(String name, boolean enabled) {

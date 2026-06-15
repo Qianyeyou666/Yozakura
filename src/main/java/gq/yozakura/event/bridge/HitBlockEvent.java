@@ -1,6 +1,6 @@
-package gq.vapulite.event.bridge;
+package gq.yozakura.event.bridge;
 
-import gq.vapulite.event.bus.events.callables.EventCancellable;
+import gq.yozakura.event.bus.events.callables.EventCancellable;
 
 public class HitBlockEvent extends EventCancellable {
 }

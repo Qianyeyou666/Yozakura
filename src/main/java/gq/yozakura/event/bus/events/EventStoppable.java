@@ -1,4 +1,4 @@
-package gq.vapulite.event.bus.events;
+package gq.yozakura.event.bus.events;
 
 /**
  * The most basic form of an stoppable Event.

@@ -1,11 +1,11 @@
-package gq.vapulite;
+package gq.yozakura;
 
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
 
-public class VapuAttachPoint {
+public class YozakuraAttachPoint {
     public static void agentmain(String args, Instrumentation instrumentation) throws Exception {
         ClassLoader classLoader = null;
         for (Class<?> classes : instrumentation.getAllLoadedClasses()) {
@@ -21,7 +21,7 @@ public class VapuAttachPoint {
         }
         ClassLoader entryLoader = addCurrentJar(classLoader);
         Thread.currentThread().setContextClassLoader(entryLoader);
-        Class<?> bootstrap = entryLoader.loadClass("gq.vapulite.VapuBootstrap");
+        Class<?> bootstrap = entryLoader.loadClass("gq.yozakura.YozakuraBootstrap");
         bootstrap.getMethod("start").invoke(null);
     }
 
@@ -33,7 +33,7 @@ public class VapuAttachPoint {
     }
 
     private static ClassLoader addCurrentJar(ClassLoader classLoader) throws Exception {
-        URL url = VapuAttachPoint.class.getProtectionDomain().getCodeSource().getLocation();
+        URL url = YozakuraAttachPoint.class.getProtectionDomain().getCodeSource().getLocation();
         if (classLoader instanceof URLClassLoader) {
             Method method = URLClassLoader.class.getDeclaredMethod("addURL", URL.class);
             if (!method.isAccessible()) {

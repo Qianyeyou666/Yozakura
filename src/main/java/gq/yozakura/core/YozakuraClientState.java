@@ -1,18 +1,18 @@
-package gq.vapulite.core;
+package gq.yozakura.core;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
-public final class VapuClientState {
-    private static final String CLIENT_CLASS = "gq.vapulite.core.Client";
+public final class YozakuraClientState {
+    private static final String CLIENT_CLASS = "gq.yozakura.core.Client";
     private static volatile boolean standaloneDirty;
 
-    private VapuClientState() {
+    private YozakuraClientState() {
     }
 
     public static String getName() {
         String name = readString("name");
-        return name == null ? "Vapu Lite" : name;
+        return name == null ? "Yozakura" : name;
     }
 
     public static String getConfig() {
@@ -71,7 +71,7 @@ public final class VapuClientState {
     private static Class<?> findClientClass(boolean initialize) throws ClassNotFoundException {
         ClassLoader loader = Thread.currentThread().getContextClassLoader();
         if (loader == null) {
-            loader = VapuClientState.class.getClassLoader();
+            loader = YozakuraClientState.class.getClassLoader();
         }
         return Class.forName(CLIENT_CLASS, initialize, loader);
     }

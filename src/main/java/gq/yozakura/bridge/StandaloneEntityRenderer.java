@@ -1,8 +1,8 @@
-package gq.vapulite.bridge;
+package gq.yozakura.bridge;
 
-import gq.vapulite.event.bridge.Render3DEvent;
-import gq.vapulite.event.bridge.RenderFrameGuard;
-import gq.vapulite.event.bus.EventManager;
+import gq.yozakura.event.bridge.Render3DEvent;
+import gq.yozakura.event.bridge.RenderFrameGuard;
+import gq.yozakura.event.bus.EventManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.EntityRenderer;
 import net.minecraft.client.renderer.GlStateManager;
@@ -89,7 +89,7 @@ public class StandaloneEntityRenderer extends EntityRenderer {
                 prepareWorldOverlayState();
                 EventManager.call(new Render3DEvent(partialTicks));
                 prepareWorldOverlayState();
-                EventManager.call(new gq.vapulite.bridge.forge.RenderWorldLastEvent(partialTicks));
+                EventManager.call(new gq.yozakura.bridge.forge.RenderWorldLastEvent(partialTicks));
             } finally {
                 endWorldOverlayState(state);
             }
@@ -208,7 +208,7 @@ public class StandaloneEntityRenderer extends EntityRenderer {
                 useProgram(0);
                 setActiveTexture(GL13.GL_TEXTURE0);
             }
-            gq.vapulite.engine.render.GLStateManager.syncToCurrent();
+            gq.yozakura.engine.render.GLStateManager.syncToCurrent();
             GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
         } catch (Throwable throwable) {
             if (!renderFailureLogged) {
@@ -277,7 +277,7 @@ public class StandaloneEntityRenderer extends EntityRenderer {
 
     private static void log(String message, Throwable throwable) {
         try {
-            File log = new File(System.getProperty("java.io.tmpdir"), "VapuLiteStandalone.log");
+            File log = new File(System.getProperty("java.io.tmpdir"), "YozakuraStandalone.log");
             PrintWriter writer = new PrintWriter(new FileWriter(log, true));
             try {
                 writer.println(message);

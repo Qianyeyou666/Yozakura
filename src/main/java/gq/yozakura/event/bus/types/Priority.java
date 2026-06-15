@@ -1,4 +1,4 @@
-package gq.vapulite.event.bus.types;
+package gq.yozakura.event.bus.types;
 
 public final class Priority {
     public static final byte HIGHEST = 0;

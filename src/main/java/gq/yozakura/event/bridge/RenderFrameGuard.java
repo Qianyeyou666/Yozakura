@@ -1,4 +1,4 @@
-package gq.vapulite.event.bridge;
+package gq.yozakura.event.bridge;
 
 public final class RenderFrameGuard {
     private static long standalone3DFrame;

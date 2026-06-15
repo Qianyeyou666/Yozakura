@@ -1,5 +1,8 @@
 package gq.yozakura.module.render;
 
+import gq.yozakura.bridge.YozakuraEventBridge;
+import gq.yozakura.event.bridge.Render2DEvent;
+import gq.yozakura.event.bus.EventTarget;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.Module;
 import gq.yozakura.util.color.ColorUtils;
@@ -11,6 +14,7 @@ import gq.yozakura.engine.render.ui.RenderServices;
 import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
+import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
@@ -53,8 +57,19 @@ public class KeyboardDisplay extends Module {
                 bottomMargin);
     }
 
-    @SubscribeEvent
+    @EventTarget
+    public void onRender(Render2DEvent event) {
+        renderOverlay();
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onRender(RenderGameOverlayEvent.Text event) {
+        if (!YozakuraEventBridge.hasRenderedOverlayThisFrame()) {
+            renderOverlay();
+        }
+    }
+
+    private void renderOverlay() {
         if (!isInGame() || mc.currentScreen instanceof GuiMainMenu) {
             return;
         }
@@ -166,7 +181,7 @@ public class KeyboardDisplay extends Module {
         int border = ColorUtils.applyAlpha(ColorUtils.interpolate(0xFF5D6675, accent, animation), Math.min(210, 85 + Math.round(animation * 120.0f)));
         float round = Math.max(2.0f, 5.0f * scale.getValue().floatValue());
 
-        if (HUD.useYozakuraSimpleStyle()) {
+        if (HUD.useVapeSimpleStyle()) {
             drawVapeKey(x, y, width, height, id, animation, accent);
             return;
         }

@@ -1,7 +1,7 @@
-package gq.vapulite.event.bridge;
+package gq.yozakura.event.bridge;
 
-import gq.vapulite.event.bus.events.Event;
-import gq.vapulite.event.bus.types.EventType;
+import gq.yozakura.event.bus.events.Event;
+import gq.yozakura.event.bus.types.EventType;
 
 public class UpdateEvent implements Event {
     private final EventType type;

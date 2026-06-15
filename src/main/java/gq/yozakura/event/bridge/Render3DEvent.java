@@ -1,6 +1,6 @@
-package gq.vapulite.event.bridge;
+package gq.yozakura.event.bridge;
 
-import gq.vapulite.event.bus.events.Event;
+import gq.yozakura.event.bus.events.Event;
 
 public class Render3DEvent implements Event {
     private final float partialTicks;

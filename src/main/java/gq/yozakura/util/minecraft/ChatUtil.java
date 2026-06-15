@@ -1,7 +1,7 @@
 /*
  * Decompiled with CFR 0_132.
  */
-package gq.vapulite.util.minecraft;
+package gq.yozakura.util.minecraft;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.player.EntityPlayer;

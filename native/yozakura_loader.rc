@@ -1,0 +1,3 @@
+#include "resource.h"
+
+IDR_YOZAKURA_JAR RCDATA "build/libs/Yozakura.jar"

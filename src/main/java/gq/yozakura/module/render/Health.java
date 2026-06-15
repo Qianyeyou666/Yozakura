@@ -1,5 +1,8 @@
 package gq.yozakura.module.render;
 
+import gq.yozakura.bridge.YozakuraEventBridge;
+import gq.yozakura.event.bridge.Render2DEvent;
+import gq.yozakura.event.bus.EventTarget;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.Module;
 import gq.yozakura.util.color.ColorUtils;
@@ -13,6 +16,7 @@ import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.util.MathHelper;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
+import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.lwjgl.input.Keyboard;
 
@@ -29,8 +33,19 @@ public class Health extends Module {
         this.addValues(xPosition, yPosition, scale);
     }
 
-    @SubscribeEvent
+    @EventTarget
+    public void onRender(Render2DEvent event) {
+        renderOverlay();
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onRender(RenderGameOverlayEvent.Text event) {
+        if (!YozakuraEventBridge.hasRenderedOverlayThisFrame()) {
+            renderOverlay();
+        }
+    }
+
+    private void renderOverlay() {
         if (!isInGame()) {
             return;
         }
@@ -42,7 +57,7 @@ public class Health extends Module {
         }
         ScaledResolution sr = new ScaledResolution(mc);
         String valueText = String.valueOf(MathHelper.ceiling_float_int(mc.thePlayer.getHealth()));
-        if (HUD.useYozakuraSimpleStyle()) {
+        if (HUD.useVapeSimpleStyle()) {
             drawVapeHealth(sr);
             return;
         }

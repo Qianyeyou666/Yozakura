@@ -1,16 +1,16 @@
-package gq.vapulite.module.render;
+package gq.yozakura.module.render;
 
-import gq.vapulite.engine.render.ShaderRenderer;
-import gq.vapulite.event.bridge.AttackEvent;
-import gq.vapulite.event.bridge.Render3DEvent;
-import gq.vapulite.event.bridge.RenderFrameGuard;
-import gq.vapulite.event.bus.EventTarget;
-import gq.vapulite.module.ModuleType;
-import gq.vapulite.module.Module;
-import gq.vapulite.util.render.GLUtils;
-import gq.vapulite.value.Mode;
-import gq.vapulite.value.Numbers;
-import gq.vapulite.value.Option;
+import gq.yozakura.engine.render.ShaderRenderer;
+import gq.yozakura.event.bridge.AttackEvent;
+import gq.yozakura.event.bridge.Render3DEvent;
+import gq.yozakura.event.bridge.RenderFrameGuard;
+import gq.yozakura.event.bus.EventTarget;
+import gq.yozakura.module.ModuleType;
+import gq.yozakura.module.Module;
+import gq.yozakura.util.render.GLUtils;
+import gq.yozakura.value.Mode;
+import gq.yozakura.value.Numbers;
+import gq.yozakura.value.Option;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.util.MathHelper;
@@ -179,7 +179,7 @@ public class KillEffect extends Module {
             GL11.glDepthMask(true);
             GL11.glPopMatrix();
             GL11.glPopAttrib();
-            gq.vapulite.engine.render.GLStateManager.syncToCurrent();
+            gq.yozakura.engine.render.GLStateManager.syncToCurrent();
             net.minecraft.client.renderer.GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
         }
     }

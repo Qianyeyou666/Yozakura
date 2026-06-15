@@ -1,19 +1,19 @@
-package gq.vapulite.manager;
+package gq.yozakura.manager;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import gq.vapulite.core.VapuClientState;
-import gq.vapulite.ui.click.vape.VapeClickGui;
-import gq.vapulite.module.Module;
-import gq.vapulite.util.minecraft.Helper;
-import gq.vapulite.value.Mode;
-import gq.vapulite.value.Numbers;
-import gq.vapulite.value.Option;
-import gq.vapulite.value.Value;
-import gq.vapulite.value.properties.ModeProperty;
+import gq.yozakura.core.YozakuraClientState;
+import gq.yozakura.ui.click.vape.VapeClickGui;
+import gq.yozakura.module.Module;
+import gq.yozakura.util.minecraft.Helper;
+import gq.yozakura.value.Mode;
+import gq.yozakura.value.Numbers;
+import gq.yozakura.value.Option;
+import gq.yozakura.value.Value;
+import gq.yozakura.value.properties.ModeProperty;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -30,9 +30,9 @@ import java.nio.file.StandardCopyOption;
 public class FileManager {
     private static final long AUTO_SAVE_DELAY_MS = 1500L;
 
-    private final File dir = new File(System.getenv("APPDATA"), VapuClientState.getName());
-    private final File modules = new File(dir, VapuClientState.getConfig() + ".json");
-    private final File backup = new File(dir, VapuClientState.getConfig() + ".json.bak");
+    private final File dir = new File(System.getenv("APPDATA"), YozakuraClientState.getName());
+    private final File modules = new File(dir, YozakuraClientState.getConfig() + ".json");
+    private final File backup = new File(dir, YozakuraClientState.getConfig() + ".json.bak");
     private final Gson gson = new Gson();
 
     private boolean loading;
@@ -264,7 +264,7 @@ public class FileManager {
 
     public static void logConfigFailure(String message, Throwable throwable) {
         try {
-            File log = new File(System.getProperty("java.io.tmpdir"), "VapuLiteConfig.log");
+            File log = new File(System.getProperty("java.io.tmpdir"), "YozakuraConfig.log");
             PrintWriter writer = new PrintWriter(new FileWriter(log, true));
             try {
                 writer.println(message);

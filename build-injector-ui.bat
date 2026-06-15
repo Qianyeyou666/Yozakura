@@ -8,8 +8,8 @@ if not exist "%VS_BUILD%\vcvars64.bat" (
   exit /b 1
 )
 
-if not exist "native\vapulite_injector_ui.cpp" (
-  echo Missing native\vapulite_injector_ui.cpp
+if not exist "native\yozakura_injector_ui.cpp" (
+  echo Missing native\yozakura_injector_ui.cpp
   exit /b 1
 )
 
@@ -19,24 +19,24 @@ if not exist "build\native" mkdir "build\native"
 call "%VS_BUILD%\vcvars64.bat" >nul
 if errorlevel 1 exit /b %errorlevel%
 
-echo Building VapuLiteInjector.exe...
+echo Building YozakuraInjector.exe...
 cl /nologo /EHsc /std:c++17 /O2 /DUNICODE /D_UNICODE ^
   /I"third_party\imgui" ^
   /I"third_party\imgui\backends" ^
   /Fo"build\native\\" ^
-  "native\vapulite_injector_ui.cpp" ^
+  "native\yozakura_injector_ui.cpp" ^
   "third_party\imgui\imgui.cpp" ^
   "third_party\imgui\imgui_draw.cpp" ^
   "third_party\imgui\imgui_tables.cpp" ^
   "third_party\imgui\imgui_widgets.cpp" ^
   "third_party\imgui\backends\imgui_impl_win32.cpp" ^
   "third_party\imgui\backends\imgui_impl_dx11.cpp" ^
-  /link /NOLOGO /SUBSYSTEM:WINDOWS /OUT:"build\libs\VapuLiteInjector.exe" ^
+  /link /NOLOGO /SUBSYSTEM:WINDOWS /OUT:"build\libs\YozakuraInjector.exe" ^
   user32.lib gdi32.lib shlwapi.lib shell32.lib dwmapi.lib ole32.lib windowscodecs.lib d3d11.lib d3dcompiler.lib dxgi.lib
 
 if errorlevel 1 exit /b %errorlevel%
 
-copy /Y "native\assets\vapu_logo.png" "build\libs\vapu_logo.png" >nul
+copy /Y "native\assets\yozakura_logo.png" "build\libs\yozakura_logo.png" >nul
 if errorlevel 1 exit /b %errorlevel%
 copy /Y "native\assets\minecraft_grass_block.png" "build\libs\minecraft_grass_block.png" >nul
 if errorlevel 1 exit /b %errorlevel%
@@ -46,5 +46,5 @@ copy /Y "native\assets\minecraft_cherry_block.png" "build\libs\minecraft_cherry_
 if errorlevel 1 exit /b %errorlevel%
 
 echo Built:
-echo   build\libs\VapuLiteInjector.exe
+echo   build\libs\YozakuraInjector.exe
 exit /b 0

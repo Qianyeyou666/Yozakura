@@ -1,4 +1,4 @@
-package gq.vapulite.bridge;
+package gq.yozakura.bridge;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -12,8 +12,8 @@ import java.util.Map;
 import java.util.Set;
 
 public final class VanillaRemapClassLoader extends URLClassLoader {
-    private static final String MAPPINGS = "/vapulite/notch-srg.srg";
-    private static final String SRG_MCP_MAPPINGS = "/vapulite/srg-mcp.srg";
+    private static final String MAPPINGS = "/yozakura/notch-srg.srg";
+    private static final String SRG_MCP_MAPPINGS = "/yozakura/srg-mcp.srg";
     private final Remapper remapper;
 
     public VanillaRemapClassLoader(URL[] urls, ClassLoader parent) throws IOException {
@@ -60,9 +60,9 @@ public final class VanillaRemapClassLoader extends URLClassLoader {
     }
 
     private static boolean shouldLoadChildFirst(String name) {
-        return name.startsWith("gq.vapulite.")
-                && !name.equals("gq.vapulite.VapuBootstrap")
-                && !name.startsWith("gq.vapulite.bridge.VanillaRemapClassLoader");
+        return name.startsWith("gq.yozakura.")
+                && !name.equals("gq.yozakura.YozakuraBootstrap")
+                && !name.startsWith("gq.yozakura.bridge.VanillaRemapClassLoader");
     }
 
     private static byte[] readAll(InputStream input) throws IOException {
@@ -386,7 +386,7 @@ public final class VanillaRemapClassLoader extends URLClassLoader {
         private static boolean isForgeEventShimOwner(String owner) {
             return owner != null
                     && (FORGE_EVENT_SHIMS.containsKey(owner)
-                    || owner.startsWith("gq/vapulite/bridge/forge/"));
+                    || owner.startsWith("gq/yozakura/bridge/forge/"));
         }
 
         private static void putFallback(Map<String, String> map, Set<String> conflicts, String key, String value) {
@@ -444,7 +444,7 @@ public final class VanillaRemapClassLoader extends URLClassLoader {
         }
 
         private static void putShim(Map<String, String> map, String forgeName, String shimName) {
-            map.put(forgeName, "gq/vapulite/bridge/forge/" + shimName);
+            map.put(forgeName, "gq/yozakura/bridge/forge/" + shimName);
         }
 
         private static String remapForgeEventShims(String text) {

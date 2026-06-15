@@ -1,4 +1,4 @@
-package gq.vapulite.manager;
+package gq.yozakura.manager;
 
 import net.minecraft.network.Packet;
 import net.minecraft.network.play.client.*;

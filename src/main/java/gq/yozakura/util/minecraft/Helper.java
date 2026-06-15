@@ -1,6 +1,6 @@
-package gq.vapulite.util.minecraft;
+package gq.yozakura.util.minecraft;
 
-import gq.vapulite.core.VapuClientState;
+import gq.yozakura.core.YozakuraClientState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
@@ -14,7 +14,7 @@ public class Helper {
 
     public static void sendMessage(String message) {
         try {
-            message = "[" + VapuClientState.getName() + "] " + message;
+            message = "[" + YozakuraClientState.getName() + "] " + message;
             new ChatUtil.ChatMessageBuilder(true, true)
                     .appendText(message)
                     .setColor(EnumChatFormatting.LIGHT_PURPLE)
@@ -45,7 +45,7 @@ public class Helper {
 
     private static void logChatFailure(String message, Throwable throwable) {
         try {
-            File log = new File(System.getProperty("java.io.tmpdir"), "VapuLiteChat.log");
+            File log = new File(System.getProperty("java.io.tmpdir"), "YozakuraChat.log");
             PrintWriter writer = new PrintWriter(new FileWriter(log, true));
             try {
                 writer.println(message);

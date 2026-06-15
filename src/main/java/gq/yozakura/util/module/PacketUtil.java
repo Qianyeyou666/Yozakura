@@ -1,11 +1,11 @@
-package gq.vapulite.util.module;
+package gq.yozakura.util.module;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.INetHandler;
 import net.minecraft.network.Packet;
 import net.minecraft.network.ThreadQuickExitException;
 import net.minecraft.network.play.INetHandlerPlayClient;
-import gq.vapulite.bridge.PacketBridgeSupport;
+import gq.yozakura.bridge.PacketBridgeSupport;
 
 import java.util.ArrayList;
 import java.util.List;

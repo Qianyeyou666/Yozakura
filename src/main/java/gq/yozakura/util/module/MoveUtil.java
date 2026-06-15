@@ -1,12 +1,12 @@
-package gq.vapulite.util.module;
+package gq.yozakura.util.module;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.potion.Potion;
 import net.minecraft.util.BlockPos;
 import net.minecraft.util.MathHelper;
-import gq.vapulite.runtime.VapuRuntime;
-import gq.vapulite.manager.RotationState;
-import gq.vapulite.module.combat.TargetStrafe;
+import gq.yozakura.runtime.YozakuraRuntime;
+import gq.yozakura.manager.RotationState;
+import gq.yozakura.module.combat.TargetStrafe;
 
 public class MoveUtil {
     private static final Minecraft mc = Minecraft.getMinecraft();
@@ -44,7 +44,7 @@ public class MoveUtil {
     }
 
     public static float adjustYaw(float yaw, float forward, float strafe) {
-        TargetStrafe targetStrafe = (TargetStrafe) VapuRuntime.moduleManager.modules.get(TargetStrafe.class);
+        TargetStrafe targetStrafe = (TargetStrafe) YozakuraRuntime.moduleManager.modules.get(TargetStrafe.class);
         if (targetStrafe.isEnabled()) {
             if (!Float.isNaN(targetStrafe.getTargetYaw())) {
                 return targetStrafe.getTargetYaw();

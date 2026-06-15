@@ -1,20 +1,20 @@
-package gq.vapulite.runtime;
+package gq.yozakura.runtime;
 
-import gq.vapulite.manager.ModuleManager;
-import gq.vapulite.event.bus.EventManager;
-import gq.vapulite.manager.BlinkManager;
-import gq.vapulite.manager.PlayerStateManager;
-import gq.vapulite.manager.RotationManager;
-import gq.vapulite.module.runtime.Module;
-import gq.vapulite.module.world.BedNuker;
-import gq.vapulite.module.movement.KeepSprint;
-import gq.vapulite.module.movement.LongJump;
-import gq.vapulite.module.render.runtime.HUD;
+import gq.yozakura.manager.ModuleManager;
+import gq.yozakura.event.bus.EventManager;
+import gq.yozakura.manager.BlinkManager;
+import gq.yozakura.manager.PlayerStateManager;
+import gq.yozakura.manager.RotationManager;
+import gq.yozakura.module.runtime.Module;
+import gq.yozakura.module.world.BedNuker;
+import gq.yozakura.module.movement.KeepSprint;
+import gq.yozakura.module.movement.LongJump;
+import gq.yozakura.module.render.runtime.HUD;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-public final class VapuRuntime {
+public final class YozakuraRuntime {
     public static final RotationManager rotationManager = new RotationManager();
     public static final BlinkManager blinkManager = new BlinkManager();
     public static final PlayerStateManager playerStateManager = new PlayerStateManager();
@@ -23,7 +23,7 @@ public final class VapuRuntime {
     public static final ModuleManagerBridge moduleManager = new ModuleManagerBridge();
     private static boolean registered;
 
-    private VapuRuntime() {
+    private YozakuraRuntime() {
     }
 
     public static void init() {
@@ -59,7 +59,7 @@ public final class VapuRuntime {
             if (direct != null) {
                 return direct;
             }
-            for (gq.vapulite.module.Module module : ModuleManager.getModules()) {
+            for (gq.yozakura.module.Module module : ModuleManager.getModules()) {
                 if (clazz.isInstance(module) && module instanceof Module) {
                     Module runtimeModule = (Module) module;
                     super.put(clazz, runtimeModule);

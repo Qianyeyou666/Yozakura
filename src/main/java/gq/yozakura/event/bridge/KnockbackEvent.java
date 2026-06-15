@@ -1,6 +1,6 @@
-package gq.vapulite.event.bridge;
+package gq.yozakura.event.bridge;
 
-import gq.vapulite.event.bus.events.callables.EventCancellable;
+import gq.yozakura.event.bus.events.callables.EventCancellable;
 
 public class KnockbackEvent extends EventCancellable {
     private double x;

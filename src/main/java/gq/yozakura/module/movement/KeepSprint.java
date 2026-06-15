@@ -1,8 +1,8 @@
-package gq.vapulite.module.movement;
+package gq.yozakura.module.movement;
 
-import gq.vapulite.module.runtime.Module;
-import gq.vapulite.value.properties.BooleanProperty;
-import gq.vapulite.value.properties.PercentProperty;
+import gq.yozakura.module.runtime.Module;
+import gq.yozakura.value.properties.BooleanProperty;
+import gq.yozakura.value.properties.PercentProperty;
 
 public class KeepSprint extends Module {
     public final BooleanProperty groundOnly = new BooleanProperty("Ground Only", false);

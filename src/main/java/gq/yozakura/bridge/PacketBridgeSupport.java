@@ -1,4 +1,4 @@
-package gq.vapulite.bridge;
+package gq.yozakura.bridge;
 
 import net.minecraft.network.Packet;
 

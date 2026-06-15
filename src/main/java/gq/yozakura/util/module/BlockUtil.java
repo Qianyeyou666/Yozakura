@@ -1,4 +1,4 @@
-package gq.vapulite.util.module;
+package gq.yozakura.util.module;
 
 import net.minecraft.block.*;
 import net.minecraft.block.material.Material;

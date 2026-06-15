@@ -7,10 +7,10 @@
 #include <string>
 #include <vector>
 
-#define IDR_VAPULITE_JAR 101
+#define IDR_YOZAKURA_JAR 101
 
 #ifndef JAR_TO_DLL_CLIENT_CLASS
-#define JAR_TO_DLL_CLIENT_CLASS "gq.vapulite.VapuBootstrap"
+#define JAR_TO_DLL_CLIENT_CLASS "gq.yozakura.YozakuraBootstrap"
 #endif
 
 #ifndef JAR_TO_DLL_LOG_NAME
@@ -97,7 +97,7 @@ static void logJavaException(JNIEnv* env, const char* context) {
 }
 
 static bool writeEmbeddedJar(HMODULE module, const std::wstring& path) {
-    HRSRC res = FindResourceW(module, MAKEINTRESOURCEW(IDR_VAPULITE_JAR), MAKEINTRESOURCEW(10));
+    HRSRC res = FindResourceW(module, MAKEINTRESOURCEW(IDR_YOZAKURA_JAR), MAKEINTRESOURCEW(10));
     if (!res) {
         debug("embedded jar resource not found");
         return false;
@@ -318,7 +318,7 @@ static jobject createChildClassLoader(JNIEnv* env, jobject parent, const std::ws
 }
 
 static jobject createIsolatedClassLoader(JNIEnv* env, jobject parent, const std::wstring& jarPath) {
-    debug("creating isolated VapuLite classloader");
+    debug("creating isolated Yozakura classloader");
     std::string pathUtf8 = jniString(env, jarPath);
 
     jclass fileClass = env->FindClass("java/io/File");
@@ -346,7 +346,7 @@ static jobject createIsolatedClassLoader(JNIEnv* env, jobject parent, const std:
 
     jclass classLoaderClass = env->FindClass("java/lang/ClassLoader");
     jmethodID loadClass = env->GetMethodID(classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
-    jstring isolatedName = env->NewStringUTF("gq.vapulite.bridge.IsolatedClientClassLoader");
+    jstring isolatedName = env->NewStringUTF("gq.yozakura.bridge.IsolatedClientClassLoader");
     jclass isolatedClass = static_cast<jclass>(env->CallObjectMethod(helperLoader, loadClass, isolatedName));
     if (env->ExceptionCheck() || !isolatedClass) {
         logJavaException(env, "failed to load isolated classloader class");
@@ -360,7 +360,7 @@ static jobject createIsolatedClassLoader(JNIEnv* env, jobject parent, const std:
         return nullptr;
     }
 
-    debug("isolated VapuLite classloader created");
+    debug("isolated Yozakura classloader created");
     return isolatedLoader;
 }
 
@@ -474,11 +474,11 @@ static void startLoader(HMODULE module) {
     }
 }
 
-extern "C" __declspec(dllexport) void VapuLiteInject() {
+extern "C" __declspec(dllexport) void YozakuraInject() {
     HMODULE module = nullptr;
     GetModuleHandleExW(
         GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-        reinterpret_cast<LPCWSTR>(&VapuLiteInject),
+        reinterpret_cast<LPCWSTR>(&YozakuraInject),
         &module);
     if (module) {
         startLoader(module);
@@ -486,7 +486,7 @@ extern "C" __declspec(dllexport) void VapuLiteInject() {
 }
 
 extern "C" __declspec(dllexport) void JarToDllInject() {
-    VapuLiteInject();
+    YozakuraInject();
 }
 
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {

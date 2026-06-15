@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Jar,
 
-    [string]$EntryClass = "gq.vapulite.VapuBootstrap",
+    [string]$EntryClass = "gq.yozakura.YozakuraBootstrap",
 
     [string]$Name,
 
@@ -39,7 +39,7 @@ call "$VcVars" >nul
 if errorlevel 1 exit /b %errorlevel%
 rc /nologo /fo "$BuildDir\payload_$TargetArch.res" "$RcFile"
 if errorlevel 1 exit /b %errorlevel%
-cl /nologo /EHsc /LD /O2 /DJAR_TO_DLL_CLIENT_CLASS=$entryDefine /DJAR_TO_DLL_LOG_NAME=$logDefine /DJAR_TO_DLL_TEMP_PREFIX=$tempDefine /I"$JavaHome\include" /I"$JavaHome\include\win32" /Fo"$ObjPrefix" "native\vapulite_loader.cpp" "$BuildDir\payload_$TargetArch.res" /link /NOLOGO /OUT:"$OutDll" /IMPLIB:"$BuildDir\$TargetArch.lib" /PDB:"$BuildDir\$TargetArch.pdb"
+cl /nologo /EHsc /LD /O2 /DJAR_TO_DLL_CLIENT_CLASS=$entryDefine /DJAR_TO_DLL_LOG_NAME=$logDefine /DJAR_TO_DLL_TEMP_PREFIX=$tempDefine /I"$JavaHome\include" /I"$JavaHome\include\win32" /Fo"$ObjPrefix" "native\yozakura_loader.cpp" "$BuildDir\payload_$TargetArch.res" /link /NOLOGO /OUT:"$OutDll" /IMPLIB:"$BuildDir\$TargetArch.lib" /PDB:"$BuildDir\$TargetArch.pdb"
 "@
 
     Write-Host "Building $TargetArch -> $OutDll"
@@ -74,8 +74,8 @@ Copy-Item -LiteralPath $jarPath -Destination $payloadJar -Force
 $rcPath = Join-Path $buildDir "payload.rc"
 $rcJarPath = ($payloadJar -replace '\\', '/')
 @"
-#define IDR_VAPULITE_JAR 101
-IDR_VAPULITE_JAR RCDATA "$rcJarPath"
+#define IDR_YOZAKURA_JAR 101
+IDR_YOZAKURA_JAR RCDATA "$rcJarPath"
 "@ | Set-Content -LiteralPath $rcPath -Encoding ASCII
 
 $logName = "$safeName-Loader.log"

@@ -1,4 +1,4 @@
-package gq.vapulite.event.bus.events;
+package gq.yozakura.event.bus.events;
 
 /**
  * Simple interface that should be implemented in typed events.

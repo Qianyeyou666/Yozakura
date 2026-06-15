@@ -1,6 +1,6 @@
-package gq.vapulite.module;
+package gq.yozakura.module;
 
-import gq.vapulite.core.VapuClientState;
+import gq.yozakura.core.YozakuraClientState;
 
 public enum ModuleType{
     Combat("Combat","战斗类"),
@@ -25,7 +25,7 @@ public enum ModuleType{
     }
 
     public String getName() {
-        if(VapuClientState.isChinese()){
+        if(YozakuraClientState.isChinese()){
             return ChineseName;
         } else {
             return name;

@@ -1,4 +1,4 @@
-package gq.vapulite.engine.font;
+package gq.yozakura.engine.font;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.ResourceLocation;
@@ -43,7 +43,7 @@ public final class FontResourceLoader {
 
     public static void logFailure(ResourceLocation location, Throwable throwable) {
         try {
-            File log = new File(System.getProperty("java.io.tmpdir"), "VapuLiteFont.log");
+            File log = new File(System.getProperty("java.io.tmpdir"), "YozakuraFont.log");
             PrintWriter writer = new PrintWriter(new FileWriter(log, true));
             try {
                 writer.println("Failed to load font " + location + ": " + throwable.getClass().getName()

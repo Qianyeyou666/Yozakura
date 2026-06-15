@@ -9,30 +9,30 @@ if not exist "%JAVA8_HOME%\include\jni.h" (
   exit /b 1
 )
 
-if not exist "build\libs\VapuLite.jar" (
-  echo Missing build\libs\VapuLite.jar. Run gradlew jar first.
+if not exist "build\libs\Yozakura.jar" (
+  echo Missing build\libs\Yozakura.jar. Run gradlew jar first.
   exit /b 1
 )
 
 if not exist "build\native" mkdir "build\native"
 if not exist "build\libs" mkdir "build\libs"
 
-call :build_one x64 "%VS_BUILD%\vcvars64.bat" "build\libs\VapuLiteLoader-x64.dll"
+call :build_one x64 "%VS_BUILD%\vcvars64.bat" "build\libs\YozakuraLoader-x64.dll"
 if errorlevel 1 exit /b %errorlevel%
 
-call :build_one x86 "%VS_BUILD%\vcvars32.bat" "build\libs\VapuLiteLoader-x86.dll"
+call :build_one x86 "%VS_BUILD%\vcvars32.bat" "build\libs\YozakuraLoader-x86.dll"
 if errorlevel 1 exit /b %errorlevel%
 
-copy /Y "build\libs\VapuLiteLoader-x64.dll" "build\libs\VapuLiteLoader.dll" >nul
+copy /Y "build\libs\YozakuraLoader-x64.dll" "build\libs\YozakuraLoader.dll" >nul
 if errorlevel 1 (
-  echo Warning: build\libs\VapuLiteLoader.dll is locked. Use the arch-specific DLLs below.
+  echo Warning: build\libs\YozakuraLoader.dll is locked. Use the arch-specific DLLs below.
 ) else (
-  echo   build\libs\VapuLiteLoader.dll
+  echo   build\libs\YozakuraLoader.dll
 )
 
 echo Built:
-echo   build\libs\VapuLiteLoader-x64.dll
-echo   build\libs\VapuLiteLoader-x86.dll
+echo   build\libs\YozakuraLoader-x64.dll
+echo   build\libs\YozakuraLoader-x86.dll
 exit /b 0
 
 :build_one
@@ -49,15 +49,15 @@ echo Building %ARCH% DLL...
 call "%VCVARS%" >nul
 if errorlevel 1 exit /b %errorlevel%
 
-rc /nologo /fo "build\native\vapulite_loader_%ARCH%.res" "native\vapulite_loader.rc"
+rc /nologo /fo "build\native\yozakura_loader_%ARCH%.res" "native\yozakura_loader.rc"
 if errorlevel 1 exit /b %errorlevel%
 
 cl /nologo /EHsc /LD /O2 ^
   /I"%JAVA8_HOME%\include" ^
   /I"%JAVA8_HOME%\include\win32" ^
   /Fo"build\native\%ARCH%_" ^
-  "native\vapulite_loader.cpp" ^
-  "build\native\vapulite_loader_%ARCH%.res" ^
+  "native\yozakura_loader.cpp" ^
+  "build\native\yozakura_loader_%ARCH%.res" ^
   /link /NOLOGO /OUT:"%OUTDLL%" /IMPLIB:"build\native\%ARCH%.lib" /PDB:"build\native\%ARCH%.pdb"
 
 exit /b %errorlevel%

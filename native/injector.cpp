@@ -5,7 +5,7 @@
 
 int wmain(int argc, wchar_t** argv) {
     if (argc != 3) {
-        fwprintf(stderr, L"Usage: VapuLiteInjector.exe <pid> <dll-path>\n");
+        fwprintf(stderr, L"Usage: YozakuraInjector.exe <pid> <dll-path>\n");
         return 2;
     }
 

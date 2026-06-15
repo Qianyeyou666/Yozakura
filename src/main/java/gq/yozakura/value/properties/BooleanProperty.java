@@ -1,6 +1,6 @@
-package gq.vapulite.value.properties;
+package gq.yozakura.value.properties;
 
-import gq.vapulite.value.Option;
+import gq.yozakura.value.Option;
 
 import java.util.function.BooleanSupplier;
 

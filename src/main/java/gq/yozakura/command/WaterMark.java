@@ -23,10 +23,10 @@ public class WaterMark implements ICommand {
 
 	private Minecraft mc = Minecraft.getMinecraft();
 
-	public Client vapuClient =null;
+	public Client yozakuraClient =null;
 
-	public WaterMark(Client vapuClient) {
-		this.vapuClient = vapuClient;
+	public WaterMark(Client yozakuraClient) {
+		this.yozakuraClient = yozakuraClient;
 	}
 
 

@@ -34,7 +34,7 @@ public class FakeLag extends Module {
         REPEL
     }
 
-    private static final String HANDLER_NAME = "vapulite_fakelag";
+    private static final String HANDLER_NAME = "yozakura_fakelag";
     private static final int MIN_OFFSET_TICKS = 1;
     private static final int MAX_OFFSET_TICKS = 20;
 

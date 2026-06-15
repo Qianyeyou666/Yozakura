@@ -1,14 +1,14 @@
-package gq.vapulite.ui.click.material;
+package gq.yozakura.ui.click.material;
 
-import gq.vapulite.engine.font.FontLoaders;
-import gq.vapulite.engine.render.ui.RenderServices;
-import gq.vapulite.module.Module;
-import gq.vapulite.util.animation.AnimationUtil;
-import gq.vapulite.value.Mode;
-import gq.vapulite.value.Numbers;
-import gq.vapulite.value.Option;
-import gq.vapulite.value.Value;
-import gq.vapulite.value.properties.ModeProperty;
+import gq.yozakura.engine.font.FontLoaders;
+import gq.yozakura.engine.render.ui.RenderServices;
+import gq.yozakura.module.Module;
+import gq.yozakura.util.animation.AnimationUtil;
+import gq.yozakura.value.Mode;
+import gq.yozakura.value.Numbers;
+import gq.yozakura.value.Option;
+import gq.yozakura.value.Value;
+import gq.yozakura.value.properties.ModeProperty;
 import org.lwjgl.input.Mouse;
 
 import java.awt.Color;

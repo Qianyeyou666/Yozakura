@@ -1,9 +1,9 @@
-package gq.vapulite.core;
+package gq.yozakura.core;
 
-import gq.vapulite.bridge.StandaloneEventBridge;
-import gq.vapulite.manager.ModuleManager;
-import gq.vapulite.module.Module;
-import gq.vapulite.runtime.VapuRuntime;
+import gq.yozakura.bridge.StandaloneEventBridge;
+import gq.yozakura.manager.ModuleManager;
+import gq.yozakura.module.Module;
+import gq.yozakura.runtime.YozakuraRuntime;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.input.Keyboard;
 
@@ -16,7 +16,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class StandaloneClient {
-    private static final String ACTIVE_INSTANCE_PROPERTY = "vapulite.standalone.activeInstance";
+    private static final String ACTIVE_INSTANCE_PROPERTY = "yozakura.standalone.activeInstance";
     private static final Minecraft mc = Minecraft.getMinecraft();
     private static volatile boolean state;
     private final StandaloneEventBridge bridge = new StandaloneEventBridge();
@@ -34,7 +34,7 @@ public final class StandaloneClient {
         state = true;
         running = true;
         System.setProperty(ACTIVE_INSTANCE_PROPERTY, instanceId);
-        VapuRuntime.init();
+        YozakuraRuntime.init();
         ensureCoreModules();
         ConfigBridge.loadModulesQuietly();
         startMainThreadPump();
@@ -55,19 +55,19 @@ public final class StandaloneClient {
             ensureModule("Scaffold", new ModuleFactory() {
                 @Override
                 public Module create() {
-                    return new gq.vapulite.module.world.Scaffold();
+                    return new gq.yozakura.module.world.Scaffold();
                 }
             });
             ensureModule("KillAura", new ModuleFactory() {
                 @Override
                 public Module create() {
-                    return new gq.vapulite.module.combat.KillAura();
+                    return new gq.yozakura.module.combat.KillAura();
                 }
             });
             ensureModule("KeepSprint", new ModuleFactory() {
                 @Override
                 public Module create() {
-                    return new gq.vapulite.module.movement.KeepSprint();
+                    return new gq.yozakura.module.movement.KeepSprint();
                 }
             });
         } catch (Throwable throwable) {
@@ -99,7 +99,7 @@ public final class StandaloneClient {
                 }
                 bridge.shutdown();
             }
-        }, "VapuLite Standalone Pump");
+        }, "Yozakura Standalone Pump");
         thread.setDaemon(true);
         thread.setContextClassLoader(StandaloneClient.class.getClassLoader());
         thread.start();
@@ -110,7 +110,7 @@ public final class StandaloneClient {
         Thread currentThread = Thread.currentThread();
         for (Thread thread : Thread.getAllStackTraces().keySet()) {
             if (thread == null || thread == currentThread || !thread.isAlive()
-                    || !"VapuLite Standalone Pump".equals(thread.getName())) {
+                    || !"Yozakura Standalone Pump".equals(thread.getName())) {
                 continue;
             }
             if (thread.getContextClassLoader() == currentLoader) {
@@ -131,7 +131,7 @@ public final class StandaloneClient {
             return;
         }
         try {
-            Class<?> type = Class.forName("gq.vapulite.core.StandaloneClient", false, loader);
+            Class<?> type = Class.forName("gq.yozakura.core.StandaloneClient", false, loader);
             Method method = type.getDeclaredMethod("unInject");
             method.setAccessible(true);
             method.invoke(null);
@@ -186,7 +186,7 @@ public final class StandaloneClient {
             }
             boolean down = key >= 0 && Keyboard.isKeyDown(key);
             if (down && pressedKeys.add(Integer.valueOf(key))) {
-                gq.vapulite.event.bus.EventManager.call(new gq.vapulite.bridge.forge.InputEvent.KeyInputEvent());
+                gq.yozakura.event.bus.EventManager.call(new gq.yozakura.bridge.forge.InputEvent.KeyInputEvent());
                 module.toggle();
             } else if (!down) {
                 pressedKeys.remove(Integer.valueOf(key));
@@ -208,7 +208,7 @@ public final class StandaloneClient {
 
     private static void log(String message, Throwable throwable) {
         try {
-            File log = new File(System.getProperty("java.io.tmpdir"), "VapuLiteStandalone.log");
+            File log = new File(System.getProperty("java.io.tmpdir"), "YozakuraStandalone.log");
             PrintWriter writer = new PrintWriter(new FileWriter(log, true));
             try {
                 writer.println(message);

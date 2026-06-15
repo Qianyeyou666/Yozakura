@@ -1,4 +1,4 @@
-package gq.vapulite.module.render.runtime;
+package gq.yozakura.module.render.runtime;
 
 public final class Notification {
     private Notification() {

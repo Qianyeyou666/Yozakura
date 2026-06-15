@@ -1,7 +1,7 @@
-package gq.vapulite.event.bus.events.callables;
+package gq.yozakura.event.bus.events.callables;
 
-import gq.vapulite.event.bus.events.Event;
-import gq.vapulite.event.bus.events.Typed;
+import gq.yozakura.event.bus.events.Event;
+import gq.yozakura.event.bus.events.Typed;
 
 /**
  * Abstract example implementation of the Typed interface.

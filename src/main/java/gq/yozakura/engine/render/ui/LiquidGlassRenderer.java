@@ -29,8 +29,10 @@ public final class LiquidGlassRenderer {
         }
         GLStateManager.begin2D();
         try {
-            ShaderRenderer.drawLiquidGlass(x, y, x2, y2, radius, borderWidth, fillColor, borderColor,
-                    settings);
+            if (!ShaderRenderer.drawLiquidGlass(x, y, x2, y2, radius, borderWidth, fillColor, borderColor,
+                    settings)) {
+                RenderServices.shapes().roundedBorder(x, y, x2, y2, radius, borderWidth, fillColor, borderColor);
+            }
         } finally {
             GLStateManager.end2D();
         }

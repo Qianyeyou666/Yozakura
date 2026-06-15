@@ -3,7 +3,7 @@ package gq.yozakura.module.movement;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.ui.click.material.MaterialClickGui;
 import gq.yozakura.ui.click.sakura.SakuraClickGui;
-import gq.yozakura.ui.click.yozakura.YozakuraClickGui;
+import gq.yozakura.ui.click.vape.VapeClickGui;
 import gq.yozakura.module.Module;
 import gq.yozakura.util.minecraft.ClientUtil;
 import net.minecraft.client.gui.inventory.GuiContainer;
@@ -25,7 +25,7 @@ public class InvMove extends Module {
             return;
         }
         if (!(mc.currentScreen instanceof GuiContainer)
-                && !(mc.currentScreen instanceof YozakuraClickGui)
+                && !(mc.currentScreen instanceof VapeClickGui)
                 && !(mc.currentScreen instanceof MaterialClickGui)
                 && !(mc.currentScreen instanceof SakuraClickGui)) {
             return;

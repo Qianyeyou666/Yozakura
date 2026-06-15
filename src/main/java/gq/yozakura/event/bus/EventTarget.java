@@ -1,6 +1,6 @@
-package gq.vapulite.event.bus;
+package gq.yozakura.event.bus;
 
-import gq.vapulite.event.bus.types.Priority;
+import gq.yozakura.event.bus.types.Priority;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;

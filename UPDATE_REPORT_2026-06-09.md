@@ -1,4 +1,4 @@
-# VapuLite Update Report - 2026-06-09
+# Yozakura Update Report - 2026-06-09
 
 ## Summary
 
@@ -24,7 +24,7 @@ This update focuses on rendering quality, ClickGUI interaction, reusable UI comp
 
 ## Reusable UI Components
 
-Added reusable OOP UI primitives under `gq.vapulite.ui`:
+Added reusable OOP UI primitives under `gq.yozakura.ui`:
 
 - `UiComponent`
 - `UiBounds`

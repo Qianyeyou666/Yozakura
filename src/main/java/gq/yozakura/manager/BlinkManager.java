@@ -1,4 +1,4 @@
-package gq.vapulite.manager;
+package gq.yozakura.manager;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.Packet;
@@ -11,12 +11,12 @@ import net.minecraft.network.play.client.C03PacketPlayer;
 import net.minecraft.network.play.client.C0FPacketConfirmTransaction;
 import net.minecraft.network.status.client.C00PacketServerQuery;
 import net.minecraft.network.status.client.C01PacketPing;
-import gq.vapulite.manager.BlinkModules;
-import gq.vapulite.event.bus.EventTarget;
-import gq.vapulite.event.bus.types.EventType;
-import gq.vapulite.event.bridge.PacketEvent;
-import gq.vapulite.event.bridge.TickEvent;
-import gq.vapulite.util.module.PacketUtil;
+import gq.yozakura.manager.BlinkModules;
+import gq.yozakura.event.bus.EventTarget;
+import gq.yozakura.event.bus.types.EventType;
+import gq.yozakura.event.bridge.PacketEvent;
+import gq.yozakura.event.bridge.TickEvent;
+import gq.yozakura.util.module.PacketUtil;
 
 import java.util.Deque;
 import java.util.concurrent.ConcurrentLinkedDeque;

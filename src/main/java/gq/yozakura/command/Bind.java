@@ -24,10 +24,10 @@ public class Bind implements ICommand {
 
 	private Minecraft mc = Minecraft.getMinecraft();
 
-	public Client vapuClient =null;
+	public Client yozakuraClient =null;
 
-	public Bind(Client vapuClient) {
-		this.vapuClient = vapuClient;
+	public Bind(Client yozakuraClient) {
+		this.yozakuraClient = yozakuraClient;
 	}
 
 

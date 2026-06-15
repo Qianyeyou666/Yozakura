@@ -41,7 +41,7 @@ public class ProductPlugin implements IFMLLoadingPlugin {
 
 	@Override
 	public String[] getASMTransformerClass() {
-		return new String[0]; //{"com.xue.vapu.ClassTransformer"};
+		return new String[0]; //{"com.xue.yozakura.ClassTransformer"};
 	}
 
 	@Override
@@ -66,7 +66,7 @@ public class ProductPlugin implements IFMLLoadingPlugin {
 			field = LaunchClassLoader.class.getDeclaredField("transformers");
 			field.setAccessible(true);
 			List<IClassTransformer> transformers = (List<IClassTransformer>) field.get(classLoader);
-			IClassTransformer trasformer = (IClassTransformer)Class.forName("gq.vapu.vapu.ClassTransformer", true, classLoader).newInstance();;
+			IClassTransformer trasformer = (IClassTransformer)Class.forName("gq.yozakura.yozakura.ClassTransformer", true, classLoader).newInstance();;
 			ModList list = new ModList();
 			field.set(classLoader, list);
 

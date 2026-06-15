@@ -1,4 +1,4 @@
-package gq.vapulite.event.bus.types;
+package gq.yozakura.event.bus.types;
 
 public enum EventType {
     PRE,

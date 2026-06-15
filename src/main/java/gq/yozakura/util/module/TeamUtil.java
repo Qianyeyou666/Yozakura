@@ -1,4 +1,4 @@
-package gq.vapulite.util.module;
+package gq.yozakura.util.module;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
@@ -8,7 +8,7 @@ import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.item.EntityArmorStand;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.scoreboard.ScorePlayerTeam;
-import gq.vapulite.runtime.VapuRuntime;
+import gq.yozakura.runtime.YozakuraRuntime;
 
 import java.awt.*;
 import java.util.List;
@@ -137,10 +137,10 @@ public class TeamUtil {
     }
 
     public static boolean isFriend(EntityPlayer player) {
-        return VapuRuntime.friendManager.isFriend(player.getName());
+        return YozakuraRuntime.friendManager.isFriend(player.getName());
     }
 
     public static boolean isTarget(EntityPlayer player) {
-        return VapuRuntime.targetManager.isFriend(player.getName());
+        return YozakuraRuntime.targetManager.isFriend(player.getName());
     }
 }

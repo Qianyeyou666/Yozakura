@@ -1,20 +1,20 @@
-package gq.vapulite.bridge;
+package gq.yozakura.bridge;
 
-import gq.vapulite.event.bridge.HitBlockEvent;
-import gq.vapulite.event.bridge.LeftClickMouseEvent;
-import gq.vapulite.event.bridge.LivingUpdateEvent;
-import gq.vapulite.event.bridge.MoveInputEvent;
-import gq.vapulite.event.bridge.PacketEvent;
-import gq.vapulite.event.bridge.RightClickMouseEvent;
-import gq.vapulite.event.bridge.SafeWalkEvent;
-import gq.vapulite.event.bridge.StrafeEvent;
-import gq.vapulite.event.bridge.TickEvent;
-import gq.vapulite.event.bridge.UpdateEvent;
-import gq.vapulite.event.bus.EventManager;
-import gq.vapulite.event.bus.types.EventType;
-import gq.vapulite.manager.RotationState;
-import gq.vapulite.runtime.VapuRuntime;
-import gq.vapulite.util.module.PacketUtil;
+import gq.yozakura.event.bridge.HitBlockEvent;
+import gq.yozakura.event.bridge.LeftClickMouseEvent;
+import gq.yozakura.event.bridge.LivingUpdateEvent;
+import gq.yozakura.event.bridge.MoveInputEvent;
+import gq.yozakura.event.bridge.PacketEvent;
+import gq.yozakura.event.bridge.RightClickMouseEvent;
+import gq.yozakura.event.bridge.SafeWalkEvent;
+import gq.yozakura.event.bridge.StrafeEvent;
+import gq.yozakura.event.bridge.TickEvent;
+import gq.yozakura.event.bridge.UpdateEvent;
+import gq.yozakura.event.bus.EventManager;
+import gq.yozakura.event.bus.types.EventType;
+import gq.yozakura.manager.RotationState;
+import gq.yozakura.runtime.YozakuraRuntime;
+import gq.yozakura.util.module.PacketUtil;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -35,7 +35,7 @@ import java.lang.reflect.Field;
 
 public final class StandaloneEventBridge {
     private static final Minecraft mc = Minecraft.getMinecraft();
-    private static final String HANDLER_NAME = "vapulite_standalone_event_bridge";
+    private static final String HANDLER_NAME = "yozakura_standalone_event_bridge";
     private static Field channelField;
     private Channel channel;
     private boolean forcedSneak;
@@ -53,7 +53,7 @@ public final class StandaloneEventBridge {
         StandaloneGuiIngame.install(mc);
         StandaloneEntityRenderer.install(mc);
         injectPacketHandler();
-        dispatchForgeTick(gq.vapulite.bridge.forge.TickEvent.Phase.START);
+        dispatchForgeTick(gq.yozakura.bridge.forge.TickEvent.Phase.START);
         dispatchMouseButtons();
         EventManager.call(new TickEvent(EventType.PRE));
         dispatchPreUpdate();
@@ -61,12 +61,12 @@ public final class StandaloneEventBridge {
         dispatchStrafe();
         dispatchSafeWalk();
         EventManager.call(new LivingUpdateEvent());
-        EventManager.call(new gq.vapulite.bridge.forge.LivingEvent.LivingUpdateEvent(mc.thePlayer));
+        EventManager.call(new gq.yozakura.bridge.forge.LivingEvent.LivingUpdateEvent(mc.thePlayer));
         syncAuraTarget();
         EventManager.call(new TickEvent(EventType.POST));
         EventManager.call(new UpdateEvent(EventType.POST, mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch,
                 mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch));
-        dispatchForgeTick(gq.vapulite.bridge.forge.TickEvent.Phase.END);
+        dispatchForgeTick(gq.yozakura.bridge.forge.TickEvent.Phase.END);
         dispatchSafeWalk();
         syncAuraTarget();
     }
@@ -76,10 +76,10 @@ public final class StandaloneEventBridge {
         removePacketHandler();
     }
 
-    private void dispatchForgeTick(gq.vapulite.bridge.forge.TickEvent.Phase phase) {
-        EventManager.call(new gq.vapulite.bridge.forge.TickEvent(phase));
-        EventManager.call(new gq.vapulite.bridge.forge.TickEvent.ClientTickEvent(phase));
-        EventManager.call(new gq.vapulite.bridge.forge.TickEvent.PlayerTickEvent(phase, mc.thePlayer));
+    private void dispatchForgeTick(gq.yozakura.bridge.forge.TickEvent.Phase phase) {
+        EventManager.call(new gq.yozakura.bridge.forge.TickEvent(phase));
+        EventManager.call(new gq.yozakura.bridge.forge.TickEvent.ClientTickEvent(phase));
+        EventManager.call(new gq.yozakura.bridge.forge.TickEvent.PlayerTickEvent(phase, mc.thePlayer));
     }
 
     private void dispatchMouseButtons() {
@@ -104,8 +104,8 @@ public final class StandaloneEventBridge {
     }
 
     private void dispatchMouseButton(int button) {
-        gq.vapulite.bridge.forge.MouseEvent forgeMouse =
-                EventManager.call(new gq.vapulite.bridge.forge.MouseEvent(button, true, 0));
+        gq.yozakura.bridge.forge.MouseEvent forgeMouse =
+                EventManager.call(new gq.yozakura.bridge.forge.MouseEvent(button, true, 0));
         boolean cancelled = forgeMouse != null && forgeMouse.isCanceled();
 
         if (button == 0) {
@@ -117,7 +117,7 @@ public final class StandaloneEventBridge {
                 cancelled |= hit.isCancelled();
             }
             if (mc.objectMouseOver != null && mc.objectMouseOver.entityHit != null) {
-                EventManager.call(new gq.vapulite.bridge.forge.AttackEntityEvent(mc.thePlayer,
+                EventManager.call(new gq.yozakura.bridge.forge.AttackEntityEvent(mc.thePlayer,
                         mc.objectMouseOver.entityHit));
             }
         } else if (button == 1) {
@@ -197,10 +197,10 @@ public final class StandaloneEventBridge {
     }
 
     private void syncAuraTarget() {
-        gq.vapulite.module.Module module = gq.vapulite.manager.ModuleManager.getModule("KillAura");
-        if (module instanceof gq.vapulite.module.combat.KillAura) {
-            gq.vapulite.module.combat.KillAura.target =
-                    ((gq.vapulite.module.combat.KillAura) module).getTarget();
+        gq.yozakura.module.Module module = gq.yozakura.manager.ModuleManager.getModule("KillAura");
+        if (module instanceof gq.yozakura.module.combat.KillAura) {
+            gq.yozakura.module.combat.KillAura.target =
+                    ((gq.yozakura.module.combat.KillAura) module).getTarget();
         }
     }
 
@@ -287,7 +287,7 @@ public final class StandaloneEventBridge {
 
     private static void log(String message, Throwable throwable) {
         try {
-            File log = new File(System.getProperty("java.io.tmpdir"), "VapuLiteStandalone.log");
+            File log = new File(System.getProperty("java.io.tmpdir"), "YozakuraStandalone.log");
             PrintWriter writer = new PrintWriter(new FileWriter(log, true));
             try {
                 writer.println(message);
@@ -319,11 +319,11 @@ public final class StandaloneEventBridge {
                 if (event.isCancelled()) {
                     return;
                 }
-                if (VapuRuntime.playerStateManager != null) {
-                    VapuRuntime.playerStateManager.handlePacket(packet);
+                if (YozakuraRuntime.playerStateManager != null) {
+                    YozakuraRuntime.playerStateManager.handlePacket(packet);
                 }
-                if (VapuRuntime.blinkManager != null && VapuRuntime.blinkManager.isBlinking()
-                        && VapuRuntime.blinkManager.offerPacket(packet)) {
+                if (YozakuraRuntime.blinkManager != null && YozakuraRuntime.blinkManager.isBlinking()
+                        && YozakuraRuntime.blinkManager.offerPacket(packet)) {
                     return;
                 }
                 if (packet instanceof C03PacketPlayer) {

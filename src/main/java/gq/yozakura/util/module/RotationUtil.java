@@ -1,10 +1,10 @@
-package gq.vapulite.util.module;
+package gq.yozakura.util.module;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.Entity;
 import net.minecraft.util.*;
 import org.lwjgl.util.vector.Vector2f;
-import gq.vapulite.module.combat.KillAura;
+import gq.yozakura.module.combat.KillAura;
 
 import java.util.List;
 

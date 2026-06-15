@@ -27,7 +27,7 @@ final class HudRenderSupport {
         }
     }
 
-    static void drawYozakuraCard(float x, float y, float x2, float y2, float radius,
+    static void drawVapeCard(float x, float y, float x2, float y2, float radius,
                              int shadowColor, int fillColor, int borderColor) {
         RenderServices.shapes().shadow(x, y, x2, y2, radius, shadowColor, 6, 2.4f);
         RenderServices.shapes().roundedBorder(x, y, x2, y2, radius, 0.8f, fillColor, borderColor);

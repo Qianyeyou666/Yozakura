@@ -1,22 +1,22 @@
-package gq.vapulite.ui.click.vape;
+package gq.yozakura.ui.click.vape;
 
-import gq.vapulite.manager.ModuleManager;
-import gq.vapulite.module.Module;
-import gq.vapulite.module.render.HUD;
-import gq.vapulite.util.render.RenderUtil;
-import gq.vapulite.value.Mode;
-import gq.vapulite.value.Numbers;
-import gq.vapulite.value.Option;
-import gq.vapulite.value.Value;
-import gq.vapulite.value.properties.ModeProperty;
-import gq.vapulite.engine.font.FontLoaders;
-import gq.vapulite.engine.render.GLStateManager;
-import gq.vapulite.engine.render.ui.RenderServices;
+import gq.yozakura.manager.ModuleManager;
+import gq.yozakura.module.Module;
+import gq.yozakura.module.render.HUD;
+import gq.yozakura.util.render.RenderUtil;
+import gq.yozakura.value.Mode;
+import gq.yozakura.value.Numbers;
+import gq.yozakura.value.Option;
+import gq.yozakura.value.Value;
+import gq.yozakura.value.properties.ModeProperty;
+import gq.yozakura.engine.font.FontLoaders;
+import gq.yozakura.engine.render.GLStateManager;
+import gq.yozakura.engine.render.ui.RenderServices;
 import org.lwjgl.opengl.GL11;
-import gq.vapulite.ui.click.ClickGuiIcons;
-import gq.vapulite.ui.UiPanel;
-import gq.vapulite.ui.UiTheme;
-import gq.vapulite.util.animation.AnimUtil;
+import gq.yozakura.ui.click.ClickGuiIcons;
+import gq.yozakura.ui.UiPanel;
+import gq.yozakura.ui.UiTheme;
+import gq.yozakura.util.animation.AnimUtil;
 import net.minecraft.util.ResourceLocation;
 
 import java.awt.Color;
@@ -458,7 +458,7 @@ final class ClickGuiDetailPanel {
         RenderServices.shapes().roundedBorder(headerX, headerY, headerX + headerW, headerY + headerH, 7.0f, 0.7f,
                 gui.withAlpha(headerFill, 116.0f * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, 28.0f * gui.guiAlpha));
-        if (gq.vapulite.module.render.HUD.isSakuraTheme()) {
+        if (gq.yozakura.module.render.HUD.isSakuraTheme()) {
             RenderServices.shapes().horizontalGradient(headerX + 2.0f, headerY + 2.0f,
                     headerX + headerW - 2.0f, headerY + 30.0f,
                     gui.withAlpha(new Color(255, 232, 244).getRGB(), 82.0f * gui.guiAlpha),
@@ -475,10 +475,10 @@ final class ClickGuiDetailPanel {
     }
 
     private int surfaceColor(boolean header) {
-        if (gq.vapulite.module.render.HUD.isSakuraTheme()) {
+        if (gq.yozakura.module.render.HUD.isSakuraTheme()) {
             return header ? new Color(255, 236, 246).getRGB() : new Color(255, 252, 254).getRGB();
         }
-        if (gq.vapulite.module.render.HUD.isLightTheme()) {
+        if (gq.yozakura.module.render.HUD.isLightTheme()) {
             return header ? new Color(226, 232, 242).getRGB() : new Color(246, 248, 252).getRGB();
         }
         return new Color(11, 14, 20).getRGB();
@@ -492,8 +492,8 @@ final class ClickGuiDetailPanel {
     }
 
     private boolean isUnifiedDarkSurface() {
-        return !gq.vapulite.module.render.HUD.isSakuraTheme()
-                && !gq.vapulite.module.render.HUD.isLightTheme();
+        return !gq.yozakura.module.render.HUD.isSakuraTheme()
+                && !gq.yozakura.module.render.HUD.isLightTheme();
     }
 
     /**

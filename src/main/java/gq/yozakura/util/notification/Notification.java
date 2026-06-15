@@ -27,11 +27,11 @@ public class Notification {
     private static int GLASS() { return isSakura() ? 0xFFF5EEF2 : (isLightStyle() ? 0xFFEBEDF2 : 0xFF07090D); }
     private static int GLASS_SOFT() { return isSakura() ? 0xFFEBE0E6 : (isLightStyle() ? 0xFFE0E3EA : 0xFF0B0E14); }
     private static int BORDER() { return isSakura() ? 0xFFD0A8B8 : (isLightStyle() ? 0xFF6BA0C0 : 0xFF8DBED8); }
-    private static int YOZAKURA_PRIMARY() { return isSakura() ? 0xFFE090A8 : (isLightStyle() ? 0xFF6090E0 : 0xFF7C9DFF); }
-    private static int YOZAKURA_SECONDARY() { return isSakura() ? 0xFFD88098 : (isLightStyle() ? 0xFF6888E0 : 0xFF838CEF); }
-    private static int YOZAKURA_SURFACE() { return isSakura() ? 0xFFF0E8EC : (isLightStyle() ? 0xFFE8EBF0 : 0xFF171A20); }
-    private static int YOZAKURA_SURFACE_VARIANT() { return isSakura() ? 0xFFE8DCE2 : (isLightStyle() ? 0xFFDCE0E8 : 0xFF1E222B); }
-    private static int YOZAKURA_ON_VARIANT() { return isLightStyle() ? 0xFF505560 : 0xFFAAB2C5; }
+    private static int VAPE_PRIMARY() { return isSakura() ? 0xFFE090A8 : (isLightStyle() ? 0xFF6090E0 : 0xFF7C9DFF); }
+    private static int VAPE_SECONDARY() { return isSakura() ? 0xFFD88098 : (isLightStyle() ? 0xFF6888E0 : 0xFF838CEF); }
+    private static int VAPE_SURFACE() { return isSakura() ? 0xFFF0E8EC : (isLightStyle() ? 0xFFE8EBF0 : 0xFF171A20); }
+    private static int VAPE_SURFACE_VARIANT() { return isSakura() ? 0xFFE8DCE2 : (isLightStyle() ? 0xFFDCE0E8 : 0xFF1E222B); }
+    private static int VAPE_ON_VARIANT() { return isLightStyle() ? 0xFF505560 : 0xFFAAB2C5; }
     private static int ACCENT_ALT() { return isSakura() ? 0xFFE87898 : (isLightStyle() ? 0xFF6088E8 : 0xFF8B7CFF); }
     private static int onSurfaceColor() { return isLightStyle() ? 0xFF181A20 : 0xFFFFFFFF; }
     private static int progressTrack() { return isLightStyle() ? 0xFF000000 : 0xFFFFFFFF; }
@@ -106,8 +106,8 @@ public class Notification {
         int accent = getAccentColor();
         float progress = 1.0f - ColorUtils.clamp((now - createdAt) / (float) Math.max(1L, stayTime), 0.0f, 1.0f);
 
-        if (HUD.useYozakuraSimpleStyle()) {
-            drawYozakura(x1, y1, x2, y2, bodyAlpha, accent, progress);
+        if (HUD.useVapeSimpleStyle()) {
+            drawVape(x1, y1, x2, y2, bodyAlpha, accent, progress);
             return;
         }
 
@@ -151,7 +151,7 @@ public class Notification {
                 withAlpha(accent, Math.round(190.0f * bodyAlpha)));
     }
 
-    private void drawYozakura(float x1, float y1, float x2, float y2, float bodyAlpha, int accent, float progress) {
+    private void drawVape(float x1, float y1, float x2, float y2, float bodyAlpha, int accent, float progress) {
         float radius = 7.0f;
         if (HUD.isGlowEnabled()) {
             RenderUtil.drawGlowAround(x1, y1, x2, y2, radius,
@@ -160,7 +160,7 @@ public class Notification {
         RenderServices.shapes().shadow(x1, y1, x2, y2, radius,
                 withAlpha(shadowColor(), Math.round(58.0f * bodyAlpha)), 6, 2.2f);
         RenderServices.shapes().roundedBorder(x1, y1, x2, y2, radius, 0.8f,
-                withAlpha(YOZAKURA_SURFACE(), Math.round(164.0f * bodyAlpha)),
+                withAlpha(VAPE_SURFACE(), Math.round(164.0f * bodyAlpha)),
                 withAlpha(0xFFFFFFFF, Math.round(24.0f * bodyAlpha)));
         RenderServices.shapes().horizontalGradient(x1 + 1.0f, y1 + 1.0f, x2 - 1.0f, y1 + 18.0f,
                 withAlpha(0xFFFFFFFF, Math.round(15.0f * bodyAlpha)), withAlpha(0xFF000000, 0));
@@ -172,7 +172,7 @@ public class Notification {
         RenderServices.shapes().circle(iconCenterX, iconCenterY, 0, 360, 15.0f,
                 withAlpha(accent, Math.round(218.0f * bodyAlpha)));
         RenderServices.shapes().circle(iconCenterX, iconCenterY, 0, 360, 12.0f,
-                withAlpha(YOZAKURA_SURFACE_VARIANT(), Math.round(40.0f * bodyAlpha)));
+                withAlpha(VAPE_SURFACE_VARIANT(), Math.round(40.0f * bodyAlpha)));
         drawCenteredIcon(getIcon(), FontLoaders.I18, iconCenterX, iconCenterY,
                 withAlpha(onSurfaceColor(), Math.round(238.0f * bodyAlpha)));
 
@@ -180,7 +180,7 @@ public class Notification {
                 x1 + 51.0f, y1 + 11.0f, withAlpha(onSurfaceColor(), Math.round(246.0f * bodyAlpha)));
         if (message.length() > 0) {
             FontLoaders.C12.drawString(trim(message, FontLoaders.C12, width - 68.0f),
-                    x1 + 51.0f, y1 + 29.0f, withAlpha(YOZAKURA_ON_VARIANT(), Math.round(220.0f * bodyAlpha)));
+                    x1 + 51.0f, y1 + 29.0f, withAlpha(VAPE_ON_VARIANT(), Math.round(220.0f * bodyAlpha)));
         }
         RenderServices.shapes().progressBar(x1 + 51.0f, y2 - 5.0f, x2 - 12.0f, y2 - 3.2f, 0.9f, progress,
                 withAlpha(progressTrack(), Math.round(16.0f * bodyAlpha)),
@@ -298,15 +298,15 @@ public class Notification {
         switch (type) {
             case MODULE:
             case INFO:
-                return YOZAKURA_SECONDARY();
+                return VAPE_SECONDARY();
             case WARNING:
                 return 0xFFFFC857;
             case ERROR:
                 return 0xFFFF5C72;
             case SUCCESS:
-                return YOZAKURA_PRIMARY();
+                return VAPE_PRIMARY();
             default:
-                return YOZAKURA_SECONDARY();
+                return VAPE_SECONDARY();
         }
     }
 

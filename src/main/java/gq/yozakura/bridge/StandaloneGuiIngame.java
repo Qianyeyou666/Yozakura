@@ -1,8 +1,8 @@
-package gq.vapulite.bridge;
+package gq.yozakura.bridge;
 
-import gq.vapulite.event.bridge.Render2DEvent;
-import gq.vapulite.event.bus.EventManager;
-import gq.vapulite.engine.render.ShaderRenderer;
+import gq.yozakura.event.bridge.Render2DEvent;
+import gq.yozakura.event.bus.EventManager;
+import gq.yozakura.engine.render.ShaderRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiIngame;
 import net.minecraft.client.gui.ScaledResolution;
@@ -81,7 +81,7 @@ public class StandaloneGuiIngame extends GuiIngame {
                 ShaderRenderer.beginOverlayFrame();
                 EventManager.call(new Render2DEvent(partialTicks));
                 prepareOverlayState();
-                EventManager.call(new gq.vapulite.bridge.forge.RenderGameOverlayEvent.Text(partialTicks));
+                EventManager.call(new gq.yozakura.bridge.forge.RenderGameOverlayEvent.Text(partialTicks));
             } finally {
                 endOverlayState(state);
             }
@@ -168,7 +168,7 @@ public class StandaloneGuiIngame extends GuiIngame {
             useProgram(0);
             OpenGlHelper.setActiveTexture(OpenGlHelper.defaultTexUnit);
         }
-        gq.vapulite.engine.render.GLStateManager.syncToCurrent();
+        gq.yozakura.engine.render.GLStateManager.syncToCurrent();
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
     }
 
@@ -220,7 +220,7 @@ public class StandaloneGuiIngame extends GuiIngame {
 
     private static void log(String message, Throwable throwable) {
         try {
-            File log = new File(System.getProperty("java.io.tmpdir"), "VapuLiteStandalone.log");
+            File log = new File(System.getProperty("java.io.tmpdir"), "YozakuraStandalone.log");
             PrintWriter writer = new PrintWriter(new FileWriter(log, true));
             try {
                 writer.println(message);

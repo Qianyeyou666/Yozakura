@@ -1,18 +1,18 @@
-package gq.vapulite.module.render;
+package gq.yozakura.module.render;
 
-import gq.vapulite.event.bridge.AttackEvent;
-import gq.vapulite.event.bridge.Render3DEvent;
-import gq.vapulite.event.bridge.RenderFrameGuard;
-import gq.vapulite.event.bus.EventTarget;
-import gq.vapulite.module.ModuleType;
-import gq.vapulite.module.Module;
-import gq.vapulite.manager.ModuleManager;
-import gq.vapulite.module.combat.AntiBot;
-import gq.vapulite.module.combat.Backtrack;
-import gq.vapulite.module.combat.KillAura;
-import gq.vapulite.value.Mode;
-import gq.vapulite.value.Numbers;
-import gq.vapulite.value.Option;
+import gq.yozakura.event.bridge.AttackEvent;
+import gq.yozakura.event.bridge.Render3DEvent;
+import gq.yozakura.event.bridge.RenderFrameGuard;
+import gq.yozakura.event.bus.EventTarget;
+import gq.yozakura.module.ModuleType;
+import gq.yozakura.module.Module;
+import gq.yozakura.manager.ModuleManager;
+import gq.yozakura.module.combat.AntiBot;
+import gq.yozakura.module.combat.Backtrack;
+import gq.yozakura.module.combat.KillAura;
+import gq.yozakura.value.Mode;
+import gq.yozakura.value.Numbers;
+import gq.yozakura.value.Option;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.monster.EntityMob;
@@ -346,7 +346,7 @@ public class TargetESP extends Module {
             if (!usingShader) {
                 useProgram(previousProgram);
             }
-            gq.vapulite.engine.render.GLStateManager.syncToCurrent();
+            gq.yozakura.engine.render.GLStateManager.syncToCurrent();
             net.minecraft.client.renderer.GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
         }
     }
@@ -1282,7 +1282,7 @@ public class TargetESP extends Module {
                 return;
             }
             loggedFailure = true;
-            System.err.println("[VapuLite] TargetESP shader disabled, falling back to GL11: " + throwable.getMessage());
+            System.err.println("[Yozakura] TargetESP shader disabled, falling back to GL11: " + throwable.getMessage());
         }
 
         private static final String VERTEX_SHADER =

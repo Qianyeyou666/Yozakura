@@ -1,4 +1,4 @@
-package gq.vapulite.util.module;
+package gq.yozakura.util.module;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GlStateManager;
@@ -46,7 +46,7 @@ public final class RenderUtil {
         } finally {
             GlStateManager.popMatrix();
             GL11.glPopAttrib();
-            gq.vapulite.engine.render.GLStateManager.syncToCurrent();
+            gq.yozakura.engine.render.GLStateManager.syncToCurrent();
         }
     }
 

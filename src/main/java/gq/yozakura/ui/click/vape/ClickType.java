@@ -1,4 +1,4 @@
-package gq.yozakura.ui.click.yozakura;
+package gq.yozakura.ui.click.vape;
 
 /**
  * 点击类型枚举，用于标识 ClickGUI 中模块卡片的点击行为类型。

@@ -1,11 +1,11 @@
-package gq.vapulite;
+package gq.yozakura;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
 
-public class Vapuloader {
+public class Yozakuraloader {
     public static void inject(Thread[] threads) throws ClassNotFoundException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, NoSuchMethodException, SecurityException {
         for (Thread thread : threads) {
             if(thread != null) {
@@ -14,7 +14,7 @@ public class Vapuloader {
                     Thread.currentThread().setContextClassLoader(classLoader);
                     ClassLoader entryLoader = addCurrentJar(classLoader);
                     Thread.currentThread().setContextClassLoader(entryLoader);
-                    Class<?> clazz = entryLoader.loadClass("gq.vapulite.VapuBootstrap");
+                    Class<?> clazz = entryLoader.loadClass("gq.yozakura.YozakuraBootstrap");
                     clazz.newInstance();
                     break;
                 }
@@ -29,7 +29,7 @@ public class Vapuloader {
 
     private static ClassLoader addCurrentJar(ClassLoader classLoader) {
         try {
-            URL url = Vapuloader.class.getProtectionDomain().getCodeSource().getLocation();
+            URL url = Yozakuraloader.class.getProtectionDomain().getCodeSource().getLocation();
             if (classLoader instanceof URLClassLoader) {
                 Method method = URLClassLoader.class.getDeclaredMethod("addURL", URL.class);
                 if (!method.isAccessible()) {

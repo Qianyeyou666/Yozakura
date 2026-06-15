@@ -34,7 +34,7 @@ public class ChatBypassCommand implements ICommand {
 
 	public int width = 240;
 	public int height = 16;
-	public Client vapuClient =null;
+	public Client yozakuraClient =null;
 
 	public byte[][] data = new byte[height][width];
 	public int width_index = 0;
@@ -45,8 +45,8 @@ public class ChatBypassCommand implements ICommand {
 		new byte[] { 7, 8 },
 	};
 
-	public ChatBypassCommand(Client vapuClient) {
-		this.vapuClient = vapuClient;
+	public ChatBypassCommand(Client yozakuraClient) {
+		this.yozakuraClient = yozakuraClient;
 	}
 
 	public void reset() {
@@ -104,7 +104,7 @@ public class ChatBypassCommand implements ICommand {
 
 	public void send() {
 		for (String s : this.toStringList()) {
-			this.vapuClient.faList.add(s);
+			this.yozakuraClient.faList.add(s);
 			//mc.thePlayer.sendChatMessage(s);
 		}
 	}

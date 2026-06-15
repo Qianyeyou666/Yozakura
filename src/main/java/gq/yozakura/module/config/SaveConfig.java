@@ -20,7 +20,7 @@ public class SaveConfig extends Module {
             Helper.sendMessage("Configs Saved.");
         } catch (Throwable throwable) {
             throwable.printStackTrace();
-            Helper.sendMessage("Config save failed. Check VapuLiteConfig.log.");
+            Helper.sendMessage("Config save failed. Check YozakuraConfig.log.");
             state=false;
         }
         state=false;

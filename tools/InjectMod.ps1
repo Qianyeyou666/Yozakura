@@ -1,5 +1,5 @@
 param(
-    [string]$Dll = "build\libs\VapuLiteLoader-x64.dll",
+    [string]$Dll = "build\libs\YozakuraLoader-x64.dll",
     [int]$ProcessId = 0,
     [ValidateSet("Auto", "Forge", "Vanilla", "Lunar")]
     [string]$Target = "Auto",
@@ -184,7 +184,7 @@ if ($DryRun) {
 }
 
 if (Test-ModuleLoaded $targetProcess.Id $dllPath) {
-    $staged = Join-Path $env:TEMP ("VapuLiteLoader-{0}-{1}.dll" -f $targetProcess.Id, [Environment]::TickCount)
+    $staged = Join-Path $env:TEMP ("YozakuraLoader-{0}-{1}.dll" -f $targetProcess.Id, [Environment]::TickCount)
     Copy-Item -LiteralPath $dllPath -Destination $staged -Force
     $dllPath = (Resolve-Path -LiteralPath $staged).Path
     Write-Host "DLL already loaded; using staged copy: $dllPath"
@@ -249,9 +249,9 @@ Start-Sleep -Seconds 2
 
 $logCandidates = @(
     "JarToDllLoader.log",
-    "VapuLiteLoader.log",
-    "VapuLiteLoader-Loader.log",
-    "VapuLite-Loader.log"
+    "YozakuraLoader.log",
+    "YozakuraLoader-Loader.log",
+    "Yozakura-Loader.log"
 ) | ForEach-Object { Join-Path $env:TEMP $_ }
 
 foreach ($log in $logCandidates) {

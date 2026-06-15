@@ -1,6 +1,6 @@
-package gq.vapulite.module.movement;
+package gq.yozakura.module.movement;
 
-import gq.vapulite.module.runtime.Module;
+import gq.yozakura.module.runtime.Module;
 
 public class LongJump extends Module {
     public LongJump() {

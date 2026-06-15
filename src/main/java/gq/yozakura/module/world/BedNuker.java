@@ -1,6 +1,6 @@
-package gq.vapulite.module.world;
+package gq.yozakura.module.world;
 
-import gq.vapulite.module.runtime.Module;
+import gq.yozakura.module.runtime.Module;
 
 public class BedNuker extends Module {
     public BedNuker() {

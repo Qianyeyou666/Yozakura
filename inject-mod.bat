@@ -5,7 +5,7 @@ set "DLL=%~1"
 set "PID=%~2"
 set "TARGET=%~3"
 
-if "%DLL%"=="" set "DLL=%~dp0build\libs\VapuLiteLoader-x64.dll"
+if "%DLL%"=="" set "DLL=%~dp0build\libs\YozakuraLoader-x64.dll"
 if "%TARGET%"=="" set "TARGET=Auto"
 
 if "%PID%"=="" (

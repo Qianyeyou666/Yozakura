@@ -1,4 +1,4 @@
-package gq.vapulite.util.module;
+package gq.yozakura.util.module;
 
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockAir;
@@ -18,9 +18,9 @@ import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.BlockPos;
 import net.minecraft.util.DamageSource;
 import net.minecraft.util.MathHelper;
-import gq.vapulite.bridge.ForgeEnvironment;
-import gq.vapulite.runtime.VapuRuntime;
-import gq.vapulite.module.movement.KeepSprint;
+import gq.yozakura.bridge.ForgeEnvironment;
+import gq.yozakura.runtime.YozakuraRuntime;
+import gq.yozakura.module.movement.KeepSprint;
 
 public class PlayerUtil {
     private static final Minecraft mc = Minecraft.getMinecraft();
@@ -178,7 +178,7 @@ public class PlayerUtil {
                                     0.1,
                                     MathHelper.cos(mc.thePlayer.rotationYaw * (float) Math.PI / 180.0F) * (float) knockbackLevel * 0.5F
                             );
-                            KeepSprint keepSprint = (KeepSprint) VapuRuntime.moduleManager.modules.get(KeepSprint.class);
+                            KeepSprint keepSprint = (KeepSprint) YozakuraRuntime.moduleManager.modules.get(KeepSprint.class);
                             if (keepSprint.isEnabled()
                                     && (!keepSprint.groundOnly.getValue() || mc.thePlayer.onGround)
                                     && (!keepSprint.reachOnly.getValue() || !(RotationUtil.distanceToEntity(target) <= 3.0))) {

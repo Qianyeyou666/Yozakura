@@ -1,12 +1,12 @@
-package gq.vapulite.manager;
+package gq.yozakura.manager;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.MathHelper;
-import gq.vapulite.event.bus.EventTarget;
-import gq.vapulite.event.bus.types.EventType;
-import gq.vapulite.event.bus.types.Priority;
-import gq.vapulite.event.bridge.Render3DEvent;
-import gq.vapulite.event.bridge.TickEvent;
+import gq.yozakura.event.bus.EventTarget;
+import gq.yozakura.event.bus.types.EventType;
+import gq.yozakura.event.bus.types.Priority;
+import gq.yozakura.event.bridge.Render3DEvent;
+import gq.yozakura.event.bridge.TickEvent;
 
 public class RotationManager {
     private static final Minecraft mc = Minecraft.getMinecraft();

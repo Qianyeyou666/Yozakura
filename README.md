@@ -1,4 +1,4 @@
-# VapuLite
+# Yozakura
 
 Free Forge-based Minecraft 1.8.9 client mod.
 
@@ -22,7 +22,7 @@ Windows:
 gradlew.bat build
 ```
 
-The main Java artifact is written to `build/libs/VapuLite.jar`.
+The main Java artifact is written to `build/libs/Yozakura.jar`.
 
 ## IntelliJ IDEA
 
@@ -49,14 +49,14 @@ build-native.bat
 
 Outputs:
 
-- `build\libs\VapuLiteLoader-x64.dll`
-- `build\libs\VapuLiteLoader-x86.dll`
-- `build\libs\VapuLiteLoader.dll`
+- `build\libs\YozakuraLoader-x64.dll`
+- `build\libs\YozakuraLoader-x86.dll`
+- `build\libs\YozakuraLoader.dll`
 
 To wrap an arbitrary jar into the native loader:
 
 ```bat
-jar-to-dll.bat build\libs\VapuLite.jar gq.vapulite.Vapu.Client VapuLiteLoader x64
+jar-to-dll.bat build\libs\Yozakura.jar gq.yozakura.Yozakura.Client YozakuraLoader x64
 ```
 
 ## License

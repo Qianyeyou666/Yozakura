@@ -1,4 +1,4 @@
-package gq.vapulite.module.combat;
+package gq.yozakura.module.combat;
 
 import com.google.common.base.CaseFormat;
 import io.netty.buffer.Unpooled;
@@ -29,27 +29,27 @@ import net.minecraft.network.play.client.C02PacketUseEntity.Action;
 import net.minecraft.util.*;
 import net.minecraft.util.MovingObjectPosition.MovingObjectType;
 import net.minecraft.world.WorldSettings.GameType;
-import gq.vapulite.module.ModuleType;
+import gq.yozakura.module.ModuleType;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.util.vector.Vector2f;
-import gq.vapulite.runtime.VapuRuntime;
-import gq.vapulite.manager.BlinkModules;
-import gq.vapulite.event.bus.EventManager;
-import gq.vapulite.event.bus.EventTarget;
-import gq.vapulite.event.bus.types.EventType;
-import gq.vapulite.event.bus.types.Priority;
-import gq.vapulite.event.bridge.*;
-import gq.vapulite.manager.RotationState;
-import gq.vapulite.bridge.MinecraftAccessor;
-import gq.vapulite.module.runtime.Module;
-import gq.vapulite.module.world.BedNuker;
-import gq.vapulite.module.player.AutoBlockIn;
-import gq.vapulite.module.player.AutoHeal;
-import gq.vapulite.module.world.Scaffold;
-import gq.vapulite.module.render.runtime.HUD;
-import gq.vapulite.value.properties.*;
-import gq.vapulite.util.module.*;
+import gq.yozakura.runtime.YozakuraRuntime;
+import gq.yozakura.manager.BlinkModules;
+import gq.yozakura.event.bus.EventManager;
+import gq.yozakura.event.bus.EventTarget;
+import gq.yozakura.event.bus.types.EventType;
+import gq.yozakura.event.bus.types.Priority;
+import gq.yozakura.event.bridge.*;
+import gq.yozakura.manager.RotationState;
+import gq.yozakura.bridge.MinecraftAccessor;
+import gq.yozakura.module.runtime.Module;
+import gq.yozakura.module.world.BedNuker;
+import gq.yozakura.module.player.AutoBlockIn;
+import gq.yozakura.module.player.AutoHeal;
+import gq.yozakura.module.world.Scaffold;
+import gq.yozakura.module.render.runtime.HUD;
+import gq.yozakura.value.properties.*;
+import gq.yozakura.util.module.*;
 
 import java.awt.Color;
 import java.util.ArrayList;
@@ -163,7 +163,7 @@ public class KillAura extends Module {
     }
 
     private boolean performAttack(float yaw, float pitch) {
-        if (!VapuRuntime.playerStateManager.digging && !VapuRuntime.playerStateManager.placing) {
+        if (!YozakuraRuntime.playerStateManager.digging && !YozakuraRuntime.playerStateManager.placing) {
             if (this.isPlayerBlocking() && this.autoBlock.getValue() != 1) {
                 return false;
             } else if (this.attackDelayMS > 0L) {
@@ -237,15 +237,15 @@ public class KillAura extends Module {
             } else if ((ItemUtil.isEating() || ItemUtil.isUsingBow()) && PlayerUtil.isUsingItem()) {
                 return false;
             } else {
-                AutoHeal autoHeal = (AutoHeal) VapuRuntime.moduleManager.modules.get(AutoHeal.class);
+                AutoHeal autoHeal = (AutoHeal) YozakuraRuntime.moduleManager.modules.get(AutoHeal.class);
                 if (autoHeal.isEnabled() && autoHeal.isSwitching()) {
                     return false;
                 } else {
-                    BedNuker bedNuker = (BedNuker) VapuRuntime.moduleManager.modules.get(BedNuker.class);
-                    AutoBlockIn autoBlockIn = (AutoBlockIn) VapuRuntime.moduleManager.modules.get(AutoBlockIn.class);
+                    BedNuker bedNuker = (BedNuker) YozakuraRuntime.moduleManager.modules.get(BedNuker.class);
+                    AutoBlockIn autoBlockIn = (AutoBlockIn) YozakuraRuntime.moduleManager.modules.get(AutoBlockIn.class);
                     if (bedNuker.isEnabled() && bedNuker.isReady()) {
                         return false;
-                    } else if (VapuRuntime.moduleManager.modules.get(Scaffold.class).isEnabled()) {
+                    } else if (YozakuraRuntime.moduleManager.modules.get(Scaffold.class).isEnabled()) {
                         return false;
                     } else if (autoBlockIn.isEnabled()) {
                         return false;
@@ -362,7 +362,7 @@ public class KillAura extends Module {
     }
 
     public boolean isAttackAllowed() {
-        Scaffold scaffold = (Scaffold) VapuRuntime.moduleManager.modules.get(Scaffold.class);
+        Scaffold scaffold = (Scaffold) YozakuraRuntime.moduleManager.modules.get(Scaffold.class);
         if (scaffold.isEnabled()) {
             return false;
         } else if (!this.weaponsOnly.getValue()
@@ -399,7 +399,7 @@ public class KillAura extends Module {
             boolean attack = this.attackTarget != null && this.canAttack();
             boolean block = attack && this.canAutoBlock();
             if (!block) {
-                VapuRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+                YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
                 this.isBlocking = false;
                 this.fakeBlockState = false;
                 this.blockTick = 0;
@@ -412,35 +412,35 @@ public class KillAura extends Module {
                         case 0:
                             if (PlayerUtil.isUsingItem()) {
                                 this.isBlocking = true;
-                                if (!this.isPlayerBlocking() && !VapuRuntime.playerStateManager.digging && !VapuRuntime.playerStateManager.placing) {
+                                if (!this.isPlayerBlocking() && !YozakuraRuntime.playerStateManager.digging && !YozakuraRuntime.playerStateManager.placing) {
                                     swap = true;
                                 }
                             } else {
                                 this.isBlocking = false;
-                                if (this.isPlayerBlocking() && !VapuRuntime.playerStateManager.digging && !VapuRuntime.playerStateManager.placing) {
+                                if (this.isPlayerBlocking() && !YozakuraRuntime.playerStateManager.digging && !YozakuraRuntime.playerStateManager.placing) {
                                     this.stopBlock();
                                 }
                             }
-                            VapuRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+                            YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
                             this.fakeBlockState = false;
                             break;
                         case 1:
                             if (this.hasValidTarget()) {
-                                if (!this.isPlayerBlocking() && !VapuRuntime.playerStateManager.digging && !VapuRuntime.playerStateManager.placing) {
+                                if (!this.isPlayerBlocking() && !YozakuraRuntime.playerStateManager.digging && !YozakuraRuntime.playerStateManager.placing) {
                                     swap = true;
                                 }
-                                VapuRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+                                YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
                                 this.isBlocking = true;
                                 this.fakeBlockState = false;
                             } else {
-                                VapuRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+                                YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
                                 this.isBlocking = false;
                                 this.fakeBlockState = false;
                             }
                             break;
                         case 2:
                             if (this.hasValidTarget()) {
-                                if (!VapuRuntime.playerStateManager.digging && !VapuRuntime.playerStateManager.placing) {
+                                if (!YozakuraRuntime.playerStateManager.digging && !YozakuraRuntime.playerStateManager.placing) {
                                     switch (this.blockTick) {
                                         case 0:
                                             if (!this.isPlayerBlocking()) {
@@ -478,7 +478,7 @@ public class KillAura extends Module {
                                 this.isBlocking = true;
                                 this.fakeBlockState = true;
                             } else {
-                                VapuRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+                                YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
                                 int randomSlot = new Random().nextInt(9);
                                 while (randomSlot == mc.thePlayer.inventory.currentItem) {
                                     randomSlot = new Random().nextInt(9);
@@ -491,7 +491,7 @@ public class KillAura extends Module {
                             break;
                         case 3:
                             if (this.hasValidTarget()) {
-                                if (!VapuRuntime.playerStateManager.digging && !VapuRuntime.playerStateManager.placing) {
+                                if (!YozakuraRuntime.playerStateManager.digging && !YozakuraRuntime.playerStateManager.placing) {
                                     switch (this.blockTick) {
                                         case 0:
                                             if (!this.isPlayerBlocking()) {
@@ -512,29 +512,29 @@ public class KillAura extends Module {
                                             this.blockTick = 0;
                                     }
                                 }
-                                VapuRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+                                YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
                                 this.isBlocking = true;
                                 this.fakeBlockState = false;
                             } else {
-                                VapuRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+                                YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
                                 this.isBlocking = false;
                                 this.fakeBlockState = false;
                             }
                             break;
                         case 4:
-                            VapuRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+                            YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
                             this.isBlocking = false;
                             this.fakeBlockState = this.hasValidTarget();
                             if (PlayerUtil.isUsingItem()
                                     && !this.isPlayerBlocking()
-                                    && !VapuRuntime.playerStateManager.digging
-                                    && !VapuRuntime.playerStateManager.placing) {
+                                    && !YozakuraRuntime.playerStateManager.digging
+                                    && !YozakuraRuntime.playerStateManager.placing) {
                                 swap = true;
                             }
                             break;
                         case 5:
                             if (this.hasValidTarget()) {
-                                if (!VapuRuntime.playerStateManager.digging && !VapuRuntime.playerStateManager.placing) {
+                                if (!YozakuraRuntime.playerStateManager.digging && !YozakuraRuntime.playerStateManager.placing) {
                                     switch (this.blockTick) {
                                         case 0:
                                             blocked = true;
@@ -569,7 +569,7 @@ public class KillAura extends Module {
                                 this.isBlocking = true;
                                 this.fakeBlockState = true;
                             } else {
-                                VapuRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+                                YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
                                 int randomSlot = new Random().nextInt(9);
                                 while (randomSlot == mc.thePlayer.inventory.currentItem) {
                                     randomSlot = new Random().nextInt(9);
@@ -582,7 +582,7 @@ public class KillAura extends Module {
                             break;
                         case 6:
                             if (this.hasValidTarget()) {
-                                if (!VapuRuntime.playerStateManager.digging && !VapuRuntime.playerStateManager.placing) {
+                                if (!YozakuraRuntime.playerStateManager.digging && !YozakuraRuntime.playerStateManager.placing) {
                                     if (blockTick + 1 == startBlinkTick.getValue()){
                                         blocked = true;
                                     }
@@ -596,7 +596,7 @@ public class KillAura extends Module {
                                         }
                                     }
                                     if (blockTick + 1 == stopBlinkTick.getValue()){
-                                        VapuRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+                                        YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
                                     }
                                     if (blockTick + 1 == swapTick.getValue()){
                                         int randomSlot = new Random().nextInt(9);
@@ -629,7 +629,7 @@ public class KillAura extends Module {
                                     PacketUtil.sendPacket(new C09PacketHeldItemChange(mc.thePlayer.inventory.currentItem));
                                     swapped = false;
                                 }
-                                VapuRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+                                YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
                                 this.isBlocking = false;
                                 this.fakeBlockState = false;
                             }
@@ -648,7 +648,7 @@ public class KillAura extends Module {
                         );
                         event.setRotation(rotations[0], rotations[1], 1);
                         if (this.rotations.getValue() == 3) {
-                            VapuRuntime.rotationManager.setRotation(rotations[0], rotations[1], 1, true);
+                            YozakuraRuntime.rotationManager.setRotation(rotations[0], rotations[1], 1, true);
                         }
                         if (this.moveFix.getValue() != 0 || this.rotations.getValue() == 3) {
                             event.setPervRotation(rotations[0], 1);
@@ -666,8 +666,8 @@ public class KillAura extends Module {
                     }
                 }
                 if (blocked) {
-                    VapuRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
-                    VapuRuntime.blinkManager.setBlinkState(true, BlinkModules.AUTO_BLOCK);
+                    YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+                    YozakuraRuntime.blinkManager.setBlinkState(true, BlinkModules.AUTO_BLOCK);
                 }
             }
         }
@@ -814,7 +814,7 @@ public class KillAura extends Module {
                         }
                         break;
                     case 2:
-                        color = ((HUD) VapuRuntime.moduleManager.modules.get(HUD.class)).getColor(System.currentTimeMillis());
+                        color = ((HUD) YozakuraRuntime.moduleManager.modules.get(HUD.class)).getColor(System.currentTimeMillis());
                 }
                 RenderUtil.enableRenderState();
                 try {
@@ -869,12 +869,12 @@ public class KillAura extends Module {
             WorldRenderer worldrenderer = tessellator.getWorldRenderer();
             worldrenderer.begin(GL11.GL_TRIANGLE_FAN, DefaultVertexFormats.POSITION_COLOR);
 
-            Color centerCol = ((HUD) VapuRuntime.moduleManager.modules.get(HUD.class)).getColor(0);
+            Color centerCol = ((HUD) YozakuraRuntime.moduleManager.modules.get(HUD.class)).getColor(0);
             worldrenderer.pos(0, 0, 0).color(centerCol.getRed()/255f, centerCol.getGreen()/255f, centerCol.getBlue()/255f, 0.4f).endVertex();
 
             for(int i = 0; i <= 360; i+=10) {
                 double angle = Math.toRadians(i);
-                Color edgeCol = ((HUD) VapuRuntime.moduleManager.modules.get(HUD.class)).getColor(i * 10);
+                Color edgeCol = ((HUD) YozakuraRuntime.moduleManager.modules.get(HUD.class)).getColor(i * 10);
                 worldrenderer.pos(Math.sin(angle) * radius, 0, Math.cos(angle) * radius)
                         .color(edgeCol.getRed()/255f, edgeCol.getGreen()/255f, edgeCol.getBlue()/255f, 0.0f).endVertex();
             }
@@ -884,7 +884,7 @@ public class KillAura extends Module {
             GL11.glBegin(GL11.GL_LINE_STRIP);
             for (int i = 0; i <= 360; i+=5) {
                 double angle = Math.toRadians(i);
-                Color lineCol = ((HUD) VapuRuntime.moduleManager.modules.get(HUD.class)).getColor(i * 20);
+                Color lineCol = ((HUD) YozakuraRuntime.moduleManager.modules.get(HUD.class)).getColor(i * 20);
                 GL11.glColor4f(lineCol.getRed()/255f, lineCol.getGreen()/255f, lineCol.getBlue()/255f, 1.0f);
                 GL11.glVertex3d(Math.sin(angle) * radius, 0, Math.cos(angle) * radius);
             }
@@ -894,7 +894,7 @@ public class KillAura extends Module {
             GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
             GlStateManager.popMatrix();
             GL11.glPopAttrib();
-            gq.vapulite.engine.render.GLStateManager.syncToCurrent();
+            gq.yozakura.engine.render.GLStateManager.syncToCurrent();
         }
     }
 
@@ -949,7 +949,7 @@ public class KillAura extends Module {
 
     @Override
     public void onDisabled() {
-        VapuRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+        YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
         this.blockingState = false;
         this.isBlocking = false;
         this.fakeBlockState = false;
