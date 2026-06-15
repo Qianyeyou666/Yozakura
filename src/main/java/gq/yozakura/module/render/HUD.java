@@ -183,7 +183,7 @@ public class HUD extends Module {
         Chinese = "HUD界面";
         instance = this;
         activeStyle = getSelectedStyle();
-        this.addValues(hudStyle, arrayListTheme, theme, watermark, arrayList, backgrounds, keybinds, parameters, notifications,
+        this.addValues(hudStyle,notificationTheme, arrayListTheme, theme, watermark, arrayList, backgrounds, keybinds, parameters, notifications,
                 potionEffects, inventoryDisplay, glow, alpha, radius, watermarkX, watermarkY, watermarkScale,
                 moduleListX, moduleListY, moduleListScale, potionX, potionY, potionScale, inventoryX, inventoryY,
                 inventoryScale);
