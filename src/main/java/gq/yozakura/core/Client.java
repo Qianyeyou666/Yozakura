@@ -14,6 +14,7 @@ import gq.yozakura.command.ChatBypassCommand;
 import gq.yozakura.command.WaterMark;
 import gq.yozakura.engine.font.FontLoaders;
 import gq.yozakura.bridge.YozakuraEventBridge;
+import gq.yozakura.ui.overlay.InjectionSuccessAnimation;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.play.client.C03PacketPlayer;
 import net.minecraftforge.client.ClientCommandHandler;
@@ -75,7 +76,10 @@ public class Client {
         }
     }
     public Client() throws IOException {
-        if (state) return;
+        if (state) {
+            showInjectionSuccessAnimation();
+            return;
+        }
         state = true;
         MinecraftForge.EVENT_BUS.register(this);
         FMLCommonHandler.instance().bus().register(this);
@@ -84,6 +88,7 @@ public class Client {
         CommandInit();
         loadConfigOnStartup();
         registerShutdownHook();
+        showInjectionSuccessAnimation();
 //        FontLoaders.C20.drawStringWithShadow(Client.name,114514,114514, -1);
 //        FontLoaders.F14.drawStringWithShadow(Client.name,114514,114514, -1);
 //        FontLoaders.Logo.drawStringWithShadow(Client.name,114514,114514, -1);
@@ -94,6 +99,10 @@ public class Client {
         } else {
             Display.setTitle(Display.getTitle()+" | Client Load Succeeded");
         }
+    }
+
+    public static void showInjectionSuccessAnimation() {
+        InjectionSuccessAnimation.show();
     }
 
 

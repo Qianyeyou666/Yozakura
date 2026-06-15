@@ -271,33 +271,34 @@ public class TargetHUD extends Module {
 
     private void drawHealth(EntityLivingBase target, float x, float y, float width, float uiScale, float alpha) {
         float barX = x + 54.0f * uiScale;
-        float barY = y + 27.0f * uiScale;
+        float barY = y + 28.2f * uiScale;
         float barW = 110.0f * uiScale;
-        float barH = 5.6f * uiScale;
-        float barRadius = barH * 0.5f;
+        float centerY = barY + 0.5f * uiScale;
+        float lineWidth = Math.max(0.75f, 0.8f * uiScale);
         float health = target == null ? 0.0f : clamp01(healthAnimation);
         float delayed = clamp01(Math.max(health, damageAnimation));
 
-        RenderServices.shapes().shadow(barX, barY, barX + barW, barY + barH, barRadius,
-                withAlpha(SAKURA, Math.round(28.0f * alpha)), 3, 1.0f * uiScale);
-        drawCapsule(barX, barY, barW, barH, withAlpha(0xFF17171D, Math.round(186.0f * alpha)));
+        RenderServices.shapes().line(barX, centerY, barX + barW, centerY, lineWidth,
+                withAlpha(0xFFFFD3E3, Math.round(34.0f * alpha)));
+        RenderServices.shapes().line(barX, centerY + Math.max(0.45f, 0.35f * uiScale),
+                barX + barW, centerY + Math.max(0.45f, 0.35f * uiScale), Math.max(0.45f, 0.48f * uiScale),
+                withAlpha(0xFF09090D, Math.round(72.0f * alpha)));
         if (delayed > health + 0.003f) {
-            drawCapsule(barX, barY, barW * delayed, barH,
-                    withAlpha(0xFFFF6F9A, Math.round(92.0f * alpha)));
+            RenderServices.shapes().line(barX, centerY, barX + barW * delayed, centerY, lineWidth,
+                    withAlpha(0xFFFF6F9A, Math.round(72.0f * alpha)));
         }
         float fillW = Math.max(0.0f, barW * health);
-        float flowerX = barX + Math.max(0.0f, Math.min(barW, barW * clamp01(flowerAnimation)));
-        drawSakuraFlower(flowerX, barY + barH * 0.5f, 3.8f * uiScale, alpha);
         if (fillW > 0.75f) {
-            drawCapsule(barX, barY, fillW, barH, withAlpha(SAKURA, Math.round(252.0f * alpha)));
-            float shineInset = Math.min(barH * 0.28f, fillW * 0.18f);
-            if (fillW > shineInset * 2.0f + 1.0f) {
-                RenderServices.shapes().rounded(barX + shineInset, barY + shineInset,
-                        barX + fillW - shineInset, barY + barH * 0.52f,
-                        Math.min(barRadius * 0.45f, (barH * 0.52f - shineInset) * 0.5f),
-                        withAlpha(0xFFFFD5E5, Math.round(76.0f * alpha)));
-            }
-            drawMovingBarSheen(barX, barY, fillW, barH, alpha);
+            RenderServices.shapes().line(barX, centerY, barX + fillW, centerY, Math.max(lineWidth, 1.05f * uiScale),
+                    withAlpha(SAKURA, Math.round(218.0f * alpha)));
+            RenderServices.shapes().line(barX, centerY - Math.max(0.45f, 0.32f * uiScale),
+                    barX + fillW, centerY - Math.max(0.45f, 0.32f * uiScale), Math.max(0.35f, 0.35f * uiScale),
+                    withAlpha(0xFFFFF3F8, Math.round(56.0f * alpha)));
+        }
+        if (health > 0.035f) {
+            float markerSize = 3.2f * uiScale;
+            float markerOffset = Math.max(markerSize, Math.min(barW - markerSize, barW * clamp01(flowerAnimation)));
+            drawSakuraFlower(barX + markerOffset, centerY, markerSize, alpha);
         }
     }
 
@@ -305,39 +306,13 @@ public class TargetHUD extends Module {
         if (width <= 0.0f || height <= 0.0f || ((color >>> 24) & 255) <= 0) {
             return;
         }
-        drawCapsuleRaw(x, y, width, height, color);
-        resetTextRenderState();
-    }
-
-    private void drawCapsuleRaw(float x, float y, float width, float height, int color) {
-        if (width <= 0.0f || height <= 0.0f || ((color >>> 24) & 255) <= 0) {
-            return;
-        }
         float radius = height * 0.5f;
         if (width <= height) {
             RenderServices.shapes().circle(x + width * 0.5f, y + radius, 0, 360, width * 0.5f, color);
-            return;
+        } else {
+            RenderServices.shapes().rounded(x, y, x + width, y + height, radius, color);
         }
-        GlStateManager.enableBlend();
-        GlStateManager.disableTexture2D();
-        GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0);
-        glColor(color, 1.0f);
-        float centerY = y + radius;
-        int segments = 12;
-        GL11.glBegin(GL11.GL_TRIANGLE_FAN);
-        GL11.glVertex2f(x + width * 0.5f, centerY);
-        for (int i = 0; i <= segments; i++) {
-            float angle = (float) Math.toRadians(90.0f + 180.0f * i / segments);
-            GL11.glVertex2f(x + radius + (float) Math.cos(angle) * radius,
-                    centerY + (float) Math.sin(angle) * radius);
-        }
-        for (int i = 0; i <= segments; i++) {
-            float angle = (float) Math.toRadians(270.0f + 180.0f * i / segments);
-            GL11.glVertex2f(x + width - radius + (float) Math.cos(angle) * radius,
-                    centerY + (float) Math.sin(angle) * radius);
-        }
-        GL11.glEnd();
-        GlStateManager.enableTexture2D();
+        resetTextRenderState();
     }
 
     private float textStartX(float x, float uiScale) {

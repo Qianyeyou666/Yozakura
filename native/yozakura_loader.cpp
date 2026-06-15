@@ -287,6 +287,21 @@ static bool addJarToClassLoader(JNIEnv* env, jobject loader, const std::wstring&
     return true;
 }
 
+static bool canLoadClass(JNIEnv* env, jobject loader, const char* className) {
+    if (!loader || !className) {
+        return false;
+    }
+    jclass classLoaderClass = env->FindClass("java/lang/ClassLoader");
+    jmethodID loadClass = env->GetMethodID(classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+    jstring name = env->NewStringUTF(className);
+    jobject loaded = env->CallObjectMethod(loader, loadClass, name);
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return false;
+    }
+    return loaded != nullptr;
+}
+
 static jobject createChildClassLoader(JNIEnv* env, jobject parent, const std::wstring& jarPath) {
     debug("creating child URLClassLoader");
     std::string pathUtf8 = jniString(env, jarPath);
@@ -444,9 +459,19 @@ static DWORD WINAPI loaderThread(LPVOID param) {
     if (!loader) {
         debug("client thread classloader not found");
     } else {
-        jobject entryLoader = createIsolatedClassLoader(env, loader, jarPath);
-        if (!entryLoader && !addJarToClassLoader(env, loader, jarPath)) {
-            entryLoader = createChildClassLoader(env, loader, jarPath);
+        jobject entryLoader = nullptr;
+        if (canLoadClass(env, loader, "net.minecraftforge.common.MinecraftForge")) {
+            debug("Forge environment detected, using Minecraft classloader");
+            if (addJarToClassLoader(env, loader, jarPath)) {
+                entryLoader = loader;
+            } else {
+                debug("failed to add Yozakura jar to Forge classloader");
+            }
+        } else {
+            entryLoader = createIsolatedClassLoader(env, loader, jarPath);
+            if (!entryLoader && !addJarToClassLoader(env, loader, jarPath)) {
+                entryLoader = createChildClassLoader(env, loader, jarPath);
+            }
         }
         if (entryLoader && instantiateClient(env, entryLoader)) {
             debug("client loaded");

@@ -229,7 +229,7 @@ public class HUD extends Module {
             return;
         }
 
-        String capsule = "Sakura · " + Minecraft.getDebugFPS() + "fps";
+        String capsule = "Yozakura · " + Minecraft.getDebugFPS() + "fps";
         int ping = getPing();
         if (ping >= 0) {
             capsule += " · " + ping + "ms";
@@ -264,7 +264,7 @@ public class HUD extends Module {
             drawWatermarkPetals(x, y, pillW, 19.0f, 1.0f);
             drawSakuraFlower(x + 10.5f, y + 10.2f, 3.0f, 1.0f);
             smallFont.drawString(trim(capsule, smallFont, pillW - 28.0f),
-                    x + 21.0f, y + 7.2f, withAlpha(SAKURA_TEXT, 236));
+                    x + 21.0f, y + 8.4f, withAlpha(SAKURA_TEXT, 236));
         } finally {
             endScaled();
         }

@@ -60,14 +60,6 @@ public class StandaloneEntityRenderer extends EntityRenderer {
         renderWorldHook(partialTicks, finishTimeNano);
     }
 
-    public void a(float partialTicks, long finishTimeNano) {
-        renderWorldHook(partialTicks, finishTimeNano);
-    }
-
-    public void b(float partialTicks, long finishTimeNano) {
-        renderWorldHook(partialTicks, finishTimeNano);
-    }
-
     private void renderWorldHook(float partialTicks, long finishTimeNano) {
         super.renderWorld(partialTicks, finishTimeNano);
         dispatchRender3D(partialTicks);

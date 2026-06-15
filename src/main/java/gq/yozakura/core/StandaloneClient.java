@@ -4,6 +4,7 @@ import gq.yozakura.bridge.StandaloneEventBridge;
 import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.module.Module;
 import gq.yozakura.runtime.YozakuraRuntime;
+import gq.yozakura.ui.overlay.InjectionSuccessAnimation;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.input.Keyboard;
 
@@ -29,6 +30,7 @@ public final class StandaloneClient {
     public StandaloneClient() {
         stopExistingStandalonePumps();
         if (state) {
+            showInjectionSuccessAnimation();
             return;
         }
         state = true;
@@ -38,6 +40,7 @@ public final class StandaloneClient {
         ensureCoreModules();
         ConfigBridge.loadModulesQuietly();
         startMainThreadPump();
+        showInjectionSuccessAnimation();
         log("Standalone attach initialized: minecraft=" + mc.getClass().getName());
     }
 
@@ -47,6 +50,10 @@ public final class StandaloneClient {
 
     public static void unInject() {
         state = false;
+    }
+
+    public static void showInjectionSuccessAnimation() {
+        InjectionSuccessAnimation.show();
     }
 
     private void ensureCoreModules() {

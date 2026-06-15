@@ -255,9 +255,6 @@ public final class VanillaRemapClassLoader extends URLClassLoader {
 
         private void remapMemberDefinitions(byte[] bytes, ConstantPool pool, Map<Integer, String> replacements)
                 throws IOException {
-            if (!keepMinecraftClassNames) {
-                return;
-            }
             int offset = pool.end;
             offset += 2;
             String owner = pool.className(readUnsignedShort(bytes, offset));

@@ -22,6 +22,7 @@ public final class YozakuraBootstrap {
                 log("Detected Forge environment");
                 if (isForgeClientRunning()) {
                     log("Forge client is already running");
+                    notifyRunningClient("gq.yozakura.core.Client");
                     return;
                 }
                 startClass("gq.yozakura.core.Client");
@@ -29,6 +30,7 @@ public final class YozakuraBootstrap {
                 log("Detected Lunar environment");
                 if (lunarStarted) {
                     log("Lunar remapped client is already running");
+                    notifyRunningClient("gq.yozakura.core.StandaloneClient");
                     return;
                 }
                 startMappedClass("gq.yozakura.core.StandaloneClient", true, "lunar");
@@ -36,6 +38,7 @@ public final class YozakuraBootstrap {
                 log("Detected vanilla obfuscated environment");
                 if (vanillaStarted) {
                     log("Vanilla remapped client is already running");
+                    notifyRunningClient("gq.yozakura.core.StandaloneClient");
                     return;
                 }
                 startMappedClass("gq.yozakura.core.StandaloneClient", false, "vanilla");
@@ -43,6 +46,7 @@ public final class YozakuraBootstrap {
                 log("Detected standalone named environment");
                 if (isStandaloneRunning()) {
                     log("Standalone client is already running");
+                    notifyRunningClient("gq.yozakura.core.StandaloneClient");
                     return;
                 }
                 startClass("gq.yozakura.core.StandaloneClient");
@@ -76,6 +80,16 @@ public final class YozakuraBootstrap {
             vanillaStarted = true;
         }
         log("Started " + label + " remapped " + className);
+    }
+
+    private static void notifyRunningClient(String className) {
+        try {
+            Class<?> clientClass = Class.forName(className, false, currentLoader());
+            clientClass.getMethod("showInjectionSuccessAnimation").invoke(null);
+            log("Played injection success animation for " + className);
+        } catch (Throwable throwable) {
+            log("Unable to replay injection success animation for " + className, throwable);
+        }
     }
 
     private static boolean isForgeClientRunning() {

@@ -57,10 +57,6 @@ public class StandaloneGuiIngame extends GuiIngame {
         renderGameOverlayHook(partialTicks);
     }
 
-    public void a(float partialTicks) {
-        renderGameOverlayHook(partialTicks);
-    }
-
     private void renderGameOverlayHook(float partialTicks) {
         super.renderGameOverlay(partialTicks);
         dispatchRender2D(partialTicks);

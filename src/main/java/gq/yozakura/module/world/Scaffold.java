@@ -1053,16 +1053,12 @@ public class Scaffold extends Module {
 
             float radius = 8.0F * uiScale;
             RenderServices.shapes().shadow(x, y, x + width, y + height, radius,
-                    withAlpha(0xFF000000, 84.0F * alpha), 8, 2.8F * uiScale);
-            RenderServices.shapes().shadow(x - 2.4F * uiScale, y - 2.4F * uiScale,
-                    x + width + 2.4F * uiScale, y + height + 2.4F * uiScale, radius,
-                    withAlpha(SAKURA, (72.0F + 64.0F * pulse) * alpha), 8, 3.2F * uiScale);
-            RenderServices.shapes().shadow(x + 8.0F * uiScale, y + 5.0F * uiScale,
-                    x + width - 8.0F * uiScale, y + height - 4.0F * uiScale, radius,
-                    withAlpha(0xFFFFD7E8, (24.0F + 28.0F * pulse) * alpha), 5, 2.0F * uiScale);
+                    withAlpha(0xFF000000, 96.0F * alpha), 8, 3.2F * uiScale);
+            RenderServices.shapes().shadow(x, y, x + width, y + height, radius,
+                    withAlpha(SAKURA, (28.0F + 26.0F * pulse) * alpha), 5, 2.2F * uiScale);
             RenderServices.liquidGlass().roundedBorder(x, y, x + width, y + height, radius, 0.55F * uiScale,
-                    withAlpha(SAKURA_GLASS, 148.0F * alpha),
-                    withAlpha(SAKURA_BORDER, (42.0F + 36.0F * pulse) * alpha),
+                    withAlpha(SAKURA_GLASS, (158.0F + 18.0F * pulse) * alpha),
+                    withAlpha(SAKURA_BORDER, (24.0F + 18.0F * pulse) * alpha),
                     BLOCK_COUNTER_GLASS);
             this.drawCounterAccents(x, y, width, height, uiScale, alpha, reserve, delayedReserve, flowerReserve, pulse);
             this.drawCounterItem(stack, x + 8.0F * uiScale, y + 4.0F * uiScale,
@@ -1081,38 +1077,32 @@ public class Scaffold extends Module {
     private void drawCounterAccents(float x, float y, float width, float height,
                                     float uiScale, float alpha, float reserve,
                                     float delayedReserve, float flowerReserve, float pulse) {
-        RenderServices.shapes().horizontalGradient(x + 3.0F * uiScale, y + 2.0F * uiScale,
-                x + width - 3.0F * uiScale, y + 11.0F * uiScale,
-                withAlpha(0xFFFFF6FA, 22.0F * alpha), withAlpha(SAKURA, 5.0F * alpha));
-
         float barX = x + 36.0F * uiScale;
         float barY = y + height - 6.4F * uiScale;
         float barW = width - 47.0F * uiScale;
-        float barH = 4.7F * uiScale;
-        float barRadius = barH * 0.5F;
+        float lineH = Math.max(0.72F, 0.85F * uiScale);
+        float shadowY = barY + Math.max(0.9F, 1.0F * uiScale);
         float fillW = Math.max(0.0F, barW * clamp01(reserve));
         float delayedW = Math.max(fillW, barW * clamp01(delayedReserve));
-        float flowerX = barX + Math.max(0.0F, Math.min(barW, barW * clamp01(flowerReserve)));
+        float markerSize = (2.55F + 0.38F * pulse) * uiScale;
+        float markerOffset = Math.max(markerSize, Math.min(barW - markerSize, barW * clamp01(flowerReserve)));
 
-        RenderServices.shapes().shadow(barX, barY, barX + barW, barY + barH, barRadius,
-                withAlpha(SAKURA, (54.0F + 42.0F * pulse) * alpha), 5, 1.4F * uiScale);
-        drawCounterCapsule(barX, barY, barW, barH, withAlpha(0xFF17171D, 184.0F * alpha));
-        if (delayedW > fillW + 0.35F * uiScale) {
-            drawCounterCapsule(barX, barY, delayedW, barH, withAlpha(0xFFFF6F9A, 88.0F * alpha));
+        RenderServices.shapes().rect(barX, shadowY, barX + barW, shadowY + Math.max(0.45F, 0.48F * uiScale),
+                withAlpha(0xFF09090D, 72.0F * alpha));
+        RenderServices.shapes().rect(barX, barY, barX + barW, barY + lineH,
+                withAlpha(0xFFFFD3E3, (34.0F + 10.0F * pulse) * alpha));
+        if (delayedW > fillW + 0.5F * uiScale) {
+            RenderServices.shapes().rect(barX, barY, barX + delayedW, barY + lineH,
+                    withAlpha(0xFFFF6F9A, 66.0F * alpha));
         }
-        if (fillW > 0.75F) {
-            drawCounterCapsule(barX, barY, fillW, barH,
-                    withAlpha(SAKURA_STRONG, (244.0F + 10.0F * pulse) * alpha));
-            float shineInset = Math.min(barH * 0.28F, fillW * 0.18F);
-            if (fillW > shineInset * 2.0F + 1.0F) {
-                RenderServices.shapes().rounded(barX + shineInset, barY + shineInset,
-                        barX + fillW - shineInset, barY + barH * 0.52F,
-                        Math.min(barRadius * 0.45F, (barH * 0.52F - shineInset) * 0.5F),
-                        withAlpha(0xFFFFD7E8, 78.0F * alpha));
-            }
-            drawCounterBarSheen(barX, barY, fillW, barH, alpha);
+        if (fillW > 0.8F) {
+            RenderServices.shapes().rect(barX, barY, barX + fillW, barY + Math.max(lineH, 1.05F * uiScale),
+                    withAlpha(SAKURA_STRONG, (218.0F + 12.0F * pulse) * alpha));
+            RenderServices.shapes().rect(barX, barY - Math.max(0.45F, 0.32F * uiScale),
+                    barX + fillW, barY,
+                    withAlpha(0xFFFFF3F8, 56.0F * alpha));
         }
-        drawSakuraFlower(flowerX, barY + barH * 0.5F, (2.8F + 0.6F * pulse) * uiScale, alpha);
+        drawSakuraFlower(barX + markerOffset, barY + lineH * 0.5F, markerSize, alpha);
     }
 
     private void drawCounterText(float x, float y, float width, float uiScale,
