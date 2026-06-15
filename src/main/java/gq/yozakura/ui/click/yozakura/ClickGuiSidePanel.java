@@ -1,4 +1,4 @@
-package gq.yozakura.ui.click.vape;
+package gq.yozakura.ui.click.yozakura;
 
 import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.module.Module;
@@ -23,7 +23,7 @@ import java.awt.Color;
  *   <li>状态面板：显示 FPS、Ping、已启用模块数，以及 FPS 波形图</li>
  *   <li>模块摘要面板：显示选中模块的名称、描述、状态和按键绑定</li>
  * </ul>
- * 包级私有（package-private），仅供 {@link VapeClickGui} 内部使用。
+ * 包级私有（package-private），仅供 {@link YozakuraClickGui} 内部使用。
  */
 final class ClickGuiSidePanel {
     private static final float STATS_H = 82.0f;
@@ -32,9 +32,9 @@ final class ClickGuiSidePanel {
     private static final float DRAG_H = 28.0f;
 
     /** 关联的主 GUI 实例 */
-    private final VapeClickGui gui;
+    private final YozakuraClickGui gui;
 
-    ClickGuiSidePanel(VapeClickGui gui) {
+    ClickGuiSidePanel(YozakuraClickGui gui) {
         this.gui = gui;
     }
 
@@ -128,7 +128,7 @@ final class ClickGuiSidePanel {
         float chipX = summaryX + 16.0f;
         float chipY = summaryY + summaryH - 30.0f;
         // 检查是否点击了按键绑定区域
-        if (VapeClickGui.isHovered(chipX, chipY, chipX + gui.sideW - 32.0f, chipY + 18.0f, mouseX, mouseY)) {
+        if (YozakuraClickGui.isHovered(chipX, chipY, chipX + gui.sideW - 32.0f, chipY + 18.0f, mouseX, mouseY)) {
             gui.keyChipClickProgress.put(gui.selectedModule, 1.0f);
             gui.startBinding(gui.selectedModule);
             return true;
@@ -142,12 +142,12 @@ final class ClickGuiSidePanel {
     private void drawUserPanel(float introY) {
         float x = gui.userPanelX;
         float y = gui.userPanelY + introY;
-        float w = VapeClickGui.CARD_W;
-        RenderServices.shapes().shadow(x, y, x + w, y + VapeClickGui.NAV_H,
-                VapeClickGui.PANEL_RADIUS, gui.withAlpha(gui.shadowColor(220),
+        float w = YozakuraClickGui.CARD_W;
+        RenderServices.shapes().shadow(x, y, x + w, y + YozakuraClickGui.NAV_H,
+                YozakuraClickGui.PANEL_RADIUS, gui.withAlpha(gui.shadowColor(220),
                         70.0f * gui.guiAlpha), 8, 5.0f);
-        gui.drawPanelGlass(x, y, x + w, y + VapeClickGui.NAV_H,
-                VapeClickGui.PANEL_RADIUS, 1.0f,
+        gui.drawPanelGlass(x, y, x + w, y + YozakuraClickGui.NAV_H,
+                YozakuraClickGui.PANEL_RADIUS, 1.0f,
                 gui.withAlpha(gui.guiColors().glassFill, gui.getAlpha(gui.guiColors().glassFill) * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, gui.getAlpha(gui.guiColors().glassBorder) * gui.guiAlpha));
         // 用户头像图标
@@ -166,9 +166,9 @@ final class ClickGuiSidePanel {
      * 绘制状态面板（FPS、Ping、已启用模块数及 FPS 波形图）。
      */
     private void drawStatsPanel(float y) {
-        RenderServices.shapes().shadow(gui.sideX, y, gui.sideX + gui.sideW, y + STATS_H, VapeClickGui.PANEL_RADIUS,
+        RenderServices.shapes().shadow(gui.sideX, y, gui.sideX + gui.sideW, y + STATS_H, YozakuraClickGui.PANEL_RADIUS,
                 gui.withAlpha(gui.shadowColor(220), 70.0f * gui.guiAlpha), 8, 5.0f);
-        gui.drawPanelGlass(gui.sideX, y, gui.sideX + gui.sideW, y + STATS_H, VapeClickGui.PANEL_RADIUS, 1.0f,
+        gui.drawPanelGlass(gui.sideX, y, gui.sideX + gui.sideW, y + STATS_H, YozakuraClickGui.PANEL_RADIUS, 1.0f,
                 gui.withAlpha(gui.guiColors().glassFill, gui.getAlpha(gui.guiColors().glassFill) * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, gui.getAlpha(gui.guiColors().glassBorder) * gui.guiAlpha));
         drawPanelTitle(FontLoaders.ICON_INFO, "Statistics", y + 13.0f);
@@ -250,9 +250,9 @@ final class ClickGuiSidePanel {
      * 绘制模块摘要面板（图标、名称、描述、按键绑定）。
      */
     private void drawModuleSummary(float y, float h) {
-        RenderServices.shapes().shadow(gui.sideX, y, gui.sideX + gui.sideW, y + h, VapeClickGui.PANEL_RADIUS,
+        RenderServices.shapes().shadow(gui.sideX, y, gui.sideX + gui.sideW, y + h, YozakuraClickGui.PANEL_RADIUS,
                 gui.withAlpha(gui.shadowColor(230), 78.0f * gui.guiAlpha), 9, 6.0f);
-        gui.drawPanelGlass(gui.sideX, y, gui.sideX + gui.sideW, y + h, VapeClickGui.PANEL_RADIUS, 1.0f,
+        gui.drawPanelGlass(gui.sideX, y, gui.sideX + gui.sideW, y + h, YozakuraClickGui.PANEL_RADIUS, 1.0f,
                 gui.withAlpha(gui.guiColors().glassFill, gui.getAlpha(gui.guiColors().glassFill) * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, gui.getAlpha(gui.guiColors().glassBorder) * gui.guiAlpha));
         drawPanelTitle(FontLoaders.ICON_SETTINGS, "Module Info", y + 17.0f);
@@ -291,7 +291,7 @@ final class ClickGuiSidePanel {
      * 绘制按键绑定卡片（毛玻璃圆角矩形 + 按键名居中）。
      */
     private void drawKeyChip(float x, float y, float w, float h, Module module) {
-        boolean hovered = VapeClickGui.isHovered(x, y, x + w, y + h, gui.currentMouseX, gui.currentMouseY);
+        boolean hovered = YozakuraClickGui.isHovered(x, y, x + w, y + h, gui.currentMouseX, gui.currentMouseY);
         float hover = gui.animateMap(gui.keyChipHoverProgress, module, hovered && !gui.closing ? 1.0f : 0.0f, 0.18f);
         float click = gui.animateMap(gui.keyChipClickProgress, module, 0.0f, 0.22f);
         float inset = click * 1.2f;
@@ -312,9 +312,9 @@ final class ClickGuiSidePanel {
     }
 
     private void drawDesignPanel(float y, int mouseX, int mouseY) {
-        RenderServices.shapes().shadow(gui.sideX, y, gui.sideX + gui.sideW, y + DESIGN_H, VapeClickGui.PANEL_RADIUS,
+        RenderServices.shapes().shadow(gui.sideX, y, gui.sideX + gui.sideW, y + DESIGN_H, YozakuraClickGui.PANEL_RADIUS,
                 gui.withAlpha(gui.shadowColor(230), 72.0f * gui.guiAlpha), 8, 5.0f);
-        gui.drawPanelGlass(gui.sideX, y, gui.sideX + gui.sideW, y + DESIGN_H, VapeClickGui.PANEL_RADIUS, 1.0f,
+        gui.drawPanelGlass(gui.sideX, y, gui.sideX + gui.sideW, y + DESIGN_H, YozakuraClickGui.PANEL_RADIUS, 1.0f,
                 gui.withAlpha(gui.guiColors().glassFill, gui.getAlpha(gui.guiColors().glassFill) * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, gui.getAlpha(gui.guiColors().glassBorder) * gui.guiAlpha));
         drawPanelTitle(FontLoaders.ICON_SUN_ALT, "Design", y + 17.0f);
@@ -348,7 +348,7 @@ final class ClickGuiSidePanel {
         gui.drawSwitch(getGlassSwitchX(gui.sideX), getGlassSwitchY(y), glassEnabled, 1.0f, ClickGUI.glassBackground);
 
         float buttonY = y + 127.0f;
-        boolean buttonHovered = VapeClickGui.isHovered(gui.sideX + 15.0f, buttonY, gui.sideX + gui.sideW - 15.0f,
+        boolean buttonHovered = YozakuraClickGui.isHovered(gui.sideX + 15.0f, buttonY, gui.sideX + gui.sideW - 15.0f,
                 buttonY + 15.0f, mouseX, mouseY);
         gui.designThemeButtonHoverProgress = gui.animate(gui.designThemeButtonHoverProgress,
                 buttonHovered ? 1.0f : 0.0f, 0.18f);
@@ -367,7 +367,7 @@ final class ClickGuiSidePanel {
                 gui.withAlpha(gui.guiColors().text, (218.0f + 24.0f * buttonHover) * gui.guiAlpha));
 
         float resetY = y + 149.0f;
-        boolean resetHovered = VapeClickGui.isHovered(gui.sideX + 15.0f, resetY, gui.sideX + gui.sideW - 15.0f,
+        boolean resetHovered = YozakuraClickGui.isHovered(gui.sideX + 15.0f, resetY, gui.sideX + gui.sideW - 15.0f,
                 resetY + 16.0f, mouseX, mouseY);
         gui.designResetButtonHoverProgress = gui.animate(gui.designResetButtonHoverProgress,
                 resetHovered ? 1.0f : 0.0f, 0.18f);
@@ -394,7 +394,7 @@ final class ClickGuiSidePanel {
 
     private void drawThemeSwatch(HUD.Theme theme, float x, float y, int color, int mouseX, int mouseY) {
         boolean selected = HUD.getTheme() == theme;
-        boolean hovered = VapeClickGui.isHovered(x - 4.0f, y - 4.0f, x + 18.0f, y + 18.0f, mouseX, mouseY);
+        boolean hovered = YozakuraClickGui.isHovered(x - 4.0f, y - 4.0f, x + 18.0f, y + 18.0f, mouseX, mouseY);
         Float current = gui.themeSwatchProgress.get(theme);
         float progress = current == null ? (selected ? 1.0f : 0.0f) : current.floatValue();
         progress = gui.animate(progress, selected ? 1.0f : 0.0f, 0.18f);
@@ -438,7 +438,7 @@ final class ClickGuiSidePanel {
         HUD.Theme[] themes = new HUD.Theme[]{HUD.Theme.SAKURA, HUD.Theme.LIGHT, HUD.Theme.DARK, HUD.Theme.GRAY};
         for (int i = 0; i < themes.length; i++) {
             float x = swatchX + i * 29.0f;
-            if (VapeClickGui.isHovered(x - 4.0f, swatchY - 4.0f, x + 18.0f, swatchY + 18.0f, mouseX, mouseY)) {
+            if (YozakuraClickGui.isHovered(x - 4.0f, swatchY - 4.0f, x + 18.0f, swatchY + 18.0f, mouseX, mouseY)) {
                 HUD.setTheme(themes[i]);
                 gui.themeFadeProgress = 1.0f;
                 gui.addToast("Theme -> " + formatTheme(themes[i]));
@@ -502,7 +502,7 @@ final class ClickGuiSidePanel {
     }
 
     private boolean startPanelDrag(String id, float x, float y, float h, int mouseX, int mouseY) {
-        if (!VapeClickGui.isHovered(x, y, x + gui.sideW, y + Math.min(DRAG_H, h), mouseX, mouseY)) {
+        if (!YozakuraClickGui.isHovered(x, y, x + gui.sideW, y + Math.min(DRAG_H, h), mouseX, mouseY)) {
             return false;
         }
         gui.draggingSidePanel = id;
@@ -544,7 +544,7 @@ final class ClickGuiSidePanel {
     private boolean isResetButtonHovered(float panelY, int mouseX, int mouseY) {
         float y = panelY + 149.0f;
         float x = getPanelX(ClickGUI.sideDesignOffsetX);
-        return VapeClickGui.isHovered(x + 15.0f, y, x + gui.sideW - 15.0f, y + 16.0f,
+        return YozakuraClickGui.isHovered(x + 15.0f, y, x + gui.sideW - 15.0f, y + 16.0f,
                 mouseX, mouseY);
     }
 

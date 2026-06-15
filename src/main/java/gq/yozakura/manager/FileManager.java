@@ -6,7 +6,7 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import gq.yozakura.core.YozakuraClientState;
-import gq.yozakura.ui.click.vape.VapeClickGui;
+import gq.yozakura.ui.click.yozakura.YozakuraClickGui;
 import gq.yozakura.module.Module;
 import gq.yozakura.util.minecraft.Helper;
 import gq.yozakura.value.Mode;
@@ -145,7 +145,7 @@ public class FileManager {
             // 恢复ClickGUI界面状态
             if (jsonObject.has("_gui") && jsonObject.get("_gui").isJsonObject()) {
                 try {
-                    VapeClickGui.loadGuiState((JsonObject) jsonObject.get("_gui"));
+                    YozakuraClickGui.loadGuiState((JsonObject) jsonObject.get("_gui"));
                 } catch (Throwable throwable) {
                     logConfigFailure("Failed to load ClickGUI state", throwable);
                 }
@@ -233,7 +233,7 @@ public class FileManager {
         }
 
         // 保存ClickGUI界面状态（标签页/选中模块/详情子标签等）
-        jsonObject.add("_gui", VapeClickGui.saveGuiState());
+        jsonObject.add("_gui", YozakuraClickGui.saveGuiState());
 
         return gson.toJson(jsonObject);
     }

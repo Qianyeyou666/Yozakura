@@ -1,4 +1,4 @@
-package gq.yozakura.ui.click.vape;
+package gq.yozakura.ui.click.yozakura;
 
 import gq.yozakura.engine.render.ui.RenderServices;
 
@@ -8,18 +8,18 @@ import gq.yozakura.engine.render.ui.RenderServices;
  * 包含搜索文本框的渲染、鼠标点击处理和键盘输入处理。
  * 搜索栏聚焦时显示发光阴影边框效果，并支持 Ctrl+F 快捷键激活。
  * <p>
- * 包级私有（package-private），仅供 {@link VapeClickGui} 内部使用。
+ * 包级私有（package-private），仅供 {@link YozakuraClickGui} 内部使用。
  */
 final class ClickGuiSearchBar {
     /** 关联的主 GUI 实例 */
-    private final VapeClickGui gui;
+    private final YozakuraClickGui gui;
 
     /**
      * 构造搜索栏组件。
      *
      * @param gui 主 ClickGUI 实例
      */
-    ClickGuiSearchBar(VapeClickGui gui) {
+    ClickGuiSearchBar(YozakuraClickGui gui) {
         this.gui = gui;
     }
 
@@ -37,18 +37,18 @@ final class ClickGuiSearchBar {
         // 计算搜索栏位置和尺寸
         float x = gui.contentX + 12.0f;
         float y = gui.getSearchY() + introY;
-        float w = VapeClickGui.CARD_W - 24.0f;
+        float w = YozakuraClickGui.CARD_W - 24.0f;
         // 判断鼠标悬停状态
-        boolean hovered = VapeClickGui.isHovered(x, y, x + w, y + VapeClickGui.SEARCH_H, mouseX, mouseY);
+        boolean hovered = YozakuraClickGui.isHovered(x, y, x + w, y + YozakuraClickGui.SEARCH_H, mouseX, mouseY);
         // 动画更新聚焦进度：聚焦=1.0，悬停=0.55，否则=0.0
         gui.searchFocusProgress = gui.animate(gui.searchFocusProgress, gui.searchFocused ? 1.0f : hovered ? 0.55f : 0.0f, 0.20f);
         // 绘制聚焦/悬停发光阴影
         if (gui.searchFocusProgress > 0.02f) {
-            RenderServices.shapes().shadow(x - 1f, y - 1f, x + w + 1f, y + VapeClickGui.SEARCH_H + 1f, 19.0f,
+            RenderServices.shapes().shadow(x - 1f, y - 1f, x + w + 1f, y + YozakuraClickGui.SEARCH_H + 1f, 19.0f,
                     gui.withAlpha(gui.guiColors().accent, 86.0f * gui.searchFocusProgress * gui.guiAlpha), 7, 4.0f);
         }
         // 渲染搜索文本框
-        gui.searchField.setBounds(x, y, w, VapeClickGui.SEARCH_H)
+        gui.searchField.setBounds(x, y, w, YozakuraClickGui.SEARCH_H)
                 .text(gui.searchQuery)
                 .focused(gui.searchFocused)
                 .setAlpha(gui.guiAlpha)
@@ -64,8 +64,8 @@ final class ClickGuiSearchBar {
     boolean mouseClicked(int mouseX, int mouseY, int mouseButton) {
         float x = gui.contentX + 12.0f;
         float y = gui.getSearchY();
-        float w = VapeClickGui.CARD_W - 24.0f;
-        gui.searchField.setBounds(x, y, w, VapeClickGui.SEARCH_H).text(gui.searchQuery).focused(gui.searchFocused);
+        float w = YozakuraClickGui.CARD_W - 24.0f;
+        gui.searchField.setBounds(x, y, w, YozakuraClickGui.SEARCH_H).text(gui.searchQuery).focused(gui.searchFocused);
         if (!gui.searchField.mouseClicked(mouseX, mouseY, mouseButton)) {
             return false;
         }

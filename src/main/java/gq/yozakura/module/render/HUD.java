@@ -36,7 +36,6 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.GL11;
 
-import java.awt.*;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -66,7 +65,7 @@ public class HUD extends Module {
 
     public enum HudStyle {
         YOZAKURA,
-        VAPE
+        OLD
     }
 
     public enum Theme {
@@ -184,7 +183,7 @@ public class HUD extends Module {
         Chinese = "HUD界面";
         instance = this;
         activeStyle = getSelectedStyle();
-        this.addValues(notificationTheme, arrayListTheme, theme, watermark, arrayList, backgrounds, keybinds, parameters, notifications,
+        this.addValues(hudStyle, arrayListTheme, theme, watermark, arrayList, backgrounds, keybinds, parameters, notifications,
                 potionEffects, inventoryDisplay, glow, alpha, radius, watermarkX, watermarkY, watermarkScale,
                 moduleListX, moduleListY, moduleListScale, potionX, potionY, potionScale, inventoryX, inventoryY,
                 inventoryScale);
@@ -505,7 +504,7 @@ public class HUD extends Module {
     private void drawModuleList(int screenWidth, int screenHeight, float factor) {
         List<Module> modules = getHudModules();
         moduleAnimations.keySet().retainAll(modules);
-        if (hudStyle.getValue() == HudStyle.VAPE) {
+        if (hudStyle.getValue() == HudStyle.OLD) {
             drawVapeModuleList(screenWidth, screenHeight, factor, modules);
             return;
         }
@@ -1444,7 +1443,7 @@ public class HUD extends Module {
     }
 
     private boolean useVapeStyle() {
-        return getSelectedStyle() == HudStyle.VAPE;
+        return getSelectedStyle() == HudStyle.OLD;
     }
 
     public static HudStyle getActiveStyle() {
@@ -1455,7 +1454,7 @@ public class HUD extends Module {
     }
 
     public static boolean useVapeSimpleStyle() {
-        return getActiveStyle() == HudStyle.VAPE;
+        return getActiveStyle() == HudStyle.OLD;
     }
 
     public static boolean isGlowEnabled() {
