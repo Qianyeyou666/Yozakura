@@ -1,4 +1,4 @@
-package gq.yozakura.ui.click.yozakura;
+package gq.yozakura.ui.click.vape;
 
 import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.module.render.ClickGUI;
@@ -11,13 +11,13 @@ import net.minecraft.client.gui.ScaledResolution;
  * ClickGUI 底部栏组件，显示用户信息和快捷键提示。
  * <p>
  * 左侧显示当前用户配置文件名，右侧显示 GUI 打开/关闭快捷键提示（Right Shift）。
- * 包级私有（package-private），仅供 {@link YozakuraClickGui} 内部使用。
+ * 包级私有（package-private），仅供 {@link VapeClickGui} 内部使用。
  */
 final class ClickGuiBottomBar {
     /** 关联的主 GUI 实例 */
-    private final YozakuraClickGui gui;
+    private final VapeClickGui gui;
 
-    ClickGuiBottomBar(YozakuraClickGui gui) {
+    ClickGuiBottomBar(VapeClickGui gui) {
         this.gui = gui;
     }
 
@@ -32,11 +32,11 @@ final class ClickGuiBottomBar {
         float x = gui.contentX;
         float y = getY(sr);
         float w = getWidth();
-        float h = YozakuraClickGui.BOTTOM_BAR_H;
+        float h = VapeClickGui.BOTTOM_BAR_H;
 
-        RenderServices.shapes().shadow(x, y, x + w, y + h, YozakuraClickGui.PANEL_RADIUS,
+        RenderServices.shapes().shadow(x, y, x + w, y + h, VapeClickGui.PANEL_RADIUS,
                 gui.withAlpha(gui.shadowColor(230), 76.0f * gui.guiAlpha), 9, 5.5f);
-        gui.drawPanelGlass(x, y, x + w, y + h, YozakuraClickGui.PANEL_RADIUS, 1.0f,
+        gui.drawPanelGlass(x, y, x + w, y + h, VapeClickGui.PANEL_RADIUS, 1.0f,
                 gui.withAlpha(gui.guiColors().glassFill, gui.getAlpha(gui.guiColors().glassFill) * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, gui.getAlpha(gui.guiColors().glassBorder) * gui.guiAlpha));
 
@@ -69,13 +69,13 @@ final class ClickGuiBottomBar {
         float x = gui.contentX;
         float y = getY(sr);
         float settingsX = x + 136.0f;
-        if (!YozakuraClickGui.isHovered(x, y, x + getWidth(), y + YozakuraClickGui.BOTTOM_BAR_H, mouseX, mouseY)) {
+        if (!VapeClickGui.isHovered(x, y, x + getWidth(), y + VapeClickGui.BOTTOM_BAR_H, mouseX, mouseY)) {
             return false;
         }
         if (handleThemeSwatchClick(settingsX, y, mouseX, mouseY)) {
             return true;
         }
-        if (YozakuraClickGui.isHovered(settingsX + 58.0f, y + 50.0f, settingsX + 156.0f, y + 58.0f, mouseX, mouseY)) {
+        if (VapeClickGui.isHovered(settingsX + 58.0f, y + 50.0f, settingsX + 156.0f, y + 58.0f, mouseX, mouseY)) {
             double pct = gui.clamp((mouseX - (settingsX + 58.0f)) / 98.0f, 0.0D, 1.0D);
             ClickGUI.clickGuiAlpha.setValue(0.3D + pct * 0.7D);
             return true;
@@ -130,7 +130,7 @@ final class ClickGuiBottomBar {
 
     private void drawThemeSwatch(HUD.Theme theme, float x, float y, int color, int mouseX, int mouseY) {
         boolean selected = HUD.getTheme() == theme;
-        boolean hovered = YozakuraClickGui.isHovered(x - 5.0f, y - 5.0f, x + 21.0f, y + 21.0f, mouseX, mouseY);
+        boolean hovered = VapeClickGui.isHovered(x - 5.0f, y - 5.0f, x + 21.0f, y + 21.0f, mouseX, mouseY);
         Float current = gui.themeSwatchProgress.get(theme);
         float progress = current == null ? (selected ? 1.0f : 0.0f) : current.floatValue();
         progress = gui.animate(progress, selected ? 1.0f : 0.0f, 0.18f);
@@ -167,7 +167,7 @@ final class ClickGuiBottomBar {
         HUD.Theme[] themes = new HUD.Theme[]{HUD.Theme.SAKURA, HUD.Theme.LIGHT, HUD.Theme.DARK};
         for (int i = 0; i < themes.length; i++) {
             float x = swatchX + i * 24.0f;
-            if (YozakuraClickGui.isHovered(x - 5.0f, swatchY - 5.0f, x + 21.0f, swatchY + 21.0f, mouseX, mouseY)) {
+            if (VapeClickGui.isHovered(x - 5.0f, swatchY - 5.0f, x + 21.0f, swatchY + 21.0f, mouseX, mouseY)) {
                 HUD.setTheme(themes[i]);
                 gui.themeFadeProgress = 1.0f;
                 gui.addToast("Theme -> " + formatTheme(themes[i]));
@@ -202,11 +202,11 @@ final class ClickGuiBottomBar {
 
     private void drawAboutSection(float x, float y, float w) {
         drawSectionTitle(FontLoaders.ICON_INFO, "About", x + 16.0f, y + 17.0f);
-        gui.drawFont("Yozakura v1.3", x + 16.0f, y + 42.0f,
+        gui.drawFont("Vape Lite v1.3", x + 16.0f, y + 42.0f,
                 gui.withAlpha(gui.guiColors().text, 222.0f * gui.guiAlpha));
         gui.drawFont("Made with " + (HUD.isSakuraTheme() ? "Sakura" : "care"), x + 16.0f, y + 59.0f,
                 gui.withAlpha(gui.guiColors().muted, 185.0f * gui.guiAlpha));
-        gui.drawFont("yozakura.gg", x + 16.0f, y + 74.0f,
+        gui.drawFont("vape.gg", x + 16.0f, y + 74.0f,
                 gui.withAlpha(gui.guiColors().accent, 190.0f * gui.guiAlpha));
     }
 
@@ -232,8 +232,8 @@ final class ClickGuiBottomBar {
     }
 
     private float getY(ScaledResolution sr) {
-        return Math.min(sr.getScaledHeight() - YozakuraClickGui.BOTTOM_BAR_H - 8.0f,
-                gui.contentY + gui.panelH + YozakuraClickGui.GAP);
+        return Math.min(sr.getScaledHeight() - VapeClickGui.BOTTOM_BAR_H - 8.0f,
+                gui.contentY + gui.panelH + VapeClickGui.GAP);
     }
 
     private float getWidth() {

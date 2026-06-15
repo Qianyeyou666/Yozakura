@@ -1,4 +1,4 @@
-package gq.yozakura.ui.click.yozakura;
+package gq.yozakura.ui.click.vape;
 
 import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.core.Client;
@@ -54,7 +54,7 @@ import java.util.Set;
  * 支持三种主题配色：Dark（暗色）、Light（浅色）、Sakura（粉色）。
  * GUI 状态（标签页、选中模块、滚动位置、展开下拉栏等）可通过 JSON 持久化。
  */
-public class YozakuraClickGui extends GuiScreen {
+public class VapeClickGui extends GuiScreen {
     /**
      * 配色板内部类，封装了 GUI 所有组件的颜色常量。
      * <p>

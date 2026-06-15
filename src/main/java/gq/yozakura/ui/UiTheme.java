@@ -47,11 +47,11 @@ public final class UiTheme {
         this.selectBorder = selectBorder;
     }
 
-    public static UiTheme yozakura() {
-        return yozakuraDark();
+    public static UiTheme vape() {
+        return vapeDark();
     }
 
-    private static UiTheme yozakuraDark() {
+    private static UiTheme vapeDark() {
         return new UiTheme(
                 new Color(232, 234, 236).getRGB(),
                 new Color(152, 154, 158).getRGB(),
@@ -73,7 +73,7 @@ public final class UiTheme {
                 new Color(78, 85, 105).getRGB());
     }
 
-    private static UiTheme yozakuraLight() {
+    private static UiTheme vapeLight() {
         return new UiTheme(
                 new Color(28, 30, 36).getRGB(),        // text
                 new Color(96, 100, 108).getRGB(),       // muted
@@ -95,7 +95,7 @@ public final class UiTheme {
                 new Color(100, 108, 130).getRGB());     // selectBorder
     }
 
-    private static UiTheme yozakuraSakura() {
+    private static UiTheme vapeSakura() {
         return new UiTheme(
                 new Color(36, 30, 38).getRGB(),         // text
                 new Color(120, 108, 118).getRGB(),      // muted
@@ -117,7 +117,7 @@ public final class UiTheme {
                 new Color(170, 128, 152).getRGB());     // selectBorder
     }
 
-    private static UiTheme yozakuraGray() {
+    private static UiTheme vapeGray() {
         return new UiTheme(
                 new Color(232, 234, 236).getRGB(),
                 new Color(168, 171, 176).getRGB(),
@@ -143,17 +143,17 @@ public final class UiTheme {
         try {
             HUD.Theme theme = HUD.getTheme();
             if (theme == HUD.Theme.SAKURA) {
-                return yozakuraSakura();
+                return vapeSakura();
             }
             if (theme == HUD.Theme.LIGHT) {
-                return yozakuraLight();
+                return vapeLight();
             }
             if (theme == HUD.Theme.GRAY) {
-                return yozakuraGray();
+                return vapeGray();
             }
-            return yozakuraDark();
+            return vapeDark();
         } catch (Exception e) {
-            return yozakuraDark();
+            return vapeDark();
         }
     }
 

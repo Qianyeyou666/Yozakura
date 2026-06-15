@@ -7,8 +7,8 @@ import java.awt.Color;
 public class UiPanel extends UiComponent {
     private float radius = 8.0f;
     private float borderWidth = 1.0f;
-    private int fillColor = UiTheme.yozakura().panel;
-    private int borderColor = UiTheme.yozakura().panelBorder;
+    private int fillColor = UiTheme.vape().panel;
+    private int borderColor = UiTheme.vape().panelBorder;
     private int shadowColor = new Color(0, 0, 0, 220).getRGB();
     private int shadowLayers = 8;
     private float shadowSpread = 5.0f;

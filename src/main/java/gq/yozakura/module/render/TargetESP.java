@@ -37,7 +37,7 @@ public class TargetESP extends Module {
     private static final double FALLBACK_TARGET_RANGE = 6.0D;
 
     public enum EspMode {
-        YOZAKURA,
+        VAPE,
         RINGS,
         CAPSULE,
         COSMIC,
@@ -45,7 +45,7 @@ public class TargetESP extends Module {
         SAKURA
     }
 
-    private final Mode<EspMode> mode = new Mode<EspMode>("Mode", "Mode", EspMode.values(), EspMode.YOZAKURA);
+    private final Mode<EspMode> mode = new Mode<EspMode>("Mode", "Mode", EspMode.values(), EspMode.VAPE);
     private final Numbers<Double> alpha = new Numbers<Double>("Alpha", "Alpha", 155.0, 35.0, 220.0, 5.0);
     private final Numbers<Double> radius = new Numbers<Double>("Radius", "Radius", 1.0, 0.65, 1.65, 0.05);
     private final Numbers<Double> height = new Numbers<Double>("Height", "Height", 1.0, 0.65, 1.45, 0.05);
@@ -326,11 +326,11 @@ public class TargetESP extends Module {
                 drawAurora(target, baseRadius, bodyHeight, alphaScale, time);
             } else if (current == EspMode.SAKURA) {
                 drawSakuraPetals(baseRadius, bodyHeight, alphaScale, time);
-            } else if (current == EspMode.YOZAKURA || current == EspMode.CAPSULE) {
+            } else if (current == EspMode.VAPE || current == EspMode.CAPSULE) {
                 drawCapsule(baseRadius, bodyHeight, alphaScale, time);
                 drawVerticalMarkers(baseRadius, bodyHeight, alphaScale, time);
             }
-            if (current == EspMode.YOZAKURA || current == EspMode.RINGS) {
+            if (current == EspMode.VAPE || current == EspMode.RINGS) {
                 drawRing(0.04f, baseRadius + 0.08f, 0.045f, 72, alphaScale * 0.92f, time);
                 drawRing(bodyHeight * 0.52f, baseRadius + 0.03f, 0.025f, 72, alphaScale * 0.48f, time + 0.7f);
                 drawRing(bodyHeight + 0.04f, baseRadius + 0.06f, 0.035f, 72, alphaScale * 0.70f, time + 1.4f);

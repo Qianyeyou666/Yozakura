@@ -3,7 +3,7 @@ package gq.yozakura.util.render;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.ui.click.material.MaterialClickGui;
 import gq.yozakura.ui.click.sakura.SakuraClickGui;
-import gq.yozakura.ui.click.yozakura.YozakuraClickGui;
+import gq.yozakura.ui.click.vape.VapeClickGui;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.client.gui.ScaledResolution;
@@ -139,7 +139,7 @@ public final class HudDrag {
     }
 
     private static boolean isClickGuiOpen() {
-        return MC.currentScreen instanceof YozakuraClickGui
+        return MC.currentScreen instanceof VapeClickGui
                 || MC.currentScreen instanceof MaterialClickGui
                 || MC.currentScreen instanceof SakuraClickGui;
     }

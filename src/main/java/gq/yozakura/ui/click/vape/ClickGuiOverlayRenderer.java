@@ -1,4 +1,4 @@
-package gq.yozakura.ui.click.yozakura;
+package gq.yozakura.ui.click.vape;
 
 import gq.yozakura.engine.font.FontLoaders;
 import gq.yozakura.engine.render.ui.RenderServices;
@@ -7,9 +7,9 @@ import net.minecraft.client.gui.ScaledResolution;
 import java.awt.Color;
 
 final class ClickGuiOverlayRenderer {
-    private final YozakuraClickGui gui;
+    private final VapeClickGui gui;
 
-    ClickGuiOverlayRenderer(YozakuraClickGui gui) {
+    ClickGuiOverlayRenderer(VapeClickGui gui) {
         this.gui = gui;
     }
 
@@ -48,7 +48,7 @@ final class ClickGuiOverlayRenderer {
         float alpha = elapsed < 1800L ? 1.0f : 1.0f - (elapsed - 1800L) / 700.0f;
         float w = FontLoaders.F14.getStringWidth(gui.toastText) + 20.0f;
         float x = sr.getScaledWidth() / 2.0f - w / 2.0f;
-        float y = gui.navY + YozakuraClickGui.NAV_H + YozakuraClickGui.SEARCH_H + 12.0f;
+        float y = gui.navY + VapeClickGui.NAV_H + VapeClickGui.SEARCH_H + 12.0f;
         gui.drawThemedGlass(x, y, x + w, y + 17.0f, 6.0f, 0.8f,
                 gui.withAlpha(gui.guiColors().glassFillSoft, 194.0f * alpha),
                 gui.withAlpha(gui.guiColors().accent, 75.0f * alpha));

@@ -1,4 +1,4 @@
-package gq.yozakura.ui.click.yozakura;
+package gq.yozakura.ui.click.vape;
 
 import gq.yozakura.module.render.ClickGUI;
 import net.minecraft.client.gui.ScaledResolution;
@@ -38,18 +38,18 @@ final class ClickGuiLayout {
         float screenW = sr.getScaledWidth();
         float screenH = sr.getScaledHeight();
         boolean sidePanelVisible = screenW >= 900.0f;
-        float sideW = sidePanelVisible ? YozakuraClickGui.SIDE_W : 0.0f;
+        float sideW = sidePanelVisible ? VapeClickGui.SIDE_W : 0.0f;
         float available = Math.max(360.0f, screenW - 24.0f);
-        float detailW = Math.min(YozakuraClickGui.DETAIL_MAX_W,
-                Math.max(YozakuraClickGui.DETAIL_MIN_W, available - YozakuraClickGui.CARD_W - YozakuraClickGui.GAP
-                        - (sidePanelVisible ? sideW + YozakuraClickGui.GAP : 0.0f)));
-        float totalW = YozakuraClickGui.CARD_W + YozakuraClickGui.GAP + detailW
-                + (sidePanelVisible ? YozakuraClickGui.GAP + sideW : 0.0f);
+        float detailW = Math.min(VapeClickGui.DETAIL_MAX_W,
+                Math.max(VapeClickGui.DETAIL_MIN_W, available - VapeClickGui.CARD_W - VapeClickGui.GAP
+                        - (sidePanelVisible ? sideW + VapeClickGui.GAP : 0.0f)));
+        float totalW = VapeClickGui.CARD_W + VapeClickGui.GAP + detailW
+                + (sidePanelVisible ? VapeClickGui.GAP + sideW : 0.0f);
         if (totalW > available) {
-            detailW = Math.max(YozakuraClickGui.DETAIL_MIN_W, available - YozakuraClickGui.CARD_W - YozakuraClickGui.GAP
-                    - (sidePanelVisible ? sideW + YozakuraClickGui.GAP : 0.0f));
-            totalW = YozakuraClickGui.CARD_W + YozakuraClickGui.GAP + detailW
-                    + (sidePanelVisible ? YozakuraClickGui.GAP + sideW : 0.0f);
+            detailW = Math.max(VapeClickGui.DETAIL_MIN_W, available - VapeClickGui.CARD_W - VapeClickGui.GAP
+                    - (sidePanelVisible ? sideW + VapeClickGui.GAP : 0.0f));
+            totalW = VapeClickGui.CARD_W + VapeClickGui.GAP + detailW
+                    + (sidePanelVisible ? VapeClickGui.GAP + sideW : 0.0f);
         }
 
         float contentX = Math.max(10.0f, screenW / 2.0f - totalW / 2.0f);
@@ -62,11 +62,11 @@ final class ClickGuiLayout {
             navY = clamp(ClickGUI.windowY.getValue().floatValue(), 6.0f,
                     Math.max(6.0f, screenH - 260.0f));
         }
-        float detailX = contentX + YozakuraClickGui.CARD_W + YozakuraClickGui.GAP;
-        float sideX = detailX + detailW + YozakuraClickGui.GAP;
+        float detailX = contentX + VapeClickGui.CARD_W + VapeClickGui.GAP;
+        float sideX = detailX + detailW + VapeClickGui.GAP;
         float navX = detailX;
-        float navW = detailW + (sidePanelVisible ? YozakuraClickGui.GAP + sideW : 0.0f);
-        float contentY = navY + YozakuraClickGui.NAV_H + 12.0f;
+        float navW = detailW + (sidePanelVisible ? VapeClickGui.GAP + sideW : 0.0f);
+        float contentY = navY + VapeClickGui.NAV_H + 12.0f;
         float panelH = Math.max(280.0f, screenH - contentY - 12.0f);
         return new ClickGuiLayout(contentX, contentY, navX, navY, navW, detailX, detailW,
                 sideX, sideW, totalW, panelH, sidePanelVisible);

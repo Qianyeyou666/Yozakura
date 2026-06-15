@@ -2,7 +2,7 @@ package gq.yozakura.ui;
 
 public abstract class UiComponent {
     protected final UiBounds bounds = new UiBounds();
-    protected UiTheme theme = UiTheme.yozakura();
+    protected UiTheme theme = UiTheme.vape();
     protected float alpha = 1.0f;
     protected boolean visible = true;
 

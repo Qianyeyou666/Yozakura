@@ -692,7 +692,7 @@ public class RenderUtil {
     }
 
     // ==================== Classpath Texture Cache ====================
-    // Lunar Client's TextureManager can't find resources from Yozakura's JAR
+    // Lunar Client's TextureManager can't find resources from VapuLite's JAR
     // because the JAR isn't registered as a Minecraft resource pack.
     // Fall back to loading textures directly from the classpath via GL.
 
