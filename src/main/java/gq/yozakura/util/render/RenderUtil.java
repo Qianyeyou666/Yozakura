@@ -9,6 +9,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.texture.TextureUtil;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.BlockPos;
 import net.minecraft.util.ResourceLocation;
@@ -16,11 +17,14 @@ import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
 
 import java.awt.Color;
+import java.awt.image.BufferedImage;
+import java.io.InputStream;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import javax.imageio.ImageIO;
 
 public class RenderUtil {
     public static Minecraft mc = Minecraft.getMinecraft();
@@ -505,7 +509,7 @@ public class RenderUtil {
         int segments = Math.max(12, Math.min(160, (int) Math.ceil((end - start) / 3.0f)));
         GLStateManager.beginTextured2D(getAlpha(color) / 255.0f);
         try {
-            mc.getTextureManager().bindTexture(res);
+            bindTextureSafe(res);
             glColor(color);
             GL11.glBegin(GL11.GL_TRIANGLE_FAN);
             GL11.glTexCoord2f(0.5f, 0.5f);
@@ -687,6 +691,57 @@ public class RenderUtil {
                 applyAlpha(0x00000000, 0));
     }
 
+    // ==================== Classpath Texture Cache ====================
+    // Lunar Client's TextureManager can't find resources from VapuLite's JAR
+    // because the JAR isn't registered as a Minecraft resource pack.
+    // Fall back to loading textures directly from the classpath via GL.
+
+    private static final Map<String, Integer> classpathTextureCache = new HashMap<>();
+
+    private static int getClasspathTexture(String path) {
+        Integer cached = classpathTextureCache.get(path);
+        if (cached != null) {
+            return cached;
+        }
+        try {
+            InputStream stream = RenderUtil.class.getResourceAsStream("/" + path);
+            if (stream == null) {
+                return -1;
+            }
+            BufferedImage image = ImageIO.read(stream);
+            stream.close();
+            if (image == null) {
+                return -1;
+            }
+            int id = GL11.glGenTextures();
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, id);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL11.GL_CLAMP);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL11.GL_CLAMP);
+            TextureUtil.uploadTextureImage(id, image);
+            classpathTextureCache.put(path, id);
+            return id;
+        } catch (Throwable ignored) {
+            return -1;
+        }
+    }
+
+    /**
+     * Binds a texture. Classpath-first: Lunar's TextureManager silently swallows
+     * IOExceptions from missing resources, so we always try the classpath before
+     * falling back to Minecraft's TextureManager (for skins, vanilla textures).
+     */
+    private static void bindTextureSafe(ResourceLocation location) {
+        String path = "assets/" + location.getResourceDomain() + "/textures/" + location.getResourcePath();
+        int id = getClasspathTexture(path);
+        if (id >= 0) {
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, id);
+            return;
+        }
+        mc.getTextureManager().bindTexture(location);
+    }
+
     // ==================== Image / Texture Drawing ====================
 
     public static void drawImage(ResourceLocation image, int x, int y, float width, float height, float alpha) {
@@ -700,7 +755,7 @@ public class RenderUtil {
         GLStateManager.beginTextured2D(color.getAlpha() / 255.0f);
         try {
             GL11.glColor4f(color.getRed() / 255.0f, color.getGreen() / 255.0f, color.getBlue() / 255.0f, color.getAlpha() / 255.0f);
-            mc.getTextureManager().bindTexture(image);
+            bindTextureSafe(image);
             Gui.drawModalRectWithCustomSizedTexture((int) x, (int) y, 0.0f, 0.0f, width, height, (float) width, (float) height);
         } finally {
             GLStateManager.endTextured2D();
@@ -714,7 +769,7 @@ public class RenderUtil {
         normalizeRect(Rect.tmp, x, y, x2, y2);
         GLStateManager.beginTextured2D(alpha);
         try {
-            mc.getTextureManager().bindTexture(image);
+            bindTextureSafe(image);
             // Switch to linear filtering to remove aliasing
             GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
             GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
@@ -1137,7 +1192,7 @@ public class RenderUtil {
     public static void drawImageSpread(ResourceLocation image, float x, float y, float width, float height, float alpha) {
         GLStateManager.beginTextured2D(alpha);
         try {
-            mc.getTextureManager().bindTexture(image);
+            bindTextureSafe(image);
             Gui.drawModalRectWithCustomSizedTexture((int) x, (int) y, 0.0f, 0.0f, (int) width, (int) height, 25, 25);
         } finally {
             GLStateManager.endTextured2D();
