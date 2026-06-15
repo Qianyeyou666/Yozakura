@@ -50,6 +50,19 @@ public class HUD extends Module {
     private static final int SAKURA = 0xFFFFB7D1;
     private static final int SAKURA_STRONG = 0xFFFF80B3;
     private static final int SAKURA_GLASS = 0xFF08080D;
+    private static final long MODULE_LIST_CACHE_MILLIS = 80L;
+    private static final LiquidGlassSettings SAKURA_GLASS_SETTINGS = LiquidGlassSettings.defaults()
+            .withBlurRadius(18.0f)
+            .withBlurDownscale(0.92f)
+            .withNoise(0.018f)
+            .withRefractionScale(1.16f)
+            .withHighlight(1.05f);
+    private static final float[][] SAKURA_PETAL_POINTS = new float[][]{
+            {0.00f, -0.18f}, {-0.30f, -0.07f}, {-0.64f, 0.25f}, {-0.66f, 0.62f},
+            {-0.36f, 0.94f}, {-0.10f, 0.82f}, {0.00f, 0.74f}, {0.10f, 0.82f},
+            {0.36f, 0.94f}, {0.66f, 0.62f}, {0.64f, 0.25f}, {0.30f, -0.07f},
+            {0.00f, -0.18f}
+    };
 
     public enum HudStyle {
         YOZAKURA,
@@ -159,6 +172,11 @@ public class HUD extends Module {
     private final Numbers<Double> inventoryScale = new Numbers<Double>("Inventory Scale", "InventoryScale", 1.0, 0.65, 1.8, 0.05);
 
     private final Map<Module, Float> moduleAnimations = new HashMap<Module, Float>();
+    private final List<ModuleListEntry> moduleEntryCache = new ArrayList<ModuleListEntry>();
+    private int moduleEntryCacheSignature;
+    private int moduleEntryCacheGap;
+    private CFontRenderer moduleEntryCacheFont;
+    private long moduleEntryCacheTime;
     private long lastFrameMS = System.currentTimeMillis();
 
     public HUD() {
@@ -220,6 +238,7 @@ public class HUD extends Module {
     @Override
     public void disable() {
         moduleAnimations.clear();
+        clearModuleEntryCache();
         lastFrameMS = System.currentTimeMillis();
     }
 
@@ -494,13 +513,7 @@ public class HUD extends Module {
         final boolean sakura = arrayListTheme.getValue() == ArrayListTheme.SAKURA;
         final CFontRenderer font = sakura ? FontLoaders.C14 : FontLoaders.C18;
         final float fontSizeGap = sakura ? 3.0f : 4.0f;
-        List<ModuleListEntry> entries = buildModuleListEntries(modules, font, fontSizeGap);
-        entries.sort(new Comparator<ModuleListEntry>() {
-            @Override
-            public int compare(ModuleListEntry first, ModuleListEntry second) {
-                return second.labelWidth - first.labelWidth;
-            }
-        });
+        List<ModuleListEntry> entries = getSortedModuleListEntries(modules, font, fontSizeGap);
 
         final float iconSlotW = sakura ? 18.0f : 22.0f;
         final float rightPad = sakura ? 14.0f : 17.0f;
@@ -666,13 +679,7 @@ public class HUD extends Module {
         final CFontRenderer font = FontLoaders.TB14;
         final float rowH = 24.0f;
         final float lineW = 2.4f;
-        List<ModuleListEntry> entries = buildModuleListEntries(modules, font, 3.0f);
-        entries.sort(new Comparator<ModuleListEntry>() {
-            @Override
-            public int compare(ModuleListEntry first, ModuleListEntry second) {
-                return second.labelWidth - first.labelWidth;
-            }
-        });
+        List<ModuleListEntry> entries = getSortedModuleListEntries(modules, font, 3.0f);
 
         int visibleRows = 0;
         float listW = 134.0f;
@@ -902,12 +909,7 @@ public class HUD extends Module {
     }
 
     private LiquidGlassSettings sakuraGlassSettings() {
-        return LiquidGlassSettings.defaults()
-                .withBlurRadius(18.0f)
-                .withBlurDownscale(0.92f)
-                .withNoise(0.018f)
-                .withRefractionScale(1.16f)
-                .withHighlight(1.05f);
+        return SAKURA_GLASS_SETTINGS;
     }
 
     private void drawTextGlow(CFontRenderer font, String text, float x, float y, float alpha) {
@@ -951,16 +953,10 @@ public class HUD extends Module {
     private void drawSakuraPetal2D(float size, float alpha) {
         float width = size * 0.58f;
         float length = size * 1.12f;
-        float[][] points = new float[][]{
-                {0.00f, -0.18f}, {-0.30f, -0.07f}, {-0.64f, 0.25f}, {-0.66f, 0.62f},
-                {-0.36f, 0.94f}, {-0.10f, 0.82f}, {0.00f, 0.74f}, {0.10f, 0.82f},
-                {0.36f, 0.94f}, {0.66f, 0.62f}, {0.64f, 0.25f}, {0.30f, -0.07f}, {0.00f, -0.18f}
-        };
-
         GL11.glBegin(GL11.GL_TRIANGLE_FAN);
         glColor(0xFFFFEAF3, alpha * 0.96f);
         GL11.glVertex2f(0.0f, length * 0.36f);
-        for (float[] point : points) {
+        for (float[] point : SAKURA_PETAL_POINTS) {
             glColor(SAKURA, alpha * 0.70f);
             GL11.glVertex2f(point[0] * width, point[1] * length);
         }
@@ -969,7 +965,7 @@ public class HUD extends Module {
         GL11.glLineWidth(0.75f);
         GL11.glBegin(GL11.GL_LINE_STRIP);
         glColor(0xFFFFF6FA, alpha * 0.45f);
-        for (float[] point : points) {
+        for (float[] point : SAKURA_PETAL_POINTS) {
             GL11.glVertex2f(point[0] * width, point[1] * length);
         }
         GL11.glEnd();
@@ -1071,9 +1067,61 @@ public class HUD extends Module {
         return modules;
     }
 
-    private List<ModuleListEntry> buildModuleListEntries(List<Module> modules, CFontRenderer font, float gap) {
-        ArrayList<ModuleListEntry> entries = new ArrayList<ModuleListEntry>(modules.size());
+    private List<ModuleListEntry> getSortedModuleListEntries(List<Module> modules, CFontRenderer font, float gap) {
         int roundedGap = Math.round(gap);
+        int signature = moduleListSignature(modules, font, roundedGap);
+        long now = System.currentTimeMillis();
+        if (signature == moduleEntryCacheSignature
+                && font == moduleEntryCacheFont
+                && roundedGap == moduleEntryCacheGap
+                && now - moduleEntryCacheTime <= MODULE_LIST_CACHE_MILLIS) {
+            return moduleEntryCache;
+        }
+
+        moduleEntryCache.clear();
+        moduleEntryCache.addAll(buildModuleListEntries(modules, font, roundedGap));
+        moduleEntryCache.sort(new Comparator<ModuleListEntry>() {
+            @Override
+            public int compare(ModuleListEntry first, ModuleListEntry second) {
+                return second.labelWidth - first.labelWidth;
+            }
+        });
+        moduleEntryCacheSignature = signature;
+        moduleEntryCacheFont = font;
+        moduleEntryCacheGap = roundedGap;
+        moduleEntryCacheTime = now;
+        return moduleEntryCache;
+    }
+
+    private int moduleListSignature(List<Module> modules, CFontRenderer font, int roundedGap) {
+        ArrayListTheme listTheme = arrayListTheme.getValue();
+        if (listTheme == null) {
+            listTheme = ArrayListTheme.OLD;
+        }
+        int signature = 17;
+        signature = 31 * signature + System.identityHashCode(font);
+        signature = 31 * signature + roundedGap;
+        signature = 31 * signature + (Boolean.TRUE.equals(parameters.getValue()) ? 1 : 0);
+        signature = 31 * signature + (Boolean.TRUE.equals(keybinds.getValue()) ? 1 : 0);
+        signature = 31 * signature + getSelectedStyle().ordinal();
+        signature = 31 * signature + listTheme.ordinal();
+        for (Module module : modules) {
+            signature = 31 * signature + System.identityHashCode(module);
+            signature = 31 * signature + module.getKey();
+        }
+        return signature;
+    }
+
+    private void clearModuleEntryCache() {
+        moduleEntryCache.clear();
+        moduleEntryCacheSignature = 0;
+        moduleEntryCacheGap = 0;
+        moduleEntryCacheFont = null;
+        moduleEntryCacheTime = 0L;
+    }
+
+    private List<ModuleListEntry> buildModuleListEntries(List<Module> modules, CFontRenderer font, int roundedGap) {
+        ArrayList<ModuleListEntry> entries = new ArrayList<ModuleListEntry>(modules.size());
         for (Module module : modules) {
             ModuleListLabel label = getModuleListLabel(module);
             int nameWidth = font.getStringWidth(label.name);

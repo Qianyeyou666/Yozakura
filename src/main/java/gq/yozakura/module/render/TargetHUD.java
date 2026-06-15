@@ -48,6 +48,18 @@ public class TargetHUD extends Module {
     private static final int SAKURA_STRONG = 0xFFFF80B3;
     private static final int GLASS_FILL = 0xFF08080D;
     private static final int GLASS_BORDER = 0xFFFFB7D1;
+    private static final LiquidGlassSettings GLASS_SETTINGS = LiquidGlassSettings.defaults()
+            .withBlurRadius(18.0f)
+            .withBlurDownscale(0.92f)
+            .withNoise(0.018f)
+            .withRefractionScale(1.16f)
+            .withHighlight(1.05f);
+    private static final float[][] SAKURA_PETAL_POINTS = new float[][]{
+            {0.00f, -0.18f}, {-0.30f, -0.07f}, {-0.64f, 0.25f}, {-0.66f, 0.62f},
+            {-0.36f, 0.94f}, {-0.10f, 0.82f}, {0.00f, 0.74f}, {0.10f, 0.82f},
+            {0.36f, 0.94f}, {0.66f, 0.62f}, {0.64f, 0.25f}, {0.30f, -0.07f},
+            {0.00f, -0.18f}
+    };
 
     private final Numbers<Double> xPosition = new Numbers<Double>("X", "X", -1.0, -1.0, 2000.0, 1.0);
     private final Numbers<Double> yPosition = new Numbers<Double>("Y", "Y", -1.0, -1.0, 1200.0, 1.0);
@@ -190,12 +202,6 @@ public class TargetHUD extends Module {
 
         int fill = withAlpha(GLASS_FILL, Math.round((158.0f + pulse * 18.0f) * easedAlpha));
         int border = withAlpha(GLASS_BORDER, Math.round((24.0f + pulse * 18.0f) * easedAlpha));
-        LiquidGlassSettings settings = LiquidGlassSettings.defaults()
-                .withBlurRadius(18.0f)
-                .withBlurDownscale(0.92f)
-                .withNoise(0.018f)
-                .withRefractionScale(1.16f)
-                .withHighlight(1.05f);
 
         GlStateManager.pushMatrix();
         if (Math.abs(panelScale - 1.0f) > 0.001f) {
@@ -210,7 +216,7 @@ public class TargetHUD extends Module {
         RenderServices.shapes().shadow(x, y, x + w, y + h, radius,
                 withAlpha(SAKURA, Math.round((28.0f + 26.0f * pulse) * easedAlpha)), 5, 2.2f * uiScale);
         RenderServices.liquidGlass().roundedBorder(x, y, x + w, y + h, radius, 0.55f * uiScale,
-                fill, border, settings);
+                fill, border, GLASS_SETTINGS);
         drawBackgroundAccent(x, y, w, h, radius, uiScale, easedAlpha);
 
         drawAvatar(target, x + 14.0f * uiScale, y + 8.0f * uiScale, 26.0f * uiScale, uiScale, contentAlpha);
@@ -460,16 +466,10 @@ public class TargetHUD extends Module {
     private void drawSakuraPetal2D(float size, float alpha) {
         float width = size * 0.58f;
         float length = size * 1.12f;
-        float[][] points = new float[][]{
-                {0.00f, -0.18f}, {-0.30f, -0.07f}, {-0.64f, 0.25f}, {-0.66f, 0.62f},
-                {-0.36f, 0.94f}, {-0.10f, 0.82f}, {0.00f, 0.74f}, {0.10f, 0.82f},
-                {0.36f, 0.94f}, {0.66f, 0.62f}, {0.64f, 0.25f}, {0.30f, -0.07f}, {0.00f, -0.18f}
-        };
-
         GL11.glBegin(GL11.GL_TRIANGLE_FAN);
         glColor(0xFFFFEAF3, alpha * 0.96f);
         GL11.glVertex2f(0.0f, length * 0.36f);
-        for (float[] point : points) {
+        for (float[] point : SAKURA_PETAL_POINTS) {
             glColor(SAKURA, alpha * 0.70f);
             GL11.glVertex2f(point[0] * width, point[1] * length);
         }
@@ -478,7 +478,7 @@ public class TargetHUD extends Module {
         GL11.glLineWidth(0.75f);
         GL11.glBegin(GL11.GL_LINE_STRIP);
         glColor(0xFFFFF6FA, alpha * 0.45f);
-        for (float[] point : points) {
+        for (float[] point : SAKURA_PETAL_POINTS) {
             GL11.glVertex2f(point[0] * width, point[1] * length);
         }
         GL11.glEnd();

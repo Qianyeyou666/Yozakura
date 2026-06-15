@@ -36,6 +36,12 @@ public final class SakuraClickGui extends GuiScreen {
     private static final int SAKURA_STRONG = 0xFFFF80B3;
     private static final int GLASS = 0xFF08080D;
     private static final int GLASS_SOFT = 0xFF160F15;
+    private static final LiquidGlassSettings GLASS_SETTINGS = LiquidGlassSettings.defaults()
+            .withBlurRadius(18.0f)
+            .withBlurDownscale(0.92f)
+            .withNoise(0.018f)
+            .withRefractionScale(1.16f)
+            .withHighlight(1.05f);
 
     private static ModuleType currentType = ModuleType.Combat;
     private static Module selectedModule;
@@ -1081,12 +1087,7 @@ public final class SakuraClickGui extends GuiScreen {
     }
 
     private LiquidGlassSettings glassSettings() {
-        return LiquidGlassSettings.defaults()
-                .withBlurRadius(18.0f)
-                .withBlurDownscale(0.92f)
-                .withNoise(0.018f)
-                .withRefractionScale(1.16f)
-                .withHighlight(1.05f);
+        return GLASS_SETTINGS;
     }
 
     private void beginScissorScaled(float x, float y, float w, float h) {

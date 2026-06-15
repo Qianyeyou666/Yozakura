@@ -27,7 +27,9 @@ import gq.yozakura.event.bus.EventTarget;
 import gq.yozakura.event.bus.types.EventType;
 import gq.yozakura.event.bus.types.Priority;
 import gq.yozakura.event.bridge.*;
+import gq.yozakura.manager.RotationDebug;
 import gq.yozakura.manager.RotationState;
+import gq.yozakura.manager.VisualRotationState;
 import gq.yozakura.module.runtime.Module;
 import gq.yozakura.module.world.BedNuker;
 import gq.yozakura.module.movement.LongJump;
@@ -94,6 +96,7 @@ public class Scaffold extends Module {
     public final BooleanProperty swing = new BooleanProperty("swing", true);
     public final BooleanProperty itemSpoof = new BooleanProperty("item-spoof", false);
     public final BooleanProperty blockCounter = new BooleanProperty("block-counter", true);
+    public final BooleanProperty rotationDebug = new BooleanProperty("rotation-debug", false);
     private int rotationTick = 0;
     private int lastSlot = -1;
     private int blockCount = -1;
@@ -300,6 +303,7 @@ public class Scaffold extends Module {
     @EventTarget(Priority.HIGH)
     public void onUpdate(UpdateEvent event) {
         if (this.isEnabled() && event.getType() == EventType.PRE) {
+            RotationDebug.setSourceEnabled("Scaffold", this.rotationDebug.getValue());
             if (this.rotationTick > 0) {
                 this.rotationTick--;
             }
@@ -574,6 +578,7 @@ public class Scaffold extends Module {
                         this.towering = true;
                     }
                     event.setRotation(targetYaw, targetPitch, 3);
+                    VisualRotationState.publish("Scaffold", targetYaw, targetPitch, 3);
                     if (this.moveFix.getValue() == 1) {
                         event.setPervRotation(targetYaw, 3);
                     }
@@ -956,6 +961,8 @@ public class Scaffold extends Module {
 
     @Override
     public void onDisabled() {
+        VisualRotationState.clearSource("Scaffold");
+        RotationDebug.setSourceEnabled("Scaffold", false);
         if (mc.thePlayer != null && this.lastSlot != -1) {
             this.selectHotbarSlot(this.lastSlot);
         }

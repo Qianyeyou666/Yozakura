@@ -41,6 +41,8 @@ import gq.yozakura.event.bus.types.EventType;
 import gq.yozakura.event.bus.types.Priority;
 import gq.yozakura.event.bridge.*;
 import gq.yozakura.manager.RotationState;
+import gq.yozakura.manager.RotationDebug;
+import gq.yozakura.manager.VisualRotationState;
 import gq.yozakura.bridge.MinecraftAccessor;
 import gq.yozakura.module.runtime.Module;
 import gq.yozakura.module.world.BedNuker;
@@ -99,6 +101,7 @@ public class KillAura extends Module {
     public final BooleanProperty silverfish;
     public final BooleanProperty teams;
     public final ModeProperty showTarget;
+    public final BooleanProperty rotationDebug;
 
     private final TimerUtil timer = new TimerUtil();
     public static EntityLivingBase target;
@@ -156,6 +159,7 @@ public class KillAura extends Module {
         this.silverfish = new BooleanProperty("Silverfish", false);
         this.teams = new BooleanProperty("Teams", true);
         this.showTarget = new ModeProperty("Show Target", 0, new String[]{"None", "Default", "Hud", "Scan"});
+        this.rotationDebug = new BooleanProperty("Rotation Debug", false);
     }
 
     private long getAttackDelay() {
@@ -393,6 +397,7 @@ public class KillAura extends Module {
     @EventTarget(Priority.LOW)
     public void onUpdate(UpdateEvent event) {
         if (this.isEnabled() && event.getType() == EventType.PRE) {
+            RotationDebug.setSourceEnabled("KillAura", this.rotationDebug.getValue());
             if (this.attackDelayMS > 0L) {
                 this.attackDelayMS -= 50L;
             }
@@ -647,6 +652,7 @@ public class KillAura extends Module {
                                 (float) this.smoothing.getValue() / 100.0F
                         );
                         event.setRotation(rotations[0], rotations[1], 1);
+                        VisualRotationState.publish("KillAura", rotations[0], rotations[1], 1);
                         if (this.rotations.getValue() == 3) {
                             YozakuraRuntime.rotationManager.setRotation(rotations[0], rotations[1], 1, true);
                         }
@@ -949,6 +955,8 @@ public class KillAura extends Module {
 
     @Override
     public void onDisabled() {
+        VisualRotationState.clearSource("KillAura");
+        RotationDebug.setSourceEnabled("KillAura", false);
         YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
         this.blockingState = false;
         this.isBlocking = false;

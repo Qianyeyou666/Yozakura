@@ -1,8 +1,15 @@
 package gq.yozakura.module.world;
 
+import gq.yozakura.bridge.MinecraftAccessor;
+import gq.yozakura.event.bus.EventTarget;
+import gq.yozakura.event.bus.types.EventType;
+import gq.yozakura.event.bus.types.Priority;
+import gq.yozakura.event.bridge.UpdateEvent;
+import gq.yozakura.manager.VisualRotationState;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.Module;
-import gq.yozakura.util.minecraft.RotationUtil;
+import gq.yozakura.util.module.BlockUtil;
+import gq.yozakura.util.module.RotationUtil;
 import gq.yozakura.value.Mode;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
@@ -13,14 +20,13 @@ import net.minecraft.block.BlockLiquid;
 import net.minecraft.init.Blocks;
 import net.minecraft.item.ItemBlock;
 import net.minecraft.item.ItemStack;
-import net.minecraft.network.play.client.C09PacketHeldItemChange;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.BlockPos;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.MathHelper;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.MovingObjectPosition.MovingObjectType;
 import net.minecraft.util.Vec3;
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
-import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.input.Keyboard;
 
 import java.util.ArrayList;
@@ -41,11 +47,32 @@ public class Clutch extends Module {
     private final Option<Boolean> autoSwap = new Option<Boolean>("Auto Swap", "AutoSwap", true);
     private final Option<Boolean> restoreSlot = new Option<Boolean>("Restore Slot", "RestoreSlot", false);
 
-    private final RotationUtil.State rotationState = new RotationUtil.State();
+    private static final int ROTATION_PRIORITY = 4;
+    private static final double[] PLACE_OFFSETS = new double[]{
+            0.03125D,
+            0.09375D,
+            0.15625D,
+            0.21875D,
+            0.28125D,
+            0.34375D,
+            0.40625D,
+            0.46875D,
+            0.53125D,
+            0.59375D,
+            0.65625D,
+            0.71875D,
+            0.78125D,
+            0.84375D,
+            0.90625D,
+            0.96875D
+    };
 
     private PlaceTarget lockedTarget;
     private int lockedTicks;
     private long lastPlaceMillis;
+    private float yaw = -180.0F;
+    private float pitch = 85.0F;
+    private boolean hasRotation;
 
     public Clutch() {
         super("Clutch", Keyboard.KEY_NONE, ModuleType.World, "Place a block under you while falling");
@@ -61,11 +88,12 @@ public class Clutch extends Module {
     @Override
     public void disable() {
         reset();
+        VisualRotationState.clearSource("Clutch");
     }
 
-    @SubscribeEvent
-    public void onTick(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) {
+    @EventTarget(Priority.HIGH)
+    public void onUpdate(UpdateEvent event) {
+        if (event.getType() != EventType.PRE) {
             return;
         }
         if (!canRun()) {
@@ -93,14 +121,22 @@ public class Clutch extends Module {
             return;
         }
 
+        AimData aim = resolveAim(target, event, upward);
+        if (aim == null) {
+            restoreSlot(originalSlot);
+            resetTarget();
+            return;
+        }
+
+        target = new PlaceTarget(target.target, target.support, target.side, aim.hitVec, target.score);
         rememberTarget(target);
-        aimAt(target, upward);
+        applySilentRotation(event, aim);
         slowHorizontalMotion(upward);
 
         if (!Boolean.TRUE.equals(autoPlace.getValue())) {
             return;
         }
-        if (!canPlaceNow(target, upward)) {
+        if (!canPlaceNow(target, upward, aim.exactHit)) {
             return;
         }
         if (place(target)) {
@@ -422,48 +458,119 @@ public class Clutch extends Module {
                 + stability;
     }
 
-    private void aimAt(PlaceTarget target, boolean upward) {
-        float[] rotations = rotationsTo(target);
-        if (currentMode() == ClutchMode.PANIC || lockedTicks > 2 && !isAimClose(rotations, upward)) {
-            mc.thePlayer.rotationYaw = rotations[0];
-            mc.thePlayer.rotationPitch = rotations[1];
-            RotationUtil.syncHead(mc, rotations[0]);
-            rotationState.reset();
-            return;
-        }
-
-        float yawSpeed = getAimSpeed(upward);
-        float pitchSpeed = upward ? Math.max(34.0F, yawSpeed * 1.12F) : Math.max(28.0F, yawSpeed);
-        RotationUtil.applyToPlayer(mc, rotations[0], rotations[1], yawSpeed, pitchSpeed,
-                false, 0.0F, rotationState, upward ? 0.62F : 0.55F,
-                upward ? 0.82F : 0.55F, true);
-    }
-
     private float[] rotationsTo(PlaceTarget target) {
         Vec3 hitVec = target.hitVec;
-        return RotationUtil.getRotationsTo(mc, hitVec.xCoord, hitVec.yCoord, hitVec.zCoord);
+        return RotationUtil.getRotations(hitVec);
     }
 
-    private boolean canPlaceNow(PlaceTarget target, boolean upward) {
+    private AimData resolveAim(PlaceTarget target, UpdateEvent event, boolean upward) {
+        AimData exact = findExactAim(target, event, upward);
+        if (exact != null) {
+            return exact;
+        }
+
+        Vec3 hitVec = BlockUtil.getClickVec(target.support, target.side);
+        double dx = hitVec.xCoord - mc.thePlayer.posX;
+        double dy = hitVec.yCoord - mc.thePlayer.posY - (double) mc.thePlayer.getEyeHeight();
+        double dz = hitVec.zCoord - mc.thePlayer.posZ;
+        float baseYaw = hasRotation ? yaw : event.getYaw();
+        float basePitch = hasRotation ? pitch : event.getPitch();
+        float[] rotations = RotationUtil.getRotationsTo(dx, dy, dz, baseYaw, basePitch);
+        float yawSpeed = getAimSpeed(upward);
+        float pitchSpeed = upward ? Math.max(34.0F, yawSpeed * 1.12F) : Math.max(28.0F, yawSpeed);
+        float nextYaw = stepRotation(baseYaw, rotations[0], yawSpeed);
+        float nextPitch = stepRotation(basePitch, rotations[1], pitchSpeed);
+        return new AimData(RotationUtil.quantizeAngle(nextYaw), RotationUtil.quantizeAngle(nextPitch), hitVec, false);
+    }
+
+    private AimData findExactAim(PlaceTarget target, UpdateEvent event, boolean upward) {
+        double[] xOffsets = PLACE_OFFSETS;
+        double[] yOffsets = PLACE_OFFSETS;
+        double[] zOffsets = PLACE_OFFSETS;
+        switch (target.side) {
+            case NORTH:
+                zOffsets = new double[]{0.0D};
+                break;
+            case EAST:
+                xOffsets = new double[]{1.0D};
+                break;
+            case SOUTH:
+                zOffsets = new double[]{1.0D};
+                break;
+            case WEST:
+                xOffsets = new double[]{0.0D};
+                break;
+            case DOWN:
+                yOffsets = new double[]{0.0D};
+                break;
+            case UP:
+                yOffsets = new double[]{1.0D};
+                break;
+        }
+
+        float baseYaw = hasRotation ? yaw : event.getYaw();
+        float basePitch = hasRotation ? pitch : event.getPitch();
+        AimData best = null;
+        float bestDiff = 0.0F;
+        for (double dx : xOffsets) {
+            for (double dy : yOffsets) {
+                for (double dz : zOffsets) {
+                    double relX = (double) target.support.getX() + dx - mc.thePlayer.posX;
+                    double relY = (double) target.support.getY() + dy - mc.thePlayer.posY - (double) mc.thePlayer.getEyeHeight();
+                    double relZ = (double) target.support.getZ() + dz - mc.thePlayer.posZ;
+                    float[] rotations = RotationUtil.getRotationsTo(relX, relY, relZ, baseYaw, basePitch);
+                    float yawSpeed = getAimSpeed(upward);
+                    float pitchSpeed = upward ? Math.max(34.0F, yawSpeed * 1.12F) : Math.max(28.0F, yawSpeed);
+                    float nextYaw = RotationUtil.quantizeAngle(stepRotation(baseYaw, rotations[0], yawSpeed));
+                    float nextPitch = RotationUtil.quantizeAngle(stepRotation(basePitch, rotations[1], pitchSpeed));
+                    MovingObjectPosition mop = RotationUtil.rayTrace(nextYaw, nextPitch,
+                            mc.playerController.getBlockReachDistance(), 1.0F);
+                    if (mop == null
+                            || mop.typeOfHit != MovingObjectType.BLOCK
+                            || !mop.getBlockPos().equals(target.support)
+                            || mop.sideHit != target.side) {
+                        continue;
+                    }
+                    float diff = Math.abs(MathHelper.wrapAngleTo180_float(nextYaw - baseYaw))
+                            + Math.abs(nextPitch - basePitch) * 0.75F;
+                    if (best == null || diff < bestDiff) {
+                        best = new AimData(nextYaw, nextPitch, mop.hitVec, true);
+                        bestDiff = diff;
+                    }
+                }
+            }
+        }
+        return best;
+    }
+
+    private float stepRotation(float current, float target, float maxSpeed) {
+        float diff = MathHelper.wrapAngleTo180_float(target - current);
+        float speed = Math.max(1.0F, maxSpeed);
+        if (currentMode() == ClutchMode.PANIC || isEmergency()) {
+            speed = Math.max(speed, 180.0F);
+        }
+        return current + MathHelper.clamp_float(diff, -speed, speed);
+    }
+
+    private void applySilentRotation(UpdateEvent event, AimData aim) {
+        yaw = aim.yaw;
+        pitch = MathHelper.clamp_float(aim.pitch, -90.0F, 90.0F);
+        hasRotation = true;
+        event.setRotation(yaw, pitch, ROTATION_PRIORITY);
+        event.setPervRotation(yaw, ROTATION_PRIORITY);
+        VisualRotationState.publish("Clutch", yaw, pitch, ROTATION_PRIORITY);
+    }
+
+    private boolean canPlaceNow(PlaceTarget target, boolean upward, boolean exactHit) {
         if (System.currentTimeMillis() - lastPlaceMillis < getPlaceDelay(upward)) {
             return false;
         }
         if (currentMode() == ClutchMode.PANIC || isEmergency()) {
             return true;
         }
-        return currentMode() == ClutchMode.SMART
-                || isAimClose(rotationsTo(target), upward)
+        return exactHit
+                || currentMode() == ClutchMode.SMART
                 || lockedTicks >= getAimWaitTicks();
-    }
-
-    private boolean isAimClose(float[] rotations, boolean upward) {
-        float yawDiff = Math.abs(MathHelper.wrapAngleTo180_float(rotations[0] - mc.thePlayer.rotationYaw));
-        float pitchDiff = Math.abs(MathHelper.wrapAngleTo180_float(rotations[1] - mc.thePlayer.rotationPitch));
-        float limit = upward ? 18.0F : 15.0F;
-        if (currentMode() == ClutchMode.LEGIT) {
-            limit *= 0.72F;
-        }
-        return yawDiff + pitchDiff * 0.75F <= limit;
     }
 
     private boolean place(PlaceTarget target) {
@@ -474,6 +581,7 @@ public class Clutch extends Module {
 
         int slot = mc.thePlayer.inventory.currentItem;
         int oldSize = stack.stackSize;
+        MinecraftAccessor.syncCurrentPlayItem(mc.playerController);
         boolean placed = mc.playerController.onPlayerRightClick(mc.thePlayer, mc.theWorld, stack,
                 target.support, target.side, target.hitVec);
         if (!placed) {
@@ -512,7 +620,6 @@ public class Clutch extends Module {
         } else {
             lockedTarget = target;
             lockedTicks = 0;
-            rotationState.reset();
         }
     }
 
@@ -576,7 +683,7 @@ public class Clutch extends Module {
             return;
         }
         mc.thePlayer.inventory.currentItem = slot;
-        mc.thePlayer.sendQueue.addToSendQueue(new C09PacketHeldItemChange(slot));
+        MinecraftAccessor.syncCurrentPlayItem(mc.playerController);
     }
 
     private void restoreSlot(int originalSlot) {
@@ -593,7 +700,10 @@ public class Clutch extends Module {
     private void resetTarget() {
         lockedTarget = null;
         lockedTicks = 0;
-        rotationState.reset();
+        hasRotation = false;
+        yaw = -180.0F;
+        pitch = 85.0F;
+        VisualRotationState.clearSource("Clutch");
     }
 
     private ClutchMode currentMode() {
@@ -757,6 +867,20 @@ public class Clutch extends Module {
             this.side = side;
             this.hitVec = hitVec;
             this.score = score;
+        }
+    }
+
+    private static final class AimData {
+        final float yaw;
+        final float pitch;
+        final Vec3 hitVec;
+        final boolean exactHit;
+
+        AimData(float yaw, float pitch, Vec3 hitVec, boolean exactHit) {
+            this.yaw = yaw;
+            this.pitch = pitch;
+            this.hitVec = hitVec;
+            this.exactHit = exactHit;
         }
     }
 }

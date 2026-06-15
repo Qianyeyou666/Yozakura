@@ -11,6 +11,7 @@ import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.Packet;
 import net.minecraft.network.play.client.C03PacketPlayer;
+import net.minecraft.network.play.client.C0BPacketEntityAction;
 import net.minecraft.util.MovingObjectPosition;
 import net.minecraftforge.client.event.MouseEvent;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
@@ -29,17 +30,16 @@ import gq.yozakura.event.bus.EventManager;
 import gq.yozakura.event.bus.types.EventType;
 import gq.yozakura.event.bridge.HitBlockEvent;
 import gq.yozakura.event.bridge.LeftClickMouseEvent;
-import gq.yozakura.event.bridge.LivingUpdateEvent;
-import gq.yozakura.event.bridge.MoveInputEvent;
 import gq.yozakura.event.bridge.PacketEvent;
 import gq.yozakura.event.bridge.Render2DEvent;
 import gq.yozakura.event.bridge.Render3DEvent;
 import gq.yozakura.event.bridge.RightClickMouseEvent;
 import gq.yozakura.event.bridge.SafeWalkEvent;
-import gq.yozakura.event.bridge.StrafeEvent;
 import gq.yozakura.event.bridge.SwapItemEvent;
 import gq.yozakura.event.bridge.UpdateEvent;
+import gq.yozakura.manager.RotationDebug;
 import gq.yozakura.manager.RotationState;
+import gq.yozakura.manager.VisualRotationState;
 import gq.yozakura.util.module.PacketUtil;
 
 import java.lang.reflect.Field;
@@ -91,29 +91,32 @@ public final class YozakuraEventBridge {
         }
         if (!isInGame()) {
             releaseForcedSneak();
+            MovementInputBridge.uninstall();
+            VisualRotationState.clear();
             return;
         }
+        MovementInputBridge.install();
         injectPacketHandler();
         if (event.phase == TickEvent.Phase.START) {
             EventManager.call(new gq.yozakura.event.bridge.TickEvent(EventType.PRE));
             dispatchPreUpdate();
-            dispatchMoveInput();
-            dispatchStrafe();
             dispatchSafeWalk();
             syncAuraTarget();
         } else {
+            MovementInputBridge.restoreRotation();
             EventManager.call(new gq.yozakura.event.bridge.TickEvent(EventType.POST));
             EventManager.call(new UpdateEvent(EventType.POST, mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch,
                     mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch));
             dispatchSafeWalk();
             syncAuraTarget();
+            MovementInputBridge.finishTick();
         }
     }
 
-    @SubscribeEvent
-    public void onLivingUpdate(net.minecraftforge.event.entity.living.LivingEvent.LivingUpdateEvent event) {
-        if (event.entityLiving == mc.thePlayer && isInGame()) {
-            EventManager.call(new LivingUpdateEvent());
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void onPlayerTick(TickEvent.PlayerTickEvent event) {
+        if (event.phase == TickEvent.Phase.END && event.player == mc.thePlayer) {
+            MovementInputBridge.restoreRotation();
         }
     }
 
@@ -201,7 +204,7 @@ public final class YozakuraEventBridge {
 
     @SubscribeEvent
     public void onRenderPlayerPre(RenderPlayerEvent.Pre event) {
-        if (!isInGame() || event.entityPlayer != mc.thePlayer || !RotationState.isActived()) {
+        if (!isInGame() || event.entityPlayer != mc.thePlayer || !VisualRotationState.isActived()) {
             return;
         }
         EntityPlayerSP player = mc.thePlayer;
@@ -212,12 +215,12 @@ public final class YozakuraEventBridge {
         savedYawHead = player.rotationYawHead;
         savedPrevRenderYawOffset = player.prevRenderYawOffset;
         savedRenderYawOffset = player.renderYawOffset;
-        player.prevRotationPitch = RotationState.getPrevRotationPitch();
-        player.rotationPitch = RotationState.getRotationPitch();
-        player.prevRotationYawHead = RotationState.getPrevRotationYawHead();
-        player.rotationYawHead = RotationState.getRotationYawHead();
-        player.prevRenderYawOffset = RotationState.getPrevRenderYawOffset();
-        player.renderYawOffset = RotationState.getRenderYawOffset();
+        player.prevRotationPitch = VisualRotationState.getPrevRotationPitch();
+        player.rotationPitch = VisualRotationState.getRotationPitch();
+        player.prevRotationYawHead = VisualRotationState.getPrevRotationYawHead();
+        player.rotationYawHead = VisualRotationState.getRotationYawHead();
+        player.prevRenderYawOffset = VisualRotationState.getPrevRenderYawOffset();
+        player.renderYawOffset = VisualRotationState.getRenderYawOffset();
     }
 
     @SubscribeEvent
@@ -236,24 +239,15 @@ public final class YozakuraEventBridge {
     }
 
     private void dispatchPreUpdate() {
+        VisualRotationState.beginTick();
         UpdateEvent update = new UpdateEvent(EventType.PRE, mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch,
                 mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch);
         EventManager.call(update);
         RotationState.applyState(update.isRotated(), update.getNewYaw(), update.getNewPitch(),
                 update.getPreYaw(), update.isRotating());
+        VisualRotationState.finishTick();
         syncVisibleRotation();
-    }
-
-    private void dispatchMoveInput() {
-        EventManager.call(new MoveInputEvent());
-    }
-
-    private void dispatchStrafe() {
-        StrafeEvent strafe = new StrafeEvent(mc.thePlayer.movementInput.moveStrafe,
-                mc.thePlayer.movementInput.moveForward, 0.91F);
-        EventManager.call(strafe);
-        mc.thePlayer.movementInput.moveStrafe = strafe.getStrafe();
-        mc.thePlayer.movementInput.moveForward = strafe.getForward();
+        RotationDebug.logUpdate("forge", update);
     }
 
     private void dispatchSafeWalk() {
@@ -279,13 +273,13 @@ public final class YozakuraEventBridge {
     }
 
     private void syncVisibleRotation() {
-        if (!RotationState.isActived()) {
+        if (!VisualRotationState.isActived()) {
             return;
         }
-        mc.thePlayer.prevRotationYawHead = RotationState.getPrevRotationYawHead();
-        mc.thePlayer.rotationYawHead = RotationState.getRotationYawHead();
-        mc.thePlayer.prevRenderYawOffset = RotationState.getPrevRenderYawOffset();
-        mc.thePlayer.renderYawOffset = RotationState.getRenderYawOffset();
+        mc.thePlayer.prevRotationYawHead = VisualRotationState.getPrevRotationYawHead();
+        mc.thePlayer.rotationYawHead = VisualRotationState.getRotationYawHead();
+        mc.thePlayer.prevRenderYawOffset = VisualRotationState.getPrevRenderYawOffset();
+        mc.thePlayer.renderYawOffset = VisualRotationState.getRenderYawOffset();
     }
 
     private void syncAuraTarget() {
@@ -358,7 +352,9 @@ public final class YozakuraEventBridge {
 
     private static final class PacketBridgeHandler extends ChannelDuplexHandler {
         private static final float ROTATION_EPSILON = 1.0E-3F;
+        private static final float ROTATION_DEDUPE_STEP = 0.0096F;
         private boolean hasSentSilentRotation;
+        private boolean duplicateYawFlip;
         private float lastSilentYaw;
         private float lastSilentPitch;
 
@@ -374,6 +370,10 @@ public final class YozakuraEventBridge {
                     super.write(ctx, msg, promise);
                     return;
                 }
+                if (packet instanceof C0BPacketEntityAction
+                        && MovementInputBridge.shouldBlockSprintPacket((C0BPacketEntityAction) packet)) {
+                    return;
+                }
                 PacketEvent event = EventManager.call(new PacketEvent(EventType.SEND, packet));
                 if (event.isCancelled()) {
                     return;
@@ -385,12 +385,14 @@ public final class YozakuraEventBridge {
                         && YozakuraRuntime.blinkManager.offerPacket(packet)) {
                     return;
                 }
+                if (packet instanceof C03PacketPlayer && RotationState.isActived()) {
+                    RotationDebug.logPacket("forge", (C03PacketPlayer) packet, true);
+                    super.write(ctx, rewritePlayerPacket((C03PacketPlayer) packet), promise);
+                    return;
+                }
                 if (packet instanceof C03PacketPlayer) {
-                    if (RotationState.isActived()) {
-                        super.write(ctx, rewritePlayerPacket((C03PacketPlayer) packet), promise);
-                        return;
-                    }
                     hasSentSilentRotation = false;
+                    RotationDebug.logPacket("forge", (C03PacketPlayer) packet, false);
                 }
             }
             super.write(ctx, msg, promise);
@@ -415,12 +417,12 @@ public final class YozakuraEventBridge {
         }
 
         private C03PacketPlayer rewritePlayerPacket(C03PacketPlayer packet) {
-            boolean onGround = packet.isOnGround();
             float yaw = RotationState.getRotationYawHead();
             float pitch = RotationState.getRotationPitch();
+            boolean onGround = packet.isOnGround();
 
             if (!shouldSendLook(yaw, pitch)) {
-                return stripLook(packet);
+                yaw = nudgeDuplicateYaw(yaw);
             }
 
             hasSentSilentRotation = true;
@@ -440,18 +442,9 @@ public final class YozakuraEventBridge {
                     || Math.abs(pitch - lastSilentPitch) > ROTATION_EPSILON;
         }
 
-        private C03PacketPlayer stripLook(C03PacketPlayer packet) {
-            if (packet.isMoving()) {
-                if (packet.getRotating()) {
-                    return new C03PacketPlayer.C04PacketPlayerPosition(packet.getPositionX(), packet.getPositionY(),
-                            packet.getPositionZ(), packet.isOnGround());
-                }
-                return packet;
-            }
-            if (packet.getRotating()) {
-                return new C03PacketPlayer(packet.isOnGround());
-            }
-            return packet;
+        private float nudgeDuplicateYaw(float yaw) {
+            duplicateYawFlip = !duplicateYawFlip;
+            return yaw + (duplicateYawFlip ? ROTATION_DEDUPE_STEP : -ROTATION_DEDUPE_STEP);
         }
     }
 }

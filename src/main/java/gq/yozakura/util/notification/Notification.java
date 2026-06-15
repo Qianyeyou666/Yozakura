@@ -47,6 +47,12 @@ public class Notification {
     private static final int SK_BORDER = 0xFFFFB7D1;
     private static final int SK_ACCENT = 0xFFFFB7D1;
     private static final int SK_ACCENT_ALT = 0xFFFF80B3;
+    private static final LiquidGlassSettings SAKURA_GLASS_SETTINGS = LiquidGlassSettings.defaults()
+            .withBlurRadius(18.0f)
+            .withBlurDownscale(0.92f)
+            .withNoise(0.018f)
+            .withRefractionScale(1.16f)
+            .withHighlight(1.05f);
 
     public static Minecraft mc = Minecraft.getMinecraft();
 
@@ -201,12 +207,7 @@ public class Notification {
         RenderServices.liquidGlass().roundedBorder(x1, y1, x2, y2, radius, 0.52f,
                 withAlpha(SK_GLASS, Math.round(158.0f * sakuraAlpha)),
                 withAlpha(SK_BORDER, Math.round(32.0f * sakuraAlpha)),
-                LiquidGlassSettings.defaults()
-                        .withBlurRadius(18.0f)
-                        .withBlurDownscale(0.92f)
-                        .withNoise(0.018f)
-                        .withRefractionScale(1.16f)
-                        .withHighlight(1.05f));
+                SAKURA_GLASS_SETTINGS);
 
         // Top accent gradient line
         RenderServices.shapes().horizontalGradient(x1 + 10.0f, y1 + 4.0f, x2 - 10.0f, y1 + 5.1f,

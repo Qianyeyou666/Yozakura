@@ -74,6 +74,9 @@ public final class ShaderRenderer {
     private static int capturedWidth;
     private static int capturedHeight;
     private static int glassCaptureVersion = 1;
+    private static int sharedGlassSourceVersion = -1;
+    private static int sharedGlassViewportX;
+    private static int sharedGlassViewportY;
     private static boolean screenTextureConfigured;
     private static boolean loggedFailure;
 
@@ -660,14 +663,15 @@ public final class ShaderRenderer {
             int targetWidth = Math.max(1, Math.round(viewportW * key.blurDownscale()));
             int targetHeight = Math.max(1, Math.round(viewportH * key.blurDownscale()));
             setActiveTexture(GL13.GL_TEXTURE0);
-            if (!cache.ensureSourceTexture(viewportW, viewportH)) {
+            if (!ensureSharedGlassSource(viewportX, viewportY, viewportW, viewportH)) {
                 return null;
             }
+            cache.sourceTexture = screenTexture;
+            cache.sourceWidth = viewportW;
+            cache.sourceHeight = viewportH;
             if (cache.sourceVersion != glassCaptureVersion || cache.blurWidth != targetWidth
                     || cache.blurHeight != targetHeight) {
-                bindTexture(cache.sourceTexture);
-                GL11.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, viewportX, viewportY, viewportW, viewportH);
-                cache.ready = buildFrostedBlur(cache, viewportW, viewportH,
+                cache.ready = buildFrostedBlur(cache, screenTexture, viewportW, viewportH,
                         key.blurRadius(), key.blurIterations(), key.blurDownscale());
                 cache.sourceVersion = glassCaptureVersion;
             }
@@ -675,6 +679,29 @@ public final class ShaderRenderer {
         } finally {
             restoreTexture0State(textureState);
         }
+    }
+
+    private static boolean ensureSharedGlassSource(int viewportX, int viewportY, int viewportW, int viewportH) {
+        if (viewportW <= 0 || viewportH <= 0) {
+            return false;
+        }
+        boolean needsCapture = sharedGlassSourceVersion != glassCaptureVersion
+                || capturedWidth != viewportW
+                || capturedHeight != viewportH
+                || sharedGlassViewportX != viewportX
+                || sharedGlassViewportY != viewportY;
+        if (!ensureScreenTextureStorage(viewportW, viewportH)) {
+            return false;
+        }
+        if (!needsCapture) {
+            return true;
+        }
+        bindTexture(screenTexture);
+        GL11.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, viewportX, viewportY, viewportW, viewportH);
+        sharedGlassSourceVersion = glassCaptureVersion;
+        sharedGlassViewportX = viewportX;
+        sharedGlassViewportY = viewportY;
+        return true;
     }
 
     private static boolean ensureScreenTexture() {
@@ -698,6 +725,7 @@ public final class ShaderRenderer {
             }
             bindTexture(screenTexture);
             GL11.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, viewportX, viewportY, viewportW, viewportH);
+            sharedGlassSourceVersion = -1;
             return true;
         } finally {
             restoreTexture0State(textureState);
@@ -705,23 +733,26 @@ public final class ShaderRenderer {
     }
 
     private static boolean ensureScreenTextureStorage(int viewportW, int viewportH) {
+        boolean created = false;
         if (screenTexture == 0) {
             screenTexture = GL11.glGenTextures();
             screenTextureConfigured = false;
+            created = true;
         }
         bindTexture(screenTexture);
         configureScreenTexture();
-        if (capturedWidth != viewportW || capturedHeight != viewportH) {
+        if (created || capturedWidth != viewportW || capturedHeight != viewportH) {
             GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGB, viewportW, viewportH, 0,
                     GL11.GL_RGB, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
             capturedWidth = viewportW;
             capturedHeight = viewportH;
+            sharedGlassSourceVersion = -1;
         }
         return true;
     }
 
-    private static boolean buildFrostedBlur(BlurCache cache, int width, int height, float blurRadius,
-                                           int blurIterations, float blurDownscale) {
+    private static boolean buildFrostedBlur(BlurCache cache, int sourceTexture, int width, int height, float blurRadius,
+                                            int blurIterations, float blurDownscale) {
         if (cache == null || !supportsFramebufferBlur() || width <= 0 || height <= 0
                 || getGaussianBlurProgram() == null) {
             return false;
@@ -742,20 +773,20 @@ public final class ShaderRenderer {
             }
             int iterations = clampGaussianIterations(blurIterations);
             if (iterations == 0) {
-                runBlurPass(cache.sourceTexture, cache.framebufferB, targetWidth, targetHeight,
+                runBlurPass(sourceTexture, cache.framebufferB, targetWidth, targetHeight,
                         width, height, 0.0f, 0.0f, 0.0f);
                 return true;
             }
             float passRadius = clampGaussianPassRadius(blurRadius / Math.max(1, iterations));
-            int sourceTexture = cache.sourceTexture;
+            int passSourceTexture = sourceTexture;
             int sourceWidth = width;
             int sourceHeight = height;
             for (int i = 0; i < iterations; i++) {
-                runBlurPass(sourceTexture, cache.framebufferA, targetWidth, targetHeight,
+                runBlurPass(passSourceTexture, cache.framebufferA, targetWidth, targetHeight,
                         sourceWidth, sourceHeight, passRadius, 1.0f, 0.0f);
                 runBlurPass(cache.textureA, cache.framebufferB, targetWidth, targetHeight,
                         targetWidth, targetHeight, passRadius, 0.0f, 1.0f);
-                sourceTexture = cache.textureB;
+                passSourceTexture = cache.textureB;
                 sourceWidth = targetWidth;
                 sourceHeight = targetHeight;
             }
@@ -787,7 +818,10 @@ public final class ShaderRenderer {
         BlurCache cache = blurCacheFor(key);
         int targetWidth = Math.max(1, Math.round(viewportW * key.blurDownscale()));
         int targetHeight = Math.max(1, Math.round(viewportH * key.blurDownscale()));
-        cache.ensureSourceTexture(viewportW, viewportH);
+        ensureScreenTextureStorage(viewportW, viewportH);
+        cache.sourceTexture = screenTexture;
+        cache.sourceWidth = viewportW;
+        cache.sourceHeight = viewportH;
         cache.ensureTargets(targetWidth, targetHeight);
     }
 
@@ -1331,7 +1365,6 @@ public final class ShaderRenderer {
         private int sourceTexture;
         private int sourceWidth;
         private int sourceHeight;
-        private boolean sourceConfigured;
         private int textureA;
         private int textureB;
         private int framebufferA;
@@ -1341,32 +1374,6 @@ public final class ShaderRenderer {
         private boolean targetsReady;
         private boolean ready;
         private int sourceVersion = -1;
-
-        private boolean ensureSourceTexture(int width, int height) {
-            if (sourceTexture == 0) {
-                sourceTexture = GL11.glGenTextures();
-                sourceConfigured = false;
-                sourceVersion = -1;
-                ready = false;
-            }
-            bindTexture(sourceTexture);
-            if (!sourceConfigured) {
-                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
-                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
-                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
-                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
-                sourceConfigured = true;
-            }
-            if (sourceWidth != width || sourceHeight != height) {
-                GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGB, width, height, 0,
-                        GL11.GL_RGB, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
-                sourceWidth = width;
-                sourceHeight = height;
-                sourceVersion = -1;
-                ready = false;
-            }
-            return true;
-        }
 
         private boolean ensureTargets(int width, int height) {
             boolean created = false;
