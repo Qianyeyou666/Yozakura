@@ -81,6 +81,16 @@ public final class ShaderRenderer {
     }
 
     public static void invalidateFrostedGlass() {
+        advanceGlassCaptureVersion();
+        Blur.invalidate();
+    }
+
+    public static void beginOverlayFrame() {
+        advanceGlassCaptureVersion();
+        Blur.invalidate();
+    }
+
+    private static void advanceGlassCaptureVersion() {
         glassCaptureVersion++;
         if (glassCaptureVersion == Integer.MAX_VALUE) {
             glassCaptureVersion = 1;
@@ -88,7 +98,6 @@ public final class ShaderRenderer {
                 cache.sourceVersion = 0;
             }
         }
-        Blur.invalidate();
     }
 
     public static LiquidGlassSettings defaultLiquidGlassSettings() {

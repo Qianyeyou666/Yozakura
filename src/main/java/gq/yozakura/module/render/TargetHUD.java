@@ -1,18 +1,17 @@
-package gq.yozakura.module.render;
+package gq.vapulite.module.render;
 
-import gq.yozakura.engine.font.CFontRenderer;
-import gq.yozakura.engine.font.FontLoaders;
-import gq.yozakura.engine.render.ShaderRenderer;
-import gq.yozakura.engine.render.ui.LiquidGlassSettings;
-import gq.yozakura.engine.render.ui.RenderServices;
-import gq.yozakura.module.Module;
-import gq.yozakura.module.ModuleType;
-import gq.yozakura.module.combat.Backtrack;
-import gq.yozakura.module.combat.KillAura;
-import gq.yozakura.util.render.HudDrag;
-import gq.yozakura.util.render.RenderUtil;
-import gq.yozakura.value.Numbers;
-import gq.yozakura.value.Option;
+import gq.vapulite.engine.font.CFontRenderer;
+import gq.vapulite.engine.font.FontLoaders;
+import gq.vapulite.engine.render.ui.LiquidGlassSettings;
+import gq.vapulite.engine.render.ui.RenderServices;
+import gq.vapulite.module.Module;
+import gq.vapulite.module.ModuleType;
+import gq.vapulite.module.combat.Backtrack;
+import gq.vapulite.module.combat.KillAura;
+import gq.vapulite.util.render.HudDrag;
+import gq.vapulite.util.render.RenderUtil;
+import gq.vapulite.value.Numbers;
+import gq.vapulite.value.Option;
 import net.minecraft.client.entity.AbstractClientPlayer;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.ScaledResolution;
@@ -150,7 +149,6 @@ public class TargetHUD extends Module {
         flowerAnimation += (healthAnimation - flowerAnimation) * Math.min(1.0f, factor * 0.72f);
         switchPulse += (0.0f - switchPulse) * factor;
 
-        ShaderRenderer.invalidateFrostedGlass();
         drawHud(new ScaledResolution(mc), displayTarget, visibility);
     }
 
