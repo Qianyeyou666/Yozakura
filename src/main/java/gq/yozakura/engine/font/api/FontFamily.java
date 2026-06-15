@@ -1,7 +1,7 @@
-package gq.yozakura.engine.font.api;
+package gq.vapulite.engine.font.api;
 
-import gq.yozakura.engine.font.CFontRenderer;
-import net.minecraft.client.Minecraft;
+import gq.vapulite.engine.font.CFontRenderer;
+import gq.vapulite.engine.font.FontResourceLoader;
 import net.minecraft.util.ResourceLocation;
 
 import java.awt.Font;
@@ -57,7 +57,7 @@ public final class FontFamily {
         }
         ResourceLocation location = italic && id.italic() != null ? id.italic() : id.regular();
         try {
-            InputStream inputStream = Minecraft.getMinecraft().getResourceManager().getResource(location).getInputStream();
+            InputStream inputStream = FontResourceLoader.open(location);
             try {
                 Font font = Font.createFont(Font.TRUETYPE_FONT, inputStream);
                 fontData.put(key, font);
@@ -66,8 +66,7 @@ public final class FontFamily {
                 inputStream.close();
             }
         } catch (Exception exception) {
-            exception.printStackTrace();
-            System.out.println("Error loading font " + location);
+            FontResourceLoader.logFailure(location, exception);
             fontData.put(key, SYSTEM_FALLBACK);
             return SYSTEM_FALLBACK;
         }

@@ -11,7 +11,7 @@ public enum FontFamilyId {
     INTER(new ResourceLocation("font/Inter.ttf"), new ResourceLocation("font/Inter-Italic.ttf")),
     ALIBABA(new ResourceLocation("font/AlibabaSans-Regular.otf"), null),
     TENACITY_BOLD(new ResourceLocation("font/tenacity-bold.ttf"), null),
-    ICON(new ResourceLocation("font/TenacityIcon.ttf"), null);
+    ICON(new ResourceLocation("font/NovICON.ttf"), null);
 
     private final ResourceLocation regular;
     private final ResourceLocation italic;

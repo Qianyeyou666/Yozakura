@@ -1,13 +1,14 @@
-package gq.yozakura.ui.click.material;
+package gq.vapulite.ui.click.material;
 
-import gq.yozakura.engine.font.FontLoaders;
-import gq.yozakura.engine.render.ui.RenderServices;
-import gq.yozakura.module.Module;
-import gq.yozakura.util.animation.AnimationUtil;
-import gq.yozakura.value.Mode;
-import gq.yozakura.value.Numbers;
-import gq.yozakura.value.Option;
-import gq.yozakura.value.Value;
+import gq.vapulite.engine.font.FontLoaders;
+import gq.vapulite.engine.render.ui.RenderServices;
+import gq.vapulite.module.Module;
+import gq.vapulite.util.animation.AnimationUtil;
+import gq.vapulite.value.Mode;
+import gq.vapulite.value.Numbers;
+import gq.vapulite.value.Option;
+import gq.vapulite.value.Value;
+import gq.vapulite.value.properties.ModeProperty;
 import org.lwjgl.input.Mouse;
 
 import java.awt.Color;
@@ -82,6 +83,8 @@ final class MaterialValueRenderer {
             } else if (isRangeStart(module, i)) {
                 total += 50.0f * gui.layout().scale;
                 i += 1;
+            } else if (value instanceof ModeProperty) {
+                total += modeHeight((ModeProperty) value);
             } else if (value instanceof Mode) {
                 total += modeHeight((Mode) value);
             } else if (value instanceof Numbers) {
@@ -236,6 +239,9 @@ final class MaterialValueRenderer {
                 drawRange((Numbers) values.get(i), (Numbers) values.get(i + 1), x, y, width);
                 y += 58.0f * gui.layout().scale;
                 i += 1;
+            } else if (value instanceof ModeProperty) {
+                drawModeProperty((ModeProperty) value, x, y, width, mouseX, mouseY);
+                y += modeHeight((ModeProperty) value) + 8.0f * gui.layout().scale;
             } else if (value instanceof Mode) {
                 drawMode((Mode) value, x, y, width, mouseX, mouseY);
                 y += modeHeight((Mode) value) + 8.0f * gui.layout().scale;
@@ -292,6 +298,14 @@ final class MaterialValueRenderer {
                 }
                 y += 58.0f * gui.layout().scale;
                 i += 1;
+                continue;
+            }
+            if (value instanceof ModeProperty) {
+                float h = modeHeight((ModeProperty) value);
+                if (handleModePropertyClick((ModeProperty) value, x, y, width, mouseX, mouseY)) {
+                    return true;
+                }
+                y += h + 8.0f * gui.layout().scale;
                 continue;
             }
             if (value instanceof Mode) {
@@ -629,6 +643,53 @@ final class MaterialValueRenderer {
         }
     }
 
+    private void drawModeProperty(ModeProperty mode, float x, float y, float width, int mouseX, int mouseY) {
+        MaterialClickTheme theme = gui.theme();
+        float s = gui.layout().scale;
+        float expand = modeProgress(mode);
+        float hover = gui.easedAnimation("value.mode.hover." + gui.animationKey(mode),
+                MaterialClickLayout.contains(x, y, x + width, y + 32.0f * s, mouseX, mouseY) ? 1.0f : 0.0f,
+                0.28f, 0.0f, AnimationUtil.Ease.OUT_CUBIC);
+        FontLoaders.C14.drawString(gui.displayName(mode), x, y + 8.0f * s, theme.muted());
+
+        String current = modeLabel(mode.getModeString());
+        float pillW = Math.max(68.0f * s, FontLoaders.C14.getStringWidth(current) + 22.0f * s);
+        float pillX = x + width - pillW;
+        float pillY = y + 5.0f * s;
+        float pillH = 22.0f * s;
+        RenderServices.shapes().rounded(pillX, pillY, pillX + pillW, pillY + pillH,
+                8.0f * s, theme.withAlpha(theme.blend(0xFFFFFFFF, MaterialClickTheme.PRIMARY_CONTAINER, expand),
+                        (26.0f + 112.0f * expand + 18.0f * hover) * theme.alpha()));
+        float currentY = pillY + Math.max(0.0f, pillH - FontLoaders.C14.getStringHeight(current)) / 2.0f + 0.5f * s;
+        FontLoaders.C14.drawCenteredString(current, pillX + pillW / 2.0f, currentY,
+                theme.withAlpha(theme.blend(MaterialClickTheme.MUTED, MaterialClickTheme.ON_PRIMARY_CONTAINER, expand),
+                        255.0f * theme.alpha()));
+
+        String[] modes = mode.getModes();
+        float collapsedH = 32.0f * s;
+        float expandedH = (34.0f + modes.length * 23.0f) * s;
+        float optionClipH = AnimationUtil.lerp(collapsedH, expandedH, expand) - collapsedH;
+        if (optionClipH <= 0.5f) {
+            return;
+        }
+        gui.beginScissor(x, y + collapsedH, width, optionClipH);
+        try {
+            float optionY = y + (34.0f - 5.0f * (1.0f - expand)) * s;
+            for (String option : modes) {
+                boolean active = option.equalsIgnoreCase(mode.getModeString());
+                RenderServices.shapes().rounded(x, optionY, x + width, optionY + 20.0f * s, 7.0f * s,
+                        theme.withAlpha(active ? MaterialClickTheme.PRIMARY_CONTAINER : 0xFFFFFFFF,
+                                (active ? 120.0f : 16.0f) * theme.alpha() * expand));
+                FontLoaders.C14.drawString(modeLabel(option), x + 9.0f * s, optionY + 5.0f * s,
+                        active ? theme.withAlpha(MaterialClickTheme.ON_PRIMARY_CONTAINER, 255.0f * theme.alpha() * expand)
+                                : theme.withAlpha(MaterialClickTheme.MUTED, 255.0f * theme.alpha() * expand));
+                optionY += 23.0f * s;
+            }
+        } finally {
+            gui.endScissor();
+        }
+    }
+
     private void drawTextValue(Value value, float x, float y, float width) {
         MaterialClickTheme theme = gui.theme();
         String text = String.valueOf(value.getValue());
@@ -826,6 +887,33 @@ final class MaterialValueRenderer {
         return false;
     }
 
+    private boolean handleModePropertyClick(ModeProperty mode, float x, float y, float width, int mouseX, int mouseY) {
+        float s = gui.layout().scale;
+        boolean expanded = expandedModes.contains(mode);
+        if (expanded) {
+            float optionY = y + 34.0f * s;
+            String[] modes = mode.getModes();
+            for (String option : modes) {
+                if (MaterialClickLayout.contains(x, optionY, x + width, optionY + 20.0f * s, mouseX, mouseY)) {
+                    mode.setMode(option);
+                    expandedModes.remove(mode);
+                    return true;
+                }
+                optionY += 23.0f * s;
+            }
+        }
+        if (MaterialClickLayout.contains(x, y, x + width, y + 32.0f * s, mouseX, mouseY)) {
+            if (expanded) {
+                expandedModes.remove(mode);
+            } else {
+                expandedModes.clear();
+                expandedModes.add(mode);
+            }
+            return true;
+        }
+        return false;
+    }
+
     private void beginColorDrag(Numbers red, Numbers green, Numbers blue, Numbers alpha, int part,
                                 float x, float y, float width, int mouseX, int mouseY) {
         draggingNumber = null;
@@ -906,7 +994,14 @@ final class MaterialValueRenderer {
         return AnimationUtil.lerp(collapsed, expanded, modeProgress(mode));
     }
 
-    private float modeProgress(Mode mode) {
+    private float modeHeight(ModeProperty mode) {
+        float s = gui.layout().scale;
+        float collapsed = 32.0f * s;
+        float expanded = (34.0f + mode.getModes().length * 23.0f) * s;
+        return AnimationUtil.lerp(collapsed, expanded, modeProgress(mode));
+    }
+
+    private float modeProgress(Value mode) {
         return gui.easedAnimation("value.mode.expand." + gui.animationKey(mode),
                 expandedModes.contains(mode) ? 1.0f : 0.0f, 0.24f, 0.0f, AnimationUtil.Ease.IN_OUT_CUBIC);
     }

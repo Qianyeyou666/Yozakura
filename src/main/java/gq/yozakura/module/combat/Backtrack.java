@@ -338,7 +338,7 @@ public class Backtrack extends Module {
     }
 
     private Channel getChannel(NetworkManager manager) {
-        String[] names = new String[]{"channel", "field_150746_k"};
+        String[] names = new String[]{"channel", "field_150746_k", "k"};
         for (String name : names) {
             try {
                 Field field = NetworkManager.class.getDeclaredField(name);

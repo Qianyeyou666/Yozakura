@@ -80,6 +80,14 @@ processResources {
         expand 'version': project.version, 'mcversion': project.minecraft_version
     }
 
+    def srgToMcp = file('.gradle/unimined/local/mappings/srg2mcp.srg')
+    if (srgToMcp.exists()) {
+        from(srgToMcp) {
+            into 'vapulite'
+            rename { 'srg-mcp.srg' }
+        }
+    }
+
     rename '(.+_at.cfg)', 'META-INF/$1'
 }
 

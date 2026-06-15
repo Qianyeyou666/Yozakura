@@ -1,10 +1,10 @@
 /*
  * Decompiled with CFR 0_132.
  */
-package gq.yozakura.util.minecraft;
+package gq.vapulite.util.minecraft;
 
-import gq.yozakura.core.Client;
 import net.minecraft.client.Minecraft;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.ChatStyle;
 import net.minecraft.util.EnumChatFormatting;
@@ -25,7 +25,16 @@ public class ChatUtil {
     }
 
     public void displayClientSided() {
-        Minecraft.getMinecraft().thePlayer.addChatMessage(this.message);
+        Minecraft minecraft = Minecraft.getMinecraft();
+        if (minecraft == null) {
+            return;
+        }
+        EntityPlayer player = minecraft.thePlayer;
+        if (player != null) {
+            player.addChatMessage(this.message);
+        } else if (minecraft.ingameGUI != null && minecraft.ingameGUI.getChatGUI() != null) {
+            minecraft.ingameGUI.getChatGUI().printChatMessage(this.message);
+        }
     }
 
     private ChatComponentText getChatComponent() {
@@ -41,7 +50,6 @@ public class ChatUtil {
 
         public ChatMessageBuilder(boolean prependDefaultPrefix, boolean useDefaultMessageColor) {
             if (prependDefaultPrefix) {
-                Client.instance.getClass();
                 this.theMessage.appendSibling(new ChatMessageBuilder(false, false)
                         .setColor(EnumChatFormatting.RED).build().getChatComponent());
             }

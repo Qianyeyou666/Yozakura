@@ -1,19 +1,20 @@
-package gq.yozakura.ui.click.sakura;
+package gq.vapulite.ui.click.sakura;
 
-import gq.yozakura.core.Client;
-import gq.yozakura.engine.font.FontLoaders;
-import gq.yozakura.engine.render.ShaderRenderer;
-import gq.yozakura.engine.render.ui.LiquidGlassSettings;
-import gq.yozakura.engine.render.ui.RenderServices;
-import gq.yozakura.manager.ModuleManager;
-import gq.yozakura.module.Module;
-import gq.yozakura.module.ModuleType;
-import gq.yozakura.module.render.ClickGUI;
-import gq.yozakura.ui.click.ClickGuiIcons;
-import gq.yozakura.value.Mode;
-import gq.yozakura.value.Numbers;
-import gq.yozakura.value.Option;
-import gq.yozakura.value.Value;
+import gq.vapulite.core.Client;
+import gq.vapulite.engine.font.FontLoaders;
+import gq.vapulite.engine.render.ShaderRenderer;
+import gq.vapulite.engine.render.ui.LiquidGlassSettings;
+import gq.vapulite.engine.render.ui.RenderServices;
+import gq.vapulite.manager.ModuleManager;
+import gq.vapulite.module.Module;
+import gq.vapulite.module.ModuleType;
+import gq.vapulite.module.render.ClickGUI;
+import gq.vapulite.ui.click.ClickGuiIcons;
+import gq.vapulite.value.Mode;
+import gq.vapulite.value.Numbers;
+import gq.vapulite.value.Option;
+import gq.vapulite.value.Value;
+import gq.vapulite.value.properties.ModeProperty;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
 import org.lwjgl.input.Keyboard;
@@ -45,6 +46,7 @@ public final class SakuraClickGui extends GuiScreen {
     private final Map<Value, Float> valueHoverProgress = new HashMap<Value, Float>();
     private final Map<Numbers, Float> numberProgress = new HashMap<Numbers, Float>();
     private final Map<Mode, Float> modeExpandProgress = new HashMap<Mode, Float>();
+    private final Map<ModeProperty, Float> modePropertyExpandProgress = new HashMap<ModeProperty, Float>();
     private final Map<Option, SwitchAnim> optionSwitchProgress = new HashMap<Option, SwitchAnim>();
 
     private float x;
@@ -68,6 +70,7 @@ public final class SakuraClickGui extends GuiScreen {
     private double draggingMax;
     private Module bindingModule;
     private Mode expandedMode;
+    private ModeProperty expandedModeProperty;
     private Module detailAnimationModule;
     private float detailProgress;
     private long lastFrameNanos = System.nanoTime();
@@ -112,6 +115,7 @@ public final class SakuraClickGui extends GuiScreen {
         drawSidebar(mouseX, mouseY);
         drawModuleList(mouseX, mouseY);
         drawDetail(mouseX, mouseY);
+        drawFlyingPetals(sr);
         drawBindingOverlay(sr);
         super.drawScreen(mouseX, mouseY, partialTicks);
     }
@@ -333,6 +337,8 @@ public final class SakuraClickGui extends GuiScreen {
     private void drawValue(Value value, float vx, float vy, float vw, int mouseX, int mouseY) {
         if (value instanceof Option) {
             drawOption((Option) value, vx, vy, vw, mouseX, mouseY);
+        } else if (value instanceof ModeProperty) {
+            drawModeProperty((ModeProperty) value, vx, vy, vw, mouseX, mouseY);
         } else if (value instanceof Numbers) {
             drawNumber((Numbers) value, vx, vy, vw, mouseX, mouseY);
         } else if (value instanceof Mode) {
@@ -430,6 +436,60 @@ public final class SakuraClickGui extends GuiScreen {
             String optionLabel = modeLabel(name);
             float rowY = dropY + 4.0f + i * rowH;
             boolean selected = name.equalsIgnoreCase(mode.getModeAsString());
+            boolean rowHover = isHovered(vx + 4.0f, rowY, vx + vw - 4.0f, rowY + rowH, mouseX, mouseY);
+            float rowActive = selected ? 1.0f : rowHover ? 0.55f : 0.0f;
+            if (rowActive > 0.01f) {
+                RenderServices.shapes().rounded(vx + 5.0f, rowY + 2.0f, vx + vw - 5.0f, rowY + rowH - 2.0f,
+                        6.0f, alpha(selected ? 0xFF26151F : 0xFF1B1218, (96.0f + 58.0f * rowActive) * expand * guiAlpha));
+            }
+            drawGlowText(FontLoaders.C14, optionLabel, vx + 12.0f, rowY + 7.0f,
+                    alpha(selected ? TEXT : blend(MUTED, TEXT, rowHover ? 0.45f : 0.0f),
+                            (190.0f + 42.0f * rowActive) * guiAlpha),
+                    0.28f + 0.34f * rowActive);
+            if (selected) {
+                drawSakuraFlower(vx + vw - 14.0f, rowY + rowH * 0.5f, 2.0f, 0.75f);
+            }
+        }
+    }
+
+    private void drawModeProperty(ModeProperty mode, float vx, float vy, float vw, int mouseX, int mouseY) {
+        float hover = animateValue(mode, isHovered(vx, vy, vx + vw, vy + 30.0f, mouseX, mouseY) ? 1.0f : 0.0f);
+        boolean expanded = mode == expandedModeProperty;
+        float expand = animateMap(modePropertyExpandProgress, mode, expanded ? 1.0f : 0.0f, 0.18f);
+        boolean showDropdown = expanded;
+        if (hover > 0.02f) {
+            RenderServices.shapes().rounded(vx - 7.0f, vy + 1.0f, vx + vw + 7.0f, vy + 31.0f,
+                    7.0f, alpha(0xFF120D12, 62.0f * hover * guiAlpha));
+        }
+        drawGlowText(FontLoaders.C14, displayName(mode), vx, vy + 8.0f,
+                alpha(TEXT, (218.0f + 22.0f * hover) * guiAlpha), 0.34f + 0.3f * hover);
+        String label = modeLabel(mode.getModeString());
+        float pillW = Math.max(88.0f, FontLoaders.C14.getStringWidth(label) + 34.0f);
+        float px = vx + vw - pillW;
+        drawMiniGlass(px, vy + 5.0f, px + pillW, vy + 27.0f, 7.0f,
+                alpha(GLASS_SOFT, (150.0f + 28.0f * hover + 30.0f * expand) * guiAlpha),
+                alpha(SAKURA, (38.0f + 30.0f * hover + 42.0f * expand) * guiAlpha));
+        drawGlowCentered(FontLoaders.C14, label, px + pillW * 0.5f - 5.0f, vy + 10.0f,
+                alpha(SAKURA, (226.0f + 18.0f * hover) * guiAlpha), 0.42f + 0.36f * hover);
+        drawGlowText(FontLoaders.C14, expanded ? "v" : ">", px + pillW - 14.0f, vy + 10.0f,
+                alpha(TEXT, (198.0f + 34.0f * expand) * guiAlpha), 0.36f + 0.36f * expand);
+
+        String[] modes = mode.getModes();
+        if (modes == null || modes.length == 0 || !showDropdown) {
+            return;
+        }
+        float rowH = 22.0f;
+        float dropY = vy + 32.0f;
+        float dropH = modes.length * rowH + 8.0f;
+        RenderServices.shapes().shadow(vx, dropY, vx + vw, dropY + dropH, 8.0f,
+                alpha(SAKURA, 34.0f * guiAlpha), 4, 1.8f);
+        drawMiniGlass(vx, dropY, vx + vw, dropY + dropH, 8.0f,
+                alpha(0xFF120D12, 178.0f * guiAlpha), alpha(SAKURA, 52.0f * guiAlpha));
+        for (int i = 0; i < modes.length; i++) {
+            String name = modes[i];
+            String optionLabel = modeLabel(name);
+            float rowY = dropY + 4.0f + i * rowH;
+            boolean selected = name.equalsIgnoreCase(mode.getModeString());
             boolean rowHover = isHovered(vx + 4.0f, rowY, vx + vw - 4.0f, rowY + rowH, mouseX, mouseY);
             float rowActive = selected ? 1.0f : rowHover ? 0.55f : 0.0f;
             if (rowActive > 0.01f) {
@@ -560,6 +620,9 @@ public final class SakuraClickGui extends GuiScreen {
                 if (value instanceof Option) {
                     value.setValue(!Boolean.TRUE.equals(value.getValue()));
                     return true;
+                }
+                if (value instanceof ModeProperty) {
+                    return handleModePropertyClick((ModeProperty) value, dx, dy, dw, mouseX, mouseY);
                 }
                 if (value instanceof Numbers) {
                     Numbers number = (Numbers) value;
@@ -711,12 +774,59 @@ public final class SakuraClickGui extends GuiScreen {
         if (expandedMode != null) {
             modeExpandProgress.put(expandedMode, Float.valueOf(0.0f));
         }
+        if (expandedModeProperty != null) {
+            modePropertyExpandProgress.put(expandedModeProperty, Float.valueOf(0.0f));
+            expandedModeProperty = null;
+        }
         modeExpandProgress.put(mode, Float.valueOf(0.0f));
         expandedMode = mode;
         return true;
     }
 
+    private boolean handleModePropertyClick(ModeProperty mode, float x, float y, float w, int mouseX, int mouseY) {
+        if (mode == expandedModeProperty) {
+            String[] modes = mode.getModes();
+            if (modes != null) {
+                float rowH = 22.0f;
+                float dropY = y + 32.0f;
+                for (int i = 0; i < modes.length; i++) {
+                    float rowY = dropY + 4.0f + i * rowH;
+                    if (isHovered(x + 4.0f, rowY, x + w - 4.0f, rowY + rowH, mouseX, mouseY)) {
+                        mode.setMode(modes[i]);
+                        modePropertyExpandProgress.put(mode, Float.valueOf(0.0f));
+                        expandedModeProperty = null;
+                        return true;
+                    }
+                }
+            }
+            if (isHovered(x, y, x + w, y + 30.0f, mouseX, mouseY)) {
+                modePropertyExpandProgress.put(mode, Float.valueOf(0.0f));
+                expandedModeProperty = null;
+                return true;
+            }
+            return true;
+        }
+        if (expandedMode != null) {
+            modeExpandProgress.put(expandedMode, Float.valueOf(0.0f));
+            expandedMode = null;
+        }
+        if (expandedModeProperty != null) {
+            modePropertyExpandProgress.put(expandedModeProperty, Float.valueOf(0.0f));
+        }
+        modePropertyExpandProgress.put(mode, Float.valueOf(0.0f));
+        expandedModeProperty = mode;
+        return true;
+    }
+
     private float valueHeight(Value value) {
+        if (value instanceof ModeProperty) {
+            if (value == expandedModeProperty) {
+                String[] modes = ((ModeProperty) value).getModes();
+                int count = modes == null ? 0 : modes.length;
+                return 38.0f + count * 22.0f + 8.0f;
+            }
+            return 38.0f;
+        }
         if (value instanceof Numbers) {
             return 52.0f;
         }
@@ -767,7 +877,7 @@ public final class SakuraClickGui extends GuiScreen {
                 alpha(TEXT, 220.0f * guiAlpha), 0.34f);
     }
 
-    private void drawGlowText(gq.yozakura.engine.font.CFontRenderer font, String text, float x, float y,
+    private void drawGlowText(gq.vapulite.engine.font.CFontRenderer font, String text, float x, float y,
                               int color, float strength) {
         if (text == null || text.length() == 0 || strength <= 0.0f) {
             font.drawString(text, x, y, color);
@@ -784,7 +894,7 @@ public final class SakuraClickGui extends GuiScreen {
         font.drawString(text, x, y, color);
     }
 
-    private void drawGlowIcon(gq.yozakura.engine.font.CFontRenderer font, String text, float x, float y,
+    private void drawGlowIcon(gq.vapulite.engine.font.CFontRenderer font, String text, float x, float y,
                               int color, float strength) {
         if (text == null || text.length() == 0 || strength <= 0.0f) {
             font.drawString(text, x, y, color);
@@ -800,7 +910,7 @@ public final class SakuraClickGui extends GuiScreen {
         font.drawString(text, x, y, color);
     }
 
-    private void drawGlowCentered(gq.yozakura.engine.font.CFontRenderer font, String text, float centerX, float y,
+    private void drawGlowCentered(gq.vapulite.engine.font.CFontRenderer font, String text, float centerX, float y,
                                   int color, float strength) {
         drawGlowText(font, text, centerX - font.getStringWidth(text) * 0.5f, y, color, strength);
     }
@@ -841,6 +951,48 @@ public final class SakuraClickGui extends GuiScreen {
             GL11.glVertex2f(point[0] * width, point[1] * length);
         }
         GL11.glEnd();
+    }
+
+    private void drawFlyingPetals(ScaledResolution sr) {
+        if (guiAlpha <= 0.02f) {
+            return;
+        }
+        float time = (System.currentTimeMillis() % 9000L) / 9000.0f;
+        GL11.glPushMatrix();
+        try {
+            GL11.glEnable(GL11.GL_BLEND);
+            GL11.glDisable(GL11.GL_TEXTURE_2D);
+            GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+            for (int i = 0; i < 22; i++) {
+                float lane = fract(i * 0.173f + 0.11f);
+                float speed = 0.44f + (i % 5) * 0.055f;
+                float phase = fract(time * speed + i * 0.071f);
+                float drift = (float) Math.sin(time * 6.2831855f * (0.82f + i * 0.018f) + i * 1.73f);
+                float sway = (float) Math.sin((phase + i * 0.13f) * 6.2831855f);
+                float px = sr.getScaledWidth() * lane + drift * (18.0f + (i % 4) * 4.0f)
+                        - phase * 42.0f;
+                float py = -18.0f + phase * (sr.getScaledHeight() + 42.0f)
+                        + sway * (7.0f + (i % 3) * 2.0f);
+                if (px < -24.0f) {
+                    px += sr.getScaledWidth() + 48.0f;
+                } else if (px > sr.getScaledWidth() + 24.0f) {
+                    px -= sr.getScaledWidth() + 48.0f;
+                }
+                float edgeFade = Math.min(1.0f, Math.min((py + 18.0f) / 42.0f,
+                        (sr.getScaledHeight() + 24.0f - py) / 48.0f));
+                float alpha = clamp(edgeFade, 0.0f, 1.0f) * (0.24f + (i % 4) * 0.045f);
+                float size = 2.0f + (i % 5) * 0.34f;
+                GL11.glPushMatrix();
+                GL11.glTranslatef(px, py, 0.0f);
+                GL11.glRotatef(phase * 260.0f + i * 41.0f, 0.0f, 0.0f, 1.0f);
+                drawPetal(size, alpha);
+                GL11.glPopMatrix();
+            }
+        } finally {
+            GL11.glEnable(GL11.GL_TEXTURE_2D);
+            GL11.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+            GL11.glPopMatrix();
+        }
     }
 
     private LiquidGlassSettings glassSettings() {
@@ -1045,7 +1197,7 @@ public final class SakuraClickGui extends GuiScreen {
         return text.endsWith(".") ? text.substring(0, text.length() - 1) : text;
     }
 
-    private String trim(String text, gq.yozakura.engine.font.CFontRenderer font, float maxWidth) {
+    private String trim(String text, gq.vapulite.engine.font.CFontRenderer font, float maxWidth) {
         if (text == null) {
             return "";
         }
@@ -1082,5 +1234,9 @@ public final class SakuraClickGui extends GuiScreen {
 
     private double clamp(double value, double min, double max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    private float fract(float value) {
+        return value - (float) Math.floor(value);
     }
 }

@@ -1,12 +1,16 @@
-package gq.yozakura.module.render;
+package gq.vapulite.module.render;
 
-import gq.yozakura.engine.render.ShaderRenderer;
-import gq.yozakura.module.ModuleType;
-import gq.yozakura.module.Module;
-import gq.yozakura.util.render.GLUtils;
-import gq.yozakura.value.Mode;
-import gq.yozakura.value.Numbers;
-import gq.yozakura.value.Option;
+import gq.vapulite.engine.render.ShaderRenderer;
+import gq.vapulite.event.bridge.AttackEvent;
+import gq.vapulite.event.bridge.Render3DEvent;
+import gq.vapulite.event.bridge.RenderFrameGuard;
+import gq.vapulite.event.bus.EventTarget;
+import gq.vapulite.module.ModuleType;
+import gq.vapulite.module.Module;
+import gq.vapulite.util.render.GLUtils;
+import gq.vapulite.value.Mode;
+import gq.vapulite.value.Numbers;
+import gq.vapulite.value.Option;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.util.MathHelper;
@@ -30,16 +34,19 @@ public class KillEffect extends Module {
     }
 
     private static final long TRACK_MS = 4200L;
+    private static final long REMOVED_EFFECT_GRACE_MS = 1600L;
     private static final long EFFECT_MS = 1350L;
 
     private final Mode<EffectMode> mode = new Mode<EffectMode>("Mode", "Mode", EffectMode.values(), EffectMode.GLASS);
-    private final Numbers<Double> scale = new Numbers<Double>("Scale", "Scale", 1.0, 0.55, 1.8, 0.05);
+    private final Numbers<Double> scale = new Numbers<Double>("Scale", "Scale", 0.55, 0.25, 1.2, 0.05);
     private final Numbers<Double> density = new Numbers<Double>("Density", "Density", 1.0, 0.55, 1.65, 0.05);
     private final Option<Boolean> glow = new Option<Boolean>("Glow", "Glow", true);
 
-    private final Map<Integer, Long> attacked = new HashMap<Integer, Long>();
+    private final Map<Integer, TrackedTarget> attacked = new HashMap<Integer, TrackedTarget>();
     private final ArrayList<BloomEffect> effects = new ArrayList<BloomEffect>();
     private long lastFrameMS = System.currentTimeMillis();
+    private long lastRenderNanos;
+    private long lastStandaloneFrame;
 
     public KillEffect() {
         super("KillEffect", Keyboard.KEY_NONE, ModuleType.Render, "Play a visual effect when a target dies");
@@ -62,14 +69,18 @@ public class KillEffect extends Module {
 
     @SubscribeEvent
     public void onAttack(AttackEntityEvent event) {
-        if (!isInGame() || event.entityPlayer != mc.thePlayer || !(event.target instanceof EntityLivingBase)) {
+        if (!isInGame() || event.entityPlayer != mc.thePlayer) {
             return;
         }
-        EntityLivingBase target = (EntityLivingBase) event.target;
-        if (target == mc.thePlayer) {
+        trackAttack(event.target);
+    }
+
+    @EventTarget
+    public void onClientAttack(AttackEvent event) {
+        if (!isInGame() || event == null) {
             return;
         }
-        attacked.put(target.getEntityId(), System.currentTimeMillis());
+        trackAttack(event.getTarget());
     }
 
     @SubscribeEvent
@@ -84,21 +95,26 @@ public class KillEffect extends Module {
             return;
         }
 
-        Iterator<Map.Entry<Integer, Long>> iterator = attacked.entrySet().iterator();
+        Iterator<Map.Entry<Integer, TrackedTarget>> iterator = attacked.entrySet().iterator();
         while (iterator.hasNext()) {
-            Map.Entry<Integer, Long> entry = iterator.next();
-            if (now - entry.getValue() > TRACK_MS) {
+            Map.Entry<Integer, TrackedTarget> entry = iterator.next();
+            TrackedTarget tracked = entry.getValue();
+            if (now - tracked.time > TRACK_MS) {
                 iterator.remove();
                 continue;
             }
             Entity entity = mc.theWorld.getEntityByID(entry.getKey());
             if (entity instanceof EntityLivingBase) {
                 EntityLivingBase living = (EntityLivingBase) entity;
+                tracked.update(living);
                 if (living.isDead || living.deathTime > 0 || living.getHealth() <= 0.0f) {
-                    spawnEffect(living.posX, living.posY + Math.max(0.35f, living.height * 0.55f), living.posZ);
+                    spawnEffect(tracked.x, tracked.y + tracked.effectOffset(), tracked.z);
                     iterator.remove();
                 }
             } else if (entity == null) {
+                if (now - tracked.time <= REMOVED_EFFECT_GRACE_MS) {
+                    spawnEffect(tracked.x, tracked.y + tracked.effectOffset(), tracked.z);
+                }
                 iterator.remove();
             }
         }
@@ -113,21 +129,32 @@ public class KillEffect extends Module {
 
     @SubscribeEvent
     public void onWorld(RenderWorldLastEvent event) {
+        renderEffects(event.partialTicks);
+    }
+
+    @EventTarget
+    public void onRender3D(Render3DEvent event) {
+        renderEffects(event.getPartialTicks());
+    }
+
+    private void renderEffects(float partialTicks) {
+        if (skipDuplicateStandaloneFrame()) {
+            return;
+        }
+        long frameNanos = System.nanoTime();
+        if (frameNanos - lastRenderNanos < 1000000L) {
+            return;
+        }
+        lastRenderNanos = frameNanos;
         if (!isInGame() || effects.isEmpty()) {
             return;
         }
         long now = System.currentTimeMillis();
         updateFrame(now);
 
-        for (BloomEffect effect : effects) {
-            float progress = (now - effect.started) / (float) EFFECT_MS;
-            if (progress >= 0.0f && progress <= 1.0f && mode.getValue() == EffectMode.GLASS) {
-                drawGlassDistortionPass(effect, progress);
-            }
-        }
-
         GL11.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_CURRENT_BIT | GL11.GL_COLOR_BUFFER_BIT
-                | GL11.GL_DEPTH_BUFFER_BIT | GL11.GL_LINE_BIT);
+                | GL11.GL_DEPTH_BUFFER_BIT | GL11.GL_HINT_BIT | GL11.GL_LINE_BIT
+                | GL11.GL_POLYGON_BIT | GL11.GL_TEXTURE_BIT);
         GL11.glPushMatrix();
         GL11.glDisable(GL11.GL_TEXTURE_2D);
         GL11.glDisable(GL11.GL_ALPHA_TEST);
@@ -142,9 +169,9 @@ public class KillEffect extends Module {
                 float progress = (now - effect.started) / (float) EFFECT_MS;
                 if (progress >= 0.0f && progress <= 1.0f) {
                     if (mode.getValue() == EffectMode.SAKURA) {
-                        drawSakuraBloom(effect, progress, event.partialTicks);
+                        drawSakuraBloom(effect, progress, partialTicks);
                     } else {
-                        drawGlassShatter(effect, progress, event.partialTicks);
+                        drawGlassShatter(effect, progress, partialTicks);
                     }
                 }
             }
@@ -152,8 +179,29 @@ public class KillEffect extends Module {
             GL11.glDepthMask(true);
             GL11.glPopMatrix();
             GL11.glPopAttrib();
-            GL11.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+            gq.vapulite.engine.render.GLStateManager.syncToCurrent();
+            net.minecraft.client.renderer.GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
         }
+    }
+
+    private boolean skipDuplicateStandaloneFrame() {
+        long frame = RenderFrameGuard.currentStandalone3DFrame();
+        if (frame == 0L) {
+            return false;
+        }
+        if (lastStandaloneFrame == frame) {
+            return true;
+        }
+        lastStandaloneFrame = frame;
+        return false;
+    }
+
+    private void trackAttack(Entity entity) {
+        if (!(entity instanceof EntityLivingBase) || entity == mc.thePlayer) {
+            return;
+        }
+        EntityLivingBase target = (EntityLivingBase) entity;
+        attacked.put(target.getEntityId(), new TrackedTarget(target, System.currentTimeMillis()));
     }
 
     private void spawnEffect(double x, double y, double z) {
@@ -170,22 +218,37 @@ public class KillEffect extends Module {
         float open = easeOut(MathHelper.clamp_float(progress / 0.42f, 0.0f, 1.0f));
         float hold = 1.0f - smoothStep(0.70f, 1.0f, progress);
         float fade = MathHelper.clamp_float(Math.min(1.0f, progress / 0.10f) * hold, 0.0f, 1.0f);
-        float localScale = scale.getValue().floatValue();
-        float radius = (0.34f + open * 1.82f) * localScale;
+        float localScale = effectScale();
+        float radius = (0.22f + open * 1.02f) * localScale;
 
         GL11.glPushMatrix();
         GL11.glTranslated(x, y, z);
-        GL11.glRotatef(-mc.getRenderManager().playerViewY, 0.0f, 1.0f, 0.0f);
-        GL11.glRotatef(mc.getRenderManager().playerViewX, 1.0f, 0.0f, 0.0f);
-
-        if (Boolean.TRUE.equals(glow.getValue())) {
-            drawEdgeBurstGlow(radius, fade, effect.seed, progress);
-        }
-
-        drawGlassFacets(radius, fade, effect.seed, progress);
-        drawGlassCracks(radius, fade, effect.seed, progress);
-        drawGlassShards(radius, fade, effect.seed, progress);
+        drawGlassBurstPlane(radius, fade * 0.86f, effect.seed, progress);
+        GL11.glPushMatrix();
+        GL11.glRotatef(58.0f, 0.0f, 1.0f, 0.0f);
+        drawGlassBurstPlane(radius * 0.92f, fade * 0.62f, effect.seed + 91.0f, progress);
         GL11.glPopMatrix();
+        GL11.glPushMatrix();
+        GL11.glRotatef(-58.0f, 0.0f, 1.0f, 0.0f);
+        drawGlassBurstPlane(radius * 0.92f, fade * 0.62f, effect.seed + 181.0f, progress);
+        GL11.glPopMatrix();
+        GL11.glPushMatrix();
+        GL11.glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
+        drawGlassBurstPlane(radius * 0.72f, fade * 0.38f, effect.seed + 271.0f, progress);
+        GL11.glPopMatrix();
+        GL11.glPopMatrix();
+    }
+
+    private void drawGlassBurstPlane(float radius, float fade, float seed, float progress) {
+        if (fade <= 0.002f) {
+            return;
+        }
+        if (Boolean.TRUE.equals(glow.getValue())) {
+            drawEdgeBurstGlow(radius, fade, seed, progress);
+        }
+        drawGlassFacets(radius, fade, seed, progress);
+        drawGlassCracks(radius, fade, seed, progress);
+        drawGlassShards(radius, fade, seed, progress);
     }
 
     private void drawGlassDistortionPass(BloomEffect effect, float progress) {
@@ -194,7 +257,7 @@ public class KillEffect extends Module {
             return;
         }
         float open = easeOut(MathHelper.clamp_float(progress / 0.42f, 0.0f, 1.0f));
-        float pixelRadius = (78.0f + open * 132.0f) * scale.getValue().floatValue();
+        float pixelRadius = (42.0f + open * 74.0f) * effectScale();
         ShaderRenderer.drawKillShatterDistortion(point.x, point.y, pixelRadius, progress,
                 1.36f + 0.40f * density.getValue().floatValue(), effect.seed);
     }
@@ -360,9 +423,9 @@ public class KillEffect extends Module {
         float open = easeOut(MathHelper.clamp_float(progress / 0.46f, 0.0f, 1.0f));
         float bloomHold = 1.0f - smoothStep(0.74f, 1.0f, progress);
         float fade = MathHelper.clamp_float(Math.min(1.0f, progress / 0.12f) * bloomHold, 0.0f, 1.0f);
-        float localScale = scale.getValue().floatValue();
-        float bloomRadius = (0.46f + open * 1.72f) * localScale;
-        float flowerSize = (0.56f + open * 0.84f) * localScale;
+        float localScale = effectScale();
+        float bloomRadius = (0.32f + open * 1.00f) * localScale;
+        float flowerSize = (0.34f + open * 0.52f) * localScale;
 
         GL11.glPushMatrix();
         GL11.glTranslated(x, y, z);
@@ -580,8 +643,36 @@ public class KillEffect extends Module {
         return (float) (Math.sin(seed * 12.9898f) * 43758.5453D - Math.floor(Math.sin(seed * 12.9898f) * 43758.5453D));
     }
 
+    private float effectScale() {
+        return MathHelper.clamp_float(scale.getValue().floatValue() * 0.58f, 0.15f, 0.85f);
+    }
+
     private void updateFrame(long now) {
         lastFrameMS = now;
+    }
+
+    private static final class TrackedTarget {
+        final long time;
+        double x;
+        double y;
+        double z;
+        float height;
+
+        TrackedTarget(EntityLivingBase target, long time) {
+            this.time = time;
+            update(target);
+        }
+
+        void update(EntityLivingBase target) {
+            this.x = target.posX;
+            this.y = target.posY;
+            this.z = target.posZ;
+            this.height = Math.max(0.7f, target.height);
+        }
+
+        float effectOffset() {
+            return Math.max(0.18f, height * 0.18f);
+        }
     }
 
     private static final class BloomEffect {

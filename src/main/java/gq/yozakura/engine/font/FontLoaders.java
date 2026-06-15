@@ -1,8 +1,7 @@
-package gq.yozakura.engine.font;
+package gq.vapulite.engine.font;
 
-import gq.yozakura.engine.font.api.FontFamilyId;
-import gq.yozakura.engine.font.api.FontRepository;
-import net.minecraft.client.Minecraft;
+import gq.vapulite.engine.font.api.FontFamilyId;
+import gq.vapulite.engine.font.api.FontRepository;
 import net.minecraft.util.ResourceLocation;
 
 import java.awt.Font;
@@ -208,7 +207,7 @@ public abstract class FontLoaders {
         }
         ResourceLocation location = italic && family.italicLocation != null ? family.italicLocation : family.location;
         try {
-            InputStream inputStream = Minecraft.getMinecraft().getResourceManager().getResource(location).getInputStream();
+            InputStream inputStream = FontResourceLoader.open(location);
             try {
                 Font font = Font.createFont(Font.TRUETYPE_FONT, inputStream);
                 FONT_DATA.put(key, font);
@@ -217,8 +216,7 @@ public abstract class FontLoaders {
                 inputStream.close();
             }
         } catch (Exception exception) {
-            exception.printStackTrace();
-            System.out.println("Error loading font " + location);
+            FontResourceLoader.logFailure(location, exception);
             Font fallback = SYSTEM_FALLBACK;
             FONT_DATA.put(key, fallback);
             return fallback;
@@ -241,7 +239,7 @@ public abstract class FontLoaders {
         INTER(new ResourceLocation("font/Inter.ttf"), new ResourceLocation("font/Inter-Italic.ttf")),
         ALIBABA(new ResourceLocation("font/AlibabaSans-Regular.otf"), null),
         TENACITY_BOLD(new ResourceLocation("font/tenacity-bold.ttf"), null),
-        ICON(new ResourceLocation("font/TenacityIcon.ttf"), null);
+        ICON(new ResourceLocation("font/NovICON.ttf"), null);
 
         private final ResourceLocation location;
         private final ResourceLocation italicLocation;

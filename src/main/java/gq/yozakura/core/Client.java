@@ -1,18 +1,19 @@
-package gq.yozakura.core;
+package gq.vapulite.core;
 
-import gq.yozakura.manager.FileManager;
-import gq.yozakura.manager.NotificationManager;
-import gq.yozakura.module.Module;
-import gq.yozakura.manager.ModuleManager;
-import gq.yozakura.module.render.ClickGUI;
-import gq.yozakura.ui.click.material.MaterialClickGui;
-import gq.yozakura.util.color.ColorUtils;
-import gq.yozakura.util.minecraft.Helper;
-import gq.yozakura.command.Bind;
-import gq.yozakura.command.ChatBypassCommand;
-//import gq.yozakura.command.Report;
-import gq.yozakura.command.WaterMark;
-import gq.yozakura.engine.font.FontLoaders;
+import gq.vapulite.manager.FileManager;
+import gq.vapulite.manager.NotificationManager;
+import gq.vapulite.module.Module;
+import gq.vapulite.manager.ModuleManager;
+import gq.vapulite.module.render.ClickGUI;
+import gq.vapulite.ui.click.material.MaterialClickGui;
+import gq.vapulite.util.color.ColorUtils;
+import gq.vapulite.util.minecraft.Helper;
+import gq.vapulite.command.Bind;
+import gq.vapulite.command.ChatBypassCommand;
+//import gq.vapulite.command.Report;
+import gq.vapulite.command.WaterMark;
+import gq.vapulite.engine.font.FontLoaders;
+import gq.vapulite.bridge.VapuEventBridge;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.play.client.C03PacketPlayer;
 import net.minecraftforge.client.ClientCommandHandler;
@@ -33,13 +34,13 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Random;
 
-import static gq.yozakura.util.minecraft.Helper.mc;
+import static gq.vapulite.util.minecraft.Helper.mc;
 
 public class Client {
     public boolean DebugMode = false;
     // 调试时可以启用，注入成功会修改标题
 
-    public static String name = "Yozakura";
+    public static String name = "Vapu Lite";
     public static String real_name = "VAPU";
     public static String version = "1.52";
     public static String config = "module";
@@ -78,6 +79,7 @@ public class Client {
         state = true;
         MinecraftForge.EVENT_BUS.register(this);
         FMLCommonHandler.instance().bus().register(this);
+        VapuEventBridge.init();
         instance = this;
         CommandInit();
         loadConfigOnStartup();
@@ -87,7 +89,7 @@ public class Client {
 //        FontLoaders.Logo.drawStringWithShadow(Client.name,114514,114514, -1);
         if(!instance.DebugMode){
             if(mc.isIntegratedServerRunning() || mc.isSingleplayer()){
-                Helper.sendMessageWithoutPrefix("Yozakura Load done! Press RSHIFT open ClickGui, Press H Open HUD");
+                Helper.sendMessageWithoutPrefix("Vapulite Load done! Press RSHIFT open ClickGui, Press H Open HUD");
             }
         } else {
             Display.setTitle(Display.getTitle()+" | Client Load Succeeded");
@@ -122,17 +124,15 @@ public class Client {
     }
 
     public static void SaveConfig() throws IOException {
-        Client.instance.fileManager.saveModules();
+        ConfigBridge.saveModules();
     }
 
     public static void LoadConfig() throws IOException {
-        Client.instance.fileManager.loadModules();
+        ConfigBridge.loadModules();
     }
 
     public static void markConfigDirty() {
-        if (Client.instance != null && Client.instance.fileManager != null) {
-            Client.instance.fileManager.markDirty();
-        }
+        ConfigBridge.markDirty();
     }
 
     @SubscribeEvent
@@ -196,7 +196,7 @@ public class Client {
                     Client.instance.fileManager.saveIfDirtyQuietly();
                 }
             }
-        }, "Yozakura Config Save"));
+        }, "VapuLite Config Save"));
     }
 
 }

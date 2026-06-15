@@ -10,7 +10,7 @@
 #define IDR_VAPULITE_JAR 101
 
 #ifndef JAR_TO_DLL_CLIENT_CLASS
-#define JAR_TO_DLL_CLIENT_CLASS "gq.vapulite.Vapu.Client"
+#define JAR_TO_DLL_CLIENT_CLASS "gq.vapulite.VapuBootstrap"
 #endif
 
 #ifndef JAR_TO_DLL_LOG_NAME
@@ -156,7 +156,12 @@ static jobject findClientThreadClassLoader(JNIEnv* env) {
     jmethodID getContextClassLoader = env->GetMethodID(threadClass, "getContextClassLoader", "()Ljava/lang/ClassLoader;");
     jclass classLoaderClass = env->FindClass("java/lang/ClassLoader");
     jmethodID loadClass = env->GetMethodID(classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
-    jstring minecraftName = env->NewStringUTF("net.minecraft.client.Minecraft");
+    const char* minecraftNames[] = {
+        "net.minecraft.client.Minecraft",
+        "ave"
+    };
+    jstring minecraftName = env->NewStringUTF(minecraftNames[0]);
+    jstring obfuscatedMinecraftName = env->NewStringUTF(minecraftNames[1]);
 
     jobject traces = env->CallStaticObjectMethod(threadClass, getAllStackTraces);
     jclass mapClass = env->FindClass("java/util/Map");
@@ -173,19 +178,27 @@ static jobject findClientThreadClassLoader(JNIEnv* env) {
         jobject thread = env->GetObjectArrayElement(threadArray, i);
         jstring name = static_cast<jstring>(env->CallObjectMethod(thread, getName));
         const char* nameChars = env->GetStringUTFChars(name, nullptr);
-        bool isClientThread = nameChars && strcmp(nameChars, "Client thread") == 0;
+        bool isClientThread = nameChars
+            && (strcmp(nameChars, "Client thread") == 0
+                || strcmp(nameChars, "Render thread") == 0
+                || strcmp(nameChars, "Minecraft main thread") == 0
+                || strstr(nameChars, "Minecraft") != nullptr);
         env->ReleaseStringUTFChars(name, nameChars);
 
         jobject loader = env->CallObjectMethod(thread, getContextClassLoader);
 
-        if (isClientThread) {
+        if (isClientThread && loader) {
             env->DeleteLocalRef(thread);
-            debug("Client thread classloader found by thread name");
+            debug("Minecraft classloader found by thread name");
             return loader;
         }
 
         if (loader && !minecraftLoader) {
             jobject minecraftClass = env->CallObjectMethod(loader, loadClass, minecraftName);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                minecraftClass = env->CallObjectMethod(loader, loadClass, obfuscatedMinecraftName);
+            }
             if (env->ExceptionCheck()) {
                 env->ExceptionClear();
             } else if (minecraftClass) {
@@ -198,6 +211,38 @@ static jobject findClientThreadClassLoader(JNIEnv* env) {
     }
 
     return minecraftLoader;
+}
+
+static jobject findAddUrlMethod(JNIEnv* env, jclass loaderClass, jobjectArray params) {
+    jclass classClass = env->FindClass("java/lang/Class");
+    jstring addUrlName = env->NewStringUTF("addURL");
+    jmethodID getMethod = env->GetMethodID(classClass, "getMethod", "(Ljava/lang/String;[Ljava/lang/Class;)Ljava/lang/reflect/Method;");
+    jobject method = env->CallObjectMethod(loaderClass, getMethod, addUrlName, params);
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+    } else if (method) {
+        return method;
+    }
+
+    jmethodID getDeclaredMethod = env->GetMethodID(classClass, "getDeclaredMethod", "(Ljava/lang/String;[Ljava/lang/Class;)Ljava/lang/reflect/Method;");
+    jmethodID getSuperclass = env->GetMethodID(classClass, "getSuperclass", "()Ljava/lang/Class;");
+    jclass current = loaderClass;
+    while (current) {
+        method = env->CallObjectMethod(current, getDeclaredMethod, addUrlName, params);
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+        } else if (method) {
+            jclass methodClass = env->FindClass("java/lang/reflect/Method");
+            jmethodID setAccessible = env->GetMethodID(methodClass, "setAccessible", "(Z)V");
+            env->CallVoidMethod(method, setAccessible, JNI_TRUE);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+            }
+            return method;
+        }
+        current = static_cast<jclass>(env->CallObjectMethod(current, getSuperclass));
+    }
+    return nullptr;
 }
 
 static bool addJarToClassLoader(JNIEnv* env, jobject loader, const std::wstring& jarPath) {
@@ -219,14 +264,11 @@ static bool addJarToClassLoader(JNIEnv* env, jobject loader, const std::wstring&
     jclass loaderClass = env->GetObjectClass(loader);
     jclass urlClass = env->FindClass("java/net/URL");
     jclass classClass = env->FindClass("java/lang/Class");
-    jmethodID getMethod = env->GetMethodID(classClass, "getMethod", "(Ljava/lang/String;[Ljava/lang/Class;)Ljava/lang/reflect/Method;");
 
     jobjectArray params = env->NewObjectArray(1, classClass, urlClass);
-    jstring addUrlName = env->NewStringUTF("addURL");
-    jobject method = env->CallObjectMethod(loaderClass, getMethod, addUrlName, params);
-    if (env->ExceptionCheck()) {
-        env->ExceptionClear();
-        debug("classloader does not expose public addURL");
+    jobject method = findAddUrlMethod(env, loaderClass, params);
+    if (!method) {
+        debug("classloader does not expose addURL");
         return false;
     }
 
@@ -243,6 +285,83 @@ static bool addJarToClassLoader(JNIEnv* env, jobject loader, const std::wstring&
 
     debug("jar added to classloader");
     return true;
+}
+
+static jobject createChildClassLoader(JNIEnv* env, jobject parent, const std::wstring& jarPath) {
+    debug("creating child URLClassLoader");
+    std::string pathUtf8 = jniString(env, jarPath);
+
+    jclass fileClass = env->FindClass("java/io/File");
+    jmethodID fileCtor = env->GetMethodID(fileClass, "<init>", "(Ljava/lang/String;)V");
+    jstring path = env->NewStringUTF(pathUtf8.c_str());
+    jobject file = env->NewObject(fileClass, fileCtor, path);
+
+    jmethodID toURI = env->GetMethodID(fileClass, "toURI", "()Ljava/net/URI;");
+    jobject uri = env->CallObjectMethod(file, toURI);
+
+    jclass uriClass = env->FindClass("java/net/URI");
+    jmethodID toURL = env->GetMethodID(uriClass, "toURL", "()Ljava/net/URL;");
+    jobject url = env->CallObjectMethod(uri, toURL);
+
+    jclass urlClass = env->FindClass("java/net/URL");
+    jobjectArray urls = env->NewObjectArray(1, urlClass, url);
+
+    jclass urlClassLoaderClass = env->FindClass("java/net/URLClassLoader");
+    jmethodID ctor = env->GetMethodID(urlClassLoaderClass, "<init>", "([Ljava/net/URL;Ljava/lang/ClassLoader;)V");
+    jobject child = env->NewObject(urlClassLoaderClass, ctor, urls, parent);
+    if (env->ExceptionCheck() || !child) {
+        logJavaException(env, "failed to create child URLClassLoader");
+        return nullptr;
+    }
+    debug("child URLClassLoader created");
+    return child;
+}
+
+static jobject createIsolatedClassLoader(JNIEnv* env, jobject parent, const std::wstring& jarPath) {
+    debug("creating isolated VapuLite classloader");
+    std::string pathUtf8 = jniString(env, jarPath);
+
+    jclass fileClass = env->FindClass("java/io/File");
+    jmethodID fileCtor = env->GetMethodID(fileClass, "<init>", "(Ljava/lang/String;)V");
+    jstring path = env->NewStringUTF(pathUtf8.c_str());
+    jobject file = env->NewObject(fileClass, fileCtor, path);
+
+    jmethodID toURI = env->GetMethodID(fileClass, "toURI", "()Ljava/net/URI;");
+    jobject uri = env->CallObjectMethod(file, toURI);
+
+    jclass uriClass = env->FindClass("java/net/URI");
+    jmethodID toURL = env->GetMethodID(uriClass, "toURL", "()Ljava/net/URL;");
+    jobject url = env->CallObjectMethod(uri, toURL);
+
+    jclass urlClass = env->FindClass("java/net/URL");
+    jobjectArray urls = env->NewObjectArray(1, urlClass, url);
+
+    jclass urlClassLoaderClass = env->FindClass("java/net/URLClassLoader");
+    jmethodID urlClassLoaderCtor = env->GetMethodID(urlClassLoaderClass, "<init>", "([Ljava/net/URL;Ljava/lang/ClassLoader;)V");
+    jobject helperLoader = env->NewObject(urlClassLoaderClass, urlClassLoaderCtor, urls, parent);
+    if (env->ExceptionCheck() || !helperLoader) {
+        logJavaException(env, "failed to create helper URLClassLoader");
+        return nullptr;
+    }
+
+    jclass classLoaderClass = env->FindClass("java/lang/ClassLoader");
+    jmethodID loadClass = env->GetMethodID(classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+    jstring isolatedName = env->NewStringUTF("gq.vapulite.bridge.IsolatedClientClassLoader");
+    jclass isolatedClass = static_cast<jclass>(env->CallObjectMethod(helperLoader, loadClass, isolatedName));
+    if (env->ExceptionCheck() || !isolatedClass) {
+        logJavaException(env, "failed to load isolated classloader class");
+        return nullptr;
+    }
+
+    jmethodID isolatedCtor = env->GetMethodID(isolatedClass, "<init>", "([Ljava/net/URL;Ljava/lang/ClassLoader;)V");
+    jobject isolatedLoader = env->NewObject(isolatedClass, isolatedCtor, urls, parent);
+    if (env->ExceptionCheck() || !isolatedLoader) {
+        logJavaException(env, "failed to instantiate isolated classloader");
+        return nullptr;
+    }
+
+    debug("isolated VapuLite classloader created");
+    return isolatedLoader;
 }
 
 static bool instantiateClient(JNIEnv* env, jobject loader) {
@@ -324,8 +443,14 @@ static DWORD WINAPI loaderThread(LPVOID param) {
     jobject loader = findClientThreadClassLoader(env);
     if (!loader) {
         debug("client thread classloader not found");
-    } else if (addJarToClassLoader(env, loader, jarPath) && instantiateClient(env, loader)) {
-        debug("client loaded");
+    } else {
+        jobject entryLoader = createIsolatedClassLoader(env, loader, jarPath);
+        if (!entryLoader && !addJarToClassLoader(env, loader, jarPath)) {
+            entryLoader = createChildClassLoader(env, loader, jarPath);
+        }
+        if (entryLoader && instantiateClient(env, entryLoader)) {
+            debug("client loaded");
+        }
     }
 
     if (attached) {

@@ -1,19 +1,60 @@
-package gq.yozakura;
-
-import gq.yozakura.core.Client;
-import net.minecraft.launchwrapper.LaunchClassLoader;
+package gq.vapulite;
 
 import java.lang.instrument.Instrumentation;
+import java.lang.reflect.Method;
+import java.net.URL;
+import java.net.URLClassLoader;
 
-public class YozakuraAttachPoint {
+public class VapuAttachPoint {
     public static void agentmain(String args, Instrumentation instrumentation) throws Exception {
+        ClassLoader classLoader = null;
         for (Class<?> classes : instrumentation.getAllLoadedClasses()) {
-            if (classes.getName().startsWith("net.minecraft.client.Minecraft")) {
-                LaunchClassLoader classLoader = (LaunchClassLoader)classes.getClassLoader();
-                classLoader.addURL(YozakuraAttachPoint.class.getProtectionDomain().getCodeSource().getLocation());
-                Class<?> client = classLoader.loadClass(Client.class.getName());
-                client.newInstance();
+            if (isMinecraftClass(classes)) {
+                classLoader = classes.getClassLoader();
+                if (classLoader != null) {
+                    break;
+                }
             }
         }
+        if (classLoader == null) {
+            throw new IllegalStateException("Cannot find Minecraft classloader");
+        }
+        ClassLoader entryLoader = addCurrentJar(classLoader);
+        Thread.currentThread().setContextClassLoader(entryLoader);
+        Class<?> bootstrap = entryLoader.loadClass("gq.vapulite.VapuBootstrap");
+        bootstrap.getMethod("start").invoke(null);
+    }
+
+    private static boolean isMinecraftClass(Class<?> type) {
+        String name = type.getName();
+        return "net.minecraft.client.Minecraft".equals(name)
+                || "ave".equals(name)
+                || name.endsWith(".client.Minecraft");
+    }
+
+    private static ClassLoader addCurrentJar(ClassLoader classLoader) throws Exception {
+        URL url = VapuAttachPoint.class.getProtectionDomain().getCodeSource().getLocation();
+        if (classLoader instanceof URLClassLoader) {
+            Method method = URLClassLoader.class.getDeclaredMethod("addURL", URL.class);
+            if (!method.isAccessible()) {
+                method.setAccessible(true);
+            }
+            method.invoke(classLoader, url);
+            return classLoader;
+        }
+        Class<?> type = classLoader.getClass();
+        while (type != null) {
+            try {
+                Method method = type.getDeclaredMethod("addURL", URL.class);
+                if (!method.isAccessible()) {
+                    method.setAccessible(true);
+                }
+                method.invoke(classLoader, url);
+                return classLoader;
+            } catch (NoSuchMethodException ignored) {
+                type = type.getSuperclass();
+            }
+        }
+        return new URLClassLoader(new URL[]{url}, classLoader);
     }
 }

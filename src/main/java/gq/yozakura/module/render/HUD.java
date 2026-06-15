@@ -1,23 +1,22 @@
-package gq.yozakura.module.render;
+package gq.vapulite.module.render;
 
-import gq.yozakura.manager.ModuleManager;
-import gq.yozakura.manager.NotificationManager;
-import gq.yozakura.core.Client;
-import gq.yozakura.module.ModuleType;
-import gq.yozakura.ui.click.ClickGuiIcons;
-import gq.yozakura.module.Module;
-import gq.yozakura.util.color.ColorUtils;
-import gq.yozakura.util.render.HudDrag;
-import gq.yozakura.value.Mode;
-import gq.yozakura.value.Numbers;
-import gq.yozakura.value.Option;
-import gq.yozakura.value.Value;
-import gq.yozakura.engine.font.CFontRenderer;
-import gq.yozakura.engine.font.FontLoaders;
-import gq.yozakura.engine.render.ShaderRenderer;
-import gq.yozakura.engine.render.ui.LiquidGlassSettings;
-import gq.yozakura.engine.render.ui.RenderServices;
-import gq.yozakura.util.render.RenderUtil;
+import gq.vapulite.manager.ModuleManager;
+import gq.vapulite.manager.NotificationManager;
+import gq.vapulite.core.Client;
+import gq.vapulite.module.ModuleType;
+import gq.vapulite.ui.click.ClickGuiIcons;
+import gq.vapulite.module.Module;
+import gq.vapulite.util.color.ColorUtils;
+import gq.vapulite.util.render.HudDrag;
+import gq.vapulite.value.Mode;
+import gq.vapulite.value.Numbers;
+import gq.vapulite.value.Option;
+import gq.vapulite.value.Value;
+import gq.vapulite.engine.font.CFontRenderer;
+import gq.vapulite.engine.font.FontLoaders;
+import gq.vapulite.engine.render.ui.LiquidGlassSettings;
+import gq.vapulite.engine.render.ui.RenderServices;
+import gq.vapulite.util.render.RenderUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.client.gui.ScaledResolution;
@@ -49,8 +48,8 @@ public class HUD extends Module {
     private static final int SAKURA_GLASS = 0xFF08080D;
 
     public enum HudStyle {
-        YOZAKURA,
-        YOZAKURA_PRO
+        VAPULITE,
+        VAPE
     }
 
     public enum Theme {
@@ -72,19 +71,19 @@ public class HUD extends Module {
 
     private static final class HudPalette {
         final int text, muted, glass, glassSoft, border, accent, accentAlt;
-        final int yozakuraPrimary, yozakuraSecondary, yozakuraTertiary;
-        final int yozakuraSurface, yozakuraSurfaceVariant, yozakuraOnSurface, yozakuraOnVariant;
+        final int vapePrimary, vapeSecondary, vapeTertiary;
+        final int vapeSurface, vapeSurfaceVariant, vapeOnSurface, vapeOnVariant;
         final int shadowColor;
 
         HudPalette(int text, int muted, int glass, int glassSoft, int border, int accent, int accentAlt,
-                   int yozakuraPrimary, int yozakuraSecondary, int yozakuraTertiary,
-                   int yozakuraSurface, int yozakuraSurfaceVariant, int yozakuraOnSurface, int yozakuraOnVariant,
+                   int vapePrimary, int vapeSecondary, int vapeTertiary,
+                   int vapeSurface, int vapeSurfaceVariant, int vapeOnSurface, int vapeOnVariant,
                    int shadowColor) {
             this.text = text; this.muted = muted; this.glass = glass; this.glassSoft = glassSoft;
             this.border = border; this.accent = accent; this.accentAlt = accentAlt;
-            this.yozakuraPrimary = yozakuraPrimary; this.yozakuraSecondary = yozakuraSecondary; this.yozakuraTertiary = yozakuraTertiary;
-            this.yozakuraSurface = yozakuraSurface; this.yozakuraSurfaceVariant = yozakuraSurfaceVariant;
-            this.yozakuraOnSurface = yozakuraOnSurface; this.yozakuraOnVariant = yozakuraOnVariant;
+            this.vapePrimary = vapePrimary; this.vapeSecondary = vapeSecondary; this.vapeTertiary = vapeTertiary;
+            this.vapeSurface = vapeSurface; this.vapeSurfaceVariant = vapeSurfaceVariant;
+            this.vapeOnSurface = vapeOnSurface; this.vapeOnVariant = vapeOnVariant;
             this.shadowColor = shadowColor;
         }
 
@@ -125,7 +124,7 @@ public class HUD extends Module {
     }
 
     private static HUD instance;
-    private static HudStyle activeStyle = HudStyle.YOZAKURA;
+    private static HudStyle activeStyle = HudStyle.VAPULITE;
 
     private final Option<Boolean> watermark = new Option<Boolean>("Watermark", "Watermark", true);
     private final Option<Boolean> arrayList = new Option<Boolean>("ModuleList", "ModuleList", true);
@@ -136,7 +135,7 @@ public class HUD extends Module {
     private final Option<Boolean> potionEffects = new Option<Boolean>("PotionEffects", "PotionEffects", true);
     private final Option<Boolean> inventoryDisplay = new Option<Boolean>("Inventory", "Inventory", true);
     private final Option<Boolean> glow = new Option<Boolean>("Glow", "Glow", false);
-    private final Mode<HudStyle> hudStyle = new Mode<HudStyle>("HUD Style", "HUDStyle", HudStyle.values(), HudStyle.YOZAKURA);
+    private final Mode<HudStyle> hudStyle = new Mode<HudStyle>("HUD Style", "HUDStyle", HudStyle.values(), HudStyle.VAPULITE);
     private final Mode<Theme> theme = new Mode<Theme>("Theme", "Theme", Theme.values(), Theme.DARK);
     private final Mode<ArrayListTheme> arrayListTheme = new Mode<ArrayListTheme>("ArrayList Theme", "ArrayListTheme", ArrayListTheme.values(), ArrayListTheme.OLD);
     private final Mode<NotificationTheme> notificationTheme = new Mode<NotificationTheme>("Notification Theme", "NotificationTheme", NotificationTheme.values(), NotificationTheme.OLD);
@@ -182,7 +181,6 @@ public class HUD extends Module {
         int height = sr.getScaledHeight();
 
         activeStyle = getSelectedStyle();
-        ShaderRenderer.invalidateFrostedGlass();
 
         if (Boolean.TRUE.equals(watermark.getValue())) {
             drawWatermark();
@@ -211,29 +209,22 @@ public class HUD extends Module {
     }
 
     private void drawWatermark() {
-        if (useYozakuraStyle()) {
+        if (useVapeStyle()) {
             drawVapeWatermark();
             return;
         }
 
-        String title = Client.name;
-        String meta = Client.version + "  |  " + Minecraft.getDebugFPS() + " FPS";
+        String capsule = "Sakura · " + Minecraft.getDebugFPS() + "fps";
         int ping = getPing();
         if (ping >= 0) {
-            meta += "  |  " + ping + " ms";
+            capsule += " · " + ping + "ms";
         }
 
-        int enabled = getEnabledCount();
-        String modules = enabled + "/" + ModuleManager.getModules().size();
-
-        float round = getRadius();
-        float iconSize = 32.0f;
-        float titleWidth = FontLoaders.C20.getStringWidth(title);
-        float metaWidth = FontLoaders.C14.getStringWidth(meta);
-        float modulesWidth = FontLoaders.C14.getStringWidth(modules) + 22.0f;
-        float boxW = Math.max(198.0f, Math.max(titleWidth + iconSize + modulesWidth + 44.0f,
-                metaWidth + iconSize + 32.0f));
-        float boxH = 50.0f;
+        CFontRenderer smallFont = FontLoaders.C14;
+        float capsuleW = smallFont.getStringWidth(capsule) + 36.0f;
+        float boxW = Math.max(166.0f, capsuleW + 10.0f);
+        float boxH = 21.0f;
+        float round = Math.max(6.0f, getRadius() - 1.0f);
         float uiScale = getScale(watermarkScale);
         ScaledResolution sr = new ScaledResolution(mc);
         float[] pos = HudDrag.update("hud_watermark", watermarkX, watermarkY, watermarkScale, 6.0f, 6.0f,
@@ -243,17 +234,22 @@ public class HUD extends Module {
 
         beginScaled(x, y, uiScale);
         try {
+            float pillW = Math.min(boxW, capsuleW);
             if (Boolean.TRUE.equals(backgrounds.getValue())) {
-                drawSakuraPanel(x, y, x + boxW, y + boxH, round, 1.0f);
-                drawSakuraIconWell(x + 10.0f, y + 9.0f, iconSize, 1.0f);
+                RenderServices.shapes().shadow(x, y + 1.0f, x + pillW, y + 19.0f, 7.0f,
+                        withAlpha(0xFF000000, 92), 7, 2.2f);
+                RenderServices.shapes().shadow(x - 1.0f, y, x + pillW + 1.0f, y + 20.0f, 7.0f,
+                        withAlpha(SAKURA, 54), 5, 2.0f);
+                RenderServices.liquidGlass().roundedBorder(x, y, x + pillW, y + 19.0f, 7.0f, 0.55f,
+                        withAlpha(SAKURA_GLASS, 166), withAlpha(SAKURA, 48), sakuraGlassSettings());
+                RenderServices.shapes().horizontalGradient(x + 2.0f, y + 1.0f, x + pillW - 2.0f, y + 9.0f,
+                        withAlpha(0xFFFFF6FA, 20), withAlpha(SAKURA, 4));
             }
 
-            drawSakuraFlower(x + 26.0f, y + 25.0f, 6.4f, 1.0f);
-            FontLoaders.C20.drawString(trim(title, FontLoaders.C20, boxW - iconSize - modulesWidth - 48.0f),
-                    x + 52.0f, y + 11.0f, withAlpha(SAKURA_TEXT, 246));
-            FontLoaders.C14.drawString(trim(meta, FontLoaders.C14, boxW - 64.0f),
-                    x + 52.0f, y + 29.0f, withAlpha(SAKURA_MUTED, 220));
-            drawSakuraStatusChip(modules, x + boxW - modulesWidth - 10.0f, y + 10.0f, modulesWidth, SAKURA);
+            drawWatermarkPetals(x, y, pillW, 19.0f, 1.0f);
+            drawSakuraFlower(x + 10.5f, y + 10.2f, 3.0f, 1.0f);
+            smallFont.drawString(trim(capsule, smallFont, pillW - 28.0f),
+                    x + 21.0f, y + 7.2f, withAlpha(SAKURA_TEXT, 236));
         } finally {
             endScaled();
         }
@@ -280,20 +276,20 @@ public class HUD extends Module {
         beginScaled(x, y, uiScale);
         try {
             if (Boolean.TRUE.equals(backgrounds.getValue())) {
-                drawYozakuraCard(x, y, x + boxW, y + boxH, 7.0f, 170);
+                drawVapeCard(x, y, x + boxW, y + boxH, 7.0f, 170);
                 RenderServices.shapes().horizontalGradient(x + 1.0f, y + 1.0f, x + boxW - 1.0f, y + 18.0f,
                         withAlpha(0xFFFFFFFF, 16), withAlpha(0xFF000000, 0));
                 RenderServices.shapes().rounded(x + 10.0f, y + 7.0f, x + 10.0f + iconSize,
-                        y + 7.0f + iconSize, 8.0f, withAlpha(palette().yozakuraSurfaceVariant, 235));
+                        y + 7.0f + iconSize, 8.0f, withAlpha(palette().vapeSurfaceVariant, 235));
                 RenderServices.shapes().roundedBorder(x + 10.0f, y + 7.0f, x + 10.0f + iconSize,
                         y + 7.0f + iconSize, 8.0f, 0.8f, 0x00000000,
                         withAlpha(0xFFFFFFFF, 24));
                 RenderServices.shapes().circle(x + boxW - 16.0f, y + 18.0f, 0, 360, 4.0f,
-                        withAlpha(palette().yozakuraSecondary, 245));
+                        withAlpha(palette().vapeSecondary, 245));
             }
-            FontLoaders.C30.drawString("M", x + 18.0f, y + 14.0f, withAlpha(palette().yozakuraPrimary, 245));
-            titleFont.drawString(Client.name, x + 60.0f, y + 13.0f, withAlpha(palette().yozakuraOnSurface, 248));
-            smallFont.drawString(meta, x + 60.0f, y + 31.0f, withAlpha(palette().yozakuraOnVariant, 226));
+            FontLoaders.C30.drawString("M", x + 18.0f, y + 14.0f, withAlpha(palette().vapePrimary, 245));
+            titleFont.drawString(Client.name, x + 60.0f, y + 13.0f, withAlpha(palette().vapeOnSurface, 248));
+            smallFont.drawString(meta, x + 60.0f, y + 31.0f, withAlpha(palette().vapeOnVariant, 226));
         } finally {
             endScaled();
         }
@@ -302,10 +298,10 @@ public class HUD extends Module {
     }
 
     private void drawVapeTextChip(String text, float x, float y, float width, int accent) {
-        RenderServices.shapes().rounded(x, y, x + width, y + 15.0f, 4.0f, withAlpha(palette().yozakuraSurfaceVariant, 185));
+        RenderServices.shapes().rounded(x, y, x + width, y + 15.0f, 4.0f, withAlpha(palette().vapeSurfaceVariant, 185));
         RenderServices.shapes().rounded(x, y + 13.0f, x + width, y + 15.0f, 1.0f, withAlpha(accent, 165));
         FontLoaders.C12.drawString(text, x + (width - FontLoaders.C12.getStringWidth(text)) / 2.0f,
-                y + 4.0f, withAlpha(palette().yozakuraOnSurface, 232));
+                y + 4.0f, withAlpha(palette().vapeOnSurface, 232));
     }
 
     private void drawVapePotionEffects(ArrayList<PotionEffect> effects) {
@@ -324,17 +320,17 @@ public class HUD extends Module {
         beginScaled(x, y, uiScale);
         try {
             if (Boolean.TRUE.equals(backgrounds.getValue())) {
-                drawYozakuraCard(x, y, x + width, y + height, 6.0f, 158);
+                drawVapeCard(x, y, x + width, y + height, 6.0f, 158);
                 RenderServices.shapes().rounded(x, y, x + 2.0f, y + height, 1.0f,
-                        withAlpha(palette().yozakuraTertiary, 188));
+                        withAlpha(palette().vapeTertiary, 188));
             }
-            FontLoaders.C16.drawString("Effects", x + 11.0f, y + 8.0f, withAlpha(palette().yozakuraOnSurface, 242));
+            FontLoaders.C16.drawString("Effects", x + 11.0f, y + 8.0f, withAlpha(palette().vapeOnSurface, 242));
             String count = String.valueOf(effects.size());
             drawVapeTextChip(count, x + width - FontLoaders.C12.getStringWidth(count) - 19.0f, y + 7.0f,
-                    FontLoaders.C12.getStringWidth(count) + 14.0f, palette().yozakuraPrimary);
+                    FontLoaders.C12.getStringWidth(count) + 14.0f, palette().vapePrimary);
             if (effects.isEmpty()) {
                 FontLoaders.C12.drawString("No active effects", x + 12.0f, y + 34.0f,
-                        withAlpha(palette().yozakuraOnVariant, 210));
+                        withAlpha(palette().vapeOnVariant, 210));
             } else {
                 for (int i = 0; i < Math.min(6, effects.size()); i++) {
                     PotionEffect effect = effects.get(i);
@@ -349,12 +345,12 @@ public class HUD extends Module {
                             FontLoaders.C12, width - FontLoaders.C12.getStringWidth(duration) - 44.0f);
                     if (Boolean.TRUE.equals(backgrounds.getValue())) {
                         RenderServices.shapes().rounded(x + 8.0f, rowY + 1.0f, x + width - 8.0f,
-                                rowY + rowH - 2.0f, 4.0f, withAlpha(palette().yozakuraSurfaceVariant, 112));
+                                rowY + rowH - 2.0f, 4.0f, withAlpha(palette().vapeSurfaceVariant, 112));
                     }
                     RenderServices.shapes().circle(x + 17.0f, rowY + 8.0f, 0, 360, 3.4f, accent);
-                    FontLoaders.C12.drawString(name, x + 26.0f, rowY + 4.0f, withAlpha(palette().yozakuraOnSurface, 230));
+                    FontLoaders.C12.drawString(name, x + 26.0f, rowY + 4.0f, withAlpha(palette().vapeOnSurface, 230));
                     FontLoaders.C12.drawString(duration, x + width - FontLoaders.C12.getStringWidth(duration) - 12.0f,
-                            rowY + 4.0f, withAlpha(palette().yozakuraOnVariant, 215));
+                            rowY + 4.0f, withAlpha(palette().vapeOnVariant, 215));
                     float progress = Math.max(0.08f, Math.min(1.0f, effect.getDuration() / 1200.0f));
                     RenderServices.shapes().progressBar(x + 26.0f, rowY + 14.0f, x + width - 12.0f, rowY + 15.6f,
                             0.8f, progress, withAlpha(0xFFFFFFFF, 18), withAlpha(accent, 185));
@@ -368,7 +364,7 @@ public class HUD extends Module {
     }
 
     private void drawInventory(int screenWidth, int screenHeight) {
-        if (useYozakuraStyle()) {
+        if (useVapeStyle()) {
             drawVapeInventory(screenWidth, screenHeight);
             return;
         }
@@ -436,14 +432,14 @@ public class HUD extends Module {
         try {
             int filled = countInventoryItems();
             if (Boolean.TRUE.equals(backgrounds.getValue())) {
-                drawYozakuraCard(x, y, x + width, y + height, 6.0f, 158);
+                drawVapeCard(x, y, x + width, y + height, 6.0f, 158);
                 RenderServices.shapes().rounded(x, y, x + 2.0f, y + height, 1.0f,
-                        withAlpha(palette().yozakuraSecondary, 190));
+                        withAlpha(palette().vapeSecondary, 190));
             }
-            FontLoaders.C16.drawString("Inventory", x + 11.0f, y + 8.0f, withAlpha(palette().yozakuraOnSurface, 242));
+            FontLoaders.C16.drawString("Inventory", x + 11.0f, y + 8.0f, withAlpha(palette().vapeOnSurface, 242));
             String count = filled + "/27";
             drawVapeTextChip(count, x + width - FontLoaders.C12.getStringWidth(count) - 21.0f, y + 7.0f,
-                    FontLoaders.C12.getStringWidth(count) + 14.0f, palette().yozakuraSecondary);
+                    FontLoaders.C12.getStringWidth(count) + 14.0f, palette().vapeSecondary);
 
             float startX = x + 13.0f;
             float startY = y + 30.0f;
@@ -454,7 +450,7 @@ public class HUD extends Module {
                     float slotY = startY + row * stride;
                     if (Boolean.TRUE.equals(backgrounds.getValue())) {
                         int fill = ((row + col) & 1) == 0
-                                ? withAlpha(palette().yozakuraSurfaceVariant, 154)
+                                ? withAlpha(palette().vapeSurfaceVariant, 154)
                                 : withAlpha(0xFF151922, 144);
                         RenderServices.shapes().roundedBorder(slotX - 1.0f, slotY - 1.0f, slotX + slot + 1.0f,
                                 slotY + slot + 1.0f, 4.0f, 0.6f, fill, withAlpha(0xFFFFFFFF, 24));
@@ -464,7 +460,7 @@ public class HUD extends Module {
             }
             float progress = Math.min(1.0f, filled / 27.0f);
             RenderServices.shapes().progressBar(x + 13.0f, y + height - 7.0f, x + width - 13.0f, y + height - 4.8f,
-                    1.1f, progress, withAlpha(0xFFFFFFFF, 20), withAlpha(palette().yozakuraPrimary, 218));
+                    1.1f, progress, withAlpha(0xFFFFFFFF, 20), withAlpha(palette().vapePrimary, 218));
         } finally {
             endScaled();
         }
@@ -475,8 +471,8 @@ public class HUD extends Module {
     private void drawModuleList(int screenWidth, int screenHeight, float factor) {
         List<Module> modules = getHudModules();
         moduleAnimations.keySet().retainAll(modules);
-        if (hudStyle.getValue() == HudStyle.YOZAKURA_PRO) {
-            drawYozakuraModuleList(screenWidth, screenHeight, factor, modules);
+        if (hudStyle.getValue() == HudStyle.VAPE) {
+            drawVapeModuleList(screenWidth, screenHeight, factor, modules);
             return;
         }
 
@@ -651,7 +647,7 @@ public class HUD extends Module {
         }
     }
 
-    private void drawYozakuraModuleList(int screenWidth, int screenHeight, float factor, List<Module> modules) {
+    private void drawVapeModuleList(int screenWidth, int screenHeight, float factor, List<Module> modules) {
         final CFontRenderer font = FontLoaders.TB14;
         final float rowH = 24.0f;
         final float lineW = 2.4f;
@@ -689,16 +685,16 @@ public class HUD extends Module {
         beginScaled(x, y, uiScale);
         try {
             if (Boolean.TRUE.equals(backgrounds.getValue())) {
-                drawYozakuraCard(x, y, x + listW, y + listH, 6.0f, 150);
+                drawVapeCard(x, y, x + listW, y + listH, 6.0f, 150);
                 float lineX = rightSide ? x + listW - lineW : x;
                 RenderServices.shapes().verticalGradient(lineX, y + 5.0f, lineX + lineW, y + listH - 5.0f,
-                        withAlpha(palette().yozakuraPrimary, 230), withAlpha(palette().yozakuraTertiary, 190));
+                        withAlpha(palette().vapePrimary, 230), withAlpha(palette().vapeTertiary, 190));
             }
             if (modules.isEmpty()) {
                 float textX = rightSide
                         ? x + listW - lineW - font.getStringWidth("Module List") - 12.0f
                         : x + lineW + 12.0f;
-                font.drawString("Module List", textX, y + 7.0f, withAlpha(palette().yozakuraOnVariant, 225));
+                font.drawString("Module List", textX, y + 7.0f, withAlpha(palette().vapeOnVariant, 225));
             } else {
                 int index = 0;
                 float drawY = y;
@@ -717,10 +713,10 @@ public class HUD extends Module {
                     int rowAlpha = Math.round((index == 0 ? 44.0f : 26.0f) * progress);
                     if (Boolean.TRUE.equals(backgrounds.getValue())) {
                         RenderServices.shapes().rect(x + 4.0f, rowTop, x + listW - 4.0f, rowBottom,
-                                withAlpha(palette().yozakuraSurfaceVariant, rowAlpha));
+                                withAlpha(palette().vapeSurfaceVariant, rowAlpha));
                         if (index > 0) {
                             RenderServices.shapes().rect(x + 8.0f, rowTop, x + listW - 8.0f, rowTop + 0.6f,
-                                    withAlpha(palette().yozakuraOnVariant, Math.round(18.0f * progress)));
+                                    withAlpha(palette().vapeOnVariant, Math.round(18.0f * progress)));
                         }
                         float pulseLineX = rightSide ? x + listW - lineW : x;
                         RenderServices.shapes().rect(pulseLineX, rowTop + 4.0f, pulseLineX + lineW, rowBottom - 4.0f,
@@ -732,10 +728,10 @@ public class HUD extends Module {
                     float sideW = entry.sideWidth;
                     String name = trim(label.name, font, contentRight - contentLeft - sideW - 8.0f);
                     font.drawString(name, contentLeft, drawY + 7.0f,
-                            withAlpha(palette().yozakuraOnSurface, Math.round(246.0f * progress)));
+                            withAlpha(palette().vapeOnSurface, Math.round(246.0f * progress)));
                     if (sideText.length() > 0) {
                         font.drawString(sideText, contentRight - sideW, drawY + 7.0f,
-                                withAlpha(palette().yozakuraSecondary, Math.round(238.0f * progress)));
+                                withAlpha(palette().vapeSecondary, Math.round(238.0f * progress)));
                     }
                     drawY += rowH;
                     index++;
@@ -764,7 +760,7 @@ public class HUD extends Module {
             }
         });
 
-        if (useYozakuraStyle()) {
+        if (useVapeStyle()) {
             drawVapePotionEffects(effects);
             return;
         }
@@ -964,6 +960,37 @@ public class HUD extends Module {
         GL11.glEnd();
     }
 
+    private void drawWatermarkPetals(float x, float y, float width, float height, float alpha) {
+        if (alpha <= 0.002f) {
+            return;
+        }
+        float time = (System.currentTimeMillis() % 3600L) / 3600.0f;
+        GlStateManager.pushMatrix();
+        try {
+            GlStateManager.enableBlend();
+            GlStateManager.disableTexture2D();
+            GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0);
+            for (int i = 0; i < 5; i++) {
+                float phase = fract(time * (0.66f + i * 0.08f) + i * 0.19f);
+                float sway = (float) Math.sin((time * 6.2831855f) + i * 1.27f);
+                float px = x + width - 34.0f + phase * 24.0f + sway * 2.0f;
+                float py = y + 5.0f + (i % 3) * 3.6f
+                        + (float) Math.sin((phase + i * 0.17f) * 6.2831855f) * 1.8f;
+                py = Math.max(y + 4.2f, Math.min(y + height - 4.2f, py));
+                float petalAlpha = alpha * (0.20f + 0.05f * i) * (1.0f - phase * 0.32f);
+                GL11.glPushMatrix();
+                GL11.glTranslatef(px, py, 0.0f);
+                GL11.glRotatef(phase * 210.0f + i * 47.0f, 0.0f, 0.0f, 1.0f);
+                drawSakuraPetal2D(1.45f + i * 0.14f, petalAlpha);
+                GL11.glPopMatrix();
+            }
+        } finally {
+            GlStateManager.enableTexture2D();
+            GlStateManager.popMatrix();
+            resetTextRenderState();
+        }
+    }
+
     private void glColor(int color, float alpha) {
         float a = ((color >>> 24) & 255) / 255.0f * Math.max(0.0f, Math.min(1.0f, alpha));
         float r = ((color >>> 16) & 255) / 255.0f;
@@ -1002,9 +1029,9 @@ public class HUD extends Module {
         HudRenderSupport.drawThemedFrostedGlass(x, y, x2, y2, radius, strength, fillColor, borderColor);
     }
 
-    private void drawYozakuraCard(float x, float y, float x2, float y2, float radius, int alpha) {
-        HudRenderSupport.drawYozakuraCard(x, y, x2, y2, radius, withAlpha(palette().shadowColor, 58),
-                withAlpha(palette().yozakuraSurface, alpha), withAlpha(0xFFFFFFFF, 24));
+    private void drawVapeCard(float x, float y, float x2, float y2, float radius, int alpha) {
+        HudRenderSupport.drawVapeCard(x, y, x2, y2, radius, withAlpha(palette().shadowColor, 58),
+                withAlpha(palette().vapeSurface, alpha), withAlpha(0xFFFFFFFF, 24));
     }
 
     private void drawGlowIfEnabled(float x, float y, float x2, float y2, float radius, int glowColor) {
@@ -1350,22 +1377,22 @@ public class HUD extends Module {
 
     private HudStyle getSelectedStyle() {
         HudStyle selected = hudStyle.getValue();
-        return selected == null ? HudStyle.YOZAKURA : selected;
+        return selected == null ? HudStyle.VAPULITE : selected;
     }
 
-    private boolean useYozakuraStyle() {
-        return getSelectedStyle() == HudStyle.YOZAKURA_PRO;
+    private boolean useVapeStyle() {
+        return getSelectedStyle() == HudStyle.VAPE;
     }
 
     public static HudStyle getActiveStyle() {
         if (instance != null) {
             activeStyle = instance.getSelectedStyle();
         }
-        return activeStyle == null ? HudStyle.YOZAKURA : activeStyle;
+        return activeStyle == null ? HudStyle.VAPULITE : activeStyle;
     }
 
-    public static boolean useYozakuraSimpleStyle() {
-        return getActiveStyle() == HudStyle.YOZAKURA_PRO;
+    public static boolean useVapeSimpleStyle() {
+        return getActiveStyle() == HudStyle.VAPE;
     }
 
     public static boolean isGlowEnabled() {
@@ -1423,6 +1450,10 @@ public class HUD extends Module {
         return (color & 0x00FFFFFF) | (ColorUtils.clamp(alpha, 0, 255) << 24);
     }
 
+    private static float fract(float value) {
+        return value - (float) Math.floor(value);
+    }
+
     private static int getCategoryAccent(Module module) {
         if (module.getCategory() == ModuleType.Combat) {
             return 0xFF8B7CFF;
@@ -1449,7 +1480,7 @@ public class HUD extends Module {
         return Client.CHINESE ? module.getChinese() : module.getName();
     }
 
-    private static String trim(String text, gq.yozakura.engine.font.CFontRenderer font, float maxWidth) {
+    private static String trim(String text, gq.vapulite.engine.font.CFontRenderer font, float maxWidth) {
         if (text == null) {
             return "";
         }

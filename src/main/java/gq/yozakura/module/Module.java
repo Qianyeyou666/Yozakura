@@ -1,14 +1,13 @@
-package gq.yozakura.module;
+package gq.vapulite.module;
 
-import gq.yozakura.manager.NotificationManager;
-import gq.yozakura.module.ModuleType;
-import gq.yozakura.util.minecraft.Helper;
-import gq.yozakura.core.Client;
-import gq.yozakura.value.Value;
+import gq.vapulite.bridge.ForgeEnvironment;
+import gq.vapulite.core.VapuClientState;
+import gq.vapulite.event.bus.EventManager;
+import gq.vapulite.manager.NotificationManager;
+import gq.vapulite.module.ModuleType;
+import gq.vapulite.util.minecraft.Helper;
+import gq.vapulite.value.Value;
 import net.minecraft.client.Minecraft;
-import net.minecraftforge.client.event.RenderWorldLastEvent;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.fml.common.FMLCommonHandler;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,6 +26,8 @@ public class Module {
     public float optionAnim = 0;// present
     public float optionAnimNow = 0;// present
     private boolean registered;
+    private boolean customEventRegistered;
+    private boolean forgeEventRegistered;
 
     public Module(String name, int key, ModuleType category, String Descript) {
         this.name = name;
@@ -63,7 +64,7 @@ public class Module {
 
     public void toggle() {
         if(NoToggle){
-            if(Client.MessageON){
+            if(VapuClientState.isMessageOn()){
                 if (this.state) {
                     Helper.sendMessage("Module" + " "+ this.getName() + " Disabled");
                 } else {
@@ -102,26 +103,37 @@ public class Module {
             }
         }
 
-        if (playSound && Client.MessageON && !NoToggle) {
+        if (playSound && VapuClientState.isMessageOn() && !NoToggle) {
             NotificationManager.show(this.getName(), state ? "Enabled" : "Disabled", this);
         }
         if (!NoToggle) {
-            Client.markConfigDirty();
+            VapuClientState.markConfigDirty();
         }
     }
 
     private void registerEvents() {
         if (!registered) {
-            MinecraftForge.EVENT_BUS.register(this);
-            FMLCommonHandler.instance().bus().register(this);
-            registered = true;
+            try {
+                EventManager.register(this);
+                customEventRegistered = true;
+            } catch (Throwable throwable) {
+                customEventRegistered = false;
+            }
+            forgeEventRegistered = ForgeEnvironment.isForgeAvailable() && ForgeEnvironment.register(this);
+            registered = customEventRegistered || forgeEventRegistered;
         }
     }
 
     private void unregisterEvents() {
         if (registered) {
-            MinecraftForge.EVENT_BUS.unregister(this);
-            FMLCommonHandler.instance().bus().unregister(this);
+            if (forgeEventRegistered && ForgeEnvironment.isForgeAvailable()) {
+                ForgeEnvironment.unregister(this);
+            }
+            if (customEventRegistered) {
+                EventManager.unregister(this);
+            }
+            forgeEventRegistered = false;
+            customEventRegistered = false;
             registered = false;
         }
     }
@@ -167,7 +179,7 @@ public class Module {
             return;
         }
         this.key = key;
-        Client.markConfigDirty();
+        VapuClientState.markConfigDirty();
     }
 
     public ModuleType getCategory() {
@@ -178,7 +190,7 @@ public class Module {
         this.category = category;
     }
 
-    public void onRenderWorldLast(RenderWorldLastEvent event) {
+    public void onRenderWorldLast(Object event) {
     }
 
 

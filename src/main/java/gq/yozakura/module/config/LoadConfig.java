@@ -5,8 +5,6 @@ import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.Module;
 import gq.yozakura.util.minecraft.Helper;
 
-import java.io.IOException;
-
 import static org.lwjgl.input.Keyboard.KEY_X;
 
 public class LoadConfig extends Module {
@@ -19,11 +17,12 @@ public class LoadConfig extends Module {
     public void enable() {
         try {
             Client.LoadConfig();
-        } catch (IOException e) {
-            e.printStackTrace();
+            Helper.sendMessage("Configs Loaded.");
+        } catch (Throwable throwable) {
+            throwable.printStackTrace();
+            Helper.sendMessage("Config load failed. Check VapuLiteConfig.log.");
             state=false;
         }
-        Helper.sendMessage("Configs Loaded.");
         state=false;
     }
 }

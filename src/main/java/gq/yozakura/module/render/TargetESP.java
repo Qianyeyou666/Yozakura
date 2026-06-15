@@ -1,13 +1,18 @@
-package gq.yozakura.module.render;
+package gq.vapulite.module.render;
 
-import gq.yozakura.module.ModuleType;
-import gq.yozakura.module.Module;
-import gq.yozakura.module.combat.AntiBot;
-import gq.yozakura.module.combat.Backtrack;
-import gq.yozakura.module.combat.KillAura;
-import gq.yozakura.value.Mode;
-import gq.yozakura.value.Numbers;
-import gq.yozakura.value.Option;
+import gq.vapulite.event.bridge.AttackEvent;
+import gq.vapulite.event.bridge.Render3DEvent;
+import gq.vapulite.event.bridge.RenderFrameGuard;
+import gq.vapulite.event.bus.EventTarget;
+import gq.vapulite.module.ModuleType;
+import gq.vapulite.module.Module;
+import gq.vapulite.manager.ModuleManager;
+import gq.vapulite.module.combat.AntiBot;
+import gq.vapulite.module.combat.Backtrack;
+import gq.vapulite.module.combat.KillAura;
+import gq.vapulite.value.Mode;
+import gq.vapulite.value.Numbers;
+import gq.vapulite.value.Option;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.monster.EntityMob;
@@ -20,6 +25,7 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.MathHelper;
 import net.minecraft.util.MovingObjectPosition;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
+import net.minecraftforge.event.entity.player.AttackEntityEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.GL11;
@@ -27,8 +33,11 @@ import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GLContext;
 
 public class TargetESP extends Module {
+    private static final long ATTACK_TARGET_LINGER_MS = 1200L;
+    private static final double FALLBACK_TARGET_RANGE = 6.0D;
+
     public enum EspMode {
-        YOZAKURA,
+        VAPE,
         RINGS,
         CAPSULE,
         COSMIC,
@@ -36,7 +45,7 @@ public class TargetESP extends Module {
         SAKURA
     }
 
-    private final Mode<EspMode> mode = new Mode<EspMode>("Mode", "Mode", EspMode.values(), EspMode.YOZAKURA);
+    private final Mode<EspMode> mode = new Mode<EspMode>("Mode", "Mode", EspMode.values(), EspMode.VAPE);
     private final Numbers<Double> alpha = new Numbers<Double>("Alpha", "Alpha", 155.0, 35.0, 220.0, 5.0);
     private final Numbers<Double> radius = new Numbers<Double>("Radius", "Radius", 1.0, 0.65, 1.65, 0.05);
     private final Numbers<Double> height = new Numbers<Double>("Height", "Height", 1.0, 0.65, 1.45, 0.05);
@@ -53,8 +62,12 @@ public class TargetESP extends Module {
     private final Option<Boolean> animals = new Option<Boolean>("Animals", "Animals", false);
 
     private EntityLivingBase displayTarget;
+    private EntityLivingBase attackTarget;
+    private long attackTargetMS;
     private float visibility;
     private long lastFrameMS = System.currentTimeMillis();
+    private long lastRenderNanos;
+    private long lastStandaloneFrame;
 
     public TargetESP() {
         super("TargetESP", Keyboard.KEY_NONE, ModuleType.Render, "Draw a shader based marker around the current target");
@@ -67,6 +80,8 @@ public class TargetESP extends Module {
     @Override
     public void enable() {
         displayTarget = null;
+        attackTarget = null;
+        attackTargetMS = 0L;
         visibility = 0.0f;
         lastFrameMS = System.currentTimeMillis();
     }
@@ -74,11 +89,46 @@ public class TargetESP extends Module {
     @Override
     public void disable() {
         displayTarget = null;
+        attackTarget = null;
+        attackTargetMS = 0L;
         visibility = 0.0f;
     }
 
     @SubscribeEvent
+    public void onAttack(AttackEntityEvent event) {
+        if (!isInGame() || event.entityPlayer != mc.thePlayer) {
+            return;
+        }
+        rememberAttackTarget(event.target);
+    }
+
+    @EventTarget
+    public void onClientAttack(AttackEvent event) {
+        if (!isInGame() || event == null) {
+            return;
+        }
+        rememberAttackTarget(event.getTarget());
+    }
+
+    @SubscribeEvent
     public void onWorld(RenderWorldLastEvent event) {
+        renderFrame(event.partialTicks);
+    }
+
+    @EventTarget
+    public void onRender3D(Render3DEvent event) {
+        renderFrame(event.getPartialTicks());
+    }
+
+    private void renderFrame(float partialTicks) {
+        if (skipDuplicateStandaloneFrame()) {
+            return;
+        }
+        long frameNanos = System.nanoTime();
+        if (frameNanos - lastRenderNanos < 1000000L) {
+            return;
+        }
+        lastRenderNanos = frameNanos;
         if (!isInGame()) {
             displayTarget = null;
             visibility = 0.0f;
@@ -93,17 +143,33 @@ public class TargetESP extends Module {
         }
         float wanted = resolved == null ? 0.0f : 1.0f;
         visibility += (wanted - visibility) * factor;
-        if (displayTarget == null || visibility <= 0.025f || !isValidDisplayTarget(displayTarget)) {
+        if (displayTarget == null || visibility <= 0.025f || !isAliveTarget(displayTarget)) {
             return;
         }
-        drawTarget(displayTarget, event.partialTicks, visibility);
+        drawTarget(displayTarget, partialTicks, visibility);
+    }
+
+    private boolean skipDuplicateStandaloneFrame() {
+        long frame = RenderFrameGuard.currentStandalone3DFrame();
+        if (frame == 0L) {
+            return false;
+        }
+        if (lastStandaloneFrame == frame) {
+            return true;
+        }
+        lastStandaloneFrame = frame;
+        return false;
     }
 
     private EntityLivingBase resolveTarget() {
         if (Boolean.TRUE.equals(auraTarget.getValue())) {
-            EntityLivingBase aura = asTarget(KillAura.target);
+            EntityLivingBase aura = resolveAuraTarget();
             if (aura != null) {
                 return aura;
+            }
+            EntityLivingBase attacked = resolveRememberedAttackTarget();
+            if (attacked != null) {
+                return attacked;
             }
         }
         if (Boolean.TRUE.equals(crosshairTarget.getValue())
@@ -120,7 +186,34 @@ public class TargetESP extends Module {
                 return backtrack;
             }
         }
-        return null;
+        return findFallbackTarget();
+    }
+
+    private EntityLivingBase resolveAuraTarget() {
+        Module module = ModuleManager.getModule("KillAura");
+        if (module instanceof KillAura && module.getState()) {
+            EntityLivingBase current = asCombatTarget(((KillAura) module).getTarget());
+            if (current != null) {
+                return current;
+            }
+        }
+        return asCombatTarget(KillAura.target);
+    }
+
+    private EntityLivingBase resolveRememberedAttackTarget() {
+        if (System.currentTimeMillis() - attackTargetMS > ATTACK_TARGET_LINGER_MS) {
+            attackTarget = null;
+            return null;
+        }
+        return asCombatTarget(attackTarget);
+    }
+
+    private void rememberAttackTarget(Entity entity) {
+        EntityLivingBase target = asCombatTarget(entity);
+        if (target != null) {
+            attackTarget = target;
+            attackTargetMS = System.currentTimeMillis();
+        }
     }
 
     private EntityLivingBase asTarget(Entity entity) {
@@ -131,8 +224,40 @@ public class TargetESP extends Module {
         return isValidDisplayTarget(living) ? living : null;
     }
 
+    private EntityLivingBase asCombatTarget(Entity entity) {
+        if (!(entity instanceof EntityLivingBase)) {
+            return null;
+        }
+        EntityLivingBase living = (EntityLivingBase) entity;
+        return isAliveTarget(living) ? living : null;
+    }
+
+    private EntityLivingBase findFallbackTarget() {
+        if (mc.theWorld == null || mc.thePlayer == null) {
+            return null;
+        }
+        EntityLivingBase best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (Object object : mc.theWorld.loadedEntityList) {
+            if (!(object instanceof EntityLivingBase)) {
+                continue;
+            }
+            EntityLivingBase living = (EntityLivingBase) object;
+            if (!isValidDisplayTarget(living)) {
+                continue;
+            }
+            double distance = mc.thePlayer.getDistanceSqToEntity(living);
+            if (distance > FALLBACK_TARGET_RANGE * FALLBACK_TARGET_RANGE || distance >= bestDistance) {
+                continue;
+            }
+            bestDistance = distance;
+            best = living;
+        }
+        return best;
+    }
+
     private boolean isValidDisplayTarget(EntityLivingBase target) {
-        if (target == null || target.isDead || target.deathTime > 0 || target.getHealth() <= 0.0f) {
+        if (!isAliveTarget(target)) {
             return false;
         }
         if (target instanceof EntityPlayer) {
@@ -145,6 +270,16 @@ public class TargetESP extends Module {
             return Boolean.TRUE.equals(mobs.getValue());
         }
         return Boolean.TRUE.equals(mobs.getValue());
+    }
+
+    private boolean isAliveTarget(EntityLivingBase target) {
+        return target != null
+                && target != mc.thePlayer
+                && mc.theWorld != null
+                && mc.theWorld.loadedEntityList.contains(target)
+                && !target.isDead
+                && target.deathTime <= 0
+                && target.getHealth() > 0.0f;
     }
 
     private void drawTarget(EntityLivingBase target, float partialTicks, float fade) {
@@ -165,8 +300,10 @@ public class TargetESP extends Module {
                 : current == EspMode.SAKURA ? 0xFFFFFFFF
                 : current == EspMode.AURORA ? 0xFFFFFFFF : healthColor(target);
 
+        int previousProgram = currentProgram();
         GL11.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_CURRENT_BIT | GL11.GL_COLOR_BUFFER_BIT
-                | GL11.GL_DEPTH_BUFFER_BIT | GL11.GL_LINE_BIT);
+                | GL11.GL_DEPTH_BUFFER_BIT | GL11.GL_HINT_BIT | GL11.GL_LINE_BIT
+                | GL11.GL_POLYGON_BIT | GL11.GL_TEXTURE_BIT);
         GL11.glPushMatrix();
         GL11.glTranslated(x, y, z);
         GL11.glDisable(GL11.GL_TEXTURE_2D);
@@ -189,11 +326,11 @@ public class TargetESP extends Module {
                 drawAurora(target, baseRadius, bodyHeight, alphaScale, time);
             } else if (current == EspMode.SAKURA) {
                 drawSakuraPetals(baseRadius, bodyHeight, alphaScale, time);
-            } else if (current == EspMode.YOZAKURA || current == EspMode.CAPSULE) {
+            } else if (current == EspMode.VAPE || current == EspMode.CAPSULE) {
                 drawCapsule(baseRadius, bodyHeight, alphaScale, time);
                 drawVerticalMarkers(baseRadius, bodyHeight, alphaScale, time);
             }
-            if (current == EspMode.YOZAKURA || current == EspMode.RINGS) {
+            if (current == EspMode.VAPE || current == EspMode.RINGS) {
                 drawRing(0.04f, baseRadius + 0.08f, 0.045f, 72, alphaScale * 0.92f, time);
                 drawRing(bodyHeight * 0.52f, baseRadius + 0.03f, 0.025f, 72, alphaScale * 0.48f, time + 0.7f);
                 drawRing(bodyHeight + 0.04f, baseRadius + 0.06f, 0.035f, 72, alphaScale * 0.70f, time + 1.4f);
@@ -201,13 +338,66 @@ public class TargetESP extends Module {
             }
         } finally {
             if (usingShader) {
-                TargetShader.end();
+                TargetShader.end(previousProgram);
             }
             GL11.glDepthMask(true);
             GL11.glPopMatrix();
             GL11.glPopAttrib();
-            GL11.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+            if (!usingShader) {
+                useProgram(previousProgram);
+            }
+            gq.vapulite.engine.render.GLStateManager.syncToCurrent();
+            net.minecraft.client.renderer.GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
         }
+    }
+
+    private static int currentProgram() {
+        try {
+            return GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+        } catch (Throwable ignored) {
+            return 0;
+        }
+    }
+
+    private static void useProgram(int program) {
+        try {
+            GL20.glUseProgram(program);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void drawReliableMarker(EntityLivingBase target, float radius, float height, float alpha, int color, float time) {
+        if (alpha <= 0.01f) {
+            return;
+        }
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GL11.glLineWidth(Math.max(1.25f, lineWidth.getValue().floatValue()));
+        setColor(color, Math.min(1.0f, alpha * 0.95f));
+        drawWireRing(0.03f, radius + 0.12f, 96);
+        drawWireRing(height * 0.52f, radius + 0.08f, 96);
+        drawWireRing(height + 0.03f, radius + 0.12f, 96);
+
+        float pulse = 0.74f + 0.26f * (float) Math.sin(time * 4.0f);
+        int hurtColor = target.hurtTime > 0 ? 0xFFFF6070 : color;
+        setColor(hurtColor, Math.min(1.0f, alpha * pulse));
+        GL11.glBegin(GL11.GL_LINES);
+        for (int i = 0; i < 4; i++) {
+            double angle = Math.PI * 0.5D * i + time * 0.25D;
+            double px = Math.cos(angle) * (radius + 0.13f);
+            double pz = Math.sin(angle) * (radius + 0.13f);
+            GL11.glVertex3d(px, 0.04D, pz);
+            GL11.glVertex3d(px, height + 0.04D, pz);
+        }
+        GL11.glEnd();
+    }
+
+    private void drawWireRing(float y, float radius, int segments) {
+        GL11.glBegin(GL11.GL_LINE_LOOP);
+        for (int i = 0; i < segments; i++) {
+            double angle = Math.PI * 2.0D * i / segments;
+            GL11.glVertex3d(Math.cos(angle) * radius, y, Math.sin(angle) * radius);
+        }
+        GL11.glEnd();
     }
 
     private void drawCosmic(EntityLivingBase target, float radius, float height, float alpha, float time) {
@@ -1001,8 +1191,8 @@ public class TargetESP extends Module {
             return true;
         }
 
-        static void end() {
-            GL20.glUseProgram(0);
+        static void end(int previousProgram) {
+            useProgram(previousProgram);
         }
 
         private static int createProgram() {
@@ -1092,7 +1282,7 @@ public class TargetESP extends Module {
                 return;
             }
             loggedFailure = true;
-            System.err.println("[Yozakura] TargetESP shader disabled, falling back to GL11: " + throwable.getMessage());
+            System.err.println("[VapuLite] TargetESP shader disabled, falling back to GL11: " + throwable.getMessage());
         }
 
         private static final String VERTEX_SHADER =

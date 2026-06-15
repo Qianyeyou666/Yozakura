@@ -10,6 +10,7 @@
 
 #include <cmath>
 #include <cwchar>
+#include <cwctype>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -229,11 +230,15 @@ std::wstring resolveAssetPath(const wchar_t* fileName) {
 bool resolveDllPath(wchar_t* output, DWORD outputChars) {
     std::wstring dir = exeDirectory();
     const wchar_t* names[] = {
+        L"\\VapuLiteLoader-x64.dll",
+        L"\\build\\libs\\VapuLiteLoader-x64.dll",
+        L"\\VapuLiteLoader.dll",
+        L"\\build\\libs\\VapuLiteLoader.dll",
         L"\\VapuLiteReobf-x64.dll",
         L"\\build\\libs\\VapuLiteReobf-x64.dll",
         L"\\VapuLiteReobf.dll"
     };
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < 7; ++i) {
         std::wstring candidate = dir + names[i];
         if (GetFileAttributesW(candidate.c_str()) != INVALID_FILE_ATTRIBUTES) {
             wcsncpy_s(output, outputChars, candidate.c_str(), _TRUNCATE);
@@ -264,9 +269,244 @@ bool isJavaProcess(DWORD pid) {
 }
 
 struct FindWindowContext {
+    int profile = 0;
     DWORD pid = 0;
     wchar_t title[256] = {};
+    wchar_t commandLine[1024] = {};
+    int score = 1000;
 };
+
+enum TargetProfile {
+    TARGET_FORGE = 0,
+    TARGET_VANILLA = 1,
+    TARGET_LUNAR = 2
+};
+
+const wchar_t* targetProfileNameW(int profile) {
+    switch (profile) {
+        case TARGET_VANILLA:
+            return L"Vanilla";
+        case TARGET_LUNAR:
+            return L"Lunar";
+        case TARGET_FORGE:
+        default:
+            return L"Forge";
+    }
+}
+
+const char* targetProfileNameA(int profile) {
+    switch (profile) {
+        case TARGET_VANILLA:
+            return "Vanilla";
+        case TARGET_LUNAR:
+            return "Lunar";
+        case TARGET_FORGE:
+        default:
+            return "Forge";
+    }
+}
+
+int selectedTargetProfile() {
+    if (g_app.selectedVersion == TARGET_VANILLA || g_app.selectedVersion == TARGET_LUNAR) {
+        return g_app.selectedVersion;
+    }
+    return TARGET_FORGE;
+}
+
+std::wstring lowerText(const wchar_t* text) {
+    std::wstring value = text ? text : L"";
+    for (size_t i = 0; i < value.size(); ++i) {
+        value[i] = static_cast<wchar_t>(towlower(value[i]));
+    }
+    return value;
+}
+
+bool containsText(const std::wstring& text, const wchar_t* needle) {
+    return needle && text.find(needle) != std::wstring::npos;
+}
+
+bool containsAny(const std::wstring& a, const std::wstring& b, const wchar_t* needle) {
+    return containsText(a, needle) || containsText(b, needle);
+}
+
+std::wstring readProcessCommandLine(DWORD pid) {
+    typedef LONG NTSTATUS;
+    typedef NTSTATUS (NTAPI* NtQueryInformationProcessFn)(HANDLE, ULONG, PVOID, ULONG, PULONG);
+
+    struct ProcessBasicInformationLite {
+        PVOID Reserved1;
+        PVOID PebBaseAddress;
+        PVOID Reserved2[2];
+        ULONG_PTR UniqueProcessId;
+        PVOID Reserved3;
+    };
+
+    struct RemoteUnicodeString {
+        USHORT Length;
+        USHORT MaximumLength;
+        PWSTR Buffer;
+    };
+
+    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    if (!ntdll) {
+        return L"";
+    }
+    NtQueryInformationProcessFn queryInformationProcess =
+        reinterpret_cast<NtQueryInformationProcessFn>(GetProcAddress(ntdll, "NtQueryInformationProcess"));
+    if (!queryInformationProcess) {
+        return L"";
+    }
+
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+    if (!process) {
+        return L"";
+    }
+
+    std::wstring result;
+    ProcessBasicInformationLite basicInfo = {};
+    if (queryInformationProcess(process, 0, &basicInfo, sizeof(basicInfo), nullptr) >= 0 && basicInfo.PebBaseAddress) {
+#if defined(_WIN64)
+        const SIZE_T processParametersOffset = 0x20;
+        const SIZE_T commandLineOffset = 0x70;
+#else
+        const SIZE_T processParametersOffset = 0x10;
+        const SIZE_T commandLineOffset = 0x40;
+#endif
+        BYTE* processParameters = nullptr;
+        if (ReadProcessMemory(process,
+                              reinterpret_cast<BYTE*>(basicInfo.PebBaseAddress) + processParametersOffset,
+                              &processParameters,
+                              sizeof(processParameters),
+                              nullptr)
+                && processParameters) {
+            RemoteUnicodeString commandLine = {};
+            if (ReadProcessMemory(process,
+                                  processParameters + commandLineOffset,
+                                  &commandLine,
+                                  sizeof(commandLine),
+                                  nullptr)
+                    && commandLine.Buffer
+                    && commandLine.Length > 0
+                    && commandLine.Length < 65534) {
+                result.assign(commandLine.Length / sizeof(wchar_t), L'\0');
+                if (!ReadProcessMemory(process, commandLine.Buffer, &result[0], commandLine.Length, nullptr)) {
+                    result.clear();
+                }
+            }
+        }
+    }
+
+    CloseHandle(process);
+    return result;
+}
+
+bool isIgnoredLauncher(const std::wstring& title, const std::wstring& commandLine) {
+    return containsText(title, L"home - lunar client")
+        || containsText(title, L"hello minecraft! launcher")
+        || containsText(title, L"badlion chat")
+        || containsText(commandLine, L"org.gradle.launcher.daemon")
+        || containsText(commandLine, L"-jar \"hmcl")
+        || containsText(commandLine, L"-jar hmcl");
+}
+
+int minecraftTargetScore(int profile, const wchar_t* titleRaw, const wchar_t* commandLineRaw) {
+    std::wstring title = lowerText(titleRaw);
+    std::wstring commandLine = lowerText(commandLineRaw);
+    if (isIgnoredLauncher(title, commandLine)) {
+        return 1000;
+    }
+
+    bool titleMinecraft = containsText(title, L"minecraft");
+    bool titleVersion = containsText(title, L"1.8.9");
+    bool commandVersion = containsText(commandLine, L"--version 1.8.9")
+        || containsText(commandLine, L"versions\\1.8.9")
+        || containsText(commandLine, L"versions/1.8.9")
+        || containsText(commandLine, L" 1.8.9");
+    bool version189 = titleVersion || commandVersion;
+    bool lunar = containsAny(title, commandLine, L"lunar")
+        || containsText(commandLine, L".lunarclient")
+        || containsText(commandLine, L"moonsworth")
+        || containsText(commandLine, L"com.moonsworth.lunar.genesis")
+        || containsText(commandLine, L"ichor.");
+    bool badlion = containsAny(title, commandLine, L"badlion");
+    bool forge = containsText(commandLine, L"net.minecraft.launchwrapper.launch")
+        || containsText(commandLine, L"net.minecraftforge")
+        || containsText(commandLine, L"--tweakclass cpw.mods.fml")
+        || containsText(commandLine, L"--tweakclass net.minecraftforge")
+        || containsText(commandLine, L"fmltweaker");
+    bool vanillaMain = containsText(commandLine, L"net.minecraft.client.main.main");
+
+    if (profile == TARGET_LUNAR) {
+        if (!lunar || badlion) {
+            return 1000;
+        }
+        if (titleMinecraft && version189) {
+            return 0;
+        }
+        if (version189) {
+            return 1;
+        }
+        return 2;
+    }
+
+    if (lunar || badlion) {
+        return 1000;
+    }
+
+    if (profile == TARGET_VANILLA) {
+        if (forge) {
+            return 1000;
+        }
+        if (vanillaMain && version189) {
+            return 0;
+        }
+        if (vanillaMain) {
+            return 1;
+        }
+        if (titleMinecraft && version189 && commandLine.empty()) {
+            return 3;
+        }
+        if (titleMinecraft && commandLine.empty()) {
+            return 5;
+        }
+        return 1000;
+    }
+
+    if (forge && version189) {
+        return 0;
+    }
+    if (forge) {
+        return 1;
+    }
+    if (titleMinecraft && version189 && !vanillaMain) {
+        return 4;
+    }
+    if (titleMinecraft && commandLine.empty()) {
+        return 6;
+    }
+    return 1000;
+}
+
+void considerTarget(FindWindowContext* ctx, DWORD pid, const wchar_t* title) {
+    std::wstring commandLine = readProcessCommandLine(pid);
+    int score = minecraftTargetScore(ctx->profile, title, commandLine.c_str());
+    if (score >= 1000) {
+        return;
+    }
+    bool currentHasTitle = ctx->title[0] != 0;
+    bool nextHasTitle = title && title[0] != 0;
+    if (ctx->pid != 0 && (score > ctx->score || (score == ctx->score && currentHasTitle && !nextHasTitle))) {
+        return;
+    }
+    ctx->pid = pid;
+    ctx->score = score;
+    if (nextHasTitle) {
+        wcsncpy_s(ctx->title, title, _TRUNCATE);
+    } else {
+        swprintf_s(ctx->title, L"%s Java PID %lu", targetProfileNameW(ctx->profile), pid);
+    }
+    wcsncpy_s(ctx->commandLine, commandLine.c_str(), _TRUNCATE);
+}
 
 BOOL CALLBACK enumWindowsProc(HWND hwnd, LPARAM param) {
     if (!IsWindowVisible(hwnd)) {
@@ -282,18 +522,38 @@ BOOL CALLBACK enumWindowsProc(HWND hwnd, LPARAM param) {
     if (pid == 0 || !isJavaProcess(pid)) {
         return TRUE;
     }
-    if (wcsstr(title, L"Minecraft 1.8.9") != nullptr) {
-        FindWindowContext* ctx = reinterpret_cast<FindWindowContext*>(param);
-        ctx->pid = pid;
-        wcsncpy_s(ctx->title, title, _TRUNCATE);
+    FindWindowContext* ctx = reinterpret_cast<FindWindowContext*>(param);
+    considerTarget(ctx, pid, title);
+    if (ctx->score == 0) {
         return FALSE;
     }
     return TRUE;
 }
 
-DWORD findMinecraft189(wchar_t* title, DWORD titleChars) {
+void scanJavaProcesses(FindWindowContext* ctx) {
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    PROCESSENTRY32W entry = {};
+    entry.dwSize = sizeof(entry);
+    if (Process32FirstW(snap, &entry)) {
+        do {
+            if (_wcsicmp(entry.szExeFile, L"java.exe") == 0 || _wcsicmp(entry.szExeFile, L"javaw.exe") == 0) {
+                considerTarget(ctx, entry.th32ProcessID, L"");
+            }
+        } while (Process32NextW(snap, &entry));
+    }
+    CloseHandle(snap);
+}
+
+DWORD findMinecraftTarget(int profile, wchar_t* title, DWORD titleChars) {
     FindWindowContext ctx;
+    ctx.profile = profile;
     EnumWindows(enumWindowsProc, reinterpret_cast<LPARAM>(&ctx));
+    if (ctx.score > 0) {
+        scanJavaProcesses(&ctx);
+    }
     if (ctx.pid != 0) {
         wcsncpy_s(title, titleChars, ctx.title, _TRUNCATE);
     }
@@ -322,14 +582,36 @@ bool moduleAlreadyLoaded(DWORD pid, const wchar_t* dllPath) {
     return loaded;
 }
 
+std::wstring stagedDllCopy(const wchar_t* dllPath) {
+    wchar_t tempDir[MAX_PATH] = {};
+    if (!GetTempPathW(MAX_PATH, tempDir)) {
+        return L"";
+    }
+    wchar_t staged[MAX_PATH] = {};
+    swprintf_s(staged,
+               L"%sVapuLiteLoader-%lu-%llu.dll",
+               tempDir,
+               GetCurrentProcessId(),
+               GetTickCount64());
+    if (!CopyFileW(dllPath, staged, FALSE)) {
+        return L"";
+    }
+    return staged;
+}
+
 bool injectDll(DWORD pid, const wchar_t* dllPath, std::wstring& error) {
     wchar_t fullPath[MAX_PATH] = {};
     if (!GetFullPathNameW(dllPath, MAX_PATH, fullPath, nullptr)) {
         error = L"DLL path resolve failed";
         return false;
     }
+    std::wstring loadPath = fullPath;
     if (moduleAlreadyLoaded(pid, fullPath)) {
-        return true;
+        loadPath = stagedDllCopy(fullPath);
+        if (loadPath.empty()) {
+            error = L"DLL is already loaded and staging a fresh copy failed";
+            return false;
+        }
     }
 
     HANDLE process = OpenProcess(PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION
@@ -339,7 +621,7 @@ bool injectDll(DWORD pid, const wchar_t* dllPath, std::wstring& error) {
         return false;
     }
 
-    SIZE_T bytes = (wcslen(fullPath) + 1) * sizeof(wchar_t);
+    SIZE_T bytes = (loadPath.length() + 1) * sizeof(wchar_t);
     LPVOID remotePath = VirtualAllocEx(process, nullptr, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (!remotePath) {
         CloseHandle(process);
@@ -348,7 +630,7 @@ bool injectDll(DWORD pid, const wchar_t* dllPath, std::wstring& error) {
     }
 
     bool ok = false;
-    if (!WriteProcessMemory(process, remotePath, fullPath, bytes, nullptr)) {
+    if (!WriteProcessMemory(process, remotePath, loadPath.c_str(), bytes, nullptr)) {
         error = L"WriteProcessMemory failed";
     } else {
         HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll");
@@ -377,6 +659,7 @@ bool injectDll(DWORD pid, const wchar_t* dllPath, std::wstring& error) {
 
 DWORD WINAPI injectThread(LPVOID hwndParam) {
     HWND hwnd = reinterpret_cast<HWND>(hwndParam);
+    int profile = selectedTargetProfile();
     Sleep(950);
 
     InjectResult* result = new InjectResult();
@@ -384,9 +667,11 @@ DWORD WINAPI injectThread(LPVOID hwndParam) {
     result->message[0] = 0;
 
     wchar_t gameTitle[256] = {};
-    DWORD pid = findMinecraft189(gameTitle, 256);
+    DWORD pid = findMinecraftTarget(profile, gameTitle, 256);
     if (pid == 0) {
-        wcsncpy_s(result->message, L"Injection failed: Minecraft 1.8.9 was not found", _TRUNCATE);
+        swprintf_s(result->message,
+                   L"Injection failed: %s target was not found",
+                   targetProfileNameW(profile));
         PostMessageW(hwnd, kInjectDone, 0, reinterpret_cast<LPARAM>(result));
         return 0;
     }
@@ -395,7 +680,7 @@ DWORD WINAPI injectThread(LPVOID hwndParam) {
     bool ok = injectDll(pid, g_app.dllPath, error);
     result->ok = ok;
     if (ok) {
-        swprintf_s(result->message, L"Injected into %s", gameTitle[0] ? gameTitle : L"Minecraft 1.8.9");
+        swprintf_s(result->message, L"Injected into %s (%s)", gameTitle[0] ? gameTitle : L"Minecraft", targetProfileNameW(profile));
     } else {
         swprintf_s(result->message, L"Injection failed: %s", error.empty() ? L"unknown error" : error.c_str());
     }
@@ -955,11 +1240,11 @@ int currentFailureStep() {
     if (g_app.uiState != STATE_FAILED) {
         return -1;
     }
-    if (strstr(g_app.status, "VapuLiteReobf-x64.dll not found") != nullptr ||
+    if (strstr(g_app.status, "loader DLL not found") != nullptr ||
         strstr(g_app.status, "worker thread") != nullptr) {
         return 1;
     }
-    if (strstr(g_app.status, "Minecraft 1.8.9 was not found") != nullptr) {
+    if (strstr(g_app.status, "target was not found") != nullptr) {
         return 2;
     }
     return 3;
@@ -1182,7 +1467,7 @@ bool drawInjectionLoadingOverlay(ImDrawList* draw, ImVec2 size, float alpha) {
             draw->AddLine(markCenter + ImVec2(12.0f, -12.0f), markCenter + ImVec2(-12.0f, 12.0f), accent, 2.8f);
         }
         const char* title = success ? "Injection Complete" : "Injection Failed";
-        const char* subtitle = success ? "VapuLite is now attached to Minecraft 1.8.9." : g_app.status;
+        const char* subtitle = success ? "VapuLite is now attached to the selected client." : g_app.status;
         ImFont* titleFont = fontOrDefault(g_fonts.title);
         ImFont* bodyFont = fontOrDefault(g_fonts.medium);
         ImVec2 titleSize = titleFont->CalcTextSizeA(30.0f, 10000.0f, 0.0f, title);
@@ -1250,9 +1535,9 @@ void drawVersionPill(const char* label, int index, bool enabled, ImVec2 pos) {
                   enabled ? col(255, 255, 255, selected ? 255 : 190) : col(255, 255, 255, 80), label);
     if (clicked && enabled) {
         g_app.selectedVersion = index;
-        setStatus("Minecraft 1.8.9 selected");
+        setStatus("Target profile selected");
     } else if (clicked) {
-        setStatus("Only Minecraft 1.8.9 is available now");
+        setStatus("This profile is not available now");
     }
     ImGui::PopID();
 }
@@ -1367,7 +1652,7 @@ void startInject(HWND hwnd) {
         g_app.injectFinished = g_app.injectStarted;
         g_app.loadingAlpha = 0.0f;
         g_app.resultAlpha = 0.0f;
-        setStatus("Injection failed: VapuLiteReobf-x64.dll not found");
+        setStatus("Injection failed: loader DLL not found");
         return;
     }
     g_app.uiState = STATE_INJECTING;
@@ -1375,7 +1660,9 @@ void startInject(HWND hwnd) {
     g_app.injectFinished = 0;
     g_app.loadingAlpha = 0.0f;
     g_app.resultAlpha = 0.0f;
-    setStatus("Searching Minecraft 1.8.9...");
+    char status[128] = {};
+    sprintf_s(status, "Searching %s target...", targetProfileNameA(selectedTargetProfile()));
+    setStatus(status);
     HANDLE thread = CreateThread(nullptr, 0, injectThread, hwnd, 0, nullptr);
     if (thread) {
         CloseHandle(thread);
@@ -1545,9 +1832,9 @@ void drawMainUi(HWND hwnd) {
         bool enabled;
     };
     VersionCardData cards[3] = {
-        {"1.8.9", "Forge", "Most popular", 0, true},
-        {"1.12.2", "Forge", "Stable support", 1, false},
-        {"1.20.1", "Fabric", "Latest version", 2, false},
+        {"1.8.9", "Forge", "FML target", 0, true},
+        {"1.8.9", "Vanilla", "Clean target", 1, true},
+        {"1.8.9", "Lunar", "Client target", 2, true},
     };
     ImVec2 cardSize(154.0f, 128.0f);
     ImVec2 cardsStart(contentMin.x, contentMin.y + 82.0f);
@@ -1559,9 +1846,9 @@ void drawMainUi(HWND hwnd) {
         bool hovered = ImGui::IsItemHovered() && cards[i].enabled;
         if (clicked && cards[i].enabled) {
             g_app.selectedVersion = i;
-            setStatus("Minecraft 1.8.9 selected");
+            setStatus("Target profile selected");
         } else if (clicked) {
-            setStatus("Only Minecraft 1.8.9 is available now");
+            setStatus("This profile is not available now");
         }
         float cardAlpha = cards[i].enabled ? 1.0f : 0.55f;
         draw->AddRectFilled(cardMin, cardMax,
