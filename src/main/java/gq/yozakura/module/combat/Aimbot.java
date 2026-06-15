@@ -1,257 +1,483 @@
 package gq.yozakura.module.combat;
 
-import gq.yozakura.module.ModuleType;
+import gq.yozakura.bridge.MinecraftAccessor;
+import gq.yozakura.event.bridge.TickEvent;
+import gq.yozakura.event.bridge.UpdateEvent;
+import gq.yozakura.event.bus.EventTarget;
+import gq.yozakura.event.bus.types.EventType;
+import gq.yozakura.event.bus.types.Priority;
 import gq.yozakura.module.Module;
+import gq.yozakura.module.ModuleType;
 import gq.yozakura.util.minecraft.RotationUtil;
+import gq.yozakura.util.module.TeamUtil;
+import gq.yozakura.value.Mode;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.item.EntityArmorStand;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.MathHelper;
 import net.minecraft.util.MovingObjectPosition;
-import net.minecraftforge.fml.common.eventhandler.EventPriority;
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
-import net.minecraftforge.fml.common.gameevent.TickEvent;
+import net.minecraft.util.Vec3;
 import org.lwjgl.input.Keyboard;
+import org.lwjgl.input.Mouse;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Random;
 
 public class Aimbot extends Module {
-    private static final long TARGET_REACTION_MS = 150L;
-    private static final long TARGET_LOCK_MS = 650L;
-    private static final double PREDICTION = 0.28D;
+    public enum AimMode {
+        NORMAL,
+        SILENT
+    }
 
-    private final Numbers<Double> range = new Numbers<Double>("Range", "Range", 4.0, 1.0, 5.0, 0.1);
-    private final Numbers<Double> fov = new Numbers<Double>("FOV", "FOV", 55.0, 5.0, 120.0, 5.0);
-    private final Numbers<Double> aimSpeed = new Numbers<Double>("Aim Speed", "AimSpeed", 3.0, 1.0, 10.0, 0.5);
-    private final Numbers<Double> deadZone = new Numbers<Double>("Dead Zone", "DeadZone", 1.6, 0.0, 6.0, 0.1);
-    private final Option<Boolean> onlyWeapon = new Option<Boolean>("Only Weapon", "OnlyWeapon", true);
-    private final Option<Boolean> wallCheck = new Option<Boolean>("Wall Check", "WallCheck", true);
+    public enum SortMode {
+        HEALTH,
+        ANGLE,
+        HURT_TIME,
+        DISTANCE
+    }
+
+    private final Mode<AimMode> mode = new Mode<AimMode>("Mode", "Mode", AimMode.values(), AimMode.NORMAL);
+    private final Numbers<Double> speed = new Numbers<Double>("Speed", "Speed", 10.0, 1.0, 30.0, 1.0);
+    private final Numbers<Double> multipointHorizontal =
+            new Numbers<Double>("Multipoint horizontal", "MultipointHorizontal", 0.0, 0.0, 100.0, 1.0);
+    private final Numbers<Double> multipointVertical =
+            new Numbers<Double>("Multipoint vertical", "MultipointVertical", 0.0, 0.0, 100.0, 1.0);
+    private final Numbers<Double> randomization =
+            new Numbers<Double>("Randomization", "Randomization", 50.0, 0.0, 100.0, 1.0);
+    private final Numbers<Double> fov = new Numbers<Double>("FOV", "FOV", 90.0, 15.0, 360.0, 1.0);
+    private final Numbers<Double> range = new Numbers<Double>("Range", "Range", 4.5, 0.0, 5.0, 0.1);
+    private final Mode<SortMode> sort = new Mode<SortMode>("Sort", "Sort", SortMode.values(), SortMode.ANGLE);
+    private final Option<Boolean> ignoreBehindWalls =
+            new Option<Boolean>("Ignore behind walls", "IgnoreBehindWalls", false);
+    private final Option<Boolean> ignoreBehindEntities =
+            new Option<Boolean>("Ignore behind entities", "IgnoreBehindEntities", false);
+    private final Option<Boolean> aimInvis = new Option<Boolean>("Aim invis", "AimInvis", false);
+    private final Option<Boolean> clickAim = new Option<Boolean>("Require mouse", "RequireMouse", true);
+    private final Option<Boolean> ignoreTeammates =
+            new Option<Boolean>("Ignore teammates", "IgnoreTeammates", true);
+    private final Option<Boolean> stopWhenBreaking =
+            new Option<Boolean>("Stop when breaking", "StopWhenBreaking", false);
+    private final Option<Boolean> keepMoveDirection =
+            new Option<Boolean>("Keep move direction", "KeepMoveDirection", true);
+    private final Numbers<Double> hoverDelay =
+            new Numbers<Double>("Hover delay", "HoverDelay", 100.0, 0.0, 500.0, 10.0);
+    private final Option<Boolean> weaponOnly = new Option<Boolean>("Weapon only", "WeaponOnly", false);
 
     public EntityLivingBase target;
+
+    private final Random random = new Random();
     private int targetId = -1;
-    private long targetChangedAt;
-    private long nextOffsetAt;
-    private float offsetYaw;
-    private float offsetPitch;
-    private float targetOffsetYaw;
-    private float targetOffsetPitch;
-    private final RotationUtil.State rotationState = new RotationUtil.State();
+    private long miningStartTime = -1L;
+    private long nextRandomAt;
+    private boolean rotationInitialized;
+    private float assistedYaw;
+    private float assistedPitch;
+    private double randomOffsetX;
+    private double randomOffsetY;
+    private double randomOffsetZ;
 
     public Aimbot() {
-        super("AimAssist", Keyboard.KEY_NONE, ModuleType.Combat, "Light aim assist while attacking");
-        this.addValues(range, fov, aimSpeed, deadZone, onlyWeapon, wallCheck);
+        super("AimAssist", Keyboard.KEY_NONE, ModuleType.Combat, "Aim assist based on raven-bs");
+        this.addValues(mode, speed, multipointHorizontal, multipointVertical, randomization, fov, range, sort,
+                ignoreBehindWalls, ignoreBehindEntities, aimInvis, clickAim, ignoreTeammates,
+                stopWhenBreaking, keepMoveDirection, hoverDelay, weaponOnly);
         Chinese = "瞄准辅助";
     }
 
     @Override
     public void enable() {
+        this.miningStartTime = -1L;
         resetTarget();
     }
 
     @Override
     public void disable() {
         resetTarget();
+        this.miningStartTime = -1L;
         super.disable();
     }
 
-    @SubscribeEvent(priority = EventPriority.HIGHEST)
-    public void onTick(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.START) {
+    @EventTarget(Priority.LOW)
+    public void onBridgeTick(TickEvent event) {
+        if (event.getType() != EventType.PRE || mode.getValue() != AimMode.NORMAL) {
             return;
         }
-        if (!canAssistNow()) {
-            resetTarget();
-            return;
-        }
-
-        EntityLivingBase nextTarget = selectTarget();
-        if (nextTarget == null) {
-            resetTarget();
-            return;
-        }
-        if (target == null || nextTarget.getEntityId() != targetId) {
-            target = nextTarget;
-            targetId = nextTarget.getEntityId();
-            targetChangedAt = System.currentTimeMillis();
-            nextOffsetAt = 0L;
-            offsetYaw = 0.0f;
-            offsetPitch = 0.0f;
-            targetOffsetYaw = 0.0f;
-            targetOffsetPitch = 0.0f;
-            rotationState.reset();
-            return;
-        }
-
-        target = nextTarget;
-        if (System.currentTimeMillis() - targetChangedAt < TARGET_REACTION_MS) {
-            return;
-        }
-        updateAimOffset();
-        faceTarget(nextTarget);
+        handleNormalAim();
     }
 
-    private boolean canAssistNow() {
-        if (!isInGame() || CombatUtil.shouldPauseForScreen()) {
+    private void handleNormalAim() {
+        if (!conditionsMet()) {
+            resetTarget();
+            return;
+        }
+
+        EntityPlayer enemy = getEnemy(false);
+        if (enemy == null) {
+            resetTarget();
+            return;
+        }
+        float[] rotations = getRotationsToTarget(enemy, mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch);
+        if (rotations == null) {
+            resetTarget();
+            return;
+        }
+
+        mc.thePlayer.rotationYaw = rotations[0];
+        mc.thePlayer.rotationPitch = rotations[1];
+        RotationUtil.syncHead(mc, rotations[0]);
+    }
+
+    @EventTarget(Priority.LOW)
+    public void onUpdate(UpdateEvent event) {
+        if (event.getType() != EventType.PRE || mode.getValue() != AimMode.SILENT) {
+            return;
+        }
+        if (!conditionsMet()) {
+            resetTarget();
+            return;
+        }
+
+        EntityPlayer enemy = getEnemy(true);
+        if (enemy == null) {
+            resetTarget();
+            return;
+        }
+        float[] rotations = getRotationsToTarget(enemy, event.getNewYaw(), event.getNewPitch());
+        if (rotations == null) {
+            resetTarget();
+            return;
+        }
+
+        event.setRotation(rotations[0], rotations[1], 0);
+        if (!Boolean.TRUE.equals(keepMoveDirection.getValue())) {
+            event.setPervRotation(rotations[0], 0);
+        }
+    }
+
+    private EntityPlayer getEnemy(boolean silentMode) {
+        float viewYaw = silentMode && rotationInitialized ? assistedYaw : mc.thePlayer.rotationYaw;
+        ArrayList<EntityPlayer> candidates = new ArrayList<EntityPlayer>();
+        for (EntityPlayer player : mc.theWorld.playerEntities) {
+            if (!isValidCandidate(player, viewYaw)) {
+                continue;
+            }
+            candidates.add(player);
+        }
+        if (candidates.isEmpty()) {
+            return null;
+        }
+
+        candidates.sort(targetComparator());
+        if (Boolean.TRUE.equals(ignoreBehindWalls.getValue())
+                || Boolean.TRUE.equals(ignoreBehindEntities.getValue())) {
+            for (EntityPlayer candidate : candidates) {
+                if (findAimPoint(candidate, false) != null) {
+                    return candidate;
+                }
+            }
+            return null;
+        }
+        return candidates.get(0);
+    }
+
+    private boolean isValidCandidate(EntityPlayer player, float viewYaw) {
+        if (player == null || player == mc.thePlayer || player.deathTime != 0 || player.isDead) {
             return false;
         }
-        if (!mc.gameSettings.keyBindAttack.isKeyDown()) {
+        if (TeamUtil.isFriend(player)) {
+            return false;
+        }
+        if (Boolean.TRUE.equals(ignoreTeammates.getValue()) && TeamUtil.isSameTeam(player)) {
+            return false;
+        }
+        if (!Boolean.TRUE.equals(aimInvis.getValue()) && player.isInvisible()) {
+            return false;
+        }
+        if (TeamUtil.isBot(player) || AntiBot.isServerBot(player)) {
+            return false;
+        }
+        double rangeValue = range.getValue();
+        if (distanceSqFromEyeToClosestOnAABB(player) > rangeValue * rangeValue) {
+            return false;
+        }
+        float fovValue = fov.getValue().floatValue();
+        if (fovValue < 360.0F) {
+            float yaw = yawTo(player.posX, player.posZ);
+            if (Math.abs(MathHelper.wrapAngleTo180_float(yaw - viewYaw)) > fovValue * 0.5F) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private Comparator<EntityPlayer> targetComparator() {
+        Comparator<EntityPlayer> primary;
+        switch (sort.getValue()) {
+            case HEALTH:
+                primary = Comparator.comparingDouble(player -> player.getHealth() + player.getAbsorptionAmount());
+                break;
+            case HURT_TIME:
+                primary = Comparator.comparingInt(player -> player.hurtTime);
+                break;
+            case DISTANCE:
+                primary = Comparator.comparingDouble(player -> mc.thePlayer.getDistanceSqToEntity(player));
+                break;
+            case ANGLE:
+            default:
+                primary = Comparator.comparingDouble(this::angleScore);
+                break;
+        }
+        return primary.thenComparingDouble(player -> mc.thePlayer.getDistanceSqToEntity(player));
+    }
+
+    private float[] getRotationsToTarget(EntityPlayer enemy, float currentYaw, float currentPitch) {
+        prepareTarget(enemy, currentYaw, currentPitch);
+        Vec3 aimPoint = findAimPoint(enemy, true);
+        if (aimPoint == null) {
+            return null;
+        }
+
+        float[] targetRotations = RotationUtil.getRotationsTo(mc, aimPoint.xCoord, aimPoint.yCoord, aimPoint.zCoord);
+        float baseYaw = rotationInitialized ? assistedYaw : currentYaw;
+        float basePitch = rotationInitialized ? assistedPitch : currentPitch;
+        float yawDiff = MathHelper.wrapAngleTo180_float(targetRotations[0] - baseYaw);
+        float pitchDiff = MathHelper.wrapAngleTo180_float(targetRotations[1] - basePitch);
+        float speedValue = speed.getValue().floatValue();
+        float randomScale = 1.0F - random.nextFloat() * randomization.getValue().floatValue() * 0.0015F;
+        float yawScale = MathHelper.clamp_float(Math.abs(yawDiff) / 60.0F, 0.25F, 1.0F);
+        float pitchScale = MathHelper.clamp_float(Math.abs(pitchDiff) / 42.0F, 0.25F, 1.0F);
+        float maxYaw = (0.35F + speedValue * 0.58F) * yawScale * randomScale;
+        float maxPitch = (0.20F + speedValue * 0.38F) * pitchScale * randomScale;
+
+        assistedYaw = baseYaw + MathHelper.clamp_float(yawDiff, -maxYaw, maxYaw);
+        assistedPitch = MathHelper.clamp_float(
+                basePitch + MathHelper.clamp_float(pitchDiff, -maxPitch, maxPitch),
+                -90.0F,
+                90.0F
+        );
+        rotationInitialized = true;
+        target = enemy;
+        return new float[]{assistedYaw, assistedPitch};
+    }
+
+    private void prepareTarget(EntityPlayer enemy, float currentYaw, float currentPitch) {
+        if (enemy.getEntityId() != targetId) {
+            targetId = enemy.getEntityId();
+            rotationInitialized = false;
+            nextRandomAt = 0L;
+            randomOffsetX = 0.0D;
+            randomOffsetY = 0.0D;
+            randomOffsetZ = 0.0D;
+        }
+        if (!rotationInitialized) {
+            assistedYaw = currentYaw;
+            assistedPitch = currentPitch;
+            rotationInitialized = true;
+        }
+        updateRandomOffsets(enemy);
+    }
+
+    private Vec3 findAimPoint(EntityPlayer enemy, boolean includeRandomness) {
+        AxisAlignedBB box = enemy.getEntityBoundingBox().expand(0.03D, 0.03D, 0.03D);
+        Vec3 eye = mc.thePlayer.getPositionEyes(1.0F);
+        Vec3 closest = closestPoint(eye, box);
+        double widthX = box.maxX - box.minX;
+        double widthZ = box.maxZ - box.minZ;
+        double height = box.maxY - box.minY;
+        double horizontal = multipointHorizontal.getValue() / 100.0D;
+        double vertical = multipointVertical.getValue() / 100.0D;
+        double centerX = (box.minX + box.maxX) * 0.5D;
+        double centerZ = (box.minZ + box.maxZ) * 0.5D;
+        double centerY = box.minY + height * 0.62D;
+        double targetX = centerX + (closest.xCoord - centerX) * horizontal;
+        double targetZ = centerZ + (closest.zCoord - centerZ) * horizontal;
+        double closestY = MathHelper.clamp_double(closest.yCoord, box.minY + height * 0.18D,
+                box.minY + height * 0.92D);
+        double targetY = centerY + (closestY - centerY) * vertical;
+
+        Vec3 primary = new Vec3(
+                MathHelper.clamp_double(targetX + (includeRandomness ? randomOffsetX : 0.0D),
+                        box.minX, box.maxX),
+                MathHelper.clamp_double(targetY + (includeRandomness ? randomOffsetY : 0.0D),
+                        box.minY + 0.08D, box.maxY - 0.04D),
+                MathHelper.clamp_double(targetZ + (includeRandomness ? randomOffsetZ : 0.0D),
+                        box.minZ, box.maxZ)
+        );
+        if (isAimPointAllowed(primary, enemy)) {
+            return primary;
+        }
+        if (!Boolean.TRUE.equals(ignoreBehindWalls.getValue())
+                && !Boolean.TRUE.equals(ignoreBehindEntities.getValue())) {
+            return primary;
+        }
+
+        double maxXOffset = widthX * MathHelper.clamp_double(horizontal, 0.15D, 1.0D) * 0.5D;
+        double maxZOffset = widthZ * MathHelper.clamp_double(horizontal, 0.15D, 1.0D) * 0.5D;
+        double minY = box.minY + height * MathHelper.clamp_double(0.28D - vertical * 0.18D, 0.12D, 0.42D);
+        double maxY = box.minY + height * MathHelper.clamp_double(0.72D + vertical * 0.20D, 0.58D, 0.95D);
+        double[] xOffsets = new double[]{0.0D, maxXOffset, -maxXOffset};
+        double[] zOffsets = new double[]{0.0D, maxZOffset, -maxZOffset};
+        double[] yValues = new double[]{targetY, maxY, minY};
+        for (double y : yValues) {
+            for (double xOffset : xOffsets) {
+                for (double zOffset : zOffsets) {
+                    Vec3 point = new Vec3(
+                            MathHelper.clamp_double(centerX + xOffset, box.minX, box.maxX),
+                            MathHelper.clamp_double(y, box.minY + 0.08D, box.maxY - 0.04D),
+                            MathHelper.clamp_double(centerZ + zOffset, box.minZ, box.maxZ)
+                    );
+                    if (isAimPointAllowed(point, enemy)) {
+                        return point;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean isAimPointAllowed(Vec3 point, EntityPlayer enemy) {
+        Vec3 eye = mc.thePlayer.getPositionEyes(1.0F);
+        double allowedRange = range.getValue() + 0.15D;
+        if (eye.squareDistanceTo(point) > allowedRange * allowedRange) {
+            return false;
+        }
+        if (Boolean.TRUE.equals(ignoreBehindWalls.getValue())
+                && mc.theWorld.rayTraceBlocks(eye, point, false, true, false) != null) {
+            return false;
+        }
+        return !Boolean.TRUE.equals(ignoreBehindEntities.getValue()) || !isBlockedByEntity(eye, point, enemy);
+    }
+
+    private boolean isBlockedByEntity(Vec3 eye, Vec3 point, EntityPlayer targetEntity) {
+        double targetDistance = eye.distanceTo(point);
+        for (Entity entity : mc.theWorld.getLoadedEntityList()) {
+            if (entity == mc.thePlayer || entity == targetEntity || !(entity instanceof EntityLivingBase)
+                    || entity instanceof EntityArmorStand || entity.isDead) {
+                continue;
+            }
+            float border = entity.getCollisionBorderSize();
+            AxisAlignedBB box = entity.getEntityBoundingBox().expand(border, border, border);
+            MovingObjectPosition intercept = box.calculateIntercept(eye, point);
+            if (intercept != null && intercept.hitVec != null
+                    && eye.distanceTo(intercept.hitVec) < targetDistance - 0.05D) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean conditionsMet() {
+        if (!isInGame() || mc.currentScreen != null || (!mc.inGameHasFocus && !isAttackHeld())) {
             return false;
         }
         if (KillAura.target != null) {
             return false;
         }
-        if (Boolean.TRUE.equals(onlyWeapon.getValue()) && !CombatUtil.isHoldingWeapon()) {
+        if (Boolean.TRUE.equals(weaponOnly.getValue()) && !CombatUtil.isHoldingWeapon()) {
             return false;
         }
-        MovingObjectPosition hit = mc.objectMouseOver;
-        return hit == null || hit.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK;
-    }
-
-    private EntityLivingBase selectTarget() {
-        EntityLivingBase hovered = getHoveredTarget();
-        if (hovered != null) {
-            return hovered;
+        if (Boolean.TRUE.equals(clickAim.getValue()) && !isAttackHeld()) {
+            return false;
         }
-        if (target != null && isLockedTargetValid(target)) {
-            return target;
+        if (Boolean.TRUE.equals(stopWhenBreaking.getValue()) && isMining()) {
+            if (miningStartTime == -1L) {
+                miningStartTime = System.currentTimeMillis();
+            }
+            return System.currentTimeMillis() - miningStartTime < hoverDelay.getValue().longValue();
         }
+        miningStartTime = -1L;
+        return true;
+    }
 
-        List<EntityLivingBase> targets = CombatUtil.collectTargets(range.getValue(), fov.getValue(),
-                true, false, false, !wallCheck.getValue());
-        if (targets.isEmpty()) {
-            return null;
+    private boolean isMining() {
+        if (MinecraftAccessor.isHittingBlock(mc.playerController)) {
+            return true;
         }
-        targets.sort((first, second) -> Double.compare(assistScore(first), assistScore(second)));
-        return targets.get(0);
+        return isAttackHeld()
+                && mc.objectMouseOver != null
+                && mc.objectMouseOver.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK;
     }
 
-    private EntityLivingBase getHoveredTarget() {
-        if (mc.objectMouseOver == null || !(mc.objectMouseOver.entityHit instanceof EntityLivingBase)) {
-            return null;
-        }
-        EntityLivingBase hovered = (EntityLivingBase) mc.objectMouseOver.entityHit;
-        return CombatUtil.isValidTarget(hovered, range.getValue() + 0.15D, 180.0D,
-                true, false, false, !wallCheck.getValue()) ? hovered : null;
+    private double angleScore(EntityPlayer player) {
+        Vec3 point = new Vec3(player.posX,
+                player.getEntityBoundingBox().minY + (player.getEntityBoundingBox().maxY
+                        - player.getEntityBoundingBox().minY) * 0.62D,
+                player.posZ);
+        float[] rotations = RotationUtil.getRotationsTo(mc, point.xCoord, point.yCoord, point.zCoord);
+        double yawDelta = Math.abs(MathHelper.wrapAngleTo180_float(rotations[0] - mc.thePlayer.rotationYaw));
+        double pitchDelta = Math.abs(MathHelper.wrapAngleTo180_float(rotations[1] - mc.thePlayer.rotationPitch));
+        return yawDelta + pitchDelta;
     }
 
-    private boolean isLockedTargetValid(EntityLivingBase entity) {
-        boolean relaxedLock = target != null && entity.getEntityId() == targetId
-                && System.currentTimeMillis() - targetChangedAt <= TARGET_LOCK_MS * 3L;
-        return CombatUtil.isValidTarget(entity, range.getValue() + 0.25D,
-                relaxedLock ? Math.min(150.0D, fov.getValue() + 18.0D) : Math.min(130.0D, fov.getValue() + 5.0D),
-                true, false, false, !wallCheck.getValue());
+    private double distanceSqFromEyeToClosestOnAABB(EntityPlayer player) {
+        Vec3 eye = mc.thePlayer.getPositionEyes(1.0F);
+        return eye.squareDistanceTo(closestPoint(eye, player.getEntityBoundingBox()));
     }
 
-    private double assistScore(EntityLivingBase entity) {
-        double fovScore = CombatUtil.getFovDifference(entity);
-        double distanceScore = mc.thePlayer.getDistanceToEntity(entity) * 8.0D;
-        double hurtPenalty = entity.hurtTime * 1.2D;
-        double lockBonus = target != null && entity.getEntityId() == targetId ? -18.0D : 0.0D;
-        return fovScore + distanceScore + hurtPenalty + lockBonus;
+    private Vec3 closestPoint(Vec3 point, AxisAlignedBB box) {
+        return new Vec3(
+                MathHelper.clamp_double(point.xCoord, box.minX, box.maxX),
+                MathHelper.clamp_double(point.yCoord, box.minY, box.maxY),
+                MathHelper.clamp_double(point.zCoord, box.minZ, box.maxZ)
+        );
     }
 
-    private void faceTarget(EntityLivingBase entity) {
-        float[] rotations = getAssistRotations(entity);
-        float mouseStep = getMouseStep();
-        float yawDiff = MathHelper.wrapAngleTo180_float(rotations[0] - mc.thePlayer.rotationYaw);
-        float pitchDiff = MathHelper.wrapAngleTo180_float(rotations[1] - mc.thePlayer.rotationPitch);
-        float free = deadZone.getValue().floatValue();
-        if (Math.abs(yawDiff) <= free && Math.abs(pitchDiff) <= free) {
+    private void updateRandomOffsets(EntityPlayer enemy) {
+        double amount = randomization.getValue() / 100.0D;
+        if (amount <= 0.0D) {
+            randomOffsetX = 0.0D;
+            randomOffsetY = 0.0D;
+            randomOffsetZ = 0.0D;
             return;
         }
-
-        float power = aimSpeed.getValue().floatValue();
-        float sensitivityScale = getSensitivityScale(mouseStep);
-        float distance = mc.thePlayer.getDistanceToEntity(entity);
-        float closeScale = distance < 2.8f ? 0.78f : 1.0f;
-        float correctionScale = MathHelper.clamp_float(Math.abs(yawDiff) / 24.0f, 0.38f, 1.0f);
-        float yawStep = MathHelper.clamp_float(1.0f + power * 0.82f, 1.4f, 9.2f)
-                * closeScale * sensitivityScale;
-        float pitchStep = MathHelper.clamp_float(0.55f + power * 0.48f, 0.75f, 5.2f)
-                * closeScale * sensitivityScale;
-
-        float edge = Math.abs(yawDiff) / Math.max(1.0f, fov.getValue().floatValue());
-        float fovScale = MathHelper.clamp_float(1.0f - RotationUtil.smoothStep(edge) * 0.48f, 0.42f, 1.0f);
-        boolean yawOnly = Math.abs(yawDiff) > Math.max(10.0f, fov.getValue().floatValue() * 0.24f);
-        RotationUtil.applyToPlayer(mc, rotations[0], rotations[1], yawStep * fovScale * correctionScale,
-                pitchStep * fovScale * MathHelper.clamp_float(correctionScale + 0.18f, 0.46f, 1.0f),
-                yawOnly, free, rotationState, 0.42f, 0.006f, true);
-    }
-
-    private float getMouseStep() {
-        float sensitivity = MathHelper.clamp_float(mc.gameSettings.mouseSensitivity, 0.0f, 1.0f);
-        float base = sensitivity * 0.6f + 0.2f;
-        return base * base * base * 1.2f;
-    }
-
-    private float getSensitivityScale(float mouseStep) {
-        return MathHelper.clamp_float((float) Math.sqrt(mouseStep / 0.15f), 0.55f, 1.55f);
-    }
-
-    private float[] getAssistRotations(EntityLivingBase entity) {
-        updateOffsetDrift();
-        AxisAlignedBB box = entity.getEntityBoundingBox();
-        double width = Math.max(0.2D, Math.min(box.maxX - box.minX, box.maxZ - box.minZ));
-        double targetX = entity.posX + (entity.posX - entity.lastTickPosX) * PREDICTION + offsetYaw * width * 0.08D;
-        double targetZ = entity.posZ + (entity.posZ - entity.lastTickPosZ) * PREDICTION - offsetYaw * width * 0.05D;
-        double height = Math.max(0.2D, box.maxY - box.minY);
-        double targetY = box.minY + height * aimHeight(entity)
-                + (entity.posY - entity.lastTickPosY) * Math.min(0.6D, PREDICTION)
-                + offsetPitch * 0.025D;
-        return RotationUtil.getRotationsTo(mc, targetX, targetY, targetZ);
-    }
-
-    private double aimHeight(EntityLivingBase entity) {
-        double distance = mc.thePlayer.getDistanceToEntity(entity);
-        double base = distance < 2.7D ? 0.58D : 0.67D;
-        if (entity.hurtTime > 5) {
-            base -= 0.05D;
-        }
-        if (!entity.onGround) {
-            base += 0.04D;
-        }
-        return MathHelper.clamp_double(base, 0.48D, 0.76D);
-    }
-
-    private void updateAimOffset() {
         long now = System.currentTimeMillis();
-        if (now < nextOffsetAt) {
+        if (now < nextRandomAt) {
             return;
         }
-        nextOffsetAt = now + 850L + ThreadLocalRandom.current().nextLong(450L);
-        float amount = MathHelper.clamp_float(aimSpeed.getValue().floatValue() / 20.0f, 0.03f, 0.34f);
-        targetOffsetYaw = (ThreadLocalRandom.current().nextFloat() - 0.5f) * amount;
-        targetOffsetPitch = (ThreadLocalRandom.current().nextFloat() - 0.5f) * amount * 0.42f;
+        AxisAlignedBB box = enemy.getEntityBoundingBox();
+        double width = Math.max(box.maxX - box.minX, box.maxZ - box.minZ);
+        double height = box.maxY - box.minY;
+        randomOffsetX = (random.nextDouble() - 0.5D) * width * 0.22D * amount;
+        randomOffsetZ = (random.nextDouble() - 0.5D) * width * 0.22D * amount;
+        randomOffsetY = (random.nextDouble() - 0.5D) * height * 0.12D * amount;
+        nextRandomAt = now + 260L + random.nextInt(421);
     }
 
-    private void updateOffsetDrift() {
-        float yawDelta = targetOffsetYaw - offsetYaw;
-        float pitchDelta = targetOffsetPitch - offsetPitch;
-        if (Math.abs(yawDelta) > 0.012f) {
-            offsetYaw += yawDelta * 0.024f;
-        }
-        if (Math.abs(pitchDelta) > 0.008f) {
-            offsetPitch += pitchDelta * 0.020f;
+    private float yawTo(double x, double z) {
+        double diffX = x - mc.thePlayer.posX;
+        double diffZ = z - mc.thePlayer.posZ;
+        return (float) (Math.toDegrees(Math.atan2(diffZ, diffX)) - 90.0D);
+    }
+
+    private boolean isAttackHeld() {
+        int key = mc.gameSettings.keyBindAttack.getKeyCode();
+        try {
+            return key < 0 ? Mouse.isCreated() && Mouse.isButtonDown(key + 100) : Keyboard.isKeyDown(key);
+        } catch (Throwable ignored) {
+            return false;
         }
     }
 
     private void resetTarget() {
         this.target = null;
         this.targetId = -1;
-        this.targetChangedAt = 0L;
-        this.nextOffsetAt = 0L;
-        this.offsetYaw = 0.0f;
-        this.offsetPitch = 0.0f;
-        this.targetOffsetYaw = 0.0f;
-        this.targetOffsetPitch = 0.0f;
-        this.rotationState.reset();
+        this.nextRandomAt = 0L;
+        this.rotationInitialized = false;
+        this.assistedYaw = 0.0F;
+        this.assistedPitch = 0.0F;
+        this.randomOffsetX = 0.0D;
+        this.randomOffsetY = 0.0D;
+        this.randomOffsetZ = 0.0D;
     }
 
     public static void assistFaceEntity(Entity entity, float yaw, float pitch) {
-        CombatUtil.faceEntity(entity, yaw, pitch, pitch <= 0.0f, 0.0f);
+        CombatUtil.faceEntity(entity, yaw, pitch, pitch <= 0.0F, 0.0F);
     }
 
     public static float updateRotation(float current, float target, float maxTurn) {

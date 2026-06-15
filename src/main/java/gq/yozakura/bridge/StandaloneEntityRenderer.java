@@ -1,5 +1,6 @@
 package gq.yozakura.bridge;
 
+import gq.yozakura.event.bridge.MouseOverEvent;
 import gq.yozakura.event.bridge.Render3DEvent;
 import gq.yozakura.event.bridge.RenderFrameGuard;
 import gq.yozakura.event.bus.EventManager;
@@ -58,6 +59,14 @@ public class StandaloneEntityRenderer extends EntityRenderer {
     @Override
     public void renderWorld(float partialTicks, long finishTimeNano) {
         renderWorldHook(partialTicks, finishTimeNano);
+    }
+
+    @Override
+    public void getMouseOver(float partialTicks) {
+        super.getMouseOver(partialTicks);
+        if (Minecraft.getMinecraft().theWorld != null && Minecraft.getMinecraft().thePlayer != null) {
+            EventManager.call(new MouseOverEvent(partialTicks));
+        }
     }
 
     private void renderWorldHook(float partialTicks, long finishTimeNano) {

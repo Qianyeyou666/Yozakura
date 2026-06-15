@@ -50,12 +50,15 @@ public final class StandaloneEventBridge {
             releaseForcedSneak();
             resetMouseState();
             MovementInputBridge.uninstall();
+            RotationState.clear();
+            VisualRotationState.clear();
             return;
         }
         if (!isInGame()) {
             releaseForcedSneak();
             resetMouseState();
             MovementInputBridge.uninstall();
+            RotationState.clear();
             VisualRotationState.clear();
             return;
         }
@@ -65,17 +68,17 @@ public final class StandaloneEventBridge {
         StandaloneLivingRendererBridge.install(mc);
         injectPacketHandler();
         dispatchForgeTick(gq.yozakura.bridge.forge.TickEvent.Phase.START);
-        dispatchMouseButtons();
         EventManager.call(new TickEvent(EventType.PRE));
         dispatchPreUpdate();
         dispatchSafeWalk();
+        dispatchMouseButtons();
         EventManager.call(new gq.yozakura.bridge.forge.LivingEvent.LivingUpdateEvent(mc.thePlayer));
         syncAuraTarget();
+        MovementInputBridge.restoreRotation();
         EventManager.call(new TickEvent(EventType.POST));
         EventManager.call(new UpdateEvent(EventType.POST, mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch,
                 mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch));
         dispatchForgeTick(gq.yozakura.bridge.forge.TickEvent.Phase.END);
-        MovementInputBridge.restoreRotation();
         dispatchSafeWalk();
         syncAuraTarget();
         MovementInputBridge.finishTick();
@@ -84,6 +87,7 @@ public final class StandaloneEventBridge {
     public void shutdown() {
         releaseForcedSneak();
         MovementInputBridge.uninstall();
+        RotationState.clear();
         VisualRotationState.clear();
         removePacketHandler();
     }

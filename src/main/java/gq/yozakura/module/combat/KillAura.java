@@ -23,6 +23,7 @@ import net.minecraft.entity.passive.EntitySquid;
 import net.minecraft.entity.passive.EntityVillager;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.ItemSword;
 import net.minecraft.network.PacketBuffer;
 import net.minecraft.network.play.client.*;
 import net.minecraft.network.play.client.C02PacketUseEntity.Action;
@@ -116,6 +117,8 @@ public class KillAura extends Module {
     private boolean swapped = false;
     private boolean postBlock = false;
     private boolean postSwap = false;
+    private boolean blockAnimationActive = false;
+    private int blockAnimationSlot = -1;
 
 
     public KillAura() {
@@ -200,14 +203,18 @@ public class KillAura extends Module {
         this.startBlock(mc.thePlayer.getHeldItem());
     }
     private void startBlock(ItemStack itemStack) {
+        if (itemStack == null) {
+            return;
+        }
         PacketUtil.sendPacket(new C08PacketPlayerBlockPlacement(itemStack));
-        mc.thePlayer.setItemInUse(itemStack, itemStack.getMaxItemUseDuration());
+        this.refreshBlockAnimation(itemStack, true);
         this.blockingState = true;
     }
 
     private void stopBlock() {
         PacketUtil.sendPacket(new C07PacketPlayerDigging(C07PacketPlayerDigging.Action.RELEASE_USE_ITEM, BlockPos.ORIGIN, EnumFacing.DOWN));
         mc.thePlayer.stopUsingItem();
+        this.clearBlockAnimationState();
         this.blockingState = false;
     }
 
@@ -223,10 +230,55 @@ public class KillAura extends Module {
                         )
                 );
                 PacketUtil.sendPacket(new C02PacketUseEntity(this.attackTarget.getEntity(), Action.INTERACT));
-                PacketUtil.sendPacket(new C08PacketPlayerBlockPlacement(mc.thePlayer.getHeldItem()));
-                mc.thePlayer.setItemInUse(mc.thePlayer.getHeldItem(), mc.thePlayer.getHeldItem().getMaxItemUseDuration());
+                ItemStack heldItem = mc.thePlayer.getHeldItem();
+                if (heldItem == null) {
+                    return;
+                }
+                PacketUtil.sendPacket(new C08PacketPlayerBlockPlacement(heldItem));
+                this.refreshBlockAnimation(heldItem, true);
                 this.blockingState = true;
             }
+        }
+    }
+
+    private void refreshBlockAnimation(ItemStack itemStack, boolean resetRenderer) {
+        if (mc.thePlayer == null || itemStack == null || !(itemStack.getItem() instanceof ItemSword)) {
+            this.clearBlockAnimationState();
+            return;
+        }
+        boolean wasBlocking = mc.thePlayer.isBlocking();
+        int slot = mc.thePlayer.inventory.currentItem;
+        mc.thePlayer.setItemInUse(itemStack, itemStack.getMaxItemUseDuration());
+        if (resetRenderer || !this.blockAnimationActive || this.blockAnimationSlot != slot || !wasBlocking) {
+            this.resetBlockItemRenderer();
+        }
+        this.blockAnimationActive = true;
+        this.blockAnimationSlot = slot;
+    }
+
+    private void maintainBlockAnimation() {
+        if (mc.thePlayer == null) {
+            this.clearBlockAnimationState();
+            return;
+        }
+        if (this.isPlayerBlocking() && this.isBlocking) {
+            this.refreshBlockAnimation(mc.thePlayer.getHeldItem(), false);
+        } else {
+            this.clearBlockAnimationState();
+        }
+    }
+
+    private void clearBlockAnimationState() {
+        this.blockAnimationActive = false;
+        this.blockAnimationSlot = -1;
+    }
+
+    private void resetBlockItemRenderer() {
+        try {
+            if (mc.entityRenderer != null && mc.entityRenderer.itemRenderer != null) {
+                mc.entityRenderer.itemRenderer.resetEquippedProgress();
+            }
+        } catch (Throwable ignored) {
         }
     }
 
@@ -408,6 +460,10 @@ public class KillAura extends Module {
                 this.isBlocking = false;
                 this.fakeBlockState = false;
                 this.blockTick = 0;
+                this.clearBlockAnimationState();
+            }
+            if (!attack && this.shouldPublishVisualRotation()) {
+                this.publishVisualRotation(event);
             }
             if (attack) {
                 boolean swap = false;
@@ -644,13 +700,7 @@ public class KillAura extends Module {
                 boolean attacked = false;
                 if (this.isBoxInSwingRange(this.attackTarget.getBox())) {
                     if (this.rotations.getValue() == 2 || this.rotations.getValue() == 3) {
-                        float[] rotations = RotationUtil.getRotationsToBox(
-                                this.attackTarget.getBox(),
-                                event.getYaw(),
-                                event.getPitch(),
-                                (float) this.angleStep.getValue() + RandomUtil.nextFloat(-5.0F, 5.0F),
-                                (float) this.smoothing.getValue() / 100.0F
-                        );
+                        float[] rotations = this.calculateTargetRotations(event);
                         event.setRotation(rotations[0], rotations[1], 1);
                         VisualRotationState.publish("KillAura", rotations[0], rotations[1], 1);
                         if (this.rotations.getValue() == 3) {
@@ -693,7 +743,51 @@ public class KillAura extends Module {
                 sendUseItem();
                 postBlock = false;
             }
+            this.maintainBlockAnimation();
         }
+    }
+
+    private boolean shouldPublishVisualRotation() {
+        if (this.attackTarget == null
+                || (this.rotations.getValue() != 2 && this.rotations.getValue() != 3)
+                || !this.isAttackAllowed()
+                || !this.isValidTarget(this.attackTarget.getEntity())
+                || !this.isBoxInSwingRange(this.attackTarget.getBox())
+                || YozakuraRuntime.playerStateManager.digging
+                || YozakuraRuntime.playerStateManager.placing) {
+            return false;
+        }
+        if (this.inventoryCheck.getValue() && mc.currentScreen instanceof GuiContainer) {
+            return false;
+        }
+        if (MinecraftAccessor.isHittingBlock(mc.playerController)) {
+            return false;
+        }
+        if ((ItemUtil.isEating() || ItemUtil.isUsingBow()) && PlayerUtil.isUsingItem()) {
+            return false;
+        }
+        AutoHeal autoHeal = (AutoHeal) YozakuraRuntime.moduleManager.modules.get(AutoHeal.class);
+        if (autoHeal.isEnabled() && autoHeal.isSwitching()) {
+            return false;
+        }
+        BedNuker bedNuker = (BedNuker) YozakuraRuntime.moduleManager.modules.get(BedNuker.class);
+        AutoBlockIn autoBlockIn = (AutoBlockIn) YozakuraRuntime.moduleManager.modules.get(AutoBlockIn.class);
+        return (!bedNuker.isEnabled() || !bedNuker.isReady()) && !autoBlockIn.isEnabled();
+    }
+
+    private void publishVisualRotation(UpdateEvent event) {
+        float[] rotations = this.calculateTargetRotations(event);
+        VisualRotationState.publish("KillAura", rotations[0], rotations[1], 1);
+    }
+
+    private float[] calculateTargetRotations(UpdateEvent event) {
+        return RotationUtil.getRotationsToBox(
+                this.attackTarget.getBox(),
+                event.getYaw(),
+                event.getPitch(),
+                (float) this.angleStep.getValue() + RandomUtil.nextFloat(-5.0F, 5.0F),
+                (float) this.smoothing.getValue() / 100.0F
+        );
     }
 
     @EventTarget
@@ -763,9 +857,7 @@ public class KillAura extends Module {
                     }
                     break;
                 case POST:
-                    if (this.isPlayerBlocking() && !mc.thePlayer.isBlocking()) {
-                        mc.thePlayer.setItemInUse(mc.thePlayer.getHeldItem(), mc.thePlayer.getHeldItem().getMaxItemUseDuration());
-                    }
+                    this.maintainBlockAnimation();
             }
         }
     }
@@ -777,6 +869,7 @@ public class KillAura extends Module {
                 C07PacketPlayerDigging packet = (C07PacketPlayerDigging) event.getPacket();
                 if (packet.getStatus() == C07PacketPlayerDigging.Action.RELEASE_USE_ITEM) {
                     this.blockingState = false;
+                    this.clearBlockAnimationState();
                 }
             }
             if (event.getPacket() instanceof C09PacketHeldItemChange) {
@@ -784,6 +877,7 @@ public class KillAura extends Module {
                 if (this.isBlocking) {
                     mc.thePlayer.stopUsingItem();
                 }
+                this.clearBlockAnimationState();
             }
         }
     }
@@ -951,6 +1045,7 @@ public class KillAura extends Module {
         this.hitRegistered = false;
         this.attackDelayMS = 0L;
         this.blockTick = 0;
+        this.clearBlockAnimationState();
     }
 
     @Override
@@ -958,9 +1053,13 @@ public class KillAura extends Module {
         VisualRotationState.clearSource("KillAura");
         RotationDebug.setSourceEnabled("KillAura", false);
         YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+        if (this.blockAnimationActive && mc.thePlayer != null) {
+            mc.thePlayer.stopUsingItem();
+        }
         this.blockingState = false;
         this.isBlocking = false;
         this.fakeBlockState = false;
+        this.clearBlockAnimationState();
     }
 
     @Override

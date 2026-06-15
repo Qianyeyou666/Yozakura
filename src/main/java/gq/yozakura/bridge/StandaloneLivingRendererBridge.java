@@ -1,6 +1,7 @@
 package gq.yozakura.bridge;
 
 import gq.yozakura.event.bus.EventManager;
+import gq.yozakura.manager.VisualRotationState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.AbstractClientPlayer;
 import net.minecraft.client.model.ModelBase;
@@ -237,11 +238,16 @@ public final class StandaloneLivingRendererBridge {
 
         @Override
         public void doRender(AbstractClientPlayer entity, double x, double y, double z, float entityYaw, float partialTicks) {
-            dispatchPre(entity, partialTicks);
+            VisualRotationSnapshot rotationSnapshot = VisualRotationSnapshot.apply(entity);
             try {
-                delegate.doRender(entity, x, y, z, entityYaw, partialTicks);
+                try {
+                    dispatchPre(entity, partialTicks);
+                    delegate.doRender(entity, x, y, z, entityYaw, partialTicks);
+                } finally {
+                    dispatchPost(entity, partialTicks);
+                }
             } finally {
-                dispatchPost(entity, partialTicks);
+                rotationSnapshot.restore(entity);
             }
         }
 
@@ -279,6 +285,63 @@ public final class StandaloneLivingRendererBridge {
         @Override
         protected ResourceLocation getEntityTexture(AbstractClientPlayer entity) {
             return entity.getLocationSkin();
+        }
+    }
+
+    private static final class VisualRotationSnapshot {
+        private static final VisualRotationSnapshot NOOP = new VisualRotationSnapshot(false, 0.0F, 0.0F,
+                0.0F, 0.0F, 0.0F, 0.0F);
+
+        private final boolean active;
+        private final float prevPitch;
+        private final float pitch;
+        private final float prevYawHead;
+        private final float yawHead;
+        private final float prevRenderYawOffset;
+        private final float renderYawOffset;
+
+        private VisualRotationSnapshot(boolean active, float prevPitch, float pitch, float prevYawHead,
+                                       float yawHead, float prevRenderYawOffset, float renderYawOffset) {
+            this.active = active;
+            this.prevPitch = prevPitch;
+            this.pitch = pitch;
+            this.prevYawHead = prevYawHead;
+            this.yawHead = yawHead;
+            this.prevRenderYawOffset = prevRenderYawOffset;
+            this.renderYawOffset = renderYawOffset;
+        }
+
+        static VisualRotationSnapshot apply(AbstractClientPlayer entity) {
+            Minecraft minecraft = Minecraft.getMinecraft();
+            if (minecraft == null || entity == null || entity != minecraft.thePlayer || !VisualRotationState.isActived()) {
+                return NOOP;
+            }
+            VisualRotationSnapshot snapshot = new VisualRotationSnapshot(true,
+                    entity.prevRotationPitch,
+                    entity.rotationPitch,
+                    entity.prevRotationYawHead,
+                    entity.rotationYawHead,
+                    entity.prevRenderYawOffset,
+                    entity.renderYawOffset);
+            entity.prevRotationPitch = VisualRotationState.getPrevRotationPitch();
+            entity.rotationPitch = VisualRotationState.getRotationPitch();
+            entity.prevRotationYawHead = VisualRotationState.getPrevRotationYawHead();
+            entity.rotationYawHead = VisualRotationState.getRotationYawHead();
+            entity.prevRenderYawOffset = VisualRotationState.getPrevRenderYawOffset();
+            entity.renderYawOffset = VisualRotationState.getRenderYawOffset();
+            return snapshot;
+        }
+
+        void restore(AbstractClientPlayer entity) {
+            if (!active || entity == null) {
+                return;
+            }
+            entity.prevRotationPitch = prevPitch;
+            entity.rotationPitch = pitch;
+            entity.prevRotationYawHead = prevYawHead;
+            entity.rotationYawHead = yawHead;
+            entity.prevRenderYawOffset = prevRenderYawOffset;
+            entity.renderYawOffset = renderYawOffset;
         }
     }
 }

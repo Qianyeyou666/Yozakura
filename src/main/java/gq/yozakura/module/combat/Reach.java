@@ -1,6 +1,7 @@
 package gq.yozakura.module.combat;
 
 import gq.yozakura.event.bridge.LeftClickMouseEvent;
+import gq.yozakura.event.bridge.MouseOverEvent;
 import gq.yozakura.event.bus.EventTarget;
 import gq.yozakura.event.bus.types.EventType;
 import gq.yozakura.module.ModuleType;
@@ -21,6 +22,7 @@ import net.minecraftforge.client.event.MouseEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.input.Keyboard;
+import org.lwjgl.input.Mouse;
 
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
@@ -91,6 +93,17 @@ public class Reach extends Module {
         handleLeftClick();
     }
 
+    @EventTarget
+    public void onMouseOver(MouseOverEvent event) {
+        if (!isInGame()) {
+            lastReachHit = null;
+            return;
+        }
+        if (isAttackHeld()) {
+            applyReach(event.getPartialTicks());
+        }
+    }
+
     private void handleLeftClick() {
         if (lastReachHit != null) {
             applyHit(lastReachHit);
@@ -115,6 +128,14 @@ public class Reach extends Module {
     private void applyHit(MovingObjectPosition hit) {
         mc.objectMouseOver = hit;
         mc.pointedEntity = hit.entityHit;
+    }
+
+    private boolean isAttackHeld() {
+        if (mc.gameSettings.keyBindAttack.isKeyDown()) {
+            return true;
+        }
+        int key = mc.gameSettings.keyBindAttack.getKeyCode();
+        return key < 0 && Mouse.isCreated() && Mouse.isButtonDown(key + 100);
     }
 
     private boolean canReach() {

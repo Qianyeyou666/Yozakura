@@ -1,6 +1,7 @@
 package gq.yozakura.module.combat;
 
 import gq.yozakura.event.bridge.LeftClickMouseEvent;
+import gq.yozakura.event.bridge.MouseOverEvent;
 import gq.yozakura.event.bus.EventTarget;
 import gq.yozakura.event.bus.types.EventType;
 import gq.yozakura.module.ModuleType;
@@ -77,6 +78,18 @@ public class HitBoxes extends Module {
             expandedHit = getExpandedMouseOver(1.0f);
         }
         if (expandedHit != null) {
+            applyExpandedHit();
+        }
+    }
+
+    @EventTarget
+    public void onMouseOver(MouseOverEvent event) {
+        if (!isInGame()) {
+            expandedHit = null;
+            return;
+        }
+        expandedHit = getExpandedMouseOver(event.getPartialTicks());
+        if (shouldApplyExpandedHit()) {
             applyExpandedHit();
         }
     }
