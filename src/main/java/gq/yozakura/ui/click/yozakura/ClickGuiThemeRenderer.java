@@ -1,4 +1,4 @@
-package gq.yozakura.ui.click.vape;
+package gq.yozakura.ui.click.yozakura;
 
 import gq.yozakura.engine.render.ui.LiquidGlassSettings;
 import gq.yozakura.module.render.HUD;
@@ -9,10 +9,10 @@ import net.minecraft.client.gui.ScaledResolution;
 import java.awt.Color;
 
 final class ClickGuiThemeRenderer {
-    private final VapeClickGui gui;
+    private final YozakuraClickGui gui;
     private float glassProgress = 1.0f;
 
-    ClickGuiThemeRenderer(VapeClickGui gui) {
+    ClickGuiThemeRenderer(YozakuraClickGui gui) {
         this.gui = gui;
     }
 

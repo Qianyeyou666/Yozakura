@@ -2,7 +2,7 @@ package gq.yozakura.module.render;
 
 import gq.yozakura.ui.click.material.MaterialClickGui;
 import gq.yozakura.ui.click.sakura.SakuraClickGui;
-import gq.yozakura.ui.click.vape.VapeClickGui;
+import gq.yozakura.ui.click.yozakura.YozakuraClickGui;
 import org.lwjgl.input.Keyboard;
 
 import gq.yozakura.module.ModuleType;
@@ -14,7 +14,7 @@ import gq.yozakura.value.Option;
 public class ClickGUI extends Module {
 	public enum GuiStyle {
 		MATERIAL,
-		VAPE,
+		YOZAKURA,
 		SAKURA
 	}
 
@@ -52,8 +52,8 @@ public class ClickGUI extends Module {
 	public void toggle() {
 		if (guiStyle.getValue() == GuiStyle.SAKURA) {
 			mc.displayGuiScreen(new SakuraClickGui());
-		} else if (guiStyle.getValue() == GuiStyle.VAPE) {
-			mc.displayGuiScreen(new VapeClickGui());
+		} else if (guiStyle.getValue() == GuiStyle.YOZAKURA) {
+			mc.displayGuiScreen(new YozakuraClickGui());
 		} else {
 			MaterialClickGui.warmResources();
 			mc.displayGuiScreen(new MaterialClickGui());

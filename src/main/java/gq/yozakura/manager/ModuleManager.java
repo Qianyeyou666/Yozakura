@@ -160,6 +160,7 @@ public class ModuleManager {
         addModule("FuckServer", new ModuleFactory() { public Module create() { return new FuckServer(); } });
         addModule("Reach", new ModuleFactory() { public Module create() { return new Reach(); } });
         addModule("HitBoxes", new ModuleFactory() { public Module create() { return new HitBoxes(); } });
+        addModule("GhostHand", new ModuleFactory() { public Module create() { return new GhostHand(); } });
         addModule("StorageESP", new ModuleFactory() { public Module create() { return new StorageESP(); } });
         addModule("Chams", new ModuleFactory() { public Module create() { return new Chams(); } });
         addModule("ESP", new ModuleFactory() { public Module create() { return new ESP(); } });
