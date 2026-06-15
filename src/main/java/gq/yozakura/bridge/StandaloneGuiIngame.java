@@ -29,7 +29,37 @@ public class StandaloneGuiIngame extends GuiIngame {
         super(minecraft);
     }
 
+    private static boolean lunarDetected;
+    private static boolean lunarCheckDone;
+
+    public static boolean isLunarClient() {
+        if (!lunarCheckDone) {
+            lunarCheckDone = true;
+            try {
+                lunarDetected = Class.forName("com.moonsworth.lunar.genesis.Genesis", false,
+                        Thread.currentThread().getContextClassLoader()) != null;
+            } catch (Throwable ignored) {
+            }
+            if (!lunarDetected) {
+                lunarDetected = System.getProperty("lunar.webosr.url") != null
+                        || System.getProperty("ichor.logsFile") != null;
+            }
+            if (!lunarDetected) {
+                String cmd = System.getProperty("sun.java.command", "");
+                lunarDetected = cmd != null && (cmd.toLowerCase().contains(".lunarclient")
+                        || cmd.toLowerCase().contains("com.moonsworth.lunar.genesis"));
+            }
+        }
+        return lunarDetected;
+    }
+
     public static void install(Minecraft minecraft) {
+        // On Lunar Client, do NOT replace ingameGUI — Lunar's HUD Caching
+        // relies on its own ingameGUI instance and replacing it kills FPS.
+        // Render2DEvent will be dispatched via StandaloneEntityRenderer instead.
+        if (isLunarClient()) {
+            return;
+        }
         if (minecraft == null || minecraft.ingameGUI instanceof StandaloneGuiIngame) {
             return;
         }
@@ -60,6 +90,28 @@ public class StandaloneGuiIngame extends GuiIngame {
     private void renderGameOverlayHook(float partialTicks) {
         super.renderGameOverlay(partialTicks);
         dispatchRender2D(partialTicks);
+    }
+
+    /**
+     * Entry point for Lunar Client where ingameGUI is not replaced.
+     * Called from {@link StandaloneEntityRenderer} after world + 3D overlay rendering.
+     */
+    public static void dispatchRender2DExternally(float partialTicks) {
+        Minecraft minecraft = Minecraft.getMinecraft();
+        if (minecraft.theWorld == null || minecraft.thePlayer == null) {
+            return;
+        }
+        OverlayRenderState state = beginOverlayState(minecraft);
+        try {
+            ShaderRenderer.beginOverlayFrame();
+            EventManager.call(new Render2DEvent(partialTicks));
+            prepareOverlayState();
+            EventManager.call(new gq.yozakura.bridge.forge.RenderGameOverlayEvent.Text(partialTicks));
+        } catch (Throwable throwable) {
+            log("Standalone Render2D dispatch failed", throwable);
+        } finally {
+            endOverlayState(state);
+        }
     }
 
     private void dispatchRender2D(float partialTicks) {

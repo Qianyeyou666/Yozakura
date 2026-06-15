@@ -63,6 +63,11 @@ public class StandaloneEntityRenderer extends EntityRenderer {
     private void renderWorldHook(float partialTicks, long finishTimeNano) {
         super.renderWorld(partialTicks, finishTimeNano);
         dispatchRender3D(partialTicks);
+        // On Lunar Client, StandaloneGuiIngame.install() is a no-op to preserve
+        // Lunar's HUD Caching. Dispatch 2D overlay here instead.
+        if (StandaloneGuiIngame.isLunarClient()) {
+            StandaloneGuiIngame.dispatchRender2DExternally(partialTicks);
+        }
     }
 
     private void dispatchRender3D(float partialTicks) {
