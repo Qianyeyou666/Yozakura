@@ -1,5 +1,6 @@
 package gq.yozakura.event.api;
 
+import gq.yozakura.auth.YozakuraAuthGate;
 import gq.yozakura.event.api.events.Event;
 import gq.yozakura.event.api.events.EventStoppable;
 import gq.yozakura.event.api.events.callables.EventCancellable;
@@ -240,6 +241,9 @@ public final class EventManager {
 	 * @return Event in the state after dispatching it.
 	 */
 	public static final Event call(final Event event) {
+		if (!YozakuraAuthGate.allowRuntime("legacy-event:" + event.getClass().getName())) {
+			return event;
+		}
 		if (EventCancellable.a == 1) {
 			List<MethodData> dataList = REGISTRY_MAP.get(event.getClass());
 

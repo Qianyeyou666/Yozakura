@@ -14,6 +14,7 @@ import gq.yozakura.command.ChatBypassCommand;
 import gq.yozakura.command.WaterMark;
 import gq.yozakura.engine.font.FontLoaders;
 import gq.yozakura.bridge.YozakuraEventBridge;
+import gq.yozakura.auth.YozakuraAuthGate;
 import gq.yozakura.ui.overlay.InjectionSuccessAnimation;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.play.client.C03PacketPlayer;
@@ -80,6 +81,7 @@ public class Client {
             showInjectionSuccessAnimation();
             return;
         }
+        YozakuraAuthGate.verifyOrThrow("forge");
         state = true;
         MinecraftForge.EVENT_BUS.register(this);
         FMLCommonHandler.instance().bus().register(this);

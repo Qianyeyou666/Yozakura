@@ -1,5 +1,6 @@
 package gq.yozakura.module;
 
+import gq.yozakura.auth.YozakuraAuthGate;
 import gq.yozakura.bridge.ForgeEnvironment;
 import gq.yozakura.core.YozakuraClientState;
 import gq.yozakura.event.bus.EventManager;
@@ -81,6 +82,9 @@ public class Module {
 
     public void setState(boolean state, boolean playSound) {
         if (this.state == state && !NoToggle) {
+            return;
+        }
+        if (state && !YozakuraAuthGate.allowRuntime("module:" + getName())) {
             return;
         }
         if (state) {

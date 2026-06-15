@@ -1,5 +1,6 @@
 package gq.yozakura.event.bus;
 
+import gq.yozakura.auth.YozakuraAuthGate;
 import gq.yozakura.event.bus.events.EventStoppable;
 
 import java.lang.invoke.MethodHandle;
@@ -65,6 +66,9 @@ public final class EventManager {
     public static <T> T call(T event) {
         if (event == null) {
             return null;
+        }
+        if (!YozakuraAuthGate.allowRuntime("event:" + event.getClass().getName())) {
+            return event;
         }
         List<MethodData> list = REGISTRY.get(event.getClass());
         logWatchedCall(event, list);

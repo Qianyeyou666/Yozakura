@@ -1,5 +1,6 @@
 package gq.yozakura.bridge;
 
+import gq.yozakura.auth.YozakuraAuthGate;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -84,6 +85,10 @@ public final class YozakuraEventBridge {
 
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event) {
+        if (!YozakuraAuthGate.allowRuntime("forge-client-tick")) {
+            releaseForcedSneak();
+            return;
+        }
         if (!isInGame()) {
             releaseForcedSneak();
             return;
@@ -138,6 +143,9 @@ public final class YozakuraEventBridge {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void onRender2D(RenderGameOverlayEvent.Text event) {
+        if (!YozakuraAuthGate.allowRuntime("forge-render-2d")) {
+            return;
+        }
         if (isInGame()) {
             ShaderRenderer.beginOverlayFrame();
             EventManager.call(new Render2DEvent(event.partialTicks));
@@ -147,6 +155,9 @@ public final class YozakuraEventBridge {
 
     @SubscribeEvent
     public void onRender3D(RenderWorldLastEvent event) {
+        if (!YozakuraAuthGate.allowRuntime("forge-render-3d")) {
+            return;
+        }
         if (isInGame()) {
             EventManager.call(new Render3DEvent(event.partialTicks));
         }
@@ -154,6 +165,9 @@ public final class YozakuraEventBridge {
 
     @SubscribeEvent
     public void onMouse(MouseEvent event) {
+        if (!YozakuraAuthGate.allowRuntime("forge-mouse")) {
+            return;
+        }
         if (!isInGame()) {
             return;
         }
@@ -350,6 +364,10 @@ public final class YozakuraEventBridge {
 
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+            if (!YozakuraAuthGate.allowRuntime("forge-packet-send")) {
+                super.write(ctx, msg, promise);
+                return;
+            }
             if (msg instanceof Packet<?>) {
                 Packet<?> packet = (Packet<?>) msg;
                 if (consumeNoEvent(packet)) {
@@ -380,6 +398,10 @@ public final class YozakuraEventBridge {
 
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+            if (!YozakuraAuthGate.allowRuntime("forge-packet-receive")) {
+                super.channelRead(ctx, msg);
+                return;
+            }
             if (msg instanceof Packet<?>) {
                 Packet<?> packet = (Packet<?>) msg;
                 if (!PacketUtil.skipReceiveEvent.remove(packet)) {

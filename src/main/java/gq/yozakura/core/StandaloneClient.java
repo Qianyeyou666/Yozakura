@@ -1,5 +1,6 @@
 package gq.yozakura.core;
 
+import gq.yozakura.auth.YozakuraAuthGate;
 import gq.yozakura.bridge.StandaloneEventBridge;
 import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.module.Module;
@@ -33,6 +34,7 @@ public final class StandaloneClient {
             showInjectionSuccessAnimation();
             return;
         }
+        YozakuraAuthGate.verifyOrThrow("standalone");
         state = true;
         running = true;
         System.setProperty(ACTIVE_INSTANCE_PROPERTY, instanceId);

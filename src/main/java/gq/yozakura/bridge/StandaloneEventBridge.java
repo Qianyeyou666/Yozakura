@@ -1,5 +1,6 @@
 package gq.yozakura.bridge;
 
+import gq.yozakura.auth.YozakuraAuthGate;
 import gq.yozakura.event.bridge.HitBlockEvent;
 import gq.yozakura.event.bridge.LeftClickMouseEvent;
 import gq.yozakura.event.bridge.LivingUpdateEvent;
@@ -45,6 +46,11 @@ public final class StandaloneEventBridge {
     private boolean packetHandlerFailureLogged;
 
     public void tick() {
+        if (!YozakuraAuthGate.allowRuntime("standalone-tick")) {
+            releaseForcedSneak();
+            resetMouseState();
+            return;
+        }
         if (!isInGame()) {
             releaseForcedSneak();
             resetMouseState();
@@ -309,6 +315,10 @@ public final class StandaloneEventBridge {
 
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+            if (!YozakuraAuthGate.allowRuntime("standalone-packet-send")) {
+                super.write(ctx, msg, promise);
+                return;
+            }
             if (msg instanceof Packet<?>) {
                 Packet<?> packet = (Packet<?>) msg;
                 if (PacketBridgeSupport.consumeNoEvent(packet)) {
@@ -339,6 +349,10 @@ public final class StandaloneEventBridge {
 
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+            if (!YozakuraAuthGate.allowRuntime("standalone-packet-receive")) {
+                super.channelRead(ctx, msg);
+                return;
+            }
             if (msg instanceof Packet<?>) {
                 Packet<?> packet = (Packet<?>) msg;
                 if (!PacketUtil.skipReceiveEvent.remove(packet)) {
