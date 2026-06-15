@@ -119,6 +119,7 @@ public class ModuleManager {
         addModule("AntiBot", new ModuleFactory() { public Module create() { return new AntiBot(); } });
         addModule("Speed", new ModuleFactory() { public Module create() { return new Speed(); } });
         addModule("Sprint", new ModuleFactory() { public Module create() { return new Sprint(); } });
+        addModule("KeepSprint", new ModuleFactory() { public Module create() { return new KeepSprint(); } });
         addModule("NoJumpDelay", new ModuleFactory() { public Module create() { return new NoJumpDelay(); } });
         addModule("ClickGUI", new ModuleFactory() { public Module create() { return new ClickGUI(); } });
         addModule("IGN", new ModuleFactory() { public Module create() { return new IGN(); } });
