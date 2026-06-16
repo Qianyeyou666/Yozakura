@@ -70,8 +70,13 @@ public class StandaloneEntityRenderer extends EntityRenderer {
     }
 
     private void renderWorldHook(float partialTicks, long finishTimeNano) {
+        MovementInputBridge.prepareRotationForRender();
         StandaloneLivingRendererBridge.install(Minecraft.getMinecraft());
-        super.renderWorld(partialTicks, finishTimeNano);
+        try {
+            super.renderWorld(partialTicks, finishTimeNano);
+        } finally {
+            MovementInputBridge.restoreRotationForRender();
+        }
         dispatchRender3D(partialTicks);
         // On Lunar Client, StandaloneGuiIngame.install() is a no-op to preserve
         // Lunar's HUD Caching. Dispatch 2D overlay here instead.

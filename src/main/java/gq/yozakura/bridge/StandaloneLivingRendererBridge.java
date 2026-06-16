@@ -39,6 +39,7 @@ public final class StandaloneLivingRendererBridge {
             }
             boolean changed = wrapEntityRenderers(manager);
             changed |= wrapPlayerRenderers(manager);
+            changed |= wrapPlayerRendererFields(manager);
             if (changed && !installLogged) {
                 installLogged = true;
                 log("Standalone living renderer bridge installed", null);
@@ -96,6 +97,37 @@ public final class StandaloneLivingRendererBridge {
             String skin = String.valueOf(entry.getKey());
             entry.setValue(new PlayerRenderWrapper(manager, skin, (RenderPlayer) base));
             changed = true;
+        }
+        return changed;
+    }
+
+    private static boolean wrapPlayerRendererFields(RenderManager manager) {
+        boolean changed = false;
+        Class<?> type = manager.getClass();
+        while (type != null && type != Object.class) {
+            Field[] fields = type.getDeclaredFields();
+            for (Field field : fields) {
+                if (!RenderPlayer.class.isAssignableFrom(field.getType())) {
+                    continue;
+                }
+                try {
+                    if (!field.isAccessible()) {
+                        field.setAccessible(true);
+                    }
+                    Object value = field.get(manager);
+                    if (value instanceof PlayerRenderWrapper) {
+                        continue;
+                    }
+                    Object base = unwrapRenderer(value);
+                    if (!(base instanceof RenderPlayer)) {
+                        continue;
+                    }
+                    field.set(manager, new PlayerRenderWrapper(manager, "default", (RenderPlayer) base));
+                    changed = true;
+                } catch (Throwable ignored) {
+                }
+            }
+            type = type.getSuperclass();
         }
         return changed;
     }
@@ -264,6 +296,9 @@ public final class StandaloneLivingRendererBridge {
 
         @Override
         public ModelPlayer getMainModel() {
+            if (delegate == null) {
+                return super.getMainModel();
+            }
             return delegate.getMainModel();
         }
 

@@ -23,6 +23,7 @@ final class MovementInputBridge {
     private static boolean silentMovementThisTick;
     private static boolean sprintAllowedThisTick = true;
     private static boolean sprintKeySuppressed;
+    private static boolean directYawPhysics = true;
     private static int suppressedSprintKey = Integer.MIN_VALUE;
     private static float savedYaw;
     private static float savedPrevYaw;
@@ -36,6 +37,14 @@ final class MovementInputBridge {
             return;
         }
         player.movementInput = new HookedMovementInput(player.movementInput);
+    }
+
+    static void setDirectYawPhysics(boolean enabled) {
+        if (directYawPhysics == enabled) {
+            return;
+        }
+        restoreRotation();
+        directYawPhysics = enabled;
     }
 
     static void uninstall() {
@@ -56,12 +65,20 @@ final class MovementInputBridge {
         }
         enforceSprintState(player);
         restoreSprintKey();
-        if (!rotationApplied) {
+        restoreAppliedRotation(player);
+    }
+
+    static void prepareRotationForRender() {
+        EntityPlayerSP player = mc.thePlayer;
+        if (player == null) {
+            rotationApplied = false;
             return;
         }
-        player.rotationYaw = savedYaw;
-        player.prevRotationYaw = savedPrevYaw;
-        rotationApplied = false;
+        restoreAppliedRotation(player);
+    }
+
+    static void restoreRotationForRender() {
+        prepareRotationForRender();
     }
 
     static void finishTick() {
@@ -127,6 +144,7 @@ final class MovementInputBridge {
         if (player == null
                 || !RotationState.isActived()
                 || RotationState.getPriority() < 0
+                || !directYawPhysics
                 || (input.moveForward == 0.0F && input.moveStrafe == 0.0F)) {
             return;
         }
@@ -138,6 +156,15 @@ final class MovementInputBridge {
         float yaw = RotationState.getSmoothedYaw();
         player.rotationYaw = yaw;
         player.prevRotationYaw = yaw;
+    }
+
+    private static void restoreAppliedRotation(EntityPlayerSP player) {
+        if (!rotationApplied) {
+            return;
+        }
+        player.rotationYaw = savedYaw;
+        player.prevRotationYaw = savedPrevYaw;
+        rotationApplied = false;
     }
 
     private static void suppressSprintKey() {

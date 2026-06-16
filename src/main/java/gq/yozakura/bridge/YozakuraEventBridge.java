@@ -37,12 +37,15 @@ import gq.yozakura.event.bridge.RightClickMouseEvent;
 import gq.yozakura.event.bridge.SafeWalkEvent;
 import gq.yozakura.event.bridge.SwapItemEvent;
 import gq.yozakura.event.bridge.UpdateEvent;
+import gq.yozakura.manager.BridgeDebug;
 import gq.yozakura.manager.RotationDebug;
 import gq.yozakura.manager.RotationState;
 import gq.yozakura.manager.VisualRotationState;
 import gq.yozakura.util.module.PacketUtil;
 
 import java.lang.reflect.Field;
+import java.util.ArrayDeque;
+import java.util.Queue;
 
 public final class YozakuraEventBridge {
     private static final Minecraft mc = Minecraft.getMinecraft();
@@ -61,6 +64,9 @@ public final class YozakuraEventBridge {
     private float savedYawHead;
     private float savedPrevRenderYawOffset;
     private float savedRenderYawOffset;
+    private UpdateEvent pendingPostUpdate;
+    private volatile UpdateEvent activePreUpdate;
+    private volatile boolean waitingForRotationPacket;
 
     private YozakuraEventBridge() {
     }
@@ -83,12 +89,19 @@ public final class YozakuraEventBridge {
         return PacketBridgeSupport.consumeNoEvent(packet);
     }
 
+    private static boolean hasPendingPostUpdate() {
+        return INSTANCE.pendingPostUpdate != null;
+    }
+
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event) {
         if (!YozakuraAuthGate.allowRuntime("forge-client-tick")) {
             releaseForcedSneak();
             RotationState.clear();
             VisualRotationState.clear();
+            pendingPostUpdate = null;
+            activePreUpdate = null;
+            waitingForRotationPacket = false;
             return;
         }
         if (!isInGame()) {
@@ -96,9 +109,13 @@ public final class YozakuraEventBridge {
             MovementInputBridge.uninstall();
             RotationState.clear();
             VisualRotationState.clear();
+            pendingPostUpdate = null;
+            activePreUpdate = null;
+            waitingForRotationPacket = false;
             return;
         }
         MovementInputBridge.install();
+        MovementInputBridge.setDirectYawPhysics(true);
         injectPacketHandler();
         if (event.phase == TickEvent.Phase.START) {
             EventManager.call(new gq.yozakura.event.bridge.TickEvent(EventType.PRE));
@@ -108,8 +125,7 @@ public final class YozakuraEventBridge {
         } else {
             MovementInputBridge.restoreRotation();
             EventManager.call(new gq.yozakura.event.bridge.TickEvent(EventType.POST));
-            EventManager.call(new UpdateEvent(EventType.POST, mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch,
-                    mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch));
+            dispatchPendingPostUpdate();
             dispatchSafeWalk();
             syncAuraTarget();
             MovementInputBridge.finishTick();
@@ -242,15 +258,54 @@ public final class YozakuraEventBridge {
     }
 
     private void dispatchPreUpdate() {
+        BridgeDebug.logState("forge", "PRE_START", pendingPostUpdate != null);
+        pendingPostUpdate = null;
         VisualRotationState.beginTick();
         UpdateEvent update = new UpdateEvent(EventType.PRE, mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch,
                 mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch);
-        EventManager.call(update);
+        activePreUpdate = update;
+        try {
+            EventManager.call(update);
+        } finally {
+            if (update.isRotated()) {
+                waitingForRotationPacket = true;
+            }
+            activePreUpdate = null;
+        }
+        BridgeDebug.logUpdate("forge", "PRE_AFTER_EVENT", update, pendingPostUpdate != null);
         RotationState.applyState(update.isRotated(), update.getNewYaw(), update.getNewPitch(),
                 update.getPreYaw(), update.isRotating());
+        if (!update.isRotated()) {
+            waitingForRotationPacket = false;
+        }
         VisualRotationState.finishTick();
         syncVisibleRotation();
         RotationDebug.logUpdate("forge", update);
+        queuePostUpdate(update);
+        BridgeDebug.logUpdate("forge", "PRE_DONE", update, pendingPostUpdate != null);
+    }
+
+    private void queuePostUpdate(UpdateEvent preUpdate) {
+        this.pendingPostUpdate = new UpdateEvent(EventType.POST, preUpdate.getYaw(), preUpdate.getPitch(),
+                preUpdate.getNewYaw(), preUpdate.getNewPitch());
+        BridgeDebug.logUpdate("forge", "POST_QUEUED", this.pendingPostUpdate, true);
+    }
+
+    private void dispatchPendingPostUpdate() {
+        UpdateEvent post = this.pendingPostUpdate;
+        this.pendingPostUpdate = null;
+        if (post == null) {
+            BridgeDebug.logState("forge", "POST_SKIP_NULL", false);
+            return;
+        }
+        BridgeDebug.logUpdate("forge", "POST_START", post, false);
+        EventManager.call(post);
+        BridgeDebug.logUpdate("forge", "POST_DONE", post, false);
+    }
+
+    private static boolean hasActivePreRotation() {
+        UpdateEvent update = INSTANCE.activePreUpdate;
+        return update != null && update.isRotated();
     }
 
     private void dispatchSafeWalk() {
@@ -354,12 +409,7 @@ public final class YozakuraEventBridge {
     }
 
     private static final class PacketBridgeHandler extends ChannelDuplexHandler {
-        private static final float ROTATION_EPSILON = 1.0E-3F;
-        private static final float ROTATION_DEDUPE_STEP = 0.0096F;
-        private boolean hasSentSilentRotation;
-        private boolean duplicateYawFlip;
-        private float lastSilentYaw;
-        private float lastSilentPitch;
+        private final Queue<DelayedPacket> delayedPackets = new ArrayDeque<DelayedPacket>();
 
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
@@ -370,35 +420,59 @@ public final class YozakuraEventBridge {
             if (msg instanceof Packet<?>) {
                 Packet<?> packet = (Packet<?>) msg;
                 if (consumeNoEvent(packet)) {
+                    BridgeDebug.logPacket("forge", "SEND_NO_EVENT", packet, hasPendingPostUpdate());
                     super.write(ctx, msg, promise);
                     return;
                 }
                 if (packet instanceof C0BPacketEntityAction
                         && MovementInputBridge.shouldBlockSprintPacket((C0BPacketEntityAction) packet)) {
+                    BridgeDebug.logPacket("forge", "SEND_BLOCKED_SPRINT", packet, hasPendingPostUpdate());
                     return;
                 }
+                BridgeDebug.logPacket("forge", "SEND_IN", packet, hasPendingPostUpdate());
                 PacketEvent event = EventManager.call(new PacketEvent(EventType.SEND, packet));
                 if (event.isCancelled()) {
+                    BridgeDebug.logPacket("forge", "SEND_CANCELLED", packet, hasPendingPostUpdate());
                     return;
                 }
-                if (YozakuraRuntime.playerStateManager != null) {
-                    YozakuraRuntime.playerStateManager.handlePacket(packet);
+                if (shouldDelayUntilRotation(packet)) {
+                    delayedPackets.add(new DelayedPacket(packet, promise));
+                    BridgeDebug.logPacket("forge", "SEND_DELAYED_QUEUE", packet, hasPendingPostUpdate());
+                    return;
                 }
+                if (packet instanceof C03PacketPlayer) {
+                    flushDelayedPackets(ctx);
+                }
+                markSent(packet);
+                BridgeDebug.logPacket("forge", "SEND_MARKED", packet, hasPendingPostUpdate());
                 if (YozakuraRuntime.blinkManager != null && YozakuraRuntime.blinkManager.isBlinking()
                         && YozakuraRuntime.blinkManager.offerPacket(packet)) {
+                    BridgeDebug.logPacket("forge", "SEND_BLINK_BUFFERED", packet, hasPendingPostUpdate());
                     return;
                 }
                 if (packet instanceof C03PacketPlayer && RotationState.isActived()) {
                     RotationDebug.logPacket("forge", (C03PacketPlayer) packet, true);
-                    super.write(ctx, rewritePlayerPacket((C03PacketPlayer) packet), promise);
+                    C03PacketPlayer rewritten = rewritePlayerPacket((C03PacketPlayer) packet);
+                    BridgeDebug.logPacketRewrite("forge", (C03PacketPlayer) packet, rewritten, hasPendingPostUpdate());
+                    super.write(ctx, rewritten, promise);
+                    INSTANCE.waitingForRotationPacket = false;
                     return;
                 }
                 if (packet instanceof C03PacketPlayer) {
-                    hasSentSilentRotation = false;
                     RotationDebug.logPacket("forge", (C03PacketPlayer) packet, false);
+                    INSTANCE.waitingForRotationPacket = false;
+                    super.write(ctx, msg, promise);
+                    return;
                 }
+                BridgeDebug.logPacket("forge", "SEND_OUT", packet, hasPendingPostUpdate());
             }
             super.write(ctx, msg, promise);
+        }
+
+        private void markSent(Packet<?> packet) {
+            if (YozakuraRuntime.playerStateManager != null) {
+                YozakuraRuntime.playerStateManager.handlePacket(packet);
+            }
         }
 
         @Override
@@ -424,14 +498,6 @@ public final class YozakuraEventBridge {
             float pitch = RotationState.getRotationPitch();
             boolean onGround = packet.isOnGround();
 
-            if (!shouldSendLook(yaw, pitch)) {
-                yaw = nudgeDuplicateYaw(yaw);
-            }
-
-            hasSentSilentRotation = true;
-            lastSilentYaw = yaw;
-            lastSilentPitch = pitch;
-
             if (packet.isMoving()) {
                 return new C03PacketPlayer.C06PacketPlayerPosLook(packet.getPositionX(), packet.getPositionY(),
                         packet.getPositionZ(), yaw, pitch, onGround);
@@ -439,15 +505,46 @@ public final class YozakuraEventBridge {
             return new C03PacketPlayer.C05PacketPlayerLook(yaw, pitch, onGround);
         }
 
-        private boolean shouldSendLook(float yaw, float pitch) {
-            return !hasSentSilentRotation
-                    || Math.abs(net.minecraft.util.MathHelper.wrapAngleTo180_float(yaw - lastSilentYaw)) > ROTATION_EPSILON
-                    || Math.abs(pitch - lastSilentPitch) > ROTATION_EPSILON;
+        private boolean shouldDelayUntilRotation(Packet<?> packet) {
+            return isActionPacket(packet)
+                    && (INSTANCE.waitingForRotationPacket
+                    || hasActivePreRotation()
+                    || RotationState.isActived()
+                    || !delayedPackets.isEmpty());
         }
 
-        private float nudgeDuplicateYaw(float yaw) {
-            duplicateYawFlip = !duplicateYawFlip;
-            return yaw + (duplicateYawFlip ? ROTATION_DEDUPE_STEP : -ROTATION_DEDUPE_STEP);
+        private boolean isActionPacket(Packet<?> packet) {
+            return packet instanceof net.minecraft.network.play.client.C02PacketUseEntity
+                    || packet instanceof net.minecraft.network.play.client.C07PacketPlayerDigging
+                    || packet instanceof net.minecraft.network.play.client.C08PacketPlayerBlockPlacement
+                    || packet instanceof net.minecraft.network.play.client.C09PacketHeldItemChange
+                    || packet instanceof net.minecraft.network.play.client.C0APacketAnimation;
+        }
+
+        private void flushDelayedPackets(ChannelHandlerContext ctx) throws Exception {
+            while (!delayedPackets.isEmpty()) {
+                DelayedPacket delayed = delayedPackets.poll();
+                markSent(delayed.packet);
+                BridgeDebug.logPacket("forge", "SEND_DELAYED_OUT", delayed.packet, hasPendingPostUpdate());
+                if (YozakuraRuntime.blinkManager != null && YozakuraRuntime.blinkManager.isBlinking()
+                        && YozakuraRuntime.blinkManager.offerPacket(delayed.packet)) {
+                    delayed.promise.setSuccess();
+                    BridgeDebug.logPacket("forge", "SEND_DELAYED_BLINK_BUFFERED", delayed.packet,
+                            hasPendingPostUpdate());
+                    continue;
+                }
+                super.write(ctx, delayed.packet, delayed.promise);
+            }
+        }
+
+        private static final class DelayedPacket {
+            private final Packet<?> packet;
+            private final ChannelPromise promise;
+
+            private DelayedPacket(Packet<?> packet, ChannelPromise promise) {
+                this.packet = packet;
+                this.promise = promise;
+            }
         }
     }
 }

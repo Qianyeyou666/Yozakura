@@ -2,6 +2,7 @@ package gq.yozakura.core;
 
 import gq.yozakura.auth.YozakuraAuthGate;
 import gq.yozakura.bridge.StandaloneEventBridge;
+import gq.yozakura.manager.BridgeDebug;
 import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.module.Module;
 import gq.yozakura.runtime.YozakuraRuntime;
@@ -27,6 +28,8 @@ public final class StandaloneClient {
     private final String instanceId = Long.toHexString(System.nanoTime());
     private volatile boolean running;
     private boolean tickFailureLogged;
+    private int lastPlayerTick = Integer.MIN_VALUE;
+    private int skippedPlayerTicks;
 
     public StandaloneClient() {
         stopExistingStandalonePumps();
@@ -173,9 +176,21 @@ public final class StandaloneClient {
             return;
         }
         try {
+            boolean playerTick = mc.thePlayer != null && mc.thePlayer.ticksExisted != lastPlayerTick;
+            if (playerTick) {
+                lastPlayerTick = mc.thePlayer.ticksExisted;
+            } else {
+                skippedPlayerTicks++;
+            }
+            BridgeDebug.logTick("standalone", "PUMP_TICK", playerTick, skippedPlayerTicks);
             handleKeys();
-            bridge.tick();
-            ConfigBridge.autoSaveTick();
+            bridge.tick(playerTick);
+            if (playerTick) {
+                skippedPlayerTicks = 0;
+            }
+            if (playerTick) {
+                ConfigBridge.autoSaveTick();
+            }
         } catch (Throwable throwable) {
             if (!tickFailureLogged) {
                 tickFailureLogged = true;

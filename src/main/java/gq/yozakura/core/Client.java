@@ -39,7 +39,7 @@ import java.util.Random;
 import static gq.yozakura.util.minecraft.Helper.mc;
 
 public class Client {
-    public boolean DebugMode = false;
+    public static final boolean DebugMode = true;
     // 调试时可以启用，注入成功会修改标题
 
     public static String name = "Yozakura";
@@ -81,8 +81,12 @@ public class Client {
             showInjectionSuccessAnimation();
             return;
         }
-        YozakuraAuthGate.verifyOrThrow("forge");
-        username = YozakuraAuthGate.getVerifiedUsername();
+        if (!DebugMode) {
+            YozakuraAuthGate.verifyOrThrow("forge");
+            username = YozakuraAuthGate.getVerifiedUsername();
+        } else {
+            username = "DebugUser";
+        }
         state = true;
         MinecraftForge.EVENT_BUS.register(this);
         FMLCommonHandler.instance().bus().register(this);
@@ -95,7 +99,7 @@ public class Client {
 //        FontLoaders.C20.drawStringWithShadow(Client.name,114514,114514, -1);
 //        FontLoaders.F14.drawStringWithShadow(Client.name,114514,114514, -1);
 //        FontLoaders.Logo.drawStringWithShadow(Client.name,114514,114514, -1);
-        if(!instance.DebugMode){
+        if(!DebugMode){
             if(mc.isIntegratedServerRunning() || mc.isSingleplayer()){
                 Helper.sendMessageWithoutPrefix("Yozakura Load done! Press RSHIFT open ClickGui, Press H Open HUD");
             }

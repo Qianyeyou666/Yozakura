@@ -41,7 +41,7 @@ public class RotationState {
     }
 
     public static void applyState(boolean bl, float f, float f2, float f3, int n) {
-        state = bl ? 0 : state < 0 ? -1 : state + 1;
+        state = bl ? 0 : -1;
         prevRenderYawOffset = renderYawOffset;
         renderYawOffset = bl ? RotationState.calculateRenderYawOffset(f, renderYawOffset) : RotationState.mc.thePlayer.renderYawOffset;
         prevRotationYawHead = rotationYawHead;
