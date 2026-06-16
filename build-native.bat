@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-if not defined JAVA8_HOME set "JAVA8_HOME=C:\Users\qiany\.jdks\corretto-1.8.0_492"
+if not defined JAVA8_HOME set "JAVA8_HOME=C:\Users\shiranaidk\jdk-8\jdk8u492-b09"
 if not defined VS_BUILD set "VS_BUILD=C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build"
 
 if not exist "%JAVA8_HOME%\include\jni.h" (

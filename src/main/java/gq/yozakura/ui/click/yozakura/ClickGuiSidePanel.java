@@ -1,5 +1,6 @@
 package gq.yozakura.ui.click.yozakura;
 
+import gq.yozakura.core.Client;
 import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.module.Module;
 import gq.yozakura.module.render.ClickGUI;
@@ -156,7 +157,7 @@ final class ClickGuiSidePanel {
         gui.drawCenteredIcon(FontLoaders.ICON_USER, FontLoaders.I14, x + 18.0f, y + 14.0f,
                 gui.withAlpha(gui.guiColors().text, 235.0f * gui.guiAlpha));
         // 用户名和 Premium 标签
-        gui.drawFont("YozakuraUser", x + 34.0f, y + 6.0f,
+        gui.drawFont(Client.username, x + 34.0f, y + 6.0f,
                 gui.withAlpha(gui.guiColors().text, 240.0f * gui.guiAlpha));
         gui.drawFont("Premium", x + 34.0f, y + 18.0f,
                 gui.withAlpha(gui.guiColors().accent, 210.0f * gui.guiAlpha));

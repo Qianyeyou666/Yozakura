@@ -35,6 +35,7 @@ public final class StandaloneClient {
             return;
         }
         YozakuraAuthGate.verifyOrThrow("standalone");
+        Client.username = YozakuraAuthGate.getVerifiedUsername();
         state = true;
         running = true;
         System.setProperty(ACTIVE_INSTANCE_PROPERTY, instanceId);

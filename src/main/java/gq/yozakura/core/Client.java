@@ -43,7 +43,7 @@ public class Client {
     // 调试时可以启用，注入成功会修改标题
 
     public static String name = "Yozakura";
-    public static String real_name = "VAPU";
+    public static String username = "YozakuraUser";
     public static String version = "1.52";
     public static String config = "module";
 
@@ -82,6 +82,7 @@ public class Client {
             return;
         }
         YozakuraAuthGate.verifyOrThrow("forge");
+        username = YozakuraAuthGate.getVerifiedUsername();
         state = true;
         MinecraftForge.EVENT_BUS.register(this);
         FMLCommonHandler.instance().bus().register(this);

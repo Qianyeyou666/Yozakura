@@ -30,6 +30,10 @@ public final class YozakuraAuthGate {
         }
     }
 
+    public static String getVerifiedUsername() {
+        return Wrapper.isVerifiedSession() ? Wrapper.getUsername().orElse(null) : null;
+    }
+
     public static boolean allowRuntime(String surface) {
         if (Wrapper.isVerifiedSession()) {
             runtimeBlockedLogged.set(false);
