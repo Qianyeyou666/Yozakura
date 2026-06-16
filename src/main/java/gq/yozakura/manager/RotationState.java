@@ -13,7 +13,7 @@ public class RotationState {
     private static float prevRotationPitch;
     private static float rotationPitch;
     private static float smoothYaw;
-    private static int priority;
+    private static int priority = -1;
 
     private static float calculateRenderYawOffset(float targetYaw, float currentYawOffset) {
         float newYawOffset = currentYawOffset;
@@ -41,7 +41,7 @@ public class RotationState {
     }
 
     public static void applyState(boolean bl, float f, float f2, float f3, int n) {
-        state = bl ? 0 : state + 1;
+        state = bl ? 0 : state < 0 ? -1 : state + 1;
         prevRenderYawOffset = renderYawOffset;
         renderYawOffset = bl ? RotationState.calculateRenderYawOffset(f, renderYawOffset) : RotationState.mc.thePlayer.renderYawOffset;
         prevRotationYawHead = rotationYawHead;
@@ -50,6 +50,28 @@ public class RotationState {
         rotationPitch = bl ? f2 : RotationState.mc.thePlayer.rotationPitch;
         smoothYaw = f3;
         priority = n;
+    }
+
+    public static void clear() {
+        state = -1;
+        priority = -1;
+        if (mc.thePlayer == null) {
+            prevRenderYawOffset = 0.0F;
+            renderYawOffset = 0.0F;
+            prevRotationYawHead = 0.0F;
+            rotationYawHead = 0.0F;
+            prevRotationPitch = 0.0F;
+            rotationPitch = 0.0F;
+            smoothYaw = 0.0F;
+            return;
+        }
+        prevRenderYawOffset = mc.thePlayer.prevRenderYawOffset;
+        renderYawOffset = mc.thePlayer.renderYawOffset;
+        prevRotationYawHead = mc.thePlayer.prevRotationYawHead;
+        rotationYawHead = mc.thePlayer.rotationYawHead;
+        prevRotationPitch = mc.thePlayer.prevRotationPitch;
+        rotationPitch = mc.thePlayer.rotationPitch;
+        smoothYaw = mc.thePlayer.rotationYaw;
     }
 
     public static boolean isActived() {

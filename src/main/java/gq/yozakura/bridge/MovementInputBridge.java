@@ -40,6 +40,7 @@ final class MovementInputBridge {
 
     static void uninstall() {
         restoreRotation();
+        RotationState.clear();
         EntityPlayerSP player = mc.thePlayer;
         if (player != null && player.movementInput instanceof HookedMovementInput) {
             player.movementInput = ((HookedMovementInput) player.movementInput).delegate;

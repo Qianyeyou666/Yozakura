@@ -24,6 +24,7 @@ import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.Packet;
 import net.minecraft.network.play.client.C03PacketPlayer;
+import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
 import net.minecraft.network.play.client.C0BPacketEntityAction;
 import net.minecraft.util.MovingObjectPosition;
 import org.lwjgl.input.Keyboard;
@@ -38,6 +39,7 @@ public final class StandaloneEventBridge {
     private static final Minecraft mc = Minecraft.getMinecraft();
     private static final String HANDLER_NAME = "yozakura_standalone_event_bridge";
     private static Field channelField;
+    private static UpdateEvent activePreUpdate;
     private Channel channel;
     private boolean forcedSneak;
     private boolean lastLeftButton;
@@ -163,12 +165,17 @@ public final class StandaloneEventBridge {
         VisualRotationState.beginTick();
         UpdateEvent update = new UpdateEvent(EventType.PRE, mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch,
                 mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch);
-        EventManager.call(update);
-        RotationState.applyState(update.isRotated(), update.getNewYaw(), update.getNewPitch(),
-                update.getPreYaw(), update.isRotating());
-        VisualRotationState.finishTick();
-        syncVisibleRotation();
-        RotationDebug.logUpdate("standalone", update);
+        activePreUpdate = update;
+        try {
+            EventManager.call(update);
+            RotationState.applyState(update.isRotated(), update.getNewYaw(), update.getNewPitch(),
+                    update.getPreYaw(), update.isRotating());
+            VisualRotationState.finishTick();
+            syncVisibleRotation();
+            RotationDebug.logUpdate("standalone", update);
+        } finally {
+            activePreUpdate = null;
+        }
     }
 
     private void dispatchSafeWalk() {
@@ -343,6 +350,9 @@ public final class StandaloneEventBridge {
                         && YozakuraRuntime.blinkManager.offerPacket(packet)) {
                     return;
                 }
+                if (packet instanceof C08PacketPlayerBlockPlacement) {
+                    flushPlacementRotation(ctx, (C08PacketPlayerBlockPlacement) packet);
+                }
                 if (packet instanceof C03PacketPlayer && RotationState.isActived()) {
                     RotationDebug.logPacket("standalone", (C03PacketPlayer) packet, true);
                     super.write(ctx, rewritePlayerPacket((C03PacketPlayer) packet), promise);
@@ -354,6 +364,41 @@ public final class StandaloneEventBridge {
                 }
             }
             super.write(ctx, msg, promise);
+        }
+
+        private void flushPlacementRotation(ChannelHandlerContext ctx, C08PacketPlayerBlockPlacement packet)
+                throws Exception {
+            if (packet.getPlacedBlockDirection() == 255) {
+                return;
+            }
+            PlacementRotation rotation = getPendingPlacementRotation();
+            if (rotation == null) {
+                return;
+            }
+            float yaw = rotation.yaw;
+            float pitch = rotation.pitch;
+            if (!shouldSendLook(yaw, pitch)) {
+                yaw = nudgeDuplicateYaw(yaw);
+            }
+            hasSentSilentRotation = true;
+            lastSilentYaw = yaw;
+            lastSilentPitch = pitch;
+            C03PacketPlayer.C05PacketPlayerLook look =
+                    new C03PacketPlayer.C05PacketPlayerLook(yaw, pitch,
+                            mc.thePlayer != null && mc.thePlayer.onGround);
+            RotationDebug.logPacket("standalone-place", look, true);
+            super.write(ctx, look, ctx.voidPromise());
+        }
+
+        private PlacementRotation getPendingPlacementRotation() {
+            UpdateEvent update = activePreUpdate;
+            if (update != null && update.isRotated()) {
+                return new PlacementRotation(update.getNewYaw(), update.getNewPitch());
+            }
+            if (RotationState.isActived()) {
+                return new PlacementRotation(RotationState.getRotationYawHead(), RotationState.getRotationPitch());
+            }
+            return null;
         }
 
         @Override
@@ -403,6 +448,16 @@ public final class StandaloneEventBridge {
         private float nudgeDuplicateYaw(float yaw) {
             duplicateYawFlip = !duplicateYawFlip;
             return yaw + (duplicateYawFlip ? ROTATION_DEDUPE_STEP : -ROTATION_DEDUPE_STEP);
+        }
+
+        private static final class PlacementRotation {
+            private final float yaw;
+            private final float pitch;
+
+            private PlacementRotation(float yaw, float pitch) {
+                this.yaw = yaw;
+                this.pitch = pitch;
+            }
         }
     }
 }

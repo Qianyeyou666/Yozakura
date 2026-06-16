@@ -1,5 +1,6 @@
 package gq.yozakura.bridge;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.PlayerControllerMP;
 
 import java.lang.reflect.Field;
@@ -7,6 +8,8 @@ import java.lang.reflect.Method;
 
 public final class MinecraftAccessor {
     private static Method syncCurrentPlayItem;
+    private static Method clickMouse;
+    private static Field leftClickCounter;
     private static Field isHittingBlock;
 
     private MinecraftAccessor() {
@@ -40,6 +43,41 @@ public final class MinecraftAccessor {
         } catch (Throwable ignored) {
             isHittingBlock = null;
             return false;
+        }
+    }
+
+    public static boolean clickMouse(Minecraft minecraft) {
+        if (minecraft == null) {
+            return false;
+        }
+        try {
+            if (clickMouse == null) {
+                clickMouse = findMethod(Minecraft.class, "clickMouse", "func_147116_af", "ay");
+            }
+            if (clickMouse == null) {
+                return false;
+            }
+            clickMouse.invoke(minecraft);
+            return true;
+        } catch (Throwable ignored) {
+            clickMouse = null;
+            return false;
+        }
+    }
+
+    public static void setLeftClickCounter(Minecraft minecraft, int value) {
+        if (minecraft == null) {
+            return;
+        }
+        try {
+            if (leftClickCounter == null) {
+                leftClickCounter = findField(Minecraft.class, "leftClickCounter", "field_71429_W", "ag");
+            }
+            if (leftClickCounter != null) {
+                leftClickCounter.setInt(minecraft, value);
+            }
+        } catch (Throwable ignored) {
+            leftClickCounter = null;
         }
     }
 

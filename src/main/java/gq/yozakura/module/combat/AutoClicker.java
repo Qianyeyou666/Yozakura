@@ -1,9 +1,11 @@
 package gq.yozakura.module.combat;
 
+import gq.yozakura.bridge.MinecraftAccessor;
 import gq.yozakura.event.bus.EventTarget;
 import gq.yozakura.event.bus.types.EventType;
 import gq.yozakura.module.Module;
 import gq.yozakura.module.ModuleType;
+import gq.yozakura.util.module.KeyBindUtil;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
 import net.minecraft.block.Block;
@@ -40,6 +42,7 @@ public class AutoClicker extends Module {
     private final Random random = new Random();
     private long nextClickTime;
     private long inventoryNextClickTime;
+    private int lastAttackTick = Integer.MIN_VALUE;
     private boolean holdingBlockBreak;
 
     public AutoClicker() {
@@ -53,6 +56,7 @@ public class AutoClicker extends Module {
     public void enable() {
         this.nextClickTime = 0L;
         this.inventoryNextClickTime = 0L;
+        this.lastAttackTick = Integer.MIN_VALUE;
         this.holdingBlockBreak = false;
         ensureHoveredSlotField();
     }
@@ -61,6 +65,7 @@ public class AutoClicker extends Module {
     public void disable() {
         this.nextClickTime = 0L;
         this.inventoryNextClickTime = 0L;
+        this.lastAttackTick = Integer.MIN_VALUE;
         this.holdingBlockBreak = false;
         restoreAttackKey();
     }
@@ -76,7 +81,7 @@ public class AutoClicker extends Module {
     @EventTarget
     public void onBridgeTick(gq.yozakura.event.bridge.TickEvent event) {
         if (event.getType() == EventType.PRE) {
-            handleAttackClick();
+            handleAttackClickOnce();
         } else if (event.getType() == EventType.POST) {
             handleInventoryClick();
         }
@@ -131,6 +136,19 @@ public class AutoClicker extends Module {
         if (event.phase != TickEvent.Phase.START) {
             return;
         }
+        handleAttackClickOnce();
+    }
+
+    private void handleAttackClickOnce() {
+        if (!isInGame()) {
+            handleAttackClick();
+            return;
+        }
+        int tick = mc.thePlayer.ticksExisted;
+        if (this.lastAttackTick == tick) {
+            return;
+        }
+        this.lastAttackTick = tick;
         handleAttackClick();
     }
 
@@ -175,8 +193,11 @@ public class AutoClicker extends Module {
         Backtrack.applyBacktrackHit();
         KeyBinding.setKeyBindState(key, true);
         for (int i = 0; i < clicks; i++) {
+            MinecraftAccessor.setLeftClickCounter(mc, 0);
             KeyBinding.onTick(key);
-            attackHoveredEntity();
+            if (!MinecraftAccessor.clickMouse(mc)) {
+                attackHoveredEntity();
+            }
         }
     }
 
@@ -272,8 +293,8 @@ public class AutoClicker extends Module {
     }
 
     private boolean isAttackHeld() {
-        int key = mc.gameSettings.keyBindAttack.getKeyCode();
-        return isKeyDown(key);
+        return mc.gameSettings != null
+                && KeyBindUtil.isBindingDown(mc.gameSettings.keyBindAttack);
     }
 
     private void restoreAttackKey() {
@@ -281,15 +302,7 @@ public class AutoClicker extends Module {
             return;
         }
         int key = mc.gameSettings.keyBindAttack.getKeyCode();
-        KeyBinding.setKeyBindState(key, isKeyDown(key));
-    }
-
-    private static boolean isKeyDown(int key) {
-        try {
-            return key < 0 ? isMouseButtonDown(key + 100) : Keyboard.isKeyDown(key);
-        } catch (Throwable ignored) {
-            return false;
-        }
+        KeyBinding.setKeyBindState(key, KeyBindUtil.isKeyDown(key));
     }
 
     private static boolean isMouseButtonDown(int button) {

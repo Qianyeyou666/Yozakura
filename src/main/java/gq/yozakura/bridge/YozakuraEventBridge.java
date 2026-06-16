@@ -87,11 +87,14 @@ public final class YozakuraEventBridge {
     public void onClientTick(TickEvent.ClientTickEvent event) {
         if (!YozakuraAuthGate.allowRuntime("forge-client-tick")) {
             releaseForcedSneak();
+            RotationState.clear();
+            VisualRotationState.clear();
             return;
         }
         if (!isInGame()) {
             releaseForcedSneak();
             MovementInputBridge.uninstall();
+            RotationState.clear();
             VisualRotationState.clear();
             return;
         }

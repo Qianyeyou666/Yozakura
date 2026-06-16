@@ -10,11 +10,19 @@ public class KeyBindUtil {
     }
 
     public static boolean isKeyDown(int keyCode) {
-        return keyCode < 0 ? Mouse.isButtonDown(keyCode + 100) : Keyboard.isKeyDown(keyCode);
+        try {
+            return keyCode < 0 ? Mouse.isCreated() && Mouse.isButtonDown(keyCode + 100) : Keyboard.isKeyDown(keyCode);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    public static boolean isBindingDown(KeyBinding binding) {
+        return binding != null && (binding.isKeyDown() || KeyBindUtil.isKeyDown(binding.getKeyCode()));
     }
 
     public static void updateKeyState(int keyCode) {
-        KeyBindUtil.setKeyBindState(keyCode, keyCode < 0 ? Mouse.isButtonDown(keyCode + 100) : Keyboard.isKeyDown(keyCode));
+        KeyBindUtil.setKeyBindState(keyCode, KeyBindUtil.isKeyDown(keyCode));
     }
 
     public static void setKeyBindState(int keyCode, boolean pressed) {

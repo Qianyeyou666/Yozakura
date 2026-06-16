@@ -4,11 +4,14 @@ import gq.yozakura.bridge.MinecraftAccessor;
 import gq.yozakura.event.bus.EventTarget;
 import gq.yozakura.event.bus.types.EventType;
 import gq.yozakura.event.bus.types.Priority;
+import gq.yozakura.event.bridge.MoveInputEvent;
 import gq.yozakura.event.bridge.UpdateEvent;
+import gq.yozakura.manager.RotationState;
 import gq.yozakura.manager.VisualRotationState;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.Module;
 import gq.yozakura.util.module.BlockUtil;
+import gq.yozakura.util.module.MoveUtil;
 import gq.yozakura.util.module.RotationUtil;
 import gq.yozakura.value.Mode;
 import gq.yozakura.value.Numbers;
@@ -46,6 +49,8 @@ public class Clutch extends Module {
     private final Option<Boolean> autoPlace = new Option<Boolean>("Auto Place", "AutoPlace", true);
     private final Option<Boolean> autoSwap = new Option<Boolean>("Auto Swap", "AutoSwap", true);
     private final Option<Boolean> restoreSlot = new Option<Boolean>("Restore Slot", "RestoreSlot", false);
+    private final Option<Boolean> moveFix = new Option<Boolean>("Move Fix", "MoveFix", true);
+    private final Option<Boolean> voidOnly = new Option<Boolean>("Void Only", "VoidOnly", false);
 
     private static final int ROTATION_PRIORITY = 4;
     private static final double[] PLACE_OFFSETS = new double[]{
@@ -76,7 +81,7 @@ public class Clutch extends Module {
 
     public Clutch() {
         super("Clutch", Keyboard.KEY_NONE, ModuleType.World, "Place a block under you while falling");
-        this.addValues(mode, fallDistance, autoPlace, autoSwap, restoreSlot);
+        this.addValues(mode, fallDistance, autoPlace, autoSwap, restoreSlot, moveFix, voidOnly);
         Chinese = "落地救方块";
     }
 
@@ -98,6 +103,10 @@ public class Clutch extends Module {
         }
         if (!canRun()) {
             reset();
+            return;
+        }
+        if (Boolean.TRUE.equals(voidOnly.getValue()) && !isFallingIntoVoid()) {
+            resetTarget();
             return;
         }
 
@@ -146,6 +155,18 @@ public class Clutch extends Module {
         }
     }
 
+    @EventTarget
+    public void onMoveInput(MoveInputEvent event) {
+        if (!getState() || !isInGame() || !Boolean.TRUE.equals(moveFix.getValue())) {
+            return;
+        }
+        if (RotationState.isActived()
+                && RotationState.getPriority() == ROTATION_PRIORITY
+                && MoveUtil.isForwardPressed()) {
+            MoveUtil.fixStrafe(RotationState.getSmoothedYaw());
+        }
+    }
+
     private boolean canRun() {
         return isInGame()
                 && mc.currentScreen == null
@@ -190,6 +211,34 @@ public class Clutch extends Module {
                 && hasSupportAt(x - halfX, y, z + halfZ)
                 && hasSupportAt(x + halfX, y, z - halfZ)
                 && hasSupportAt(x + halfX, y, z + halfZ);
+    }
+
+    private boolean isFallingIntoVoid() {
+        AxisAlignedBB box = mc.thePlayer.getEntityBoundingBox();
+        Vec3 predictedFeet = getPredictedFeet(false);
+        return isFootprintOverVoid(mc.thePlayer.posX, box.minY - 0.08D, mc.thePlayer.posZ)
+                || isFootprintOverVoid(predictedFeet.xCoord, predictedFeet.yCoord - 0.08D, predictedFeet.zCoord);
+    }
+
+    private boolean isFootprintOverVoid(double x, double y, double z) {
+        AxisAlignedBB box = mc.thePlayer.getEntityBoundingBox();
+        double halfX = Math.max(0.18D, (box.maxX - box.minX) * 0.38D);
+        double halfZ = Math.max(0.18D, (box.maxZ - box.minZ) * 0.38D);
+        return !hasSolidBelow(x, y, z)
+                && !hasSolidBelow(x - halfX, y, z - halfZ)
+                && !hasSolidBelow(x - halfX, y, z + halfZ)
+                && !hasSolidBelow(x + halfX, y, z - halfZ)
+                && !hasSolidBelow(x + halfX, y, z + halfZ);
+    }
+
+    private boolean hasSolidBelow(double x, double y, double z) {
+        int startY = Math.min(255, MathHelper.floor_double(y));
+        for (int blockY = startY; blockY >= 0; blockY--) {
+            if (isSolidSupport(new BlockPos(x, blockY, z))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean ensureBlockSelected() {
@@ -477,7 +526,7 @@ public class Clutch extends Module {
         float basePitch = hasRotation ? pitch : event.getPitch();
         float[] rotations = RotationUtil.getRotationsTo(dx, dy, dz, baseYaw, basePitch);
         float yawSpeed = getAimSpeed(upward);
-        float pitchSpeed = upward ? Math.max(34.0F, yawSpeed * 1.12F) : Math.max(28.0F, yawSpeed);
+        float pitchSpeed = getPitchAimSpeed(yawSpeed, upward);
         float nextYaw = stepRotation(baseYaw, rotations[0], yawSpeed);
         float nextPitch = stepRotation(basePitch, rotations[1], pitchSpeed);
         return new AimData(RotationUtil.quantizeAngle(nextYaw), RotationUtil.quantizeAngle(nextPitch), hitVec, false);
@@ -520,7 +569,7 @@ public class Clutch extends Module {
                     double relZ = (double) target.support.getZ() + dz - mc.thePlayer.posZ;
                     float[] rotations = RotationUtil.getRotationsTo(relX, relY, relZ, baseYaw, basePitch);
                     float yawSpeed = getAimSpeed(upward);
-                    float pitchSpeed = upward ? Math.max(34.0F, yawSpeed * 1.12F) : Math.max(28.0F, yawSpeed);
+                    float pitchSpeed = getPitchAimSpeed(yawSpeed, upward);
                     float nextYaw = RotationUtil.quantizeAngle(stepRotation(baseYaw, rotations[0], yawSpeed));
                     float nextPitch = RotationUtil.quantizeAngle(stepRotation(basePitch, rotations[1], pitchSpeed));
                     MovingObjectPosition mop = RotationUtil.rayTrace(nextYaw, nextPitch,
@@ -546,9 +595,12 @@ public class Clutch extends Module {
     private float stepRotation(float current, float target, float maxSpeed) {
         float diff = MathHelper.wrapAngleTo180_float(target - current);
         float speed = Math.max(1.0F, maxSpeed);
-        if (currentMode() == ClutchMode.PANIC || isEmergency()) {
-            speed = Math.max(speed, 180.0F);
+        if (currentMode() == ClutchMode.PANIC) {
+            speed = Math.max(speed, 115.0F);
+        } else if (isEmergency()) {
+            speed = Math.max(speed, 86.0F);
         }
+        speed = Math.min(speed, Math.max(getMinAimStep(), Math.abs(diff) * getAimEase()));
         return current + MathHelper.clamp_float(diff, -speed, speed);
     }
 
@@ -557,7 +609,9 @@ public class Clutch extends Module {
         pitch = MathHelper.clamp_float(aim.pitch, -90.0F, 90.0F);
         hasRotation = true;
         event.setRotation(yaw, pitch, ROTATION_PRIORITY);
-        event.setPervRotation(yaw, ROTATION_PRIORITY);
+        if (Boolean.TRUE.equals(moveFix.getValue())) {
+            event.setPervRotation(yaw, ROTATION_PRIORITY);
+        }
         VisualRotationState.publish("Clutch", yaw, pitch, ROTATION_PRIORITY);
     }
 
@@ -565,12 +619,13 @@ public class Clutch extends Module {
         if (System.currentTimeMillis() - lastPlaceMillis < getPlaceDelay(upward)) {
             return false;
         }
-        if (currentMode() == ClutchMode.PANIC || isEmergency()) {
+        if (lockedTicks < getAimWaitTicks()) {
+            return false;
+        }
+        if (exactHit) {
             return true;
         }
-        return exactHit
-                || currentMode() == ClutchMode.SMART
-                || lockedTicks >= getAimWaitTicks();
+        return currentMode() == ClutchMode.PANIC || isEmergency();
     }
 
     private boolean place(PlaceTarget target) {
@@ -770,44 +825,77 @@ public class Clutch extends Module {
     }
 
     private long getPlaceDelay(boolean upward) {
-        if (currentMode() == ClutchMode.PANIC || isEmergency()) {
-            return 0L;
+        if (currentMode() == ClutchMode.PANIC) {
+            return upward ? 30L : 40L;
+        }
+        if (isEmergency()) {
+            return upward ? 45L : 55L;
         }
         if (currentMode() == ClutchMode.LEGIT) {
-            return upward ? 55L : 70L;
+            return upward ? 95L : 120L;
         }
-        return upward ? 18L : 25L;
+        return upward ? 55L : 75L;
     }
 
     private float getAimSpeed(boolean upward) {
         if (currentMode() == ClutchMode.PANIC) {
-            return 150.0F;
+            return 110.0F;
         }
         double fall = Math.max(0.0D, -mc.thePlayer.motionY);
         double horizontal = Math.sqrt(mc.thePlayer.motionX * mc.thePlayer.motionX
                 + mc.thePlayer.motionZ * mc.thePlayer.motionZ);
-        float speed = (float) (52.0D + fall * 40.0D + horizontal * 36.0D);
+        float speed = (float) (34.0D + fall * 28.0D + horizontal * 24.0D);
         if (upward) {
-            speed = Math.max(speed, 82.0F);
+            speed = Math.max(speed, 58.0F);
         }
         if (currentMode() == ClutchMode.LEGIT) {
-            speed *= 0.68F;
+            speed *= 0.55F;
         }
-        return MathHelper.clamp_float(speed, 24.0F, 150.0F);
+        return MathHelper.clamp_float(speed, 14.0F, 96.0F);
+    }
+
+    private float getPitchAimSpeed(float yawSpeed, boolean upward) {
+        if (upward) {
+            return Math.max(26.0F, yawSpeed * 1.05F);
+        }
+        return Math.max(20.0F, yawSpeed * 0.92F);
+    }
+
+    private float getAimEase() {
+        if (currentMode() == ClutchMode.PANIC) {
+            return 0.72F;
+        }
+        if (currentMode() == ClutchMode.LEGIT) {
+            return 0.42F;
+        }
+        return 0.52F;
+    }
+
+    private float getMinAimStep() {
+        if (currentMode() == ClutchMode.PANIC) {
+            return 2.2F;
+        }
+        if (currentMode() == ClutchMode.LEGIT) {
+            return 0.75F;
+        }
+        return 1.1F;
     }
 
     private int getLockTicks() {
         if (currentMode() == ClutchMode.PANIC) {
-            return 1;
+            return 2;
         }
         if (currentMode() == ClutchMode.LEGIT) {
-            return 4;
+            return 6;
         }
-        return 3;
+        return 5;
     }
 
     private int getAimWaitTicks() {
-        return currentMode() == ClutchMode.LEGIT ? 2 : 0;
+        if (currentMode() == ClutchMode.PANIC) {
+            return 0;
+        }
+        return currentMode() == ClutchMode.LEGIT ? 3 : 1;
     }
 
     private double getLockBonus() {
@@ -819,29 +907,29 @@ public class Clutch extends Module {
 
     private double getSwitchMargin() {
         if (currentMode() == ClutchMode.PANIC) {
-            return 14.0D;
+            return 16.0D;
         }
-        return currentMode() == ClutchMode.LEGIT ? 8.0D : 11.0D;
+        return currentMode() == ClutchMode.LEGIT ? 12.0D : 14.0D;
     }
 
     private double getFallMotionScale() {
         if (currentMode() == ClutchMode.PANIC) {
-            return 0.62D;
+            return 0.72D;
         }
         if (currentMode() == ClutchMode.LEGIT) {
-            return 0.92D;
+            return 0.95D;
         }
-        return 0.76D;
+        return 0.86D;
     }
 
     private double getUpwardMotionScale() {
         if (currentMode() == ClutchMode.PANIC) {
-            return 0.72D;
+            return 0.82D;
         }
         if (currentMode() == ClutchMode.LEGIT) {
-            return 0.94D;
+            return 0.96D;
         }
-        return 0.84D;
+        return 0.91D;
     }
 
     private boolean isEmergency() {

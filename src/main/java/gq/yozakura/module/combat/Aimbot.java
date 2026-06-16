@@ -9,6 +9,7 @@ import gq.yozakura.event.bus.types.Priority;
 import gq.yozakura.module.Module;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.util.minecraft.RotationUtil;
+import gq.yozakura.util.module.KeyBindUtil;
 import gq.yozakura.util.module.TeamUtil;
 import gq.yozakura.value.Mode;
 import gq.yozakura.value.Numbers;
@@ -22,7 +23,6 @@ import net.minecraft.util.MathHelper;
 import net.minecraft.util.MovingObjectPosition;
 import net.minecraft.util.Vec3;
 import org.lwjgl.input.Keyboard;
-import org.lwjgl.input.Mouse;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -456,12 +456,8 @@ public class Aimbot extends Module {
     }
 
     private boolean isAttackHeld() {
-        int key = mc.gameSettings.keyBindAttack.getKeyCode();
-        try {
-            return key < 0 ? Mouse.isCreated() && Mouse.isButtonDown(key + 100) : Keyboard.isKeyDown(key);
-        } catch (Throwable ignored) {
-            return false;
-        }
+        return mc.gameSettings != null
+                && KeyBindUtil.isBindingDown(mc.gameSettings.keyBindAttack);
     }
 
     private void resetTarget() {
