@@ -218,6 +218,26 @@ public class KillAura extends Module {
         this.blockingState = false;
     }
 
+    private void releaseAutoBlock(boolean sendPacket) {
+        YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+        if (sendPacket && mc.thePlayer != null && this.isPlayerBlocking()) {
+            this.stopBlock();
+        } else if (mc.thePlayer != null && this.blockAnimationActive) {
+            mc.thePlayer.stopUsingItem();
+        }
+        if (this.swapped && mc.thePlayer != null) {
+            PacketUtil.sendPacket(new C09PacketHeldItemChange(mc.thePlayer.inventory.currentItem));
+        }
+        this.blockingState = false;
+        this.isBlocking = false;
+        this.fakeBlockState = false;
+        this.swapped = false;
+        this.postBlock = false;
+        this.postSwap = false;
+        this.blockTick = 0;
+        this.clearBlockAnimationState();
+    }
+
     private void interactAttack(float yaw, float pitch) {
         if (this.attackTarget != null) {
             MovingObjectPosition mop = RotationUtil.rayTrace(this.attackTarget.getBox(), yaw, pitch, 8.0);
@@ -273,6 +293,29 @@ public class KillAura extends Module {
         this.blockAnimationSlot = -1;
     }
 
+    private void resetCombatState() {
+        this.releaseAutoBlock(true);
+        this.clearRotations();
+        this.attackDelayMS = 0L;
+        this.setAttackTarget(null);
+    }
+
+    private void setAttackTarget(AttackData nextTarget) {
+        this.attackTarget = nextTarget;
+        target = nextTarget == null ? null : nextTarget.getEntity();
+    }
+
+    private void clearRotations() {
+        VisualRotationState.clearSource("KillAura");
+        RotationDebug.setSourceEnabled("KillAura", false);
+        if (mc.thePlayer != null && !VisualRotationState.isActived()) {
+            mc.thePlayer.prevRotationYawHead = mc.thePlayer.rotationYawHead;
+            mc.thePlayer.rotationYawHead = mc.thePlayer.rotationYaw;
+            mc.thePlayer.prevRenderYawOffset = mc.thePlayer.renderYawOffset;
+            mc.thePlayer.renderYawOffset = mc.thePlayer.rotationYaw;
+        }
+    }
+
     private void resetBlockItemRenderer() {
         try {
             if (mc.entityRenderer != null && mc.entityRenderer.itemRenderer != null) {
@@ -325,7 +368,8 @@ public class KillAura extends Module {
         if (!ItemUtil.isHoldingSword()) {
             return false;
         } else {
-            return !this.autoBlockRequirePress.getValue() || PlayerUtil.isUsingItem();
+            return this.autoBlock.getValue() != 0
+                    && (!this.autoBlockRequirePress.getValue() || PlayerUtil.isUsingItem());
         }
     }
 
@@ -448,22 +492,33 @@ public class KillAura extends Module {
 
     @EventTarget(Priority.LOW)
     public void onUpdate(UpdateEvent event) {
-        if (this.isEnabled() && event.getType() == EventType.PRE) {
+        if (!this.isEnabled()) {
+            return;
+        }
+        if (mc.thePlayer == null || mc.theWorld == null) {
+            this.resetCombatState();
+            return;
+        }
+        if (event.getType() == EventType.PRE) {
             RotationDebug.setSourceEnabled("KillAura", this.rotationDebug.getValue());
             if (this.attackDelayMS > 0L) {
                 this.attackDelayMS -= 50L;
             }
+            if (this.attackTarget != null
+                    && (!this.isValidTarget(this.attackTarget.getEntity())
+                    || !this.isBoxInSwingRange(this.attackTarget.getBox())
+                    || !this.isBoxInAttackRange(this.attackTarget.getBox()))) {
+                this.releaseAutoBlock(true);
+                this.clearRotations();
+                this.setAttackTarget(null);
+            }
             boolean attack = this.attackTarget != null && this.canAttack();
             boolean block = attack && this.canAutoBlock();
             if (!block) {
-                YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
-                this.isBlocking = false;
-                this.fakeBlockState = false;
-                this.blockTick = 0;
-                this.clearBlockAnimationState();
+                this.releaseAutoBlock(this.isPlayerBlocking());
             }
-            if (!attack && this.shouldPublishVisualRotation()) {
-                this.publishVisualRotation(event);
+            if (!attack) {
+                this.clearRotations();
             }
             if (attack) {
                 boolean swap = false;
@@ -727,7 +782,7 @@ public class KillAura extends Module {
                 }
             }
         }
-        if (event.getType() == EventType.POST && this.isEnabled()){
+        if (event.getType() == EventType.POST){
             if (postSwap){
                 int randomSlot = new Random().nextInt(9);
                 while (randomSlot == mc.thePlayer.inventory.currentItem) {
@@ -793,6 +848,10 @@ public class KillAura extends Module {
     @EventTarget
     public void onTick(TickEvent event) {
         if (this.isEnabled()) {
+            if (mc.thePlayer == null || mc.theWorld == null) {
+                this.resetCombatState();
+                return;
+            }
             switch (event.getType()) {
                 case PRE:
                     if (this.attackTarget == null
@@ -810,7 +869,9 @@ public class KillAura extends Module {
                             }
                         }
                         if (targets.isEmpty()) {
-                            this.attackTarget = null;
+                            this.releaseAutoBlock(true);
+                            this.clearRotations();
+                            this.setAttackTarget(null);
                         } else {
                             if (targets.stream().anyMatch(this::isInSwingRange)) {
                                 targets.removeIf(entityLivingBase -> !this.isInSwingRange(entityLivingBase));
@@ -849,11 +910,11 @@ public class KillAura extends Module {
                             if (this.mode.getValue() == 0 || this.switchTick >= targets.size()) {
                                 this.switchTick = 0;
                             }
-                            this.attackTarget = new AttackData(targets.get(this.switchTick));
+                            this.setAttackTarget(new AttackData(targets.get(this.switchTick)));
                         }
                     }
                     if (this.attackTarget != null) {
-                        this.attackTarget = new AttackData(this.attackTarget.getEntity());
+                        this.setAttackTarget(new AttackData(this.attackTarget.getEntity()));
                     }
                     break;
                 case POST:
@@ -864,7 +925,7 @@ public class KillAura extends Module {
 
     @EventTarget(Priority.LOWEST)
     public void onPacket(PacketEvent event) {
-        if (this.isEnabled() && !event.isCancelled()) {
+        if (this.isEnabled() && !event.isCancelled() && mc.thePlayer != null) {
             if (event.getPacket() instanceof C07PacketPlayerDigging) {
                 C07PacketPlayerDigging packet = (C07PacketPlayerDigging) event.getPacket();
                 if (packet.getStatus() == C07PacketPlayerDigging.Action.RELEASE_USE_ITEM) {
@@ -884,7 +945,7 @@ public class KillAura extends Module {
 
     @EventTarget
     public void onMove(MoveInputEvent event) {
-        if (this.isEnabled()) {
+        if (this.isEnabled() && mc.thePlayer != null) {
             if (this.moveFix.getValue() == 1
                     && this.rotations.getValue() != 3
                     && RotationState.isActived()
@@ -1040,7 +1101,7 @@ public class KillAura extends Module {
 
     @Override
     public void onEnabled() {
-        this.attackTarget = null;
+        this.setAttackTarget(null);
         this.switchTick = 0;
         this.hitRegistered = false;
         this.attackDelayMS = 0L;
@@ -1050,16 +1111,11 @@ public class KillAura extends Module {
 
     @Override
     public void onDisabled() {
-        VisualRotationState.clearSource("KillAura");
-        RotationDebug.setSourceEnabled("KillAura", false);
-        YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+        this.clearRotations();
         if (this.blockAnimationActive && mc.thePlayer != null) {
             mc.thePlayer.stopUsingItem();
         }
-        this.blockingState = false;
-        this.isBlocking = false;
-        this.fakeBlockState = false;
-        this.clearBlockAnimationState();
+        this.resetCombatState();
     }
 
     @Override

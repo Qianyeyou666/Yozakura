@@ -128,6 +128,7 @@ public class ModuleManager {
         addModule("TargetESP", new ModuleFactory() { public Module create() { return new TargetESP(); } });
         addModule("KillEffect", new ModuleFactory() { public Module create() { return new KillEffect(); } });
         addModule("KeyboardDisplay", new ModuleFactory() { public Module create() { return new KeyboardDisplay(); } });
+//        addModule("MusicPlayer", new ModuleFactory() { public Module create() { return new MusicPlayer(); } });
         addModule("FullBright", new ModuleFactory() { public Module create() { return new FullBright(); } });
         addModule("AutoTools", new ModuleFactory() { public Module create() { return new AutoTools(); } });
         addModule("InventoryManager", new ModuleFactory() { public Module create() { return new InventoryManager(); } });

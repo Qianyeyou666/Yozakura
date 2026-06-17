@@ -6,6 +6,7 @@ import gq.yozakura.module.Module;
 import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.module.render.ClickGUI;
 import gq.yozakura.ui.click.material.MaterialClickGui;
+import gq.yozakura.ui.click.web.WebClickGuiService;
 import gq.yozakura.util.color.ColorUtils;
 import gq.yozakura.util.minecraft.Helper;
 import gq.yozakura.command.Bind;
@@ -104,7 +105,12 @@ public class Client {
                 Helper.sendMessageWithoutPrefix("Yozakura Load done! Press RSHIFT open ClickGui, Press H Open HUD");
             }
         } else {
-            Display.setTitle(Display.getTitle()+" | Client Load Succeeded");
+            mc.addScheduledTask(new Runnable() {
+                @Override
+                public void run() {
+                    Display.setTitle(Display.getTitle() + " | Client Load Succeeded");
+                }
+            });
         }
     }
 
@@ -188,6 +194,7 @@ public class Client {
             instance.fileManager.setAutoSaveSuspended(false);
             MinecraftForge.EVENT_BUS.unregister(instance);
             FMLCommonHandler.instance().bus().unregister(instance);
+            WebClickGuiService.stop();
             instance=null;
         }
     }

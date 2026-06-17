@@ -50,6 +50,11 @@ configurations {
     implementation.extendsFrom(shade)
 }
 
+dependencies {
+    shade 'javazoom:jlayer:1.0.1'
+    shade 'com.google.zxing:core:3.5.3'
+}
+
 unimined.minecraft {
     version project.minecraft_version
 
@@ -92,6 +97,13 @@ processResources {
 }
 
 jar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from {
+        configurations.shade.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    exclude 'META-INF/*.SF'
+    exclude 'META-INF/*.DSA'
+    exclude 'META-INF/*.RSA'
     manifest {
         attributes(
             'Manifest-Version': '1.0',
