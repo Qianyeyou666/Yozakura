@@ -2,6 +2,7 @@ package gq.yozakura.module.render;
 
 import gq.yozakura.ui.click.material.MaterialClickGui;
 import gq.yozakura.ui.click.sakura.SakuraClickGui;
+import gq.yozakura.ui.click.web.WebClickGuiService;
 import gq.yozakura.ui.click.yozakura.YozakuraClickGui;
 import org.lwjgl.input.Keyboard;
 
@@ -15,7 +16,8 @@ public class ClickGUI extends Module {
 	public enum GuiStyle {
 		MATERIAL,
 		YOZAKURA,
-		SAKURA
+		SAKURA,
+		WEB
 	}
 
 	public static final Mode<GuiStyle> guiStyle = new Mode<GuiStyle>("Style", "Style", GuiStyle.values(), GuiStyle.MATERIAL);
@@ -37,6 +39,7 @@ public class ClickGUI extends Module {
 	public static final Numbers<Double> userPanelOffsetY = new Numbers<Double>("User Panel Y", "UserPY", 0.0, -600.0, 600.0, 1.0);
 	public static final Numbers<Double> clickGuiAlpha = new Numbers<Double>("Alpha", "Alpha", 1.0, 0.3, 1.0, 0.05);
 	public static final Option<Boolean> glassBackground = new Option<Boolean>("Glass", "Glass", true);
+	public static final Numbers<Double> webPort = new Numbers<Double>("Web Port", "WebPort", 18989.0, 1024.0, 65535.0, 1.0);
 
 	public ClickGUI() {
 		super("ClickGUI", Keyboard.KEY_RSHIFT, ModuleType.Render,"Open ClickGui");
@@ -45,7 +48,7 @@ public class ClickGUI extends Module {
 				sideSummaryOffsetX, sideSummaryOffsetY, sideDesignOffsetX, sideDesignOffsetY,
 				moduleOffsetX, moduleOffsetY, detailOffsetX, detailOffsetY,
 				sideOffsetX, sideOffsetY, userPanelOffsetX, userPanelOffsetY,
-				clickGuiAlpha, glassBackground);
+				clickGuiAlpha, glassBackground, webPort);
 		// TODO Auto-generated constructor stub
 	}
 
@@ -54,6 +57,8 @@ public class ClickGUI extends Module {
 			mc.displayGuiScreen(new SakuraClickGui());
 		} else if (guiStyle.getValue() == GuiStyle.YOZAKURA) {
 			mc.displayGuiScreen(new YozakuraClickGui());
+		} else if (guiStyle.getValue() == GuiStyle.WEB) {
+			WebClickGuiService.open();
 		} else {
 			MaterialClickGui.warmResources();
 			mc.displayGuiScreen(new MaterialClickGui());
