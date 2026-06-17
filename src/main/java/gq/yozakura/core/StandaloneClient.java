@@ -1,6 +1,7 @@
 package gq.yozakura.core;
 
 import gq.yozakura.auth.YozakuraAuthGate;
+import gq.yozakura.auth.token.TokenAuthStandaloneBridge;
 import gq.yozakura.bridge.StandaloneEventBridge;
 import gq.yozakura.manager.BridgeDebug;
 import gq.yozakura.manager.ModuleManager;
@@ -23,6 +24,7 @@ public final class StandaloneClient {
     private static final Minecraft mc = Minecraft.getMinecraft();
     private static volatile boolean state;
     private final StandaloneEventBridge bridge = new StandaloneEventBridge();
+    private final TokenAuthStandaloneBridge tokenAuthBridge = new TokenAuthStandaloneBridge();
     private final AtomicBoolean tickQueued = new AtomicBoolean();
     private final Set<Integer> pressedKeys = new HashSet<Integer>();
     private final String instanceId = Long.toHexString(System.nanoTime());
@@ -183,6 +185,7 @@ public final class StandaloneClient {
                 skippedPlayerTicks++;
             }
             BridgeDebug.logTick("standalone", "PUMP_TICK", playerTick, skippedPlayerTicks);
+            tokenAuthBridge.tick();
             handleKeys();
             bridge.tick(playerTick);
             if (playerTick) {

@@ -16,6 +16,7 @@ import gq.yozakura.command.WaterMark;
 import gq.yozakura.engine.font.FontLoaders;
 import gq.yozakura.bridge.YozakuraEventBridge;
 import gq.yozakura.auth.YozakuraAuthGate;
+import gq.yozakura.auth.token.TokenAuthGuiHandler;
 import gq.yozakura.ui.overlay.InjectionSuccessAnimation;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.play.client.C03PacketPlayer;
@@ -63,6 +64,7 @@ public class Client {
     public static boolean state = false;
     private static boolean shutdownHookRegistered;
     private boolean materialClickGuiResourcesWarmed;
+    private TokenAuthGuiHandler tokenAuthGuiHandler;
     public static Random rand=new Random();
     public final FileManager fileManager = new FileManager();
     public static ModuleManager moduleManager = new ModuleManager();
@@ -90,6 +92,8 @@ public class Client {
         }
         state = true;
         MinecraftForge.EVENT_BUS.register(this);
+        tokenAuthGuiHandler = new TokenAuthGuiHandler();
+        MinecraftForge.EVENT_BUS.register(tokenAuthGuiHandler);
         FMLCommonHandler.instance().bus().register(this);
         YozakuraEventBridge.init();
         instance = this;
@@ -192,6 +196,10 @@ public class Client {
             instance.fileManager.setAutoSaveSuspended(true);
             ModuleManager.disableAll(false);
             instance.fileManager.setAutoSaveSuspended(false);
+            if (instance.tokenAuthGuiHandler != null) {
+                MinecraftForge.EVENT_BUS.unregister(instance.tokenAuthGuiHandler);
+                instance.tokenAuthGuiHandler = null;
+            }
             MinecraftForge.EVENT_BUS.unregister(instance);
             FMLCommonHandler.instance().bus().unregister(instance);
             WebClickGuiService.stop();
