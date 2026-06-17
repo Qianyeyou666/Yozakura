@@ -60,6 +60,8 @@ struct AppState {
     DWORD started = 0;
     DWORD expandStarted = 0;
     int selectedVersion = 0;
+    float versionScroll = 0.0f;
+    float versionScrollTarget = 0.0f;
     float stageAlpha = 0.0f;
     float contentAlpha = 0.0f;
     float loadingAlpha = 0.0f;
@@ -279,11 +281,14 @@ struct FindWindowContext {
 enum TargetProfile {
     TARGET_FORGE = 0,
     TARGET_VANILLA = 1,
-    TARGET_LUNAR = 2
+    TARGET_LUNAR = 2,
+    TARGET_FORGE_1201 = 3
 };
 
 const wchar_t* targetProfileNameW(int profile) {
     switch (profile) {
+        case TARGET_FORGE_1201:
+            return L"Forge 1.20.1";
         case TARGET_VANILLA:
             return L"Vanilla";
         case TARGET_LUNAR:
@@ -296,6 +301,8 @@ const wchar_t* targetProfileNameW(int profile) {
 
 const char* targetProfileNameA(int profile) {
     switch (profile) {
+        case TARGET_FORGE_1201:
+            return "Forge 1.20.1";
         case TARGET_VANILLA:
             return "Vanilla";
         case TARGET_LUNAR:
@@ -307,7 +314,9 @@ const char* targetProfileNameA(int profile) {
 }
 
 int selectedTargetProfile() {
-    if (g_app.selectedVersion == TARGET_VANILLA || g_app.selectedVersion == TARGET_LUNAR) {
+    if (g_app.selectedVersion == TARGET_VANILLA
+            || g_app.selectedVersion == TARGET_LUNAR
+            || g_app.selectedVersion == TARGET_FORGE_1201) {
         return g_app.selectedVersion;
     }
     return TARGET_FORGE;
@@ -417,12 +426,18 @@ int minecraftTargetScore(int profile, const wchar_t* titleRaw, const wchar_t* co
     }
 
     bool titleMinecraft = containsText(title, L"minecraft");
-    bool titleVersion = containsText(title, L"1.8.9");
-    bool commandVersion = containsText(commandLine, L"--version 1.8.9")
+    bool titleVersion189 = containsText(title, L"1.8.9");
+    bool commandVersion189 = containsText(commandLine, L"--version 1.8.9")
         || containsText(commandLine, L"versions\\1.8.9")
         || containsText(commandLine, L"versions/1.8.9")
         || containsText(commandLine, L" 1.8.9");
-    bool version189 = titleVersion || commandVersion;
+    bool version189 = titleVersion189 || commandVersion189;
+    bool titleVersion1201 = containsText(title, L"1.20.1");
+    bool commandVersion1201 = containsText(commandLine, L"--version 1.20.1")
+        || containsText(commandLine, L"versions\\1.20.1")
+        || containsText(commandLine, L"versions/1.20.1")
+        || containsText(commandLine, L" 1.20.1");
+    bool version1201 = titleVersion1201 || commandVersion1201;
     bool lunar = containsAny(title, commandLine, L"lunar")
         || containsText(commandLine, L".lunarclient")
         || containsText(commandLine, L"moonsworth")
@@ -433,7 +448,10 @@ int minecraftTargetScore(int profile, const wchar_t* titleRaw, const wchar_t* co
         || containsText(commandLine, L"net.minecraftforge")
         || containsText(commandLine, L"--tweakclass cpw.mods.fml")
         || containsText(commandLine, L"--tweakclass net.minecraftforge")
-        || containsText(commandLine, L"fmltweaker");
+        || containsText(commandLine, L"fmltweaker")
+        || containsText(commandLine, L"cpw.mods.bootstraplauncher")
+        || containsText(commandLine, L"modlauncher")
+        || containsText(commandLine, L"forgeclient");
     bool vanillaMain = containsText(commandLine, L"net.minecraft.client.main.main");
 
     if (profile == TARGET_LUNAR) {
@@ -468,6 +486,19 @@ int minecraftTargetScore(int profile, const wchar_t* titleRaw, const wchar_t* co
         }
         if (titleMinecraft && commandLine.empty()) {
             return 5;
+        }
+        return 1000;
+    }
+
+    if (profile == TARGET_FORGE_1201) {
+        if (forge && version1201) {
+            return 0;
+        }
+        if (forge && containsText(commandLine, L"1.20.1")) {
+            return 1;
+        }
+        if (titleMinecraft && version1201 && !vanillaMain) {
+            return 4;
         }
         return 1000;
     }
@@ -1130,6 +1161,16 @@ void easing(float& value, float target, float speed) {
     }
 }
 
+float clampFloat(float value, float minValue, float maxValue) {
+    if (value < minValue) {
+        return minValue;
+    }
+    if (value > maxValue) {
+        return maxValue;
+    }
+    return value;
+}
+
 void spinner(ImDrawList* draw, ImVec2 center, float radius, ImU32 color) {
     float t = static_cast<float>(GetTickCount() % 5000) / 1000.0f;
     for (int i = 0; i < 12; ++i) {
@@ -1604,7 +1645,9 @@ bool versionCard(const char* title, const char* meta, bool selected, bool enable
     ImGui::BeginGroup();
     ImVec2 p = ImGui::GetCursorScreenPos();
     ImDrawList* draw = ImGui::GetWindowDrawList();
-    ImGui::InvisibleButton(title, size);
+    char hitId[64];
+    sprintf_s(hitId, "version_card_hit_%d_%d", static_cast<int>(p.x), static_cast<int>(p.y));
+    ImGui::InvisibleButton(hitId, size);
     bool clickedCard = ImGui::IsItemClicked() && enabled;
     bool hovered = ImGui::IsItemHovered() && enabled;
     float a = enabled ? 1.0f : 0.56f;
@@ -1831,18 +1874,43 @@ void drawMainUi(HWND hwnd) {
         int iconType;
         bool enabled;
     };
-    VersionCardData cards[3] = {
+    VersionCardData cards[4] = {
         {"1.8.9", "Forge", "FML target", 0, true},
         {"1.8.9", "Vanilla", "Clean target", 1, true},
         {"1.8.9", "Lunar", "Client target", 2, true},
+        {"1.20.1", "Forge", "Modern target", 0, true},
     };
-    ImVec2 cardSize(154.0f, 128.0f);
+    ImVec2 cardSize(136.0f, 128.0f);
     ImVec2 cardsStart(contentMin.x, contentMin.y + 82.0f);
-    for (int i = 0; i < 3; ++i) {
-        ImVec2 cardMin = cardsStart + ImVec2(i * (cardSize.x + 14.0f), 0.0f);
+    ImVec2 cardsClipMin(contentMin.x - 10.0f, contentMin.y + 74.0f);
+    ImVec2 cardsClipMax(contentMax.x + 10.0f, shellMax.y - 92.0f);
+    float colGap = 10.0f;
+    float rowGap = 16.0f;
+    float contentHeight = cardSize.y * 2.0f + rowGap;
+    float viewportHeight = cardsClipMax.y - cardsClipMin.y;
+    float maxScroll = contentHeight > viewportHeight ? contentHeight - viewportHeight : 0.0f;
+    bool versionAreaHovered = ImGui::IsMouseHoveringRect(cardsClipMin, cardsClipMax, false);
+    if (versionAreaHovered && io.MouseWheel != 0.0f) {
+        g_app.versionScrollTarget -= io.MouseWheel * 42.0f;
+        g_app.versionScrollTarget = clampFloat(g_app.versionScrollTarget, 0.0f, maxScroll);
+    }
+    g_app.versionScrollTarget = clampFloat(g_app.versionScrollTarget, 0.0f, maxScroll);
+    easing(g_app.versionScroll, g_app.versionScrollTarget, 12.0f);
+    ImGui::PushClipRect(cardsClipMin, cardsClipMax, true);
+    for (int i = 0; i < 4; ++i) {
+        int row = i == TARGET_FORGE_1201 ? 1 : 0;
+        int col = i == TARGET_FORGE_1201 ? 0 : i;
+        ImVec2 cardMin = cardsStart + ImVec2(col * (cardSize.x + colGap), row * (cardSize.y + rowGap) - g_app.versionScroll);
         ImVec2 cardMax = cardMin + cardSize;
+        bool visible = cardMax.y > cardsClipMin.y && cardMin.y < cardsClipMax.y
+            && cardMax.x > cardsClipMin.x && cardMin.x < cardsClipMax.x;
+        if (!visible) {
+            continue;
+        }
         bool selected = g_app.selectedVersion == i;
-        bool clicked = invisibleHit(cards[i].title, cardMin, cardSize);
+        char cardId[32];
+        sprintf_s(cardId, "version_card_%d", i);
+        bool clicked = invisibleHit(cardId, cardMin, cardSize);
         bool hovered = ImGui::IsItemHovered() && cards[i].enabled;
         if (clicked && cards[i].enabled) {
             g_app.selectedVersion = i;
@@ -1883,6 +1951,18 @@ void drawMainUi(HWND hwnd) {
         if (!cards[i].enabled) {
             draw->AddRectFilled(cardMin, cardMax, colAlpha(12, 10, 18, 0.16f * ca), 14.0f);
         }
+    }
+    ImGui::PopClipRect();
+    if (maxScroll > 0.5f) {
+        float trackX = cardsClipMax.x - 6.0f;
+        float trackY = cardsClipMin.y + 2.0f;
+        float trackH = viewportHeight - 4.0f;
+        float thumbH = clampFloat(trackH * viewportHeight / contentHeight, 28.0f, trackH);
+        float thumbY = trackY + (trackH - thumbH) * (g_app.versionScroll / maxScroll);
+        draw->AddRectFilled(ImVec2(trackX, trackY), ImVec2(trackX + 3.0f, trackY + trackH),
+                            colAlpha(255, 255, 255, 0.045f * ca), 2.0f);
+        draw->AddRectFilled(ImVec2(trackX, thumbY), ImVec2(trackX + 3.0f, thumbY + thumbH),
+                            colAlpha(232, 158, 255, 0.42f * ca), 2.0f);
     }
 
     ImVec2 launchMin(contentMin.x + 74.0f, shellMax.y - 76.0f);

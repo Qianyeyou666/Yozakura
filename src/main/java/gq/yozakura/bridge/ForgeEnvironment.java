@@ -5,6 +5,8 @@ import java.lang.reflect.Method;
 
 public final class ForgeEnvironment {
     private static Boolean forgeAvailable;
+    private static Boolean legacyForgeAvailable;
+    private static Boolean modernForgeAvailable;
 
     private ForgeEnvironment() {
     }
@@ -14,8 +16,26 @@ public final class ForgeEnvironment {
             return forgeAvailable.booleanValue();
         }
         forgeAvailable = Boolean.valueOf(classExists("net.minecraftforge.common.MinecraftForge")
-                && classExists("net.minecraftforge.fml.common.FMLCommonHandler"));
+                && (isLegacyForgeAvailable() || isModernForgeAvailable()));
         return forgeAvailable.booleanValue();
+    }
+
+    public static boolean isLegacyForgeAvailable() {
+        if (legacyForgeAvailable != null) {
+            return legacyForgeAvailable.booleanValue();
+        }
+        legacyForgeAvailable = Boolean.valueOf(classExists("net.minecraftforge.fml.common.FMLCommonHandler"));
+        return legacyForgeAvailable.booleanValue();
+    }
+
+    public static boolean isModernForgeAvailable() {
+        if (modernForgeAvailable != null) {
+            return modernForgeAvailable.booleanValue();
+        }
+        modernForgeAvailable = Boolean.valueOf(classExists("net.minecraftforge.fml.ModList")
+                || classExists("net.minecraftforge.fml.loading.FMLLoader")
+                || classExists("net.minecraftforge.eventbus.api.IEventBus"));
+        return modernForgeAvailable.booleanValue();
     }
 
     public static boolean register(Object listener) {
@@ -24,7 +44,9 @@ public final class ForgeEnvironment {
         }
         boolean registered = false;
         registered |= callEventBus("net.minecraftforge.common.MinecraftForge", "EVENT_BUS", null, "register", listener);
-        registered |= callFmlBus("register", listener);
+        if (isLegacyForgeAvailable()) {
+            registered |= callFmlBus("register", listener);
+        }
         return registered;
     }
 
@@ -34,7 +56,9 @@ public final class ForgeEnvironment {
         }
         boolean unregistered = false;
         unregistered |= callEventBus("net.minecraftforge.common.MinecraftForge", "EVENT_BUS", null, "unregister", listener);
-        unregistered |= callFmlBus("unregister", listener);
+        if (isLegacyForgeAvailable()) {
+            unregistered |= callFmlBus("unregister", listener);
+        }
         return unregistered;
     }
 

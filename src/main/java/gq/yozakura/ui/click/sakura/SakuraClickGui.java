@@ -36,6 +36,12 @@ public final class SakuraClickGui extends GuiScreen {
     private static final int SAKURA_STRONG = 0xFFFF80B3;
     private static final int GLASS = 0xFF08080D;
     private static final int GLASS_SOFT = 0xFF160F15;
+    private static final float[][] SAKURA_PETAL_POINTS = new float[][]{
+            {0.00f, -0.18f}, {-0.30f, -0.07f}, {-0.64f, 0.25f}, {-0.66f, 0.62f},
+            {-0.36f, 0.94f}, {-0.10f, 0.82f}, {0.00f, 0.74f}, {0.10f, 0.82f},
+            {0.36f, 0.94f}, {0.66f, 0.62f}, {0.64f, 0.25f}, {0.30f, -0.07f},
+            {0.00f, -0.18f}
+    };
     private static final LiquidGlassSettings GLASS_SETTINGS = LiquidGlassSettings.defaults()
             .withBlurRadius(18.0f)
             .withBlurDownscale(0.92f)
@@ -1029,15 +1035,10 @@ public final class SakuraClickGui extends GuiScreen {
     private void drawPetal(float size, float alpha) {
         float width = size * 0.58f;
         float length = size * 1.12f;
-        float[][] points = new float[][]{
-                {0.00f, -0.18f}, {-0.30f, -0.07f}, {-0.64f, 0.25f}, {-0.66f, 0.62f},
-                {-0.36f, 0.94f}, {-0.10f, 0.82f}, {0.00f, 0.74f}, {0.10f, 0.82f},
-                {0.36f, 0.94f}, {0.66f, 0.62f}, {0.64f, 0.25f}, {0.30f, -0.07f}, {0.00f, -0.18f}
-        };
         GL11.glBegin(GL11.GL_TRIANGLE_FAN);
         glColor(0xFFFFEAF3, alpha * 0.96f * guiAlpha);
         GL11.glVertex2f(0.0f, length * 0.36f);
-        for (float[] point : points) {
+        for (float[] point : SAKURA_PETAL_POINTS) {
             glColor(SAKURA, alpha * 0.70f * guiAlpha);
             GL11.glVertex2f(point[0] * width, point[1] * length);
         }

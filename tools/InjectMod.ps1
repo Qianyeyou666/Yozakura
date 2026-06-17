@@ -1,7 +1,7 @@
 param(
     [string]$Dll = "build\libs\YozakuraLoader-x64.dll",
     [int]$ProcessId = 0,
-    [ValidateSet("Auto", "Forge", "Vanilla", "Lunar")]
+    [ValidateSet("Auto", "Forge", "Forge1201", "Vanilla", "Lunar")]
     [string]$Target = "Auto",
     [switch]$DryRun
 )
@@ -36,11 +36,16 @@ function Get-MinecraftTargetScore($Process, [string]$Target) {
     }
 
     $titleMinecraft = Test-Contains $title "Minecraft"
-    $titleVersion = Test-Contains $title "1.8.9"
-    $commandVersion = (Test-Contains $cmd "--version 1.8.9") -or
+    $titleVersion189 = Test-Contains $title "1.8.9"
+    $commandVersion189 = (Test-Contains $cmd "--version 1.8.9") -or
         (Test-Contains $cmd "versions\1.8.9") -or
         (Test-Contains $cmd "versions/1.8.9")
-    $version189 = $titleVersion -or $commandVersion
+    $version189 = $titleVersion189 -or $commandVersion189
+    $titleVersion1201 = Test-Contains $title "1.20.1"
+    $commandVersion1201 = (Test-Contains $cmd "--version 1.20.1") -or
+        (Test-Contains $cmd "versions\1.20.1") -or
+        (Test-Contains $cmd "versions/1.20.1")
+    $version1201 = $titleVersion1201 -or $commandVersion1201
     $lunar = (Test-Contains $title "Lunar") -or
         (Test-Contains $cmd "Lunar") -or
         (Test-Contains $cmd ".lunarclient") -or
@@ -52,7 +57,10 @@ function Get-MinecraftTargetScore($Process, [string]$Target) {
         (Test-Contains $cmd "net.minecraftforge") -or
         (Test-Contains $cmd "--tweakClass cpw.mods.fml") -or
         (Test-Contains $cmd "--tweakClass net.minecraftforge") -or
-        (Test-Contains $cmd "FMLTweaker")
+        (Test-Contains $cmd "FMLTweaker") -or
+        (Test-Contains $cmd "cpw.mods.bootstraplauncher") -or
+        (Test-Contains $cmd "modlauncher") -or
+        (Test-Contains $cmd "forgeclient")
     $vanillaMain = Test-Contains $cmd "net.minecraft.client.main.Main"
 
     switch ($Target) {
@@ -76,6 +84,13 @@ function Get-MinecraftTargetScore($Process, [string]$Target) {
             if ($forge) { return 1 }
             if ($titleMinecraft -and $version189 -and !$vanillaMain) { return 4 }
             if ($titleMinecraft -and !$cmd) { return 6 }
+            return 1000
+        }
+        "Forge1201" {
+            if ($lunar -or $badlion) { return 1000 }
+            if ($forge -and $version1201) { return 0 }
+            if ($forge -and (Test-Contains $cmd "1.20.1")) { return 1 }
+            if ($titleMinecraft -and $version1201 -and !$vanillaMain) { return 4 }
             return 1000
         }
         default {

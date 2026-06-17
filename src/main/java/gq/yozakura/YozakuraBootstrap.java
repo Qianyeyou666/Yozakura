@@ -20,12 +20,22 @@ public final class YozakuraBootstrap {
         try {
             if (ForgeEnvironment.isForgeAvailable()) {
                 log("Detected Forge environment");
-                if (isForgeClientRunning()) {
-                    log("Forge client is already running");
-                    notifyRunningClient("gq.yozakura.core.Client");
-                    return;
+                if (ForgeEnvironment.isModernForgeAvailable() && !ForgeEnvironment.isLegacyForgeAvailable()) {
+                    log("Detected modern Forge environment");
+                    if (isClientRunning("gq.yozakura.core.ModernForgeClient", "isState")) {
+                        log("Modern Forge client is already running");
+                        notifyRunningClient("gq.yozakura.core.ModernForgeClient");
+                        return;
+                    }
+                    startClass("gq.yozakura.core.ModernForgeClient");
+                } else {
+                    if (isForgeClientRunning()) {
+                        log("Forge client is already running");
+                        notifyRunningClient("gq.yozakura.core.Client");
+                        return;
+                    }
+                    startClass("gq.yozakura.core.Client");
                 }
-                startClass("gq.yozakura.core.Client");
             } else if (isLunarClient()) {
                 log("Detected Lunar environment");
                 if (lunarStarted) {
@@ -102,9 +112,13 @@ public final class YozakuraBootstrap {
     }
 
     private static boolean isStandaloneRunning() {
+        return isClientRunning("gq.yozakura.core.StandaloneClient", "isState");
+    }
+
+    private static boolean isClientRunning(String className, String methodName) {
         try {
-            Class<?> clientClass = Class.forName("gq.yozakura.core.StandaloneClient", false, currentLoader());
-            return ((Boolean) clientClass.getMethod("isState").invoke(null)).booleanValue();
+            Class<?> clientClass = Class.forName(className, false, currentLoader());
+            return ((Boolean) clientClass.getMethod(methodName).invoke(null)).booleanValue();
         } catch (Throwable ignored) {
             return false;
         }

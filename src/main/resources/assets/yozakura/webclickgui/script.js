@@ -114,8 +114,8 @@
       if (module) {
         const next = !module.state;
         rememberScroll();
-        applyModuleState(module.name, next);
-        postJson("/api/module/toggle", { module: module.name, state: next });
+        applyModuleState(module.name, next, { render: false, animate: true });
+        postJson("/api/module/toggle", { module: module.name, state: next }, 260);
       }
     });
     els.closeDetailButton.addEventListener("click", closeDetail);
@@ -267,8 +267,8 @@
         if (action && action.getAttribute("data-action") === "toggle") {
           const next = !module.state;
           rememberScroll();
-          applyModuleState(module.name, next);
-          postJson("/api/module/toggle", { module: module.name, state: next });
+          applyModuleState(module.name, next, { render: false, animate: true });
+          postJson("/api/module/toggle", { module: module.name, state: next }, 260);
           return;
         }
         if (action && action.getAttribute("data-action") === "settings") {
@@ -484,15 +484,50 @@
     return findModule(state.selectedModule);
   }
 
-  function applyModuleState(name, enabled) {
+  function applyModuleState(name, enabled, options = {}) {
     const module = findModule(name);
     if (!module) {
       return;
     }
     module.state = !!enabled;
     state.lastStateText = "";
-    render();
+    if (options.render !== false) {
+      render();
+    } else {
+      syncModuleToggleElements(name, module.state, !!options.animate);
+    }
     restoreScroll();
+  }
+
+  function syncModuleToggleElements(name, enabled, animate) {
+    const card = els.moduleGrid.querySelector(`[data-module-card="${cssEscape(name)}"]`);
+    if (card) {
+      card.classList.toggle("enabled", enabled);
+      if (animate) {
+        restartClassAnimation(card, "state-changing");
+      }
+      const switchButton = card.querySelector("[data-action=\"toggle\"]");
+      if (switchButton) {
+        switchButton.classList.toggle("on", enabled);
+        switchButton.setAttribute("aria-pressed", String(enabled));
+        if (animate) {
+          restartClassAnimation(switchButton, "switch-pulse");
+        }
+      }
+    }
+    if (state.selectedModule === name) {
+      els.toggleButton.classList.toggle("on", enabled);
+      els.toggleButton.setAttribute("aria-pressed", String(enabled));
+      if (animate) {
+        restartClassAnimation(els.toggleButton, "switch-pulse");
+      }
+    }
+  }
+
+  function restartClassAnimation(element, className) {
+    element.classList.remove(className);
+    void element.offsetWidth;
+    element.classList.add(className);
   }
 
   function findModule(name) {
@@ -514,7 +549,7 @@
     });
   }
 
-  async function postJson(path, payload) {
+  async function postJson(path, payload, refreshDelay = 80) {
     try {
       await fetch(`${path}?token=${encodeURIComponent(TOKEN)}`, {
         method: "POST",
@@ -527,7 +562,7 @@
     } catch (error) {
       console.error(error);
     } finally {
-      setTimeout(refreshState, 80);
+      setTimeout(refreshState, refreshDelay);
     }
   }
 

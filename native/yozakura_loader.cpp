@@ -158,10 +158,14 @@ static jobject findClientThreadClassLoader(JNIEnv* env) {
     jmethodID loadClass = env->GetMethodID(classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
     const char* minecraftNames[] = {
         "net.minecraft.client.Minecraft",
+        "net.minecraftforge.common.MinecraftForge",
+        "cpw.mods.modlauncher.Launcher",
         "ave"
     };
     jstring minecraftName = env->NewStringUTF(minecraftNames[0]);
-    jstring obfuscatedMinecraftName = env->NewStringUTF(minecraftNames[1]);
+    jstring forgeName = env->NewStringUTF(minecraftNames[1]);
+    jstring modLauncherName = env->NewStringUTF(minecraftNames[2]);
+    jstring obfuscatedMinecraftName = env->NewStringUTF(minecraftNames[3]);
 
     jobject traces = env->CallStaticObjectMethod(threadClass, getAllStackTraces);
     jclass mapClass = env->FindClass("java/util/Map");
@@ -195,6 +199,14 @@ static jobject findClientThreadClassLoader(JNIEnv* env) {
 
         if (loader && !minecraftLoader) {
             jobject minecraftClass = env->CallObjectMethod(loader, loadClass, minecraftName);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                minecraftClass = env->CallObjectMethod(loader, loadClass, forgeName);
+            }
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                minecraftClass = env->CallObjectMethod(loader, loadClass, modLauncherName);
+            }
             if (env->ExceptionCheck()) {
                 env->ExceptionClear();
                 minecraftClass = env->CallObjectMethod(loader, loadClass, obfuscatedMinecraftName);
@@ -466,6 +478,10 @@ static DWORD WINAPI loaderThread(LPVOID param) {
                 entryLoader = loader;
             } else {
                 debug("failed to add Yozakura jar to Forge classloader");
+                entryLoader = createIsolatedClassLoader(env, loader, jarPath);
+                if (!entryLoader) {
+                    entryLoader = createChildClassLoader(env, loader, jarPath);
+                }
             }
         } else {
             entryLoader = createIsolatedClassLoader(env, loader, jarPath);

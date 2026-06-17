@@ -51,6 +51,12 @@ public class Scaffold extends Module {
     private static final int SAKURA_MUTED = 0xFFD9B7C8;
     private static final int SAKURA_GLASS = 0xFF09070C;
     private static final int SAKURA_BORDER = 0xFFFFC4DB;
+    private static final float[][] SAKURA_PETAL_POINTS = new float[][]{
+            {0.00F, -0.18F}, {-0.30F, -0.07F}, {-0.64F, 0.25F}, {-0.66F, 0.62F},
+            {-0.36F, 0.94F}, {-0.10F, 0.82F}, {0.00F, 0.74F}, {0.10F, 0.82F},
+            {0.36F, 0.94F}, {0.66F, 0.62F}, {0.64F, 0.25F}, {0.30F, -0.07F},
+            {0.00F, -0.18F}
+    };
     private static final LiquidGlassSettings BLOCK_COUNTER_GLASS = LiquidGlassSettings.defaults()
             .withBlurRadius(16.0f)
             .withBlurDownscale(0.90f)
@@ -1285,16 +1291,11 @@ public class Scaffold extends Module {
     private void drawSakuraPetal2D(float size, float alpha) {
         float width = size * 0.58F;
         float length = size * 1.12F;
-        float[][] points = new float[][]{
-                {0.00F, -0.18F}, {-0.30F, -0.07F}, {-0.64F, 0.25F}, {-0.66F, 0.62F},
-                {-0.36F, 0.94F}, {-0.10F, 0.82F}, {0.00F, 0.74F}, {0.10F, 0.82F},
-                {0.36F, 0.94F}, {0.66F, 0.62F}, {0.64F, 0.25F}, {0.30F, -0.07F}, {0.00F, -0.18F}
-        };
 
         GL11.glBegin(GL11.GL_TRIANGLE_FAN);
         glColor(0xFFFFEDF5, alpha * 0.94F);
         GL11.glVertex2f(0.0F, length * 0.36F);
-        for (float[] point : points) {
+        for (float[] point : SAKURA_PETAL_POINTS) {
             glColor(SAKURA, alpha * 0.72F);
             GL11.glVertex2f(point[0] * width, point[1] * length);
         }
@@ -1303,7 +1304,7 @@ public class Scaffold extends Module {
         GL11.glLineWidth(0.7F);
         GL11.glBegin(GL11.GL_LINE_STRIP);
         glColor(0xFFFFF8FB, alpha * 0.44F);
-        for (float[] point : points) {
+        for (float[] point : SAKURA_PETAL_POINTS) {
             GL11.glVertex2f(point[0] * width, point[1] * length);
         }
         GL11.glEnd();
