@@ -15,15 +15,16 @@ if not exist "native\yozakura_injector_ui.cpp" (
 
 if not exist "build\libs" mkdir "build\libs"
 if not exist "build\native" mkdir "build\native"
+if not exist "build\native\injector-ui" mkdir "build\native\injector-ui"
 
 call "%VS_BUILD%\vcvars64.bat" >nul
 if errorlevel 1 exit /b %errorlevel%
 
 echo Building YozakuraInjector.exe...
-cl /nologo /EHsc /std:c++17 /O2 /DUNICODE /D_UNICODE ^
+cl /nologo /EHsc /std:c++17 /O2 /GL /DUNICODE /D_UNICODE ^
   /I"third_party\imgui" ^
   /I"third_party\imgui\backends" ^
-  /Fo"build\native\\" ^
+  /Fo"build\native\injector-ui\\" ^
   "native\yozakura_injector_ui.cpp" ^
   "third_party\imgui\imgui.cpp" ^
   "third_party\imgui\imgui_draw.cpp" ^
@@ -31,7 +32,7 @@ cl /nologo /EHsc /std:c++17 /O2 /DUNICODE /D_UNICODE ^
   "third_party\imgui\imgui_widgets.cpp" ^
   "third_party\imgui\backends\imgui_impl_win32.cpp" ^
   "third_party\imgui\backends\imgui_impl_dx11.cpp" ^
-  /link /NOLOGO /SUBSYSTEM:WINDOWS /OUT:"build\libs\YozakuraInjector.exe" ^
+  /link /NOLOGO /LTCG /OPT:REF /OPT:ICF /SUBSYSTEM:WINDOWS /OUT:"build\libs\YozakuraInjector.exe" ^
   user32.lib gdi32.lib shlwapi.lib shell32.lib dwmapi.lib ole32.lib windowscodecs.lib d3d11.lib d3dcompiler.lib dxgi.lib
 
 if errorlevel 1 exit /b %errorlevel%

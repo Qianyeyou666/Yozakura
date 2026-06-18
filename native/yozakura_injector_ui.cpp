@@ -40,6 +40,8 @@ const int kBootWidth = 430;
 const int kBootHeight = 270;
 const int kWindowWidth = 940;
 const int kWindowHeight = 600;
+const int kBlurDownsample = 2;
+const DWORD kBlurUpdateIntervalMs = 66;
 
 enum UiState {
     STATE_BOOT,
@@ -68,6 +70,9 @@ struct AppState {
     float resultAlpha = 0.0f;
     DWORD injectStarted = 0;
     DWORD injectFinished = 0;
+    bool dragging = false;
+    POINT dragMouse = {};
+    POINT dragWindow = {};
     char status[512] = "Ready";
     wchar_t dllPath[MAX_PATH] = {};
 };
@@ -87,6 +92,7 @@ ID3D11Device* g_device = nullptr;
 ID3D11DeviceContext* g_context = nullptr;
 IDXGISwapChain* g_swapChain = nullptr;
 ID3D11RenderTargetView* g_renderTarget = nullptr;
+ID3D11ShaderResourceView* g_backBufferSrv = nullptr;
 ID3D11ShaderResourceView* g_logoTexture = nullptr;
 ImVec2 g_logoSize(0.0f, 0.0f);
 ID3D11ShaderResourceView* g_versionTextures[3] = {};
@@ -100,6 +106,7 @@ struct BlurConstants {
 struct BlurResources {
     int width = 0;
     int height = 0;
+    DWORD lastUpdate = 0;
     ID3D11Texture2D* textureA = nullptr;
     ID3D11Texture2D* textureB = nullptr;
     ID3D11RenderTargetView* rtvA = nullptr;
@@ -142,6 +149,27 @@ struct WindowCompositionAttributeData {
 
 using SetWindowCompositionAttributeFn = BOOL(WINAPI*)(HWND, WindowCompositionAttributeData*);
 
+void setGlassBackground(HWND hwnd, bool enabled) {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    SetWindowCompositionAttributeFn setComposition = user32
+        ? reinterpret_cast<SetWindowCompositionAttributeFn>(GetProcAddress(user32, "SetWindowCompositionAttribute"))
+        : nullptr;
+    if (setComposition) {
+        AccentPolicy accent = {};
+        accent.accentState = enabled ? ACCENT_ENABLE_ACRYLICBLURBEHIND : ACCENT_ENABLE_TRANSPARENTGRADIENT;
+        accent.accentFlags = enabled ? 2 : 0;
+        accent.gradientColor = enabled ? 0x990F0D0E : 0x00000000;
+        WindowCompositionAttributeData data = {};
+        data.attribute = WCA_ACCENT_POLICY;
+        data.data = &accent;
+        data.sizeOfData = sizeof(accent);
+        setComposition(hwnd, &data);
+    }
+
+    const DWORD backdropType = enabled ? 3 : 1;
+    DwmSetWindowAttribute(hwnd, 38, &backdropType, sizeof(backdropType));
+}
+
 void applyRoundedRegion(HWND hwnd, int width, int height) {
     HRGN region = CreateRoundRectRgn(0, 0, width + 1, height + 1, 32, 32);
     if (region && !SetWindowRgn(hwnd, region, TRUE)) {
@@ -150,30 +178,13 @@ void applyRoundedRegion(HWND hwnd, int width, int height) {
 }
 
 void enableGlassBackground(HWND hwnd) {
-    HMODULE user32 = GetModuleHandleW(L"user32.dll");
-    SetWindowCompositionAttributeFn setComposition = user32
-        ? reinterpret_cast<SetWindowCompositionAttributeFn>(GetProcAddress(user32, "SetWindowCompositionAttribute"))
-        : nullptr;
-    if (setComposition) {
-        AccentPolicy accent = {};
-        accent.accentState = ACCENT_ENABLE_ACRYLICBLURBEHIND;
-        accent.accentFlags = 2;
-        accent.gradientColor = 0x990F0D0E;
-        WindowCompositionAttributeData data = {};
-        data.attribute = WCA_ACCENT_POLICY;
-        data.data = &accent;
-        data.sizeOfData = sizeof(accent);
-        setComposition(hwnd, &data);
-    }
-
     const MARGINS margins = {-1, -1, -1, -1};
     DwmExtendFrameIntoClientArea(hwnd, &margins);
 
     const DWORD cornerPreference = 2;
     DwmSetWindowAttribute(hwnd, 33, &cornerPreference, sizeof(cornerPreference));
 
-    const DWORD backdropType = 3;
-    DwmSetWindowAttribute(hwnd, 38, &backdropType, sizeof(backdropType));
+    setGlassBackground(hwnd, true);
 }
 
 std::string wideToUtf8(const wchar_t* text) {
@@ -251,22 +262,16 @@ bool resolveDllPath(wchar_t* output, DWORD outputChars) {
 }
 
 bool isJavaProcess(DWORD pid) {
-    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (snap == INVALID_HANDLE_VALUE) {
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!process) {
         return true;
     }
-    PROCESSENTRY32W entry = {};
-    entry.dwSize = sizeof(entry);
-    bool ok = false;
-    if (Process32FirstW(snap, &entry)) {
-        do {
-            if (entry.th32ProcessID == pid) {
-                ok = _wcsicmp(entry.szExeFile, L"java.exe") == 0 || _wcsicmp(entry.szExeFile, L"javaw.exe") == 0;
-                break;
-            }
-        } while (Process32NextW(snap, &entry));
-    }
-    CloseHandle(snap);
+    wchar_t imagePath[MAX_PATH] = {};
+    DWORD imagePathChars = MAX_PATH;
+    bool ok = QueryFullProcessImageNameW(process, 0, imagePath, &imagePathChars)
+        && (_wcsicmp(PathFindFileNameW(imagePath), L"java.exe") == 0
+            || _wcsicmp(PathFindFileNameW(imagePath), L"javaw.exe") == 0);
+    CloseHandle(process);
     return ok;
 }
 
@@ -336,6 +341,53 @@ bool containsText(const std::wstring& text, const wchar_t* needle) {
 
 bool containsAny(const std::wstring& a, const std::wstring& b, const wchar_t* needle) {
     return containsText(a, needle) || containsText(b, needle);
+}
+
+bool isDragArea(HWND hwnd, LPARAM lParam) {
+    POINT p = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+    RECT client = {};
+    GetClientRect(hwnd, &client);
+    int closeLeft = (client.right - client.left) - 52;
+    return p.y >= 0 && p.y < 60 && p.x >= 0 && p.x < closeLeft;
+}
+
+void beginWindowDrag(HWND hwnd) {
+    g_app.dragging = true;
+    GetCursorPos(&g_app.dragMouse);
+    RECT window = {};
+    GetWindowRect(hwnd, &window);
+    g_app.dragWindow = {window.left, window.top};
+    SetCapture(hwnd);
+    setGlassBackground(hwnd, false);
+}
+
+void endWindowDrag(HWND hwnd, bool releaseCapture) {
+    if (!g_app.dragging) {
+        return;
+    }
+    g_app.dragging = false;
+    if (releaseCapture) {
+        ReleaseCapture();
+    }
+    setGlassBackground(hwnd, true);
+    g_blur.lastUpdate = 0;
+}
+
+void updateWindowDrag(HWND hwnd) {
+    if (!g_app.dragging) {
+        return;
+    }
+    POINT cursor = {};
+    GetCursorPos(&cursor);
+    int dx = cursor.x - g_app.dragMouse.x;
+    int dy = cursor.y - g_app.dragMouse.y;
+    SetWindowPos(hwnd,
+                 nullptr,
+                 g_app.dragWindow.x + dx,
+                 g_app.dragWindow.y + dy,
+                 0,
+                 0,
+                 SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
 }
 
 std::wstring readProcessCommandLine(DWORD pid) {
@@ -720,6 +772,10 @@ DWORD WINAPI injectThread(LPVOID hwndParam) {
 }
 
 void cleanupRenderTarget() {
+    if (g_backBufferSrv) {
+        g_backBufferSrv->Release();
+        g_backBufferSrv = nullptr;
+    }
     if (g_renderTarget) {
         g_renderTarget->Release();
         g_renderTarget = nullptr;
@@ -731,6 +787,7 @@ void createRenderTarget() {
     g_swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuffer));
     if (backBuffer) {
         g_device->CreateRenderTargetView(backBuffer, nullptr, &g_renderTarget);
+        g_device->CreateShaderResourceView(backBuffer, nullptr, &g_backBufferSrv);
         backBuffer->Release();
     }
 }
@@ -739,7 +796,7 @@ bool createDeviceD3D(HWND hwnd) {
     DXGI_SWAP_CHAIN_DESC sd = {};
     sd.BufferCount = 2;
     sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT | DXGI_USAGE_SHADER_INPUT;
     sd.OutputWindow = hwnd;
     sd.SampleDesc.Count = 1;
     sd.Windowed = TRUE;
@@ -781,6 +838,7 @@ void releaseBlurTargets() {
     g_blur.ready = false;
     g_blur.width = 0;
     g_blur.height = 0;
+    g_blur.lastUpdate = 0;
 }
 
 void cleanupBlurResources() {
@@ -944,23 +1002,34 @@ void blurPass(ID3D11ShaderResourceView* source, ID3D11RenderTargetView* target, 
 }
 
 void updateGaussianBlurTexture() {
-    if (!g_swapChain) {
+    if (!g_swapChain || g_app.dragging) {
         return;
     }
     DXGI_SWAP_CHAIN_DESC sd = {};
     g_swapChain->GetDesc(&sd);
-    if (!ensureBlurTargets(sd.BufferDesc.Width, sd.BufferDesc.Height)) {
+    int blurWidth = static_cast<int>(sd.BufferDesc.Width) / kBlurDownsample;
+    int blurHeight = static_cast<int>(sd.BufferDesc.Height) / kBlurDownsample;
+    if (blurWidth < 1) {
+        blurWidth = 1;
+    }
+    if (blurHeight < 1) {
+        blurHeight = 1;
+    }
+    if (!ensureBlurTargets(blurWidth, blurHeight)) {
         return;
     }
-    ID3D11Texture2D* backBuffer = nullptr;
-    if (FAILED(g_swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuffer)))) {
+    DWORD now = GetTickCount();
+    if (g_blur.lastUpdate != 0 && now - g_blur.lastUpdate < kBlurUpdateIntervalMs) {
         return;
     }
-    g_context->CopyResource(g_blur.textureA, backBuffer);
-    backBuffer->Release();
+    if (!g_backBufferSrv) {
+        return;
+    }
 
+    blurPass(g_backBufferSrv, g_blur.rtvA, 0.0f, 0.0f);
     blurPass(g_blur.srvA, g_blur.rtvB, 1.85f, 0.0f);
     blurPass(g_blur.srvB, g_blur.rtvA, 0.0f, 1.85f);
+    g_blur.lastUpdate = now;
 }
 
 void cleanupDeviceD3D() {
@@ -1013,6 +1082,33 @@ void removeWhiteMatte(std::vector<unsigned char>& pixels) {
     }
 }
 
+void downscaleRgba(const std::vector<unsigned char>& src,
+                   UINT srcWidth,
+                   UINT srcHeight,
+                   std::vector<unsigned char>& dst,
+                   UINT dstWidth,
+                   UINT dstHeight) {
+    dst.resize(static_cast<size_t>(dstWidth) * static_cast<size_t>(dstHeight) * 4);
+    for (UINT y = 0; y < dstHeight; ++y) {
+        UINT sy = static_cast<UINT>((static_cast<unsigned long long>(y) * srcHeight) / dstHeight);
+        if (sy >= srcHeight) {
+            sy = srcHeight - 1;
+        }
+        for (UINT x = 0; x < dstWidth; ++x) {
+            UINT sx = static_cast<UINT>((static_cast<unsigned long long>(x) * srcWidth) / dstWidth);
+            if (sx >= srcWidth) {
+                sx = srcWidth - 1;
+            }
+            size_t srcIndex = (static_cast<size_t>(sy) * srcWidth + sx) * 4;
+            size_t dstIndex = (static_cast<size_t>(y) * dstWidth + x) * 4;
+            dst[dstIndex + 0] = src[srcIndex + 0];
+            dst[dstIndex + 1] = src[srcIndex + 1];
+            dst[dstIndex + 2] = src[srcIndex + 2];
+            dst[dstIndex + 3] = src[srcIndex + 3];
+        }
+    }
+}
+
 bool loadTextureFromFile(const wchar_t* path, ID3D11ShaderResourceView** outView, ImVec2* outSize) {
     IWICImagingFactory* factory = nullptr;
     IWICBitmapDecoder* decoder = nullptr;
@@ -1056,9 +1152,24 @@ bool loadTextureFromFile(const wchar_t* path, ID3D11ShaderResourceView** outView
         if (!hasTransparency) {
             removeWhiteMatte(pixels);
         }
+
+        UINT textureWidth = width;
+        UINT textureHeight = height;
+        const UINT maxTextureEdge = 512;
+        if (textureWidth > maxTextureEdge || textureHeight > maxTextureEdge) {
+            float scale = static_cast<float>(maxTextureEdge) / static_cast<float>(max(textureWidth, textureHeight));
+            UINT scaledWidth = max(1U, static_cast<UINT>(textureWidth * scale));
+            UINT scaledHeight = max(1U, static_cast<UINT>(textureHeight * scale));
+            std::vector<unsigned char> scaledPixels;
+            downscaleRgba(pixels, textureWidth, textureHeight, scaledPixels, scaledWidth, scaledHeight);
+            pixels.swap(scaledPixels);
+            textureWidth = scaledWidth;
+            textureHeight = scaledHeight;
+        }
+
         D3D11_TEXTURE2D_DESC desc = {};
-        desc.Width = width;
-        desc.Height = height;
+        desc.Width = textureWidth;
+        desc.Height = textureHeight;
         desc.MipLevels = 1;
         desc.ArraySize = 1;
         desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -1068,7 +1179,7 @@ bool loadTextureFromFile(const wchar_t* path, ID3D11ShaderResourceView** outView
 
         D3D11_SUBRESOURCE_DATA sub = {};
         sub.pSysMem = pixels.data();
-        sub.SysMemPitch = width * 4;
+        sub.SysMemPitch = textureWidth * 4;
 
         ID3D11Texture2D* texture = nullptr;
         hr = g_device->CreateTexture2D(&desc, &sub, &texture);
@@ -1121,10 +1232,10 @@ ImFont* fontOrDefault(ImFont* font) {
 void addUiFont(ImFont*& out, std::vector<unsigned char>& data, float size) {
     ImFontConfig cfg;
     cfg.FontDataOwnedByAtlas = false;
-    cfg.OversampleH = 3;
+    cfg.OversampleH = 2;
     cfg.OversampleV = 2;
     out = ImGui::GetIO().Fonts->AddFontFromMemoryTTF(data.data(), static_cast<int>(data.size()), size, &cfg,
-                                                     ImGui::GetIO().Fonts->GetGlyphRangesCyrillic());
+                                                     ImGui::GetIO().Fonts->GetGlyphRangesDefault());
 }
 
 void loadUiFonts() {
@@ -1207,7 +1318,7 @@ void drawLogo(ImDrawList* draw, ImVec2 center, float width, float alpha) {
 
 void drawRainBackdrop(ImDrawList* draw, ImVec2 size, float alpha) {
     DWORD tick = GetTickCount();
-    for (int i = 0; i < 46; ++i) {
+    for (int i = 0; i < 28; ++i) {
         float x = fmodf(i * 73.0f + 19.0f, size.x);
         float y = fmodf(i * 119.0f + tick * (0.055f + (i % 5) * 0.009f), size.y + 120.0f) - 80.0f;
         float len = 34.0f + (i % 7) * 11.0f;
@@ -1256,7 +1367,7 @@ void drawSakuraPetal(ImDrawList* draw, ImVec2 center, float length, float width,
 
 void drawSakuraPetals(ImDrawList* draw, ImVec2 size, float alpha) {
     DWORD tick = GetTickCount();
-    for (int i = 0; i < 42; ++i) {
+    for (int i = 0; i < 26; ++i) {
         float seed = static_cast<float>(i);
         float speed = 0.026f + (i % 7) * 0.0065f;
         float wave = tick * 0.0010f + seed * 1.37f;
@@ -1757,7 +1868,9 @@ void drawMainUi(HWND hwnd) {
     draw->AddBezierCubic(ImVec2(s.x - 5.0f, 44.0f), ImVec2(s.x + 2.0f, 82.0f),
                          ImVec2(s.x - 12.0f, 132.0f), ImVec2(s.x - 5.0f, 196.0f),
                          colAlpha(210, 178, 255, 0.07f * a), 0.7f, 24);
-    drawSakuraPetals(draw, s, 0.85f * a);
+    if (!g_app.dragging) {
+        drawSakuraPetals(draw, s, 0.85f * a);
+    }
     draw->AddCircleFilled(ImVec2(205, 148), 112.0f, colAlpha(199, 149, 237, 0.080f * a), 64);
     draw->AddCircleFilled(ImVec2(788, 416), 120.0f, colAlpha(199, 149, 237, 0.065f * a), 64);
     draw->AddBezierCubic(ImVec2(96, 250), ImVec2(168, 78), ImVec2(348, 86), ImVec2(474, 125), colAlpha(80, 135, 165, 0.28f * a), 1.0f, 32);
@@ -2046,17 +2159,23 @@ LRESULT WINAPI wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             applyRoundedRegion(hwnd, LOWORD(lParam), HIWORD(lParam));
         }
         return 0;
-    case WM_NCHITTEST: {
-        LRESULT hit = DefWindowProc(hwnd, msg, wParam, lParam);
-        if (hit == HTCLIENT) {
-            POINT p = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
-            ScreenToClient(hwnd, &p);
-            if (p.y < 60 && p.x < kWindowWidth - 64) {
-                return HTCAPTION;
-            }
+    case WM_LBUTTONDOWN:
+        if (isDragArea(hwnd, lParam)) {
+            beginWindowDrag(hwnd);
+            return 0;
         }
-        return hit;
-    }
+        break;
+    case WM_MOUSEMOVE:
+        updateWindowDrag(hwnd);
+        break;
+    case WM_LBUTTONUP:
+        endWindowDrag(hwnd, true);
+        break;
+    case WM_CAPTURECHANGED:
+        if (reinterpret_cast<HWND>(lParam) != hwnd) {
+            endWindowDrag(hwnd, false);
+        }
+        break;
     case kInjectDone: {
         InjectResult* result = reinterpret_cast<InjectResult*>(lParam);
         g_app.uiState = result && result->ok ? STATE_SUCCESS : STATE_FAILED;
@@ -2167,6 +2286,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
 
         ImGui::Render();
         const float clear[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        ID3D11ShaderResourceView* nullSrv = nullptr;
+        g_context->PSSetShaderResources(0, 1, &nullSrv);
         g_context->OMSetRenderTargets(1, &g_renderTarget, nullptr);
         g_context->ClearRenderTargetView(g_renderTarget, clear);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());

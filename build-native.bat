@@ -53,12 +53,12 @@ if errorlevel 1 exit /b %errorlevel%
 rc /nologo /fo "build\native\yozakura_loader_%ARCH%.res" "native\yozakura_loader.rc"
 if errorlevel 1 exit /b %errorlevel%
 
-cl /nologo /EHsc /LD /O2 ^
+cl /nologo /EHsc /LD /O2 /GL ^
   /I"%JAVA8_HOME%\include" ^
   /I"%JAVA8_HOME%\include\win32" ^
   /Fo"build\native\%ARCH%_" ^
   "native\yozakura_loader.cpp" ^
   "build\native\yozakura_loader_%ARCH%.res" ^
-  /link /NOLOGO /OUT:"%OUTDLL%" /IMPLIB:"build\native\%ARCH%.lib" /PDB:"build\native\%ARCH%.pdb"
+  /link /NOLOGO /LTCG /OPT:REF /OPT:ICF /OUT:"%OUTDLL%" /IMPLIB:"build\native\%ARCH%.lib" /PDB:"build\native\%ARCH%.pdb"
 
 exit /b %errorlevel%
