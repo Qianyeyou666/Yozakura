@@ -255,14 +255,12 @@ public final class StandaloneEventBridge {
     }
 
     private void dispatchPendingPostUpdate() {
-        UpdateEvent queued = this.pendingPostUpdate;
+        UpdateEvent post = this.pendingPostUpdate;
         this.pendingPostUpdate = null;
-        if (queued == null) {
+        if (post == null) {
             BridgeDebug.logState("standalone", "POST_SKIP_NULL", false);
             return;
         }
-        UpdateEvent post = new UpdateEvent(EventType.POST, mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch,
-                mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch);
         BridgeDebug.logUpdate("standalone", "POST_START", post, false);
         EventManager.call(post);
         BridgeDebug.logUpdate("standalone", "POST_DONE", post, false);
@@ -443,23 +441,19 @@ public final class StandaloneEventBridge {
                     BridgeDebug.logPacket("standalone", "SEND_CANCELLED", packet, pendingPostUpdate != null);
                     return;
                 }
-                if (!delayedPackets.isEmpty() && !hasPendingRotation()) {
-                    flushDelayedPackets(ctx);
-                }
                 if (shouldDelayUntilRotation(packet)) {
                     delayedPackets.add(new DelayedPacket(packet, promise));
                     BridgeDebug.logPacket("standalone", "SEND_DELAYED_QUEUE", packet, pendingPostUpdate != null);
                     return;
+                }
+                if (packet instanceof C03PacketPlayer) {
+                    flushDelayedPackets(ctx);
                 }
                 markSent(packet);
                 BridgeDebug.logPacket("standalone", "SEND_MARKED", packet, pendingPostUpdate != null);
                 if (YozakuraRuntime.blinkManager != null && YozakuraRuntime.blinkManager.isBlinking()
                         && YozakuraRuntime.blinkManager.offerPacket(packet)) {
                     BridgeDebug.logPacket("standalone", "SEND_BLINK_BUFFERED", packet, pendingPostUpdate != null);
-                    if (packet instanceof C03PacketPlayer) {
-                        waitingForRotationPacket = false;
-                        flushDelayedPackets(ctx);
-                    }
                     promise.setSuccess();
                     return;
                 }
@@ -470,7 +464,6 @@ public final class StandaloneEventBridge {
                             pendingPostUpdate != null);
                     super.write(ctx, rewritten, promise);
                     waitingForRotationPacket = false;
-                    flushDelayedPackets(ctx);
                     return;
                 }
                 if (packet instanceof C03PacketPlayer) {
@@ -478,7 +471,6 @@ public final class StandaloneEventBridge {
                     hasSentSilentRotation = false;
                     waitingForRotationPacket = false;
                     super.write(ctx, msg, promise);
-                    flushDelayedPackets(ctx);
                     return;
                 }
                 BridgeDebug.logPacket("standalone", "SEND_OUT", packet, pendingPostUpdate != null);
@@ -537,18 +529,11 @@ public final class StandaloneEventBridge {
         }
 
         private boolean shouldDelayUntilRotation(Packet<?> packet) {
-            if (!isActionPacket(packet)) {
-                return false;
-            }
-            boolean pendingRotation = hasPendingRotation();
-            if (!pendingRotation && waitingForRotationPacket) {
-                waitingForRotationPacket = false;
-            }
-            return pendingRotation || !delayedPackets.isEmpty();
-        }
-
-        private boolean hasPendingRotation() {
-            return hasActivePreRotation() || RotationState.isActived();
+            return isActionPacket(packet)
+                    && (waitingForRotationPacket
+                    || hasActivePreRotation()
+                    || RotationState.isActived()
+                    || !delayedPackets.isEmpty());
         }
 
         private boolean isActionPacket(Packet<?> packet) {
