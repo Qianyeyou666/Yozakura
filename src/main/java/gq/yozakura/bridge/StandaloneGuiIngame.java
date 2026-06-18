@@ -103,10 +103,13 @@ public class StandaloneGuiIngame extends GuiIngame {
         }
         OverlayRenderState state = beginOverlayState(minecraft);
         try {
+            dispatchRenderTick(gq.yozakura.bridge.forge.TickEvent.Phase.START, partialTicks);
             ShaderRenderer.beginOverlayFrame();
             EventManager.call(new Render2DEvent(partialTicks));
+            YozakuraEventBridge.markOverlayRendered();
             prepareOverlayState();
             EventManager.call(new gq.yozakura.bridge.forge.RenderGameOverlayEvent.Text(partialTicks));
+            dispatchRenderTick(gq.yozakura.bridge.forge.TickEvent.Phase.END, partialTicks);
         } catch (Throwable throwable) {
             log("Standalone Render2D dispatch failed", throwable);
         } finally {
@@ -126,16 +129,23 @@ public class StandaloneGuiIngame extends GuiIngame {
             }
             OverlayRenderState state = beginOverlayState(minecraft);
             try {
+                dispatchRenderTick(gq.yozakura.bridge.forge.TickEvent.Phase.START, partialTicks);
                 ShaderRenderer.beginOverlayFrame();
                 EventManager.call(new Render2DEvent(partialTicks));
+                YozakuraEventBridge.markOverlayRendered();
                 prepareOverlayState();
                 EventManager.call(new gq.yozakura.bridge.forge.RenderGameOverlayEvent.Text(partialTicks));
+                dispatchRenderTick(gq.yozakura.bridge.forge.TickEvent.Phase.END, partialTicks);
             } finally {
                 endOverlayState(state);
             }
         } catch (Throwable throwable) {
             log("Standalone Render2D dispatch failed", throwable);
         }
+    }
+
+    private static void dispatchRenderTick(gq.yozakura.bridge.forge.TickEvent.Phase phase, float partialTicks) {
+        EventManager.call(new gq.yozakura.bridge.forge.TickEvent.RenderTickEvent(phase, partialTicks));
     }
 
     private static OverlayRenderState beginOverlayState(Minecraft minecraft) {

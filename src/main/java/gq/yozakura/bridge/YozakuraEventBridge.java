@@ -140,7 +140,7 @@ public final class YozakuraEventBridge {
         }
     }
 
-    private static void markOverlayRendered() {
+    static void markOverlayRendered() {
         try {
             Minecraft minecraft = Minecraft.getMinecraft();
             if (minecraft != null && minecraft.ingameGUI != null) {
@@ -399,6 +399,7 @@ public final class YozakuraEventBridge {
                 if (YozakuraRuntime.blinkManager != null && YozakuraRuntime.blinkManager.isBlinking()
                         && YozakuraRuntime.blinkManager.offerPacket(packet)) {
                     BridgeDebug.logPacket("forge", "SEND_BLINK_BUFFERED", packet, false);
+                    promise.setSuccess();
                     return;
                 }
                 if (packet instanceof C03PacketPlayer && RotationState.isActived()) {

@@ -23,6 +23,7 @@ import net.minecraft.util.MathHelper;
 import net.minecraft.util.MovingObjectPosition;
 import net.minecraft.util.Vec3;
 import org.lwjgl.input.Keyboard;
+import org.lwjgl.input.Mouse;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -55,6 +56,8 @@ public class Aimbot extends Module {
             new Numbers<Double>("Vertical Speed", "VerticalSpeed", 5.0, 1.0, 90.0, 1.0);
     private final Numbers<Double> reactionDelay =
             new Numbers<Double>("Reaction Delay", "ReactionDelay", 30.0, 10.0, 200.0, 1.0);
+    private final Numbers<Double> updateRate =
+            new Numbers<Double>("Update Rate", "UpdateRate", 20.0, 0.1, 20.0, 0.1);
     private final Numbers<Double> multipointHorizontal =
             new Numbers<Double>("Multipoint horizontal", "MultipointHorizontal", 18.0, 0.0, 100.0, 1.0);
     private final Numbers<Double> multipointVertical =
@@ -76,6 +79,7 @@ public class Aimbot extends Module {
             new Option<Boolean>("Vertical aim", "VerticalAim", true);
     private final Option<Boolean> ignoreTeammates =
             new Option<Boolean>("Ignore teammates", "IgnoreTeammates", true);
+    private final Option<Boolean> botCheck = new Option<Boolean>("Bot Check", "BotCheck", true);
     private final Option<Boolean> stopWhenBreaking =
             new Option<Boolean>("Stop when breaking", "StopWhenBreaking", false);
     private final Option<Boolean> keepMoveDirection =
@@ -99,9 +103,9 @@ public class Aimbot extends Module {
 
     public Aimbot() {
         super("AimAssist", Keyboard.KEY_NONE, ModuleType.Combat, "Vape-style aim assist");
-        this.addValues(mode, vapeMode, speed, verticalSpeed, reactionDelay, multipointHorizontal, multipointVertical,
-                randomization, fov, range, sort, ignoreBehindWalls, ignoreBehindEntities, aimInvis, clickAim,
-                requireHover, aimVertical, ignoreTeammates, stopWhenBreaking, keepMoveDirection, hoverDelay, weaponOnly);
+        this.addValues(mode, vapeMode, speed, verticalSpeed, reactionDelay, updateRate, multipointHorizontal,
+                multipointVertical, randomization, fov, range, sort, ignoreBehindWalls, ignoreBehindEntities, aimInvis, clickAim,
+                requireHover, aimVertical, ignoreTeammates, botCheck, stopWhenBreaking, keepMoveDirection, hoverDelay, weaponOnly);
         Chinese = "瞄准辅助";
     }
 
@@ -120,31 +124,45 @@ public class Aimbot extends Module {
 
     @EventTarget(Priority.LOW)
     public void onBridgeTick(TickEvent event) {
-        if (event.getType() != EventType.PRE || mode.getValue() != AimMode.NORMAL) {
+        if (event.getType() != EventType.PRE) {
             return;
         }
-        AimResult result = updateAim(mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch);
-        if (result == null) {
-            return;
-        }
-        mc.thePlayer.rotationYaw = result.yaw;
-        mc.thePlayer.rotationPitch = result.pitch;
-        RotationUtil.syncHead(mc, result.yaw);
+        updateTargetOnly();
     }
 
     @EventTarget(Priority.LOW)
     public void onUpdate(UpdateEvent event) {
-        if (event.getType() != EventType.PRE || mode.getValue() != AimMode.SILENT) {
+        if (event.getType() != EventType.PRE) {
             return;
         }
         AimResult result = updateAim(event.getNewYaw(), event.getNewPitch());
         if (result == null) {
             return;
         }
-        event.setRotation(result.yaw, result.pitch, 0);
-        if (!Boolean.TRUE.equals(keepMoveDirection.getValue())) {
+        if (mode.getValue() == AimMode.NORMAL) {
+            mc.thePlayer.rotationYaw = result.yaw;
+            mc.thePlayer.rotationPitch = result.pitch;
+            RotationUtil.syncHead(mc, result.yaw);
+            event.setRotation(result.yaw, result.pitch, 0);
+        } else {
+            event.setRotation(result.yaw, result.pitch, 0);
+        }
+        if (mode.getValue() == AimMode.SILENT && !Boolean.TRUE.equals(keepMoveDirection.getValue())) {
             event.setPervRotation(result.yaw, 0);
         }
+    }
+
+    private void updateTargetOnly() {
+        if (!conditionsMet()) {
+            resetTarget();
+            return;
+        }
+        EntityPlayer enemy = selectTarget(mc.thePlayer.rotationYaw);
+        if (enemy == null) {
+            resetTarget();
+            return;
+        }
+        target = enemy;
     }
 
     private AimResult updateAim(float currentYaw, float currentPitch) {
@@ -167,13 +185,13 @@ public class Aimbot extends Module {
                 resetTarget();
                 return null;
             }
-            task.yaw = point.yaw;
-            task.pitch = point.pitch;
+            updateAimTask(point);
             task.active = true;
-            int baseDelay = Math.max(1, reactionDelay.getValue().intValue());
-            int cpsDelay = Math.max(50, (int) (1000.0F / Math.max(0.1F, randomization.getValue().floatValue())));
-            nextAimUpdate = now + baseDelay + random.nextInt(baseDelay + cpsDelay + 1);
-            taskExpireAt = now + 100L + random.nextInt(101);
+            int reaction = Math.max(0, reactionDelay.getValue().intValue());
+            int updateDelay = Math.max(16, (int) (1000.0F / Math.max(0.1F, updateRate.getValue().floatValue())));
+            int jitter = Math.max(1, updateDelay / 4);
+            nextAimUpdate = now + updateDelay + random.nextInt(jitter + 1);
+            taskExpireAt = now + Math.max(updateDelay * 3, reaction + updateDelay);
         }
 
         assistedYaw = advanceVapeAxis(currentYaw, task.yaw, speed.getValue().floatValue(), true);
@@ -223,7 +241,7 @@ public class Aimbot extends Module {
         if (!Boolean.TRUE.equals(aimInvis.getValue()) && player.isInvisible()) {
             return false;
         }
-        if (TeamUtil.isBot(player) || AntiBot.isServerBot(player)) {
+        if (Boolean.TRUE.equals(botCheck.getValue()) && (TeamUtil.isBot(player) || AntiBot.isServerBot(player))) {
             return false;
         }
         double rangeValue = range.getValue();
@@ -271,6 +289,21 @@ public class Aimbot extends Module {
         }
     }
 
+    private void updateAimTask(AimPoint point) {
+        if (!task.active) {
+            task.yaw = point.yaw;
+            task.pitch = point.pitch;
+            return;
+        }
+        float blend = vapeMode.getValue() == VapeMode.BLATANT ? 0.42F : 0.28F;
+        task.yaw = task.yaw + MathHelper.wrapAngleTo180_float(point.yaw - task.yaw) * blend;
+        task.pitch = MathHelper.clamp_float(
+                task.pitch + MathHelper.wrapAngleTo180_float(point.pitch - task.pitch) * (blend * 0.82F),
+                -90.0F,
+                90.0F
+        );
+    }
+
     private AimPoint createAimPoint(EntityPlayer enemy, float currentYaw, float currentPitch) {
         Vec3 point = findVisiblePoint(enemy);
         if (point == null) {
@@ -290,8 +323,8 @@ public class Aimbot extends Module {
             yaw = base[0];
             pitch = base[1];
         } else {
-            yaw = base[0] + randomSigned(yawRange);
-            pitch = base[1] + randomSigned(pitchRange);
+            yaw = base[0] + randomVapeOffset(yawRange, 0.6D);
+            pitch = base[1] + randomVapeOffset(pitchRange, 0.5D);
         }
         return new AimPoint(yaw, MathHelper.clamp_float(pitch, -90.0F, 90.0F));
     }
@@ -386,7 +419,9 @@ public class Aimbot extends Module {
         if (!isInGame() || mc.currentScreen != null || (!mc.inGameHasFocus && !isAttackHeld())) {
             return false;
         }
-        if (KillAura.target != null) {
+        // 仅当 KillAura 实际启用并有目标时才让步，避免单独使用 AimAssist 时被无故禁用
+        gq.yozakura.module.runtime.Module killAuraMod = gq.yozakura.runtime.YozakuraRuntime.moduleManager.modules.get(KillAura.class);
+        if (killAuraMod != null && killAuraMod.isEnabled() && KillAura.target != null) {
             return false;
         }
         if (Boolean.TRUE.equals(weaponOnly.getValue()) && !CombatUtil.isHoldingWeapon()) {
@@ -427,14 +462,14 @@ public class Aimbot extends Module {
         float diff = MathHelper.wrapAngleTo180_float(target - current);
         float quantum = getMouseQuantum();
         float absDiff = Math.abs(diff);
-        float stopDistance = Math.max(quantum * 0.85F, vapeMode.getValue() == VapeMode.BLATANT ? 0.035F : 0.085F);
+        float stopDistance = Math.max(quantum * 0.22F, vapeMode.getValue() == VapeMode.BLATANT ? 0.025F : 0.045F);
         if (absDiff <= stopDistance) {
             if (yawAxis) {
-                mouseState.yawCounts *= 0.45F;
+                mouseState.yawCounts *= 0.62F;
             } else {
-                mouseState.pitchCounts *= 0.45F;
+                mouseState.pitchCounts *= 0.62F;
             }
-            return current;
+            return target;
         }
 
         float countDiff = diff / quantum;
@@ -443,37 +478,33 @@ public class Aimbot extends Module {
             accel *= MathHelper.clamp_float(Math.abs(countDiff) / Math.max(1.0F, Math.abs(mouseState.yawCounts)), 0.25F, 1.0F);
         }
         float counts = yawAxis ? mouseState.yawCounts : mouseState.pitchCounts;
+        float desiredCounts;
         if (vapeMode.getValue() == VapeMode.BLATANT) {
-            counts += MathHelper.clamp_float(countDiff, -accel, accel);
+            desiredCounts = MathHelper.clamp_float(countDiff, -accel, accel);
         } else {
-            counts += countDiff > 0.0F ? Math.min(accel, countDiff) : -Math.min(accel, Math.abs(countDiff));
+            desiredCounts = countDiff > 0.0F ? Math.min(accel, countDiff) : -Math.min(accel, Math.abs(countDiff));
         }
 
-        int wholeCounts = counts > 0.0F ? (int) Math.floor(counts) : (int) Math.ceil(counts);
-        if (wholeCounts == 0) {
-            if (yawAxis) {
-                mouseState.yawCounts = counts;
-            } else {
-                mouseState.pitchCounts = counts;
-            }
-            return current;
+        float response = vapeMode.getValue() == VapeMode.BLATANT ? 0.52F : 0.34F;
+        counts += (desiredCounts - counts) * response;
+        if (Math.abs(counts) < 0.015F) {
+            counts = countDiff > 0.0F ? 0.015F : -0.015F;
         }
-
-        counts -= wholeCounts;
         if (yawAxis) {
             mouseState.yawCounts = counts;
         } else {
             mouseState.pitchCounts = counts;
         }
-        return limitAngle(current, target, Math.abs(wholeCounts * quantum));
+        float maxStep = Math.min(absDiff, Math.abs(counts * quantum));
+        return limitAngle(current, target, maxStep);
     }
 
     private float getVapeAcceleration(float configuredSpeed, boolean yawAxis) {
-        float base = 0.32F + configuredSpeed * (yawAxis ? 0.052F : 0.046F);
+        float base = configuredSpeed * 0.25F;
         if (vapeMode.getValue() == VapeMode.BLATANT) {
-            base *= 1.45F;
+            base *= 1.35F;
         }
-        return MathHelper.clamp_float(base, 0.18F, yawAxis ? 10.0F : 7.5F);
+        return MathHelper.clamp_float(base, 0.18F, yawAxis ? 45.0F : 22.5F);
     }
 
     private float getMouseQuantum() {
@@ -493,9 +524,11 @@ public class Aimbot extends Module {
         return current + MathHelper.clamp_float(delta, -maxTurn, maxTurn);
     }
 
-    private float randomSigned(float max) {
-        float amount = random.nextFloat() * Math.max(0.0F, max) * (randomization.getValue().floatValue() / 100.0F);
-        return random.nextDouble() > 0.5D ? amount : -amount;
+    private float randomVapeOffset(float max, double negativeThreshold) {
+        float amount = random.nextFloat()
+                * Math.max(0.0F, max)
+                * (randomization.getValue().floatValue() / 100.0F);
+        return random.nextDouble() > negativeThreshold ? -amount : amount;
     }
 
     private double angleTo(EntityPlayer player, float viewYaw) {
@@ -521,8 +554,18 @@ public class Aimbot extends Module {
     }
 
     private boolean isAttackHeld() {
-        return mc.gameSettings != null
-                && KeyBindUtil.isBindingDown(mc.gameSettings.keyBindAttack);
+        if (mc.gameSettings == null) {
+            return isMouseButtonDown(0);
+        }
+        return KeyBindUtil.isBindingDown(mc.gameSettings.keyBindAttack) || isMouseButtonDown(0);
+    }
+
+    private boolean isMouseButtonDown(int button) {
+        try {
+            return Mouse.isCreated() && Mouse.isButtonDown(button);
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     private void resetTarget() {

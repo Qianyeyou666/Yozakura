@@ -40,6 +40,10 @@ import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.GL11;
 
 import java.lang.reflect.Method;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 public class TargetHUD extends Module {
     private static final int TEXT = 0xFFF5F0F5;
@@ -60,6 +64,8 @@ public class TargetHUD extends Module {
             {0.36f, 0.94f}, {0.66f, 0.62f}, {0.64f, 0.25f}, {0.30f, -0.07f},
             {0.00f, -0.18f}
     };
+    private static final Map<Class<?>, Method> ENTITY_TEXTURE_METHODS = new HashMap<Class<?>, Method>();
+    private static final Set<Class<?>> ENTITY_TEXTURE_MISSES = new HashSet<Class<?>>();
 
     private final Numbers<Double> xPosition = new Numbers<Double>("X", "X", -1.0, -1.0, 2000.0, 1.0);
     private final Numbers<Double> yPosition = new Numbers<Double>("Y", "Y", -1.0, -1.0, 1200.0, 1.0);
@@ -505,11 +511,13 @@ public class TargetHUD extends Module {
         }
         try {
             Render render = mc.getRenderManager().getEntityRenderObject(target);
+            if (render == null) {
+                return null;
+            }
             Method method = findEntityTextureMethod(render.getClass());
             if (method == null) {
                 return null;
             }
-            method.setAccessible(true);
             Object texture = method.invoke(render, target);
             return texture instanceof ResourceLocation ? (ResourceLocation) texture : null;
         } catch (Throwable ignored) {
@@ -518,22 +526,38 @@ public class TargetHUD extends Module {
     }
 
     private Method findEntityTextureMethod(Class<?> type) {
+        if (type == null) {
+            return null;
+        }
+        Method cached = ENTITY_TEXTURE_METHODS.get(type);
+        if (cached != null) {
+            return cached;
+        }
+        if (ENTITY_TEXTURE_MISSES.contains(type)) {
+            return null;
+        }
         Class<?> current = type;
         while (current != null) {
             try {
-                return current.getDeclaredMethod("getEntityTexture", Entity.class);
+                Method method = current.getDeclaredMethod("getEntityTexture", Entity.class);
+                method.setAccessible(true);
+                ENTITY_TEXTURE_METHODS.put(type, method);
+                return method;
             } catch (NoSuchMethodException ignored) {
                 Method[] methods = current.getDeclaredMethods();
                 for (Method method : methods) {
                     if ("getEntityTexture".equals(method.getName())
                             && method.getParameterTypes().length == 1
                             && Entity.class.isAssignableFrom(method.getParameterTypes()[0])) {
+                        method.setAccessible(true);
+                        ENTITY_TEXTURE_METHODS.put(type, method);
                         return method;
                     }
                 }
                 current = current.getSuperclass();
             }
         }
+        ENTITY_TEXTURE_MISSES.add(type);
         return null;
     }
 

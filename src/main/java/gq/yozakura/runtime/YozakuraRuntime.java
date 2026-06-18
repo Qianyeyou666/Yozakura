@@ -33,6 +33,7 @@ public final class YozakuraRuntime {
         registered = true;
         EventManager.register(rotationManager);
         EventManager.register(blinkManager);
+        EventManager.register(playerStateManager);
     }
 
     public static final class ModuleManagerBridge {

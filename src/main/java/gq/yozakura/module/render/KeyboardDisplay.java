@@ -47,6 +47,7 @@ public class KeyboardDisplay extends Module {
     private final Map<String, Float> animations = new HashMap<String, Float>();
     private final List<Long> leftClicks = new ArrayList<Long>();
     private final List<Long> rightClicks = new ArrayList<Long>();
+    private final Layout layoutScratch = new Layout();
     private boolean previousLeft;
     private boolean previousRight;
 
@@ -79,9 +80,12 @@ public class KeyboardDisplay extends Module {
         float uiScale = Math.max(0.6f, scale.getValue().floatValue());
         float keySize = 24.0f * uiScale;
         float gap = 4.0f * uiScale;
-        Layout layout = Boolean.TRUE.equals(vertical.getValue())
-                ? buildVerticalLayout(keySize, gap)
-                : buildHorizontalLayout(keySize, gap);
+        Layout layout = layoutScratch;
+        if (Boolean.TRUE.equals(vertical.getValue())) {
+            buildVerticalLayout(layout, keySize, gap);
+        } else {
+            buildHorizontalLayout(layout, keySize, gap);
+        }
 
         if (layout.keys.isEmpty()) {
             return;
@@ -114,63 +118,65 @@ public class KeyboardDisplay extends Module {
         previousRight = false;
     }
 
-    private Layout buildVerticalLayout(float keySize, float gap) {
-        ArrayList<KeyBox> keys = new ArrayList<KeyBox>();
+    private void buildVerticalLayout(Layout layout, float keySize, float gap) {
+        layout.clear();
         float totalWidth = keySize * 3.0f + gap * 2.0f;
         float y = 0.0f;
 
         if (Boolean.TRUE.equals(showMovement.getValue())) {
-            keys.add(new KeyBox(FORWARD, keySize + gap, y, keySize, keySize));
+            layout.add(FORWARD, keySize + gap, y, keySize, keySize);
             y += keySize + gap;
-            keys.add(new KeyBox(LEFT, 0.0f, y, keySize, keySize));
-            keys.add(new KeyBox(BACK, keySize + gap, y, keySize, keySize));
-            keys.add(new KeyBox(RIGHT, (keySize + gap) * 2.0f, y, keySize, keySize));
+            layout.add(LEFT, 0.0f, y, keySize, keySize);
+            layout.add(BACK, keySize + gap, y, keySize, keySize);
+            layout.add(RIGHT, (keySize + gap) * 2.0f, y, keySize, keySize);
             y += keySize + gap;
         }
 
         if (Boolean.TRUE.equals(showSpace.getValue())) {
-            keys.add(new KeyBox(JUMP, 0.0f, y, totalWidth, keySize * 0.72f));
+            layout.add(JUMP, 0.0f, y, totalWidth, keySize * 0.72f);
             y += keySize * 0.72f + gap;
         }
 
         if (Boolean.TRUE.equals(showMouse.getValue())) {
             float mouseWidth = (totalWidth - gap) / 2.0f;
-            keys.add(new KeyBox(LMB, 0.0f, y, mouseWidth, keySize));
-            keys.add(new KeyBox(RMB, mouseWidth + gap, y, mouseWidth, keySize));
+            layout.add(LMB, 0.0f, y, mouseWidth, keySize);
+            layout.add(RMB, mouseWidth + gap, y, mouseWidth, keySize);
             y += keySize + gap;
         }
 
-        return new Layout(keys, totalWidth, Math.max(0.0f, y - gap));
+        layout.width = totalWidth;
+        layout.height = Math.max(0.0f, y - gap);
     }
 
-    private Layout buildHorizontalLayout(float keySize, float gap) {
-        ArrayList<KeyBox> keys = new ArrayList<KeyBox>();
+    private void buildHorizontalLayout(Layout layout, float keySize, float gap) {
+        layout.clear();
         float x = 0.0f;
 
         if (Boolean.TRUE.equals(showMovement.getValue())) {
-            keys.add(new KeyBox(FORWARD, x, 0.0f, keySize, keySize));
+            layout.add(FORWARD, x, 0.0f, keySize, keySize);
             x += keySize + gap;
-            keys.add(new KeyBox(LEFT, x, 0.0f, keySize, keySize));
+            layout.add(LEFT, x, 0.0f, keySize, keySize);
             x += keySize + gap;
-            keys.add(new KeyBox(BACK, x, 0.0f, keySize, keySize));
+            layout.add(BACK, x, 0.0f, keySize, keySize);
             x += keySize + gap;
-            keys.add(new KeyBox(RIGHT, x, 0.0f, keySize, keySize));
+            layout.add(RIGHT, x, 0.0f, keySize, keySize);
             x += keySize + gap;
         }
 
         if (Boolean.TRUE.equals(showSpace.getValue())) {
-            keys.add(new KeyBox(JUMP, x, 0.0f, keySize * 2.0f, keySize));
+            layout.add(JUMP, x, 0.0f, keySize * 2.0f, keySize);
             x += keySize * 2.0f + gap;
         }
 
         if (Boolean.TRUE.equals(showMouse.getValue())) {
-            keys.add(new KeyBox(LMB, x, 0.0f, keySize * 1.55f, keySize));
+            layout.add(LMB, x, 0.0f, keySize * 1.55f, keySize);
             x += keySize * 1.55f + gap;
-            keys.add(new KeyBox(RMB, x, 0.0f, keySize * 1.55f, keySize));
+            layout.add(RMB, x, 0.0f, keySize * 1.55f, keySize);
             x += keySize * 1.55f + gap;
         }
 
-        return new Layout(keys, Math.max(0.0f, x - gap), keySize);
+        layout.width = Math.max(0.0f, x - gap);
+        layout.height = keySize;
     }
 
     private void drawKey(float x, float y, float width, float height, String id, int index) {
@@ -332,13 +338,13 @@ public class KeyboardDisplay extends Module {
     }
 
     private static class KeyBox {
-        private final String id;
-        private final float x;
-        private final float y;
-        private final float width;
-        private final float height;
+        private String id;
+        private float x;
+        private float y;
+        private float width;
+        private float height;
 
-        private KeyBox(String id, float x, float y, float width, float height) {
+        private void set(String id, float x, float y, float width, float height) {
             this.id = id;
             this.x = x;
             this.y = y;
@@ -348,14 +354,33 @@ public class KeyboardDisplay extends Module {
     }
 
     private static class Layout {
-        private final ArrayList<KeyBox> keys;
-        private final float width;
-        private final float height;
+        private static final int MAX_KEYS = 7;
+        private final ArrayList<KeyBox> keys = new ArrayList<KeyBox>(MAX_KEYS);
+        private final KeyBox[] pool = new KeyBox[MAX_KEYS];
+        private float width;
+        private float height;
+        private int used;
 
-        private Layout(ArrayList<KeyBox> keys, float width, float height) {
-            this.keys = keys;
-            this.width = width;
-            this.height = height;
+        private Layout() {
+            for (int i = 0; i < pool.length; i++) {
+                pool[i] = new KeyBox();
+            }
+        }
+
+        private void clear() {
+            keys.clear();
+            used = 0;
+            width = 0.0f;
+            height = 0.0f;
+        }
+
+        private void add(String id, float x, float y, float width, float height) {
+            if (used >= pool.length) {
+                return;
+            }
+            KeyBox key = pool[used++];
+            key.set(id, x, y, width, height);
+            keys.add(key);
         }
     }
 }

@@ -1,7 +1,9 @@
 package gq.yozakura.module.combat;
 
+import gq.yozakura.bridge.MinecraftAccessor;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.Module;
+import gq.yozakura.util.module.PacketUtil;
 import gq.yozakura.value.Mode;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
@@ -11,6 +13,10 @@ import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemSword;
+import net.minecraft.network.play.client.C07PacketPlayerDigging;
+import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.EnumFacing;
 import net.minecraftforge.client.event.MouseEvent;
 import net.minecraftforge.event.entity.player.AttackEntityEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -27,14 +33,19 @@ public class BlockHit extends Module {
         LAG
     }
 
-    private static final long MIN_RETRIGGER_MS = 45L;
     private static BlockHit INSTANCE;
 
     private final Mode<BlockMode> mode = new Mode<BlockMode>("Mode", "Mode", BlockMode.values(), BlockMode.MANUAL);
-    private final Numbers<Double> minDelay = new Numbers<Double>("Min Delay", "MinDelay", 70.0, 0.0, 240.0, 5.0);
-    private final Numbers<Double> maxDelay = new Numbers<Double>("Max Delay", "MaxDelay", 90.0, 0.0, 320.0, 5.0);
-    private final Numbers<Double> holdMs = new Numbers<Double>("Hold MS", "HoldMS", 110.0, 35.0, 280.0, 5.0);
+    private final Numbers<Double> minDelay = new Numbers<Double>("Min Delay", "MinDelay", 95.0, 0.0, 300.0, 5.0);
+    private final Numbers<Double> maxDelay = new Numbers<Double>("Max Delay", "MaxDelay", 145.0, 0.0, 380.0, 5.0);
+    private final Numbers<Double> holdMs = new Numbers<Double>("Hold MS", "HoldMS", 185.0, 35.0, 420.0, 5.0);
+    private final Numbers<Double> actionCooldown =
+            new Numbers<Double>("Action Cooldown", "ActionCooldown", 260.0, 45.0, 800.0, 5.0);
+    private final Numbers<Double> releaseCooldown =
+            new Numbers<Double>("Release Cooldown", "ReleaseCooldown", 420.0, 120.0, 1200.0, 5.0);
     private final Numbers<Double> chance = new Numbers<Double>("Chance", "Chance", 100.0, 0.0, 100.0, 1.0);
+    private final Option<Boolean> serverRelease =
+            new Option<Boolean>("Server release", "ServerRelease", true);
     private final Option<Boolean> requireMouseDown = new Option<Boolean>("Require mouse down", "RequireMouseDown", true);
     private final Option<Boolean> onlySword = new Option<Boolean>("Only Sword", "OnlySword", true);
     private final Option<Boolean> onlyPlayers = new Option<Boolean>("Only Players", "OnlyPlayers", false);
@@ -42,16 +53,19 @@ public class BlockHit extends Module {
     private int phase;
     private boolean holdingUseKey;
     private boolean blockingApplied;
+    private boolean packetBlocking;
     private boolean mouseTriggered;
     private Entity triggerTarget;
     private long blockAt;
     private long releaseAt;
     private long lastTriggerAt;
+    private long lastReleasePacketAt;
     private long inputGraceUntil;
 
     public BlockHit() {
         super("BlockHit", Keyboard.KEY_NONE, ModuleType.Combat, "Automatically blockhit");
-        this.addValues(minDelay, maxDelay, mode, requireMouseDown, chance, holdMs, onlySword, onlyPlayers);
+        this.addValues(minDelay, maxDelay, mode, requireMouseDown, chance, holdMs, actionCooldown,
+                releaseCooldown, serverRelease, onlySword, onlyPlayers);
         Chinese = "格挡攻击";
         INSTANCE = this;
     }
@@ -62,7 +76,9 @@ public class BlockHit extends Module {
         blockAt = 0L;
         releaseAt = 0L;
         lastTriggerAt = 0L;
+        lastReleasePacketAt = 0L;
         inputGraceUntil = 0L;
+        packetBlocking = false;
         mouseTriggered = false;
         triggerTarget = null;
         releaseBlock();
@@ -99,9 +115,12 @@ public class BlockHit extends Module {
 
     @SubscribeEvent
     public void onTick(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.END || !isInGame()) {
+        if (!isInGame()) {
             releaseBlock();
             phase = 0;
+            return;
+        }
+        if (event.phase != TickEvent.Phase.END) {
             return;
         }
         if (mode.getValue() == BlockMode.PREDICT && phase == 0 && mc.objectMouseOver != null
@@ -130,6 +149,10 @@ public class BlockHit extends Module {
             if (now < releaseAt) {
                 return;
             }
+            if (!canReleasePacketNow(now)) {
+                releaseAt = Math.max(now + 25L, lastReleasePacketAt + releaseCooldown.getValue().longValue());
+                return;
+            }
             releaseBlock();
             phase = 0;
         }
@@ -154,7 +177,10 @@ public class BlockHit extends Module {
             return;
         }
         long now = System.currentTimeMillis();
-        if (now - lastTriggerAt < MIN_RETRIGGER_MS) {
+        if (blockingApplied || packetBlocking) {
+            return;
+        }
+        if (now - lastTriggerAt < actionCooldown.getValue().longValue()) {
             return;
         }
         lastTriggerAt = now;
@@ -215,6 +241,11 @@ public class BlockHit extends Module {
         if (stack == null) {
             return;
         }
+        if (!blockingApplied) {
+            MinecraftAccessor.syncCurrentPlayItem(mc.playerController);
+            PacketUtil.sendPacket(new C08PacketPlayerBlockPlacement(stack));
+            packetBlocking = true;
+        }
         BlockMode current = mode.getValue();
         if (current == BlockMode.MANUAL || current == BlockMode.AUTO || current == BlockMode.LAG) {
             int key = mc.gameSettings.keyBindUseItem.getKeyCode();
@@ -231,9 +262,15 @@ public class BlockHit extends Module {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), false);
             holdingUseKey = false;
         }
+        if (packetBlocking && isInGame() && Boolean.TRUE.equals(serverRelease.getValue())
+                && canReleasePacketNow(System.currentTimeMillis())) {
+            PacketUtil.sendPacket(new C07PacketPlayerDigging(C07PacketPlayerDigging.Action.RELEASE_USE_ITEM, BlockPos.ORIGIN, EnumFacing.DOWN));
+            lastReleasePacketAt = System.currentTimeMillis();
+        }
         if (blockingApplied && isInGame()) {
             mc.thePlayer.clearItemInUse();
         }
+        packetBlocking = false;
         blockingApplied = false;
         mouseTriggered = false;
         inputGraceUntil = 0L;
@@ -256,6 +293,12 @@ public class BlockHit extends Module {
 
     private long holdDuration() {
         return Math.max(35L, holdMs.getValue().longValue());
+    }
+
+    private boolean canReleasePacketNow(long now) {
+        return !Boolean.TRUE.equals(serverRelease.getValue())
+                || lastReleasePacketAt == 0L
+                || now - lastReleasePacketAt >= releaseCooldown.getValue().longValue();
     }
 
     private static long randomRange(long first, long second) {

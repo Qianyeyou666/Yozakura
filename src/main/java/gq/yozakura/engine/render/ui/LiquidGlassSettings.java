@@ -2,9 +2,9 @@ package gq.yozakura.engine.render.ui;
 
 public final class LiquidGlassSettings {
     private static final LiquidGlassSettings DEFAULT = LiquidGlassSettings.of(
-            2,      // blurIterations: 横向+纵向 blur 的迭代次数，越高越平滑但越耗性能。
+            1,      // blurIterations: 横向+纵向 blur 的迭代次数，越高越平滑但越耗性能。
             4.0f,   // blurRadius: blur 半径，越大背景越糊。
-            0.85f,  // blurDownscale: blur 工作贴图分辨率比例，越接近 1.0 越不容易出方块。
+            0.68f,  // blurDownscale: blur 工作贴图分辨率比例，越接近 1.0 越不容易出方块。
             0.03f,  // noise: 静态磨砂颗粒强度。
             3.2f,   // powerFactor: 超椭圆折射形状强度，影响边缘/中心过渡。
             1.0f,   // refractionPower: 折射曲线幂次。

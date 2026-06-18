@@ -48,6 +48,7 @@ final class ModernVisualRenderer {
     private static long moduleListCacheAt;
     private static int moduleListCacheFontSize;
     private static List<String> moduleListCache = Collections.emptyList();
+    private static final ArrayList<ModernRender3D.RenderBox> LEVEL_BOX_SCRATCH = new ArrayList<ModernRender3D.RenderBox>();
     private static final String[] KEYBOARD_KEYS = new String[]{"W", "A", "S", "D"};
     private static final int[][] KEYBOARD_POSITIONS = new int[][]{{1, 0}, {0, 1}, {1, 1}, {2, 1}};
 
@@ -124,7 +125,8 @@ final class ModernVisualRenderer {
     }
 
     private static List<ModernRender3D.RenderBox> collectLevelBoxes(Object minecraft, Object player, long now) {
-        ArrayList<ModernRender3D.RenderBox> boxes = new ArrayList<ModernRender3D.RenderBox>();
+        ArrayList<ModernRender3D.RenderBox> boxes = LEVEL_BOX_SCRATCH;
+        boxes.clear();
         boolean esp = ModernForgeEventBridge.enabled("ESP");
         boolean chams = ModernForgeEventBridge.enabled("Chams");
         boolean hitBoxes = ModernForgeEventBridge.enabled("HitBoxes");
@@ -135,11 +137,11 @@ final class ModernVisualRenderer {
                 }
                 if (esp && isRenderable3DTarget(player, entity, "ESP")) {
                     addEntityBox(boxes, entity, ModernForgeEventBridge.number("ESP", "Expand", 0.03D),
-                            espColor(entity), espFilled(), espThroughWalls(), 1.15f);
+                            espColor(entity, now), espFilled(), espThroughWalls(), 1.15f);
                 }
                 if (chams && isRenderable3DTarget(player, entity, "Chams")) {
                     addEntityBox(boxes, entity, ModernForgeEventBridge.number("Chams", "Expand", 0.04D),
-                            chamsColor(entity), true,
+                            chamsColor(entity, now), true,
                             ModernForgeEventBridge.bool("Chams", "Through Walls", true), 1.0f);
                 }
                 if (hitBoxes && isRenderable3DTarget(player, entity, "HitBoxes")) {
@@ -256,13 +258,13 @@ final class ModernVisualRenderer {
         return ModernForgeEventBridge.bool(module, "Mobs", false);
     }
 
-    private static int espColor(Object entity) {
+    private static int espColor(Object entity, long now) {
         int alpha = Math.max(0, Math.min(255, Math.round((float) ModernForgeEventBridge.number("ESP", "Alpha", 160.0D))));
         if (ModernForgeEventBridge.bool("ESP", "Red On Damage", true) && hurtTime(entity) > 0) {
             return withAlpha(0xFFFF5E70, alpha);
         }
         if (ModernForgeEventBridge.bool("ESP", "Palette Rainbow", false)) {
-            return withAlpha(rainbow(System.currentTimeMillis(), ModernRotationBridge.entityId(entity)), alpha);
+            return withAlpha(rainbow(now, ModernRotationBridge.entityId(entity)), alpha);
         }
         int red = clampColor((int) ModernForgeEventBridge.number("ESP", "Red", 95.0D));
         int green = clampColor((int) ModernForgeEventBridge.number("ESP", "Green", 190.0D));
@@ -270,13 +272,13 @@ final class ModernVisualRenderer {
         return (alpha << 24) | red << 16 | green << 8 | blue;
     }
 
-    private static int chamsColor(Object entity) {
+    private static int chamsColor(Object entity, long now) {
         int alpha = Math.max(0, Math.min(255, Math.round((float) ModernForgeEventBridge.number("Chams", "Alpha", 115.0D))));
         if (hurtTime(entity) > 0) {
             return withAlpha(0xFFFF5E70, alpha);
         }
         if (ModernForgeEventBridge.bool("Chams", "Rainbow", false)) {
-            return withAlpha(rainbow(System.currentTimeMillis(), ModernRotationBridge.entityId(entity) * 3), alpha);
+            return withAlpha(rainbow(now, ModernRotationBridge.entityId(entity) * 3), alpha);
         }
         int red = clampColor((int) ModernForgeEventBridge.number("Chams", "Red", 88.0D));
         int green = clampColor((int) ModernForgeEventBridge.number("Chams", "Green", 190.0D));

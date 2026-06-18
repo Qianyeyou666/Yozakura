@@ -60,11 +60,11 @@ public class TeamUtil {
         if (player == TeamUtil.mc.thePlayer) {
             return false;
         }
+        if (!ServerUtil.isHypixel()) return false;
         NetworkPlayerInfo playerInfo = mc.getNetHandler().getPlayerInfo(player.getName());
         if (playerInfo == null) {
             return true;
         }
-        if (!ServerUtil.isHypixel()) return false;
         if (player.getName().startsWith("§k")) {
             return player.isInvisible();
         }

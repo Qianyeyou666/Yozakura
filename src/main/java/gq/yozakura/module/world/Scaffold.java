@@ -30,6 +30,7 @@ import gq.yozakura.event.bridge.*;
 import gq.yozakura.manager.RotationDebug;
 import gq.yozakura.manager.RotationState;
 import gq.yozakura.manager.VisualRotationState;
+import gq.yozakura.manager.RotationCleanup;
 import gq.yozakura.module.runtime.Module;
 import gq.yozakura.module.world.BedNuker;
 import gq.yozakura.module.movement.LongJump;
@@ -967,7 +968,7 @@ public class Scaffold extends Module {
 
     @Override
     public void onDisabled() {
-        VisualRotationState.clearSource("Scaffold");
+        RotationCleanup.clearModuleRotations("Scaffold", 3);
         RotationDebug.setSourceEnabled("Scaffold", false);
         if (mc.thePlayer != null && this.lastSlot != -1) {
             this.selectHotbarSlot(this.lastSlot);

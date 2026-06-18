@@ -52,6 +52,8 @@ public class ESP extends Module {
             return;
         }
 
+        int renderType = getRenderType();
+        int rainbowColor = Boolean.TRUE.equals(rainbow.getValue()) ? withAlpha(ColorUtil.getRainbow().getRGB()) : 0;
         for (Object object : mc.theWorld.loadedEntityList) {
             if (!(object instanceof EntityLivingBase)) {
                 continue;
@@ -60,7 +62,7 @@ public class ESP extends Module {
             if (!isValidTarget(entity)) {
                 continue;
             }
-            StorageESP.ee((Entity) entity, getColor(entity), false, getRenderType());
+            StorageESP.ee((Entity) entity, getColor(entity, rainbowColor), false, renderType);
         }
     }
 
@@ -94,12 +96,12 @@ public class ESP extends Module {
         return 1;
     }
 
-    private int getColor(EntityLivingBase entity) {
+    private int getColor(EntityLivingBase entity, int rainbowColor) {
         if (Boolean.TRUE.equals(redOnDamage.getValue()) && entity.hurtTime > 0) {
             return withAlpha(0xFFFF5E70);
         }
         if (Boolean.TRUE.equals(rainbow.getValue())) {
-            return withAlpha(ColorUtil.getRainbow().getRGB());
+            return rainbowColor;
         }
         return withAlpha(0xFF000000 | clampColor(red.getValue().intValue()) << 16
                 | clampColor(green.getValue().intValue()) << 8

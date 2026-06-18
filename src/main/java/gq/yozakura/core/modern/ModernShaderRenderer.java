@@ -26,6 +26,8 @@ final class ModernShaderRenderer {
     private static final float MAX_GAUSSIAN_PASS_RADIUS = 10.0f;
     private static final int MAX_GAUSSIAN_ITERATIONS = 10;
     private static final int BLUR_KEY_SCALE = 1000;
+    private static final float BLUR_RADIUS_KEY_STEP = 2.0f;
+    private static final float BLUR_DOWNSCALE_KEY_STEP = 0.05f;
     private static final long GLASS_CAPTURE_INTERVAL_MS = 50L;
     private static final String LIQUID_GLASS_FRAGMENT_RESOURCE =
             "/assets/minecraft/yozakura/shaders/liquid_glass_150.frag";
@@ -736,6 +738,16 @@ final class ModernShaderRenderer {
         return Math.max(0.0f, Math.min(MAX_GAUSSIAN_PASS_RADIUS, blurRadius));
     }
 
+    private static int quantizedBlurRadiusKey(float blurRadius) {
+        float clamped = clampLiquidGlassBlurRadius(blurRadius);
+        return Math.round(Math.round(clamped / BLUR_RADIUS_KEY_STEP) * BLUR_RADIUS_KEY_STEP * BLUR_KEY_SCALE);
+    }
+
+    private static int quantizedBlurDownscaleKey(float blurDownscale) {
+        float clamped = clampLiquidGlassBlurDownscale(blurDownscale);
+        return Math.round(Math.round(clamped / BLUR_DOWNSCALE_KEY_STEP) * BLUR_DOWNSCALE_KEY_STEP * BLUR_KEY_SCALE);
+    }
+
     private static int alpha(int color) {
         return (color >>> 24) & 255;
     }
@@ -775,8 +787,8 @@ final class ModernShaderRenderer {
 
         private static BlurKey from(LiquidGlassSettings settings) {
             return new BlurKey(
-                    Math.round(clampLiquidGlassBlurRadius(settings.blurRadius()) * BLUR_KEY_SCALE),
-                    Math.round(clampLiquidGlassBlurDownscale(settings.blurDownscale()) * BLUR_KEY_SCALE),
+                    quantizedBlurRadiusKey(settings.blurRadius()),
+                    quantizedBlurDownscaleKey(settings.blurDownscale()),
                     clampGaussianIterations(settings.blurIterations()));
         }
 

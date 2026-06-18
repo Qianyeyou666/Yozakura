@@ -27,7 +27,8 @@ import java.lang.reflect.Field;
 import java.util.Random;
 
 public class AutoClicker extends Module {
-    private final Numbers<Double> targetCps = new Numbers<Double>("Target CPS", "TargetCPS", 10.0, 1.0, 20.0, 0.5);
+    private final Numbers<Double> minCps = new Numbers<Double>("Min CPS", "MinCPS", 8.0, 1.0, 20.0, 0.5);
+    private final Numbers<Double> maxCps = new Numbers<Double>("Max CPS", "MaxCPS", 12.0, 1.0, 20.0, 0.5);
     private final Option<Boolean> simulateExhaust = new Option<Boolean>("Simulate exhaust", "SimulateExhaust", true);
     private final Option<Boolean> notUsingItem = new Option<Boolean>("Not using item", "NotUsingItem", false);
     private final Option<Boolean> breakBlocks = new Option<Boolean>("Break blocks", "BreakBlocks", false);
@@ -47,7 +48,7 @@ public class AutoClicker extends Module {
 
     public AutoClicker() {
         super("AutoClicker", Keyboard.KEY_K, ModuleType.Combat, "Click automatically while attack is held");
-        this.addValues(targetCps, simulateExhaust, notUsingItem, breakBlocks, weaponOnly,
+        this.addValues(minCps, maxCps, simulateExhaust, notUsingItem, breakBlocks, weaponOnly,
                 disableCreative, inventory, inventoryStartDelay);
         Chinese = "连点器";
     }
@@ -173,31 +174,24 @@ public class AutoClicker extends Module {
             this.nextClickTime = now + nextDelay();
         }
 
-        int clicks = 0;
-        while (this.nextClickTime <= now) {
-            clicks++;
-            this.nextClickTime += nextDelay();
-        }
-
         if (!canClick()) {
             return;
         }
         if (handleBlockBreaking()) {
             return;
         }
-        if (clicks <= 0) {
+        if (now < this.nextClickTime) {
             return;
         }
+        this.nextClickTime = now + nextDelay();
 
         int key = mc.gameSettings.keyBindAttack.getKeyCode();
         Backtrack.applyBacktrackHit();
         KeyBinding.setKeyBindState(key, true);
-        for (int i = 0; i < clicks; i++) {
-            MinecraftAccessor.setLeftClickCounter(mc, 0);
-            KeyBinding.onTick(key);
-            if (!MinecraftAccessor.clickMouse(mc)) {
-                attackHoveredEntity();
-            }
+        MinecraftAccessor.setLeftClickCounter(mc, 0);
+        KeyBinding.onTick(key);
+        if (!MinecraftAccessor.clickMouse(mc)) {
+            attackHoveredEntity();
         }
     }
 
@@ -270,26 +264,26 @@ public class AutoClicker extends Module {
     }
 
     private long nextDelay() {
-        int target = Math.max(1, targetCps.getValue().intValue());
-        int baseDelay = Math.max(1, 1000 / target);
-        int delay;
+        double min = Math.max(1.0D, Math.min(minCps.getValue(), maxCps.getValue()));
+        double max = Math.max(min, Math.max(minCps.getValue(), maxCps.getValue()));
+        double cps = min + random.nextDouble() * (max - min + 0.001D);
+        int baseDelay = Math.max(1, (int) Math.round(1000.0D / cps));
+        int delay = baseDelay;
         if (Boolean.TRUE.equals(simulateExhaust.getValue())) {
-            delay = baseDelay + random.nextInt(baseDelay + 1) - baseDelay / 2;
-            if (random.nextInt(100) < 15) {
-                delay = random.nextBoolean()
-                        ? 25 + random.nextInt(16)
-                        : baseDelay + 50 + random.nextInt(41);
+            delay += random.nextInt(17) - 8;
+            if (random.nextInt(100) < 11) {
+                delay += 18 + random.nextInt(45);
             }
-            if (random.nextInt(100) < 8) {
-                delay = delay * (50 + random.nextInt(151)) / 100;
+            if (random.nextInt(100) < 7) {
+                delay -= 8 + random.nextInt(18);
             }
-            if (random.nextInt(100) < 10) {
-                delay += 10 + random.nextInt(26);
+            if (random.nextInt(100) < 4) {
+                delay += 70 + random.nextInt(90);
             }
         } else {
-            delay = baseDelay + random.nextInt(21) - 10;
+            delay += random.nextInt(9) - 4;
         }
-        return Math.max(33L, Math.min(180L, delay));
+        return Math.max(50L, Math.min(260L, delay));
     }
 
     private boolean isAttackHeld() {

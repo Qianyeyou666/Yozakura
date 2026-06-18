@@ -50,7 +50,7 @@ import java.util.List;
 public class Velocity extends Module {
     private static final Minecraft mc = Minecraft.getMinecraft();
 
-    public final ModeProperty mode = new ModeProperty("Mode", 0, new String[]{"Vanilla", "Prediction", "Reduce", "ReduceAttack"});
+    public final ModeProperty mode = new ModeProperty("Mode", 0, new String[]{"Vanilla", "Prediction", "Reduce", "ReduceAttack", "JumpReset"});
     public final BooleanProperty reduce = new BooleanProperty("Reduce", true, () -> mode.getValue() == 1);
     private final BooleanProperty reduceWhenCanAttack = new BooleanProperty("Reduce When Can Attack", true, () -> mode.getValue() != 0);
     private final BooleanProperty onlySprinting = new BooleanProperty("Only Sprinting", true, () -> mode.getValue() != 0);
@@ -153,7 +153,7 @@ public class Velocity extends Module {
         if (delayFlag) {
             delayCounter++;
         }
-        if (jump.getValue() && mode.getValue() == 1) {
+        if (mode.getValue() == 4 || jump.getValue() && mode.getValue() == 1) {
             handleJumpReset();
         }
     }
@@ -182,6 +182,9 @@ public class Velocity extends Module {
         if (mode.getValue() == 3 && event.getType() == EventType.PRE) {
             handleReduceAttack(event, 3.0D, true);
         }
+        if (mode.getValue() == 4 && event.getType() == EventType.POST) {
+            releaseDelayedVelocityIfReady();
+        }
     }
 
     @EventTarget
@@ -197,7 +200,7 @@ public class Velocity extends Module {
 
     @EventTarget
     public void onLivingUpdate(LivingUpdateEvent event) {
-        if (!isEnabled() || !jumpFlag || !isInGame()) {
+        if (!isEnabled() || !jumpFlag || !isInGame() || mode.getValue() != 1) {
             return;
         }
         if (mc.thePlayer.onGround
@@ -214,7 +217,7 @@ public class Velocity extends Module {
         if (!isEnabled() || !isInGame()) {
             return;
         }
-        if (handleReset) {
+        if (handleReset && (mode.getValue() == 1 || mode.getValue() == 4)) {
             mc.thePlayer.movementInput.moveForward = 1.0F;
         }
         if (rotatoTickCounter > 0 && rotatoTickCounter <= rotateTick.getValue()) {
@@ -290,6 +293,12 @@ public class Velocity extends Module {
             }
             attackCounter = 0;
             scaleVelocityPacket(packet, reduceAttackHorizontal.getValue(), reduceAttackVertical.getValue());
+            return;
+        }
+
+        if (mode.getValue() == 4) {
+            ticksSinceVelocity = 0;
+            hasReceivedVelocity = true;
             return;
         }
 

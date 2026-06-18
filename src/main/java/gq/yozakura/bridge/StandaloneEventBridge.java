@@ -6,11 +6,13 @@ import gq.yozakura.event.bridge.LeftClickMouseEvent;
 import gq.yozakura.event.bridge.PacketEvent;
 import gq.yozakura.event.bridge.RightClickMouseEvent;
 import gq.yozakura.event.bridge.SafeWalkEvent;
+import gq.yozakura.event.bridge.SwapItemEvent;
 import gq.yozakura.event.bridge.TickEvent;
 import gq.yozakura.event.bridge.UpdateEvent;
 import gq.yozakura.event.bus.EventManager;
 import gq.yozakura.event.bus.types.EventType;
 import gq.yozakura.manager.BridgeDebug;
+import gq.yozakura.manager.PacketRotationState;
 import gq.yozakura.manager.RotationDebug;
 import gq.yozakura.manager.RotationState;
 import gq.yozakura.manager.VisualRotationState;
@@ -57,6 +59,7 @@ public final class StandaloneEventBridge {
             resetMouseState();
             MovementInputBridge.setDirectYawPhysics(true);
             MovementInputBridge.uninstall();
+            PacketRotationState.clear();
             RotationState.clear();
             VisualRotationState.clear();
             pendingPostUpdate = null;
@@ -69,6 +72,7 @@ public final class StandaloneEventBridge {
             resetMouseState();
             MovementInputBridge.setDirectYawPhysics(true);
             MovementInputBridge.uninstall();
+            PacketRotationState.clear();
             RotationState.clear();
             VisualRotationState.clear();
             pendingPostUpdate = null;
@@ -107,8 +111,12 @@ public final class StandaloneEventBridge {
         releaseForcedSneak();
         MovementInputBridge.setDirectYawPhysics(true);
         MovementInputBridge.uninstall();
+        PacketRotationState.clear();
         RotationState.clear();
         VisualRotationState.clear();
+        pendingPostUpdate = null;
+        activePreUpdate = null;
+        waitingForRotationPacket = false;
         removePacketHandler();
     }
 
@@ -126,11 +134,15 @@ public final class StandaloneEventBridge {
             }
             boolean leftDown = Mouse.isButtonDown(0);
             boolean rightDown = Mouse.isButtonDown(1);
+            int dWheel = Mouse.getDWheel();
             if (leftDown && !lastLeftButton) {
                 dispatchMouseButton(0);
             }
             if (rightDown && !lastRightButton) {
                 dispatchMouseButton(1);
+            }
+            if (dWheel != 0) {
+                dispatchMouseWheel(dWheel);
             }
             lastLeftButton = leftDown;
             lastRightButton = rightDown;
@@ -166,6 +178,22 @@ public final class StandaloneEventBridge {
         }
     }
 
+    private void dispatchMouseWheel(int dWheel) {
+        gq.yozakura.bridge.forge.MouseEvent forgeMouse =
+                EventManager.call(new gq.yozakura.bridge.forge.MouseEvent(-1, false, dWheel));
+        boolean cancelled = forgeMouse != null && forgeMouse.isCanceled();
+        int offset = dWheel > 0 ? 1 : -1;
+        SwapItemEvent swap = EventManager.call(new SwapItemEvent(mc.thePlayer.inventory.currentItem, offset));
+        cancelled |= swap.isCancelled();
+        if (cancelled) {
+            return;
+        }
+        if (mc.thePlayer != null && mc.thePlayer.inventory != null) {
+            mc.thePlayer.inventory.changeCurrentItem(offset);
+            MinecraftAccessor.syncCurrentPlayItem(mc.playerController);
+        }
+    }
+
     private void suppressMouseKey(int button) {
         int key = button == 0 ? mc.gameSettings.keyBindAttack.getKeyCode()
                 : button == 1 ? mc.gameSettings.keyBindUseItem.getKeyCode() : Integer.MIN_VALUE;
@@ -197,6 +225,7 @@ public final class StandaloneEventBridge {
         BridgeDebug.logUpdate("standalone", "PRE_AFTER_EVENT", update, pendingPostUpdate != null);
         RotationState.applyState(update.isRotated(), update.getNewYaw(), update.getNewPitch(),
                 update.getPreYaw(), update.isRotating());
+        applyLocalAimAssistRotation(update);
         if (!update.isRotated()) {
             waitingForRotationPacket = false;
         }
@@ -207,6 +236,18 @@ public final class StandaloneEventBridge {
         BridgeDebug.logUpdate("standalone", "PRE_DONE", update, pendingPostUpdate != null);
     }
 
+    private void applyLocalAimAssistRotation(UpdateEvent update) {
+        if (update == null || !update.isRotated() || update.isRotating() != 0 || mc.thePlayer == null) {
+            return;
+        }
+        mc.thePlayer.rotationYaw = update.getNewYaw();
+        mc.thePlayer.rotationPitch = update.getNewPitch();
+        mc.thePlayer.prevRotationYawHead = mc.thePlayer.rotationYawHead;
+        mc.thePlayer.rotationYawHead = update.getNewYaw();
+        mc.thePlayer.prevRenderYawOffset = mc.thePlayer.renderYawOffset;
+        mc.thePlayer.renderYawOffset = update.getNewYaw();
+    }
+
     private void queuePostUpdate(UpdateEvent preUpdate) {
         this.pendingPostUpdate = new UpdateEvent(EventType.POST, preUpdate.getYaw(), preUpdate.getPitch(),
                 preUpdate.getNewYaw(), preUpdate.getNewPitch());
@@ -214,12 +255,14 @@ public final class StandaloneEventBridge {
     }
 
     private void dispatchPendingPostUpdate() {
-        UpdateEvent post = this.pendingPostUpdate;
+        UpdateEvent queued = this.pendingPostUpdate;
         this.pendingPostUpdate = null;
-        if (post == null) {
+        if (queued == null) {
             BridgeDebug.logState("standalone", "POST_SKIP_NULL", false);
             return;
         }
+        UpdateEvent post = new UpdateEvent(EventType.POST, mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch,
+                mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch);
         BridgeDebug.logUpdate("standalone", "POST_START", post, false);
         EventManager.call(post);
         BridgeDebug.logUpdate("standalone", "POST_DONE", post, false);
@@ -400,19 +443,24 @@ public final class StandaloneEventBridge {
                     BridgeDebug.logPacket("standalone", "SEND_CANCELLED", packet, pendingPostUpdate != null);
                     return;
                 }
+                if (!delayedPackets.isEmpty() && !hasPendingRotation()) {
+                    flushDelayedPackets(ctx);
+                }
                 if (shouldDelayUntilRotation(packet)) {
                     delayedPackets.add(new DelayedPacket(packet, promise));
                     BridgeDebug.logPacket("standalone", "SEND_DELAYED_QUEUE", packet, pendingPostUpdate != null);
                     return;
-                }
-                if (packet instanceof C03PacketPlayer) {
-                    flushDelayedPackets(ctx);
                 }
                 markSent(packet);
                 BridgeDebug.logPacket("standalone", "SEND_MARKED", packet, pendingPostUpdate != null);
                 if (YozakuraRuntime.blinkManager != null && YozakuraRuntime.blinkManager.isBlinking()
                         && YozakuraRuntime.blinkManager.offerPacket(packet)) {
                     BridgeDebug.logPacket("standalone", "SEND_BLINK_BUFFERED", packet, pendingPostUpdate != null);
+                    if (packet instanceof C03PacketPlayer) {
+                        waitingForRotationPacket = false;
+                        flushDelayedPackets(ctx);
+                    }
+                    promise.setSuccess();
                     return;
                 }
                 if (packet instanceof C03PacketPlayer && RotationState.isActived()) {
@@ -422,6 +470,7 @@ public final class StandaloneEventBridge {
                             pendingPostUpdate != null);
                     super.write(ctx, rewritten, promise);
                     waitingForRotationPacket = false;
+                    flushDelayedPackets(ctx);
                     return;
                 }
                 if (packet instanceof C03PacketPlayer) {
@@ -429,6 +478,7 @@ public final class StandaloneEventBridge {
                     hasSentSilentRotation = false;
                     waitingForRotationPacket = false;
                     super.write(ctx, msg, promise);
+                    flushDelayedPackets(ctx);
                     return;
                 }
                 BridgeDebug.logPacket("standalone", "SEND_OUT", packet, pendingPostUpdate != null);
@@ -487,11 +537,18 @@ public final class StandaloneEventBridge {
         }
 
         private boolean shouldDelayUntilRotation(Packet<?> packet) {
-            return isActionPacket(packet)
-                    && (waitingForRotationPacket
-                    || hasActivePreRotation()
-                    || RotationState.isActived()
-                    || !delayedPackets.isEmpty());
+            if (!isActionPacket(packet)) {
+                return false;
+            }
+            boolean pendingRotation = hasPendingRotation();
+            if (!pendingRotation && waitingForRotationPacket) {
+                waitingForRotationPacket = false;
+            }
+            return pendingRotation || !delayedPackets.isEmpty();
+        }
+
+        private boolean hasPendingRotation() {
+            return hasActivePreRotation() || RotationState.isActived();
         }
 
         private boolean isActionPacket(Packet<?> packet) {

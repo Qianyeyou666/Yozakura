@@ -43,6 +43,7 @@ import gq.yozakura.event.bus.types.Priority;
 import gq.yozakura.event.bridge.*;
 import gq.yozakura.manager.RotationState;
 import gq.yozakura.manager.RotationDebug;
+import gq.yozakura.manager.RotationCleanup;
 import gq.yozakura.manager.VisualRotationState;
 import gq.yozakura.bridge.MinecraftAccessor;
 import gq.yozakura.module.runtime.Module;
@@ -119,6 +120,7 @@ public class KillAura extends Module {
     private boolean postSwap = false;
     private boolean blockAnimationActive = false;
     private int blockAnimationSlot = -1;
+    private final Random attackRandom = new Random();
 
 
     public KillAura() {
@@ -132,7 +134,7 @@ public class KillAura extends Module {
         this.sort = new ModeProperty("Sort", 0, new String[]{"Distance", "Health", "Hurt Time", "FOV"});
 
         this.autoBlock = new ModeProperty(
-                "AutoBlock", 0, new String[]{"None", "Vanilla", "Hypixel", "Legit", "Fake","Hypixel Test","Hypixel Custom"}
+                "AutoBlock", 0, new String[]{"None", "Vanilla", "Hypixel", "Legit", "Fake","Hypixel Test","Hypixel Custom", "Spoof", "Blink", "Interact", "Swap"}
         );
         this.autoBlockRequirePress = new BooleanProperty("AutoBlock Require Press", false);
         this.autoBlockCPS = new IntProperty("AutoBlock Aps", 10, 1, 20);
@@ -140,8 +142,8 @@ public class KillAura extends Module {
         this.swingRange = new FloatProperty("Swing Range", 3.5F, 3.0F, 6.0F);
         this.attackRange = new FloatProperty("Attack Range", 3.0F, 3.0F, 6.0F);
         this.fov = new IntProperty("Fov", 360, 30, 360);
-        this.minCPS = new IntProperty("Min Aps", 14, 1, 20);
-        this.maxCPS = new IntProperty("Max Aps", 14, 1, 20);
+        this.minCPS = new IntProperty("Min CPS", 14, 1, 20);
+        this.maxCPS = new IntProperty("Max CPS", 14, 1, 20);
         this.switchDelay = new IntProperty("Switch Delay", 150, 0, 1000);
         this.rotations = new ModeProperty("Rotations", 2, new String[]{"None", "Legit", "Silent", "Lock View"});
         this.moveFix = new ModeProperty("Move Fix", 1, new String[]{"None", "Silent", "Strict"});
@@ -166,36 +168,50 @@ public class KillAura extends Module {
     }
 
     private long getAttackDelay() {
-        return this.isBlocking ? (long) (1000.0F / this.autoBlockCPS.getValue()) : 1000L / RandomUtil.nextLong(this.minCPS.getValue(), this.maxCPS.getValue());
+        int minValue = Math.min(this.minCPS.getValue(), this.maxCPS.getValue());
+        int maxValue = Math.max(this.minCPS.getValue(), this.maxCPS.getValue());
+        double min = Math.max(1.0D, minValue);
+        double max = Math.max(min, maxValue);
+        double cps = min + this.attackRandom.nextDouble() * (max - min + 0.001D);
+        int delay = Math.max(1, (int) Math.round(1000.0D / cps));
+        delay += this.attackRandom.nextInt(11) - 5;
+        if (this.attackRandom.nextInt(100) < 9) {
+            delay += 15 + this.attackRandom.nextInt(35);
+        }
+        if (this.attackRandom.nextInt(100) < 5) {
+            delay -= 6 + this.attackRandom.nextInt(14);
+        }
+        if (this.isBlocking) {
+            delay += this.attackRandom.nextInt(9);
+        }
+        return Math.max(50L, Math.min(260L, delay));
     }
 
     private boolean performAttack(float yaw, float pitch) {
-        if (!YozakuraRuntime.playerStateManager.digging && !YozakuraRuntime.playerStateManager.placing) {
-            if (this.isPlayerBlocking() && this.autoBlock.getValue() != 1) {
-                return false;
-            } else if (this.attackDelayMS > 0L) {
-                return false;
-            } else {
-                this.attackDelayMS = this.attackDelayMS + this.getAttackDelay();
-                mc.thePlayer.swingItem();
-                if ((this.rotations.getValue() != 0 || !this.isBoxInAttackRange(this.attackTarget.getBox()))
-                        && RotationUtil.rayTrace(this.attackTarget.getBox(), yaw, pitch, this.attackRange.getValue()) == null) {
-                    return false;
-                } else {
-                    AttackEvent event = new AttackEvent(this.attackTarget.getEntity());
-                    EventManager.call(event);
-                    MinecraftAccessor.syncCurrentPlayItem(mc.playerController);
-                    PacketUtil.sendPacket(new C02PacketUseEntity(this.attackTarget.getEntity(), Action.ATTACK));
-                    if (mc.playerController.getCurrentGameType() != GameType.SPECTATOR) {
-                        PlayerUtil.attackEntity(this.attackTarget.getEntity());
-                    }
-                    this.hitRegistered = true;
-                    return true;
-                }
-            }
-        } else {
+        if (YozakuraRuntime.playerStateManager.digging || YozakuraRuntime.playerStateManager.placing) {
             return false;
         }
+        if (this.isPlayerBlocking() && this.autoBlock.getValue() != 1) {
+            this.stopBlock();
+        }
+        if (this.attackDelayMS > 0L) {
+            return false;
+        }
+        this.attackDelayMS = this.attackDelayMS + this.getAttackDelay();
+        mc.thePlayer.swingItem();
+        if ((this.rotations.getValue() != 0 || !this.isBoxInAttackRange(this.attackTarget.getBox()))
+                && RotationUtil.rayTrace(this.attackTarget.getBox(), yaw, pitch, this.attackRange.getValue()) == null) {
+            return false;
+        }
+        AttackEvent event = new AttackEvent(this.attackTarget.getEntity());
+        EventManager.call(event);
+        MinecraftAccessor.syncCurrentPlayItem(mc.playerController);
+        PacketUtil.sendPacket(new C02PacketUseEntity(this.attackTarget.getEntity(), Action.ATTACK));
+        if (mc.playerController.getCurrentGameType() != GameType.SPECTATOR) {
+            PlayerUtil.attackEntity(this.attackTarget.getEntity());
+        }
+        this.hitRegistered = true;
+        return true;
     }
 
     private void sendUseItem() {
@@ -213,7 +229,7 @@ public class KillAura extends Module {
 
     private void stopBlock() {
         PacketUtil.sendPacket(new C07PacketPlayerDigging(C07PacketPlayerDigging.Action.RELEASE_USE_ITEM, BlockPos.ORIGIN, EnumFacing.DOWN));
-        mc.thePlayer.stopUsingItem();
+        this.clearUseAnimation();
         this.clearBlockAnimationState();
         this.blockingState = false;
     }
@@ -223,7 +239,7 @@ public class KillAura extends Module {
         if (sendPacket && mc.thePlayer != null && this.isPlayerBlocking()) {
             this.stopBlock();
         } else if (mc.thePlayer != null && this.blockAnimationActive) {
-            mc.thePlayer.stopUsingItem();
+            this.clearUseAnimation();
         }
         if (this.swapped && mc.thePlayer != null) {
             PacketUtil.sendPacket(new C09PacketHeldItemChange(mc.thePlayer.inventory.currentItem));
@@ -266,10 +282,9 @@ public class KillAura extends Module {
             this.clearBlockAnimationState();
             return;
         }
-        boolean wasBlocking = mc.thePlayer.isBlocking();
         int slot = mc.thePlayer.inventory.currentItem;
         mc.thePlayer.setItemInUse(itemStack, itemStack.getMaxItemUseDuration());
-        if (resetRenderer || !this.blockAnimationActive || this.blockAnimationSlot != slot || !wasBlocking) {
+        if (resetRenderer && (!this.blockAnimationActive || this.blockAnimationSlot != slot)) {
             this.resetBlockItemRenderer();
         }
         this.blockAnimationActive = true;
@@ -281,16 +296,34 @@ public class KillAura extends Module {
             this.clearBlockAnimationState();
             return;
         }
-        if (this.isPlayerBlocking() && this.isBlocking) {
+        if (this.shouldShowBlockAnimation()) {
             this.refreshBlockAnimation(mc.thePlayer.getHeldItem(), false);
         } else {
             this.clearBlockAnimationState();
         }
     }
 
+    private boolean shouldShowBlockAnimation() {
+        return ItemUtil.isHoldingSword()
+                && (this.blockingState || this.isBlocking || this.fakeBlockState)
+                && (this.attackTarget != null || target != null);
+    }
+
+    private boolean hasValidTarget() {
+        return this.attackTarget != null
+                && this.isValidTarget(this.attackTarget.getEntity())
+                && (this.isBoxInSwingRange(this.attackTarget.getBox()) || this.isBoxInAttackRange(this.attackTarget.getBox()));
+    }
+
     private void clearBlockAnimationState() {
         this.blockAnimationActive = false;
         this.blockAnimationSlot = -1;
+    }
+
+    private void clearUseAnimation() {
+        if (mc.thePlayer != null) {
+            mc.thePlayer.clearItemInUse();
+        }
     }
 
     private void resetCombatState() {
@@ -306,14 +339,8 @@ public class KillAura extends Module {
     }
 
     private void clearRotations() {
-        VisualRotationState.clearSource("KillAura");
+        RotationCleanup.clearModuleRotations("KillAura", 1);
         RotationDebug.setSourceEnabled("KillAura", false);
-        if (mc.thePlayer != null && !VisualRotationState.isActived()) {
-            mc.thePlayer.prevRotationYawHead = mc.thePlayer.rotationYawHead;
-            mc.thePlayer.rotationYawHead = mc.thePlayer.rotationYaw;
-            mc.thePlayer.prevRenderYawOffset = mc.thePlayer.renderYawOffset;
-            mc.thePlayer.renderYawOffset = mc.thePlayer.rotationYaw;
-        }
     }
 
     private void resetBlockItemRenderer() {
@@ -371,17 +398,6 @@ public class KillAura extends Module {
             return this.autoBlock.getValue() != 0
                     && (!this.autoBlockRequirePress.getValue() || PlayerUtil.isUsingItem());
         }
-    }
-
-    private boolean hasValidTarget() {
-        return mc.theWorld
-                .loadedEntityList
-                .stream()
-                .anyMatch(
-                        entity -> entity instanceof EntityLivingBase
-                                && this.isValidTarget((EntityLivingBase) entity)
-                                && this.isInBlockRange((EntityLivingBase) entity)
-                );
     }
 
     private boolean isValidTarget(EntityLivingBase entityLivingBase) {
@@ -487,7 +503,7 @@ public class KillAura extends Module {
     }
 
     public boolean isPlayerBlocking() {
-        return (mc.thePlayer.isUsingItem() || this.blockingState) && ItemUtil.isHoldingSword();
+        return this.blockingState && ItemUtil.isHoldingSword();
     }
 
     @EventTarget(Priority.LOW)
@@ -750,6 +766,96 @@ public class KillAura extends Module {
                                 this.fakeBlockState = false;
                             }
                             break;
+                        case 7: // Spoof - 仅本地显示格挡，不发送 packet
+                            if (this.hasValidTarget()) {
+                                if (!YozakuraRuntime.playerStateManager.digging && !YozakuraRuntime.playerStateManager.placing) {
+                                    ItemStack heldItem = mc.thePlayer.getHeldItem();
+                                    if (heldItem != null && heldItem.getItem() instanceof ItemSword) {
+                                        this.refreshBlockAnimation(heldItem, false);
+                                    }
+                                }
+                                YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+                                this.isBlocking = true;
+                                this.fakeBlockState = true;
+                            } else {
+                                this.clearBlockAnimationState();
+                                YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+                                this.isBlocking = false;
+                                this.fakeBlockState = false;
+                            }
+                            break;
+                        case 8: // Blink - 在 BlinkManager 中缓存所有 packet
+                            if (this.hasValidTarget()) {
+                                if (!YozakuraRuntime.playerStateManager.digging && !YozakuraRuntime.playerStateManager.placing) {
+                                    if (!this.isPlayerBlocking()) {
+                                        swap = true;
+                                    }
+                                }
+                                YozakuraRuntime.blinkManager.setBlinkState(true, BlinkModules.AUTO_BLOCK);
+                                this.isBlocking = true;
+                                this.fakeBlockState = false;
+                            } else {
+                                YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+                                this.isBlocking = false;
+                                this.fakeBlockState = false;
+                            }
+                            break;
+                        case 9: // Interact - 用 INTERACT 包配合 attack
+                            if (this.hasValidTarget()) {
+                                if (!YozakuraRuntime.playerStateManager.digging && !YozakuraRuntime.playerStateManager.placing) {
+                                    switch (this.blockTick) {
+                                        case 0:
+                                            if (!this.isPlayerBlocking()) {
+                                                swap = true;
+                                            }
+                                            this.blockTick = 1;
+                                            break;
+                                        case 1:
+                                            if (this.isPlayerBlocking()) {
+                                                this.stopBlock();
+                                                attack = false;
+                                            }
+                                            if (this.attackDelayMS <= 50L) {
+                                                this.blockTick = 0;
+                                            }
+                                            break;
+                                        default:
+                                            this.blockTick = 0;
+                                    }
+                                }
+                                YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+                                this.isBlocking = true;
+                                this.fakeBlockState = true;
+                            } else {
+                                YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+                                this.isBlocking = false;
+                                this.fakeBlockState = false;
+                            }
+                            break;
+                        case 10: // Swap - 通过 slot 切换实现假格挡
+                            if (this.hasValidTarget()) {
+                                int currentItem = mc.thePlayer.inventory.currentItem;
+                                if (YozakuraRuntime.playerStateManager.digging
+                                        || YozakuraRuntime.playerStateManager.placing
+                                        || (this.isPlayerBlocking() && this.blockTick != 0)
+                                        || (this.attackDelayMS > 0L && this.attackDelayMS <= 50L)) {
+                                    this.blockTick = 0;
+                                } else {
+                                    int emptySlot = currentItem == 0 ? 8 : 0;
+                                    PacketUtil.sendPacket(new C09PacketHeldItemChange(emptySlot));
+                                    PacketUtil.sendPacket(new C09PacketHeldItemChange(currentItem));
+                                    swap = true;
+                                    this.blockTick = 1;
+                                }
+                                YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+                                this.isBlocking = true;
+                                this.fakeBlockState = false;
+                            } else {
+                                YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+                                this.isBlocking = false;
+                                this.fakeBlockState = false;
+                            }
+                            break;
                     }
                 }
                 boolean attacked = false;
@@ -772,8 +878,6 @@ public class KillAura extends Module {
                 if (swap) {
                     if (attacked) {
                         this.interactAttack(event.getNewYaw(), event.getNewPitch());
-                    } else {
-                        if (!postBlock) this.sendUseItem();
                     }
                 }
                 if (blocked) {
@@ -930,13 +1034,14 @@ public class KillAura extends Module {
                 C07PacketPlayerDigging packet = (C07PacketPlayerDigging) event.getPacket();
                 if (packet.getStatus() == C07PacketPlayerDigging.Action.RELEASE_USE_ITEM) {
                     this.blockingState = false;
+                    this.clearUseAnimation();
                     this.clearBlockAnimationState();
                 }
             }
             if (event.getPacket() instanceof C09PacketHeldItemChange) {
                 this.blockingState = false;
                 if (this.isBlocking) {
-                    mc.thePlayer.stopUsingItem();
+                    this.clearUseAnimation();
                 }
                 this.clearBlockAnimationState();
             }
@@ -1113,7 +1218,7 @@ public class KillAura extends Module {
     public void onDisabled() {
         this.clearRotations();
         if (this.blockAnimationActive && mc.thePlayer != null) {
-            mc.thePlayer.stopUsingItem();
+            this.clearUseAnimation();
         }
         this.resetCombatState();
     }

@@ -40,6 +40,9 @@ public final class ShaderRenderer {
     private static final float MAX_GAUSSIAN_PASS_RADIUS = 10.0f;
     private static final int MAX_GAUSSIAN_ITERATIONS = 10;
     private static final int BLUR_KEY_SCALE = 1000;
+    private static final float BLUR_RADIUS_KEY_STEP = 2.0f;
+    private static final float BLUR_DOWNSCALE_KEY_STEP = 0.05f;
+    private static final long GLASS_CAPTURE_INTERVAL_MS = 50L;
     private static final int SHADER_ATTRIB_MASK = GL11.GL_ENABLE_BIT
             | GL11.GL_COLOR_BUFFER_BIT
             | GL11.GL_CURRENT_BIT
@@ -77,6 +80,7 @@ public final class ShaderRenderer {
     private static int sharedGlassSourceVersion = -1;
     private static int sharedGlassViewportX;
     private static int sharedGlassViewportY;
+    private static long lastGlassCaptureMs;
     private static boolean screenTextureConfigured;
     private static boolean loggedFailure;
 
@@ -84,11 +88,17 @@ public final class ShaderRenderer {
     }
 
     public static void invalidateFrostedGlass() {
+        lastGlassCaptureMs = 0L;
         advanceGlassCaptureVersion();
         Blur.invalidate();
     }
 
     public static void beginOverlayFrame() {
+        long now = System.currentTimeMillis();
+        if (now - lastGlassCaptureMs < GLASS_CAPTURE_INTERVAL_MS) {
+            return;
+        }
+        lastGlassCaptureMs = now;
         advanceGlassCaptureVersion();
         Blur.invalidate();
     }
@@ -1309,6 +1319,16 @@ public final class ShaderRenderer {
         }
     }
 
+    private static int quantizedBlurRadiusKey(float blurRadius) {
+        float clamped = clampLiquidGlassBlurRadius(blurRadius);
+        return Math.round(Math.round(clamped / BLUR_RADIUS_KEY_STEP) * BLUR_RADIUS_KEY_STEP * BLUR_KEY_SCALE);
+    }
+
+    private static int quantizedBlurDownscaleKey(float blurDownscale) {
+        float clamped = clampLiquidGlassBlurDownscale(blurDownscale);
+        return Math.round(Math.round(clamped / BLUR_DOWNSCALE_KEY_STEP) * BLUR_DOWNSCALE_KEY_STEP * BLUR_KEY_SCALE);
+    }
+
     private static final class BlurKey {
         private final int radius;
         private final int downscale;
@@ -1323,8 +1343,8 @@ public final class ShaderRenderer {
         private static BlurKey from(LiquidGlassSettings settings) {
             LiquidGlassSettings resolvedSettings = liquidGlassSettingsOrDefault(settings);
             return new BlurKey(
-                    Math.round(clampLiquidGlassBlurRadius(resolvedSettings.blurRadius()) * BLUR_KEY_SCALE),
-                    Math.round(clampLiquidGlassBlurDownscale(resolvedSettings.blurDownscale()) * BLUR_KEY_SCALE),
+                    quantizedBlurRadiusKey(resolvedSettings.blurRadius()),
+                    quantizedBlurDownscaleKey(resolvedSettings.blurDownscale()),
                     clampGaussianIterations(resolvedSettings.blurIterations()));
         }
 

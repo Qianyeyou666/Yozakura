@@ -30,6 +30,16 @@ public class RenderUtil {
     public static Minecraft mc = Minecraft.getMinecraft();
 
     private static final int DEFAULT_ARC_SEGMENTS = 24;
+    private static final double[] DEGREE_SIN = new double[361];
+    private static final double[] DEGREE_COS = new double[361];
+
+    static {
+        for (int i = 0; i < DEGREE_SIN.length; i++) {
+            double radians = Math.toRadians(i);
+            DEGREE_SIN[i] = Math.sin(radians);
+            DEGREE_COS[i] = Math.cos(radians);
+        }
+    }
 
     // --- Fields merged from RenderUtils ---
     private static final AxisAlignedBB DEFAULT_AABB = new AxisAlignedBB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
@@ -478,9 +488,7 @@ public class RenderUtil {
         GL11.glBegin(9);
         int i = 0;
         while (i <= 360) {
-            GL11.glVertex2d(
-                    x + Math.sin(i * 3.141526 / 180.0) * radius,
-                    y + Math.cos(i * 3.141526 / 180.0) * radius);
+            GL11.glVertex2d(x + DEGREE_SIN[i] * radius, y + DEGREE_COS[i] * radius);
             ++i;
         }
         GL11.glEnd();

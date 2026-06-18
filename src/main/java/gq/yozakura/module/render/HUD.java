@@ -171,6 +171,7 @@ public class HUD extends Module {
     private final Numbers<Double> inventoryScale = new Numbers<Double>("Inventory Scale", "InventoryScale", 1.0, 0.65, 1.8, 0.05);
 
     private final Map<Module, Float> moduleAnimations = new HashMap<Module, Float>();
+    private final List<Module> hudModuleScratch = new ArrayList<Module>();
     private final List<ModuleListEntry> moduleEntryCache = new ArrayList<ModuleListEntry>();
     private int moduleEntryCacheSignature;
     private int moduleEntryCacheGap;
@@ -1056,14 +1057,16 @@ public class HUD extends Module {
     }
 
     private List<Module> getHudModules() {
-        ArrayList<Module> modules = new ArrayList<Module>(Client.instance.moduleManager.getEnabledModules());
-        for (int i = modules.size() - 1; i >= 0; i--) {
-            Module module = modules.get(i);
-            if (module == null || module == this || "ClickGUI".equalsIgnoreCase(module.getName())) {
-                modules.remove(i);
+        hudModuleScratch.clear();
+        for (Module module : ModuleManager.getModules()) {
+            if (module != null
+                    && module.getState()
+                    && module != this
+                    && !"ClickGUI".equalsIgnoreCase(module.getName())) {
+                hudModuleScratch.add(module);
             }
         }
-        return modules;
+        return hudModuleScratch;
     }
 
     private List<ModuleListEntry> getSortedModuleListEntries(List<Module> modules, CFontRenderer font, float gap) {
@@ -1077,8 +1080,7 @@ public class HUD extends Module {
             return moduleEntryCache;
         }
 
-        moduleEntryCache.clear();
-        moduleEntryCache.addAll(buildModuleListEntries(modules, font, roundedGap));
+        rebuildModuleListEntries(moduleEntryCache, modules, font, roundedGap);
         moduleEntryCache.sort(new Comparator<ModuleListEntry>() {
             @Override
             public int compare(ModuleListEntry first, ModuleListEntry second) {
@@ -1119,8 +1121,8 @@ public class HUD extends Module {
         moduleEntryCacheTime = 0L;
     }
 
-    private List<ModuleListEntry> buildModuleListEntries(List<Module> modules, CFontRenderer font, int roundedGap) {
-        ArrayList<ModuleListEntry> entries = new ArrayList<ModuleListEntry>(modules.size());
+    private void rebuildModuleListEntries(List<ModuleListEntry> entries, List<Module> modules, CFontRenderer font, int roundedGap) {
+        entries.clear();
         for (Module module : modules) {
             ModuleListLabel label = getModuleListLabel(module);
             int nameWidth = font.getStringWidth(label.name);
@@ -1137,7 +1139,6 @@ public class HUD extends Module {
             int sideWidth = sideText.length() == 0 ? 0 : font.getStringWidth(sideText);
             entries.add(new ModuleListEntry(module, label, labelWidth, nameWidth, sideText, sideWidth, label.fullText()));
         }
-        return entries;
     }
 
     private ModuleListLabel getModuleListLabel(Module module) {
