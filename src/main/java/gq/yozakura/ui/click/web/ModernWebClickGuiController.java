@@ -35,23 +35,46 @@ final class ModernWebClickGuiController {
         add("AimAssist", "Combat", "Legit aim assistance settings.")
                 .mode("Mode", "Linear", "Linear", "Adaptive", "Bezier")
                 .number("Speed", 45.0D, 1.0D, 100.0D, 1.0D)
+                .number("Smooth", 18.0D, 2.0D, 60.0D, 1.0D)
                 .number("FOV", 90.0D, 15.0D, 180.0D, 1.0D)
                 .number("Range", 4.5D, 1.0D, 6.0D, 0.1D)
-                .bool("Weapon Only", false);
+                .bool("Require Mouse Down", true)
+                .bool("Vertical Aim", true)
+                .bool("Weapon Only", false)
+                .bool("Through Walls", false)
+                .bool("Players", true)
+                .bool("Mobs", false)
+                .bool("Animals", false);
         add("KillAura", "Combat", "Combat automation settings.")
                 .mode("Mode", "Single", "Single", "Switch")
                 .mode("Sort", "Distance", "Distance", "Health", "Hurt Time", "FOV")
                 .mode("Rotations", "Silent", "None", "Legit", "Silent", "Lock View")
                 .number("Range", 3.2D, 2.5D, 6.0D, 0.1D)
+                .number("FOV", 360.0D, 30.0D, 360.0D, 1.0D)
                 .number("APS", 12.0D, 1.0D, 20.0D, 1.0D)
+                .number("Hurt Time", 10.0D, 0.0D, 10.0D, 1.0D)
                 .mode("AutoBlock", "None", "None", "Vanilla", "Blink")
-                .bool("Show Target", true);
+                .mode("Move Fix", "None", "None", "Silent", "Strict")
+                .bool("Show Target", true)
+                .bool("Weapon Only", false)
+                .bool("Through Walls", false)
+                .bool("Players", true)
+                .bool("Mobs", false)
+                .bool("Animals", false);
         add("Backtrack", "Combat", "Attack entities at recent historical positions.")
                 .mode("Mode", "Hybrid", "Hybrid", "Packet", "Render")
                 .number("Range", 3.6D, 3.0D, 6.0D, 0.1D)
                 .number("History MS", 180.0D, 50.0D, 600.0D, 10.0D)
+                .number("Packet Delay", 120.0D, 0.0D, 400.0D, 10.0D)
                 .number("Expand", 0.08D, 0.0D, 1.0D, 0.01D)
-                .bool("Render", true);
+                .bool("Attack Only", true)
+                .bool("Players", true)
+                .bool("Mobs", true)
+                .bool("Animals", true)
+                .bool("Through Walls", false)
+                .bool("Render", true)
+                .bool("Trail", true)
+                .number("Render Alpha", 82.0D, 25.0D, 160.0D, 5.0D);
         add("Criticals", "Combat", "Force critical hit timing on attack.")
                 .mode("Mode", "Packet", "Packet", "MiniJump", "NoGround")
                 .bool("Weapon Only", true);
@@ -69,7 +92,10 @@ final class ModernWebClickGuiController {
         add("FakeLag", "Combat", "Delay outgoing packets to simulate latency.")
                 .number("Delay", 120.0D, 0.0D, 600.0D, 10.0D)
                 .number("Pulse", 200.0D, 0.0D, 1000.0D, 10.0D)
-                .bool("Combat Only", true);
+                .bool("Combat Only", true)
+                .bool("Only Moving", false)
+                .bool("Release On Attack", true)
+                .bool("Movement Only", true);
         add("KnockbackDelay", "Combat", "Delay movement after receiving knockback.")
                 .number("Delay MS", 95.0D, 0.0D, 420.0D, 5.0D)
                 .number("Jitter MS", 35.0D, 0.0D, 220.0D, 5.0D)
@@ -80,7 +106,9 @@ final class ModernWebClickGuiController {
         add("Velocity", "Combat", "Knockback control settings.")
                 .mode("Mode", "Vanilla", "Vanilla", "Prediction", "Reduce")
                 .number("Horizontal", 100.0D, 0.0D, 100.0D, 1.0D)
-                .number("Vertical", 100.0D, 0.0D, 100.0D, 1.0D);
+                .number("Vertical", 100.0D, 0.0D, 100.0D, 1.0D)
+                .number("Explosions Horizontal", 100.0D, 0.0D, 100.0D, 1.0D)
+                .number("Explosions Vertical", 100.0D, 0.0D, 100.0D, 1.0D);
         add("BowAimBot", "Combat", "Auto aim targets while using a bow.")
                 .number("Range", 35.0D, 5.0D, 80.0D, 1.0D)
                 .bool("Predict", true);
@@ -88,12 +116,22 @@ final class ModernWebClickGuiController {
                 .number("Min Reach", 3.2D, 3.0D, 6.0D, 0.1D)
                 .number("Max Reach", 3.6D, 3.0D, 6.0D, 0.1D)
                 .number("Expand", 0.08D, 0.0D, 1.0D, 0.01D)
+                .bool("Random Reach", true)
                 .bool("Weapon Only", false)
-                .bool("Moving Only", false);
+                .bool("Moving Only", false)
+                .bool("Sprint Only", false)
+                .bool("Through Blocks", false)
+                .bool("Players", true)
+                .bool("Mobs", true)
+                .bool("Animals", true);
         add("HitBoxes", "Combat", "Expand entity hit detection.")
                 .number("Expand", 0.1D, 0.0D, 1.0D, 0.01D)
+                .number("Range", 3.2D, 3.0D, 6.0D, 0.1D)
+                .bool("Weapon Only", false)
                 .bool("Players", true)
-                .bool("Mobs", false);
+                .bool("Mobs", true)
+                .bool("Animals", true)
+                .bool("Through Walls", false);
         add("GhostHand", "Combat", "Click through teammate or blocked targets.")
                 .bool("Players", true)
                 .bool("Blocks", false);
@@ -106,11 +144,15 @@ final class ModernWebClickGuiController {
         add("KeepSprint", "Movement", "Keep sprint behavior after attacks.")
                 .number("Slowdown", 60.0D, 0.0D, 100.0D, 1.0D);
         add("NoJumpDelay", "Movement", "Remove vanilla jump input cooldown.");
+        add("LongJump", "Movement", "Boost jump distance while moving.")
+                .number("Boost", 0.08D, 0.02D, 0.18D, 0.01D);
         add("InvMove", "Movement", "Allow movement while inventory screens are open.")
                 .bool("Sneak", true)
                 .bool("Click Delay", false);
         add("NoSlowDown", "Movement", "Reduce item-use movement slowdown.")
-                .mode("Mode", "Vanilla", "Vanilla", "NCP", "Watchdog");
+                .mode("Mode", "Vanilla", "Vanilla", "NCP", "Watchdog")
+                .number("Speed", 1.0D, 0.2D, 1.0D, 0.05D);
+        add("Spider", "Movement", "Climb while pushing into walls.");
 
         add("HUD", "Render", "2D HUD settings.")
                 .bool("Watermark", true)

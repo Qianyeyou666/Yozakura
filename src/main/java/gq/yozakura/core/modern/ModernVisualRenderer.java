@@ -1,10 +1,12 @@
 package gq.yozakura.core.modern;
 
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 final class ModernVisualRenderer {
     private static final int WHITE = 0xFFFFFFFF;
@@ -20,11 +22,13 @@ final class ModernVisualRenderer {
     private static final long TARGET_SCAN_INTERVAL_MS = 180L;
     private static final long MODULE_LIST_CACHE_MS = 80L;
     private static final double TARGET_RANGE = 12.0D;
+    private static final double RENDER_RANGE = 128.0D;
     private static final String[] MODULE_NAMES = new String[]{
             "AntiBot", "AutoClicker", "AimAssist", "KillAura", "Backtrack", "Criticals", "WTap",
             "BlockHit", "FakeLag", "KnockbackDelay", "HitSelect", "Velocity", "BowAimBot", "Reach",
-            "HitBoxes", "GhostHand", "Speed", "Sprint", "KeepSprint", "NoJumpDelay", "InvMove",
-            "NoSlowDown", "HUD", "TargetHUD", "TargetESP", "KillEffect", "KeyboardDisplay",
+            "HitBoxes", "GhostHand", "Speed", "Sprint", "KeepSprint", "NoJumpDelay", "LongJump",
+            "InvMove", "NoSlowDown", "Spider", "HUD", "TargetHUD", "TargetESP", "KillEffect",
+            "KeyboardDisplay",
             "FullBright", "Health", "StorageESP", "Chams", "ESP", "WebClickGUI", "AutoTools",
             "InventoryManager", "ChestStealer", "LTap", "FastPlace", "Scaffold", "Clutch",
             "BridgeAssist", "AutoMLG", "MurderMystery", "FuckServer"
@@ -96,17 +100,241 @@ final class ModernVisualRenderer {
     static void renderLevel(Object event) {
         try {
             Object stage = ModernForgeEventBridge.invoke(event, "getStage");
-            if (stage == null || !"AFTER_ENTITIES".equals(String.valueOf(stage))) {
+            if (!isLevelRenderStage(stage)) {
                 return;
             }
-            if (ModernForgeEventBridge.enabled("Chams") || ModernForgeEventBridge.enabled("ESP")
-                    || ModernForgeEventBridge.enabled("TargetESP")) {
-                // 3D visuals are intentionally isolated from the GUI overlay. The 1.20.1
-                // renderer must not draw the old debug entity list in the HUD path.
+            if (!ModernForgeEventBridge.enabled("Chams") && !ModernForgeEventBridge.enabled("ESP")
+                    && !ModernForgeEventBridge.enabled("TargetESP") && !ModernForgeEventBridge.enabled("Backtrack")
+                    && !ModernForgeEventBridge.enabled("HitBoxes")) {
+                return;
+            }
+            Object minecraft = ModernMinecraftAccess.minecraft();
+            Object player = ModernMinecraftAccess.player(minecraft);
+            Object level = ModernMinecraftAccess.level(minecraft);
+            if (minecraft == null || player == null || level == null) {
+                return;
+            }
+            List<ModernRender3D.RenderBox> boxes = collectLevelBoxes(minecraft, player, System.currentTimeMillis());
+            if (!boxes.isEmpty()) {
+                ModernRender3D.render(event, boxes);
             }
         } catch (Throwable throwable) {
             ModernForgeEventBridge.log("Modern level render failed", throwable);
         }
+    }
+
+    private static List<ModernRender3D.RenderBox> collectLevelBoxes(Object minecraft, Object player, long now) {
+        ArrayList<ModernRender3D.RenderBox> boxes = new ArrayList<ModernRender3D.RenderBox>();
+        boolean esp = ModernForgeEventBridge.enabled("ESP");
+        boolean chams = ModernForgeEventBridge.enabled("Chams");
+        boolean hitBoxes = ModernForgeEventBridge.enabled("HitBoxes");
+        if (esp || chams || hitBoxes) {
+            for (Object entity : ModernMinecraftAccess.livingEntities(minecraft)) {
+                if (entity == null || entity == player) {
+                    continue;
+                }
+                if (esp && isRenderable3DTarget(player, entity, "ESP")) {
+                    addEntityBox(boxes, entity, ModernForgeEventBridge.number("ESP", "Expand", 0.03D),
+                            espColor(entity), espFilled(), espThroughWalls(), 1.15f);
+                }
+                if (chams && isRenderable3DTarget(player, entity, "Chams")) {
+                    addEntityBox(boxes, entity, ModernForgeEventBridge.number("Chams", "Expand", 0.04D),
+                            chamsColor(entity), true,
+                            ModernForgeEventBridge.bool("Chams", "Through Walls", true), 1.0f);
+                }
+                if (hitBoxes && isRenderable3DTarget(player, entity, "HitBoxes")) {
+                    addEntityBox(boxes, entity, ModernForgeEventBridge.number("HitBoxes", "Expand", 0.18D),
+                            withAlpha(CYAN, 135), false,
+                            ModernForgeEventBridge.bool("HitBoxes", "Through Walls", false), 1.0f);
+                }
+            }
+        }
+        if (ModernForgeEventBridge.enabled("TargetESP")) {
+            Object target = targetFor3D(minecraft, player, now);
+            if (target != null && isRenderable3DTarget(player, target, "TargetESP")) {
+                int color = hurtTime(target) > 0 ? 0xFFFF6270 : SAKURA_DARK;
+                addEntityBox(boxes, target, 0.07D,
+                        withAlpha(color, Math.round((float) ModernForgeEventBridge.number("TargetESP", "Alpha", 185.0D))),
+                        "Box".equalsIgnoreCase(ModernForgeEventBridge.mode("TargetESP", "Mode", "Ring")),
+                        ModernForgeEventBridge.bool("TargetESP", "Through Walls", true),
+                        (float) ModernForgeEventBridge.number("TargetESP", "Line Width", 2.0D));
+            }
+        }
+        if (ModernForgeEventBridge.enabled("Backtrack") && ModernForgeEventBridge.bool("Backtrack", "Render", true)) {
+            addBacktrackBoxes(boxes, now);
+        }
+        return boxes;
+    }
+
+    private static boolean isLevelRenderStage(Object stage) {
+        if (stage == null) {
+            return true;
+        }
+        String name = String.valueOf(stage).toUpperCase(Locale.ROOT);
+        return name.contains("AFTER_ENTITIES") || name.endsWith(".AFTER_ENTITIES");
+    }
+
+    private static void addEntityBox(List<ModernRender3D.RenderBox> boxes, Object entity, double expand,
+                                     int color, boolean fill, boolean throughWalls, float lineWidth) {
+        ModernRaycastBridge.Box box = ModernRaycastBridge.entityBox(entity, expand);
+        if (box != null) {
+            boxes.add(new ModernRender3D.RenderBox(box, color, lineWidth, fill, throughWalls));
+        }
+    }
+
+    private static void addBacktrackBoxes(List<ModernRender3D.RenderBox> boxes, long now) {
+        Map<Integer, ArrayDeque<ModernPacketBridge.TrackedBox>> history = ModernPacketBridge.backtrackHistory();
+        if (history == null || history.isEmpty()) {
+            return;
+        }
+        double expand = ModernForgeEventBridge.number("Backtrack", "Expand", 0.08D);
+        double historyMs = Math.max(50.0D, ModernForgeEventBridge.number("Backtrack", "History MS", 180.0D));
+        boolean trail = ModernForgeEventBridge.bool("Backtrack", "Trail", true);
+        boolean throughWalls = ModernForgeEventBridge.bool("Backtrack", "Through Walls", false);
+        int baseAlpha = Math.max(10, Math.min(255,
+                Math.round((float) ModernForgeEventBridge.number("Backtrack", "Render Alpha", 82.0D))));
+        int rendered = 0;
+        outer:
+        for (ArrayDeque<ModernPacketBridge.TrackedBox> trackedBoxes : history.values()) {
+            if (trackedBoxes == null || trackedBoxes.isEmpty()) {
+                continue;
+            }
+            int index = 0;
+            int size = trackedBoxes.size();
+            int step = trail ? Math.max(1, size / 5) : size;
+            for (ModernPacketBridge.TrackedBox tracked : trackedBoxes) {
+                index++;
+                if (tracked == null || tracked.box == null || tracked.entity == null) {
+                    continue;
+                }
+                if (!trail && index != size) {
+                    continue;
+                }
+                if (trail && index != size && index % step != 0) {
+                    continue;
+                }
+                float fade = trail ? clamp01(1.0f - (float) ((now - tracked.time) / historyMs)) : 1.0f;
+                if (fade <= 0.02f) {
+                    continue;
+                }
+                int alpha = Math.max(8, Math.round(baseAlpha * fade));
+                boxes.add(new ModernRender3D.RenderBox(tracked.box.expand(expand),
+                        withAlpha(CYAN, alpha), trail ? 1.0f : 1.4f, true, throughWalls));
+                if (++rendered >= 96) {
+                    break outer;
+                }
+            }
+        }
+    }
+
+    private static Object targetFor3D(Object minecraft, Object player, long now) {
+        Object target = ModernCombatBridge.combatTarget();
+        if (isValidTarget(player, target, TARGET_RANGE * TARGET_RANGE)) {
+            return target;
+        }
+        target = ModernRaycastBridge.hitResultEntity(minecraft);
+        if (isValidTarget(player, target, TARGET_RANGE * TARGET_RANGE)) {
+            return target;
+        }
+        return chooseTarget(minecraft, now);
+    }
+
+    private static boolean isRenderable3DTarget(Object player, Object entity, String module) {
+        double range = "TargetESP".equals(module) ? TARGET_RANGE : RENDER_RANGE;
+        if (!isValidTarget(player, entity, range * range)) {
+            return false;
+        }
+        if (!ModernForgeEventBridge.bool(module, "Invisible", false) && isInvisible(entity)) {
+            return false;
+        }
+        if (isPlayerType(entity)) {
+            return ModernForgeEventBridge.bool(module, "Players", true);
+        }
+        if (isAnimalType(entity)) {
+            return ModernForgeEventBridge.bool(module, "Animals", false);
+        }
+        return ModernForgeEventBridge.bool(module, "Mobs", false);
+    }
+
+    private static int espColor(Object entity) {
+        int alpha = Math.max(0, Math.min(255, Math.round((float) ModernForgeEventBridge.number("ESP", "Alpha", 160.0D))));
+        if (ModernForgeEventBridge.bool("ESP", "Red On Damage", true) && hurtTime(entity) > 0) {
+            return withAlpha(0xFFFF5E70, alpha);
+        }
+        if (ModernForgeEventBridge.bool("ESP", "Palette Rainbow", false)) {
+            return withAlpha(rainbow(System.currentTimeMillis(), ModernRotationBridge.entityId(entity)), alpha);
+        }
+        int red = clampColor((int) ModernForgeEventBridge.number("ESP", "Red", 95.0D));
+        int green = clampColor((int) ModernForgeEventBridge.number("ESP", "Green", 190.0D));
+        int blue = clampColor((int) ModernForgeEventBridge.number("ESP", "Blue", 255.0D));
+        return (alpha << 24) | red << 16 | green << 8 | blue;
+    }
+
+    private static int chamsColor(Object entity) {
+        int alpha = Math.max(0, Math.min(255, Math.round((float) ModernForgeEventBridge.number("Chams", "Alpha", 115.0D))));
+        if (hurtTime(entity) > 0) {
+            return withAlpha(0xFFFF5E70, alpha);
+        }
+        if (ModernForgeEventBridge.bool("Chams", "Rainbow", false)) {
+            return withAlpha(rainbow(System.currentTimeMillis(), ModernRotationBridge.entityId(entity) * 3), alpha);
+        }
+        int red = clampColor((int) ModernForgeEventBridge.number("Chams", "Red", 88.0D));
+        int green = clampColor((int) ModernForgeEventBridge.number("Chams", "Green", 190.0D));
+        int blue = clampColor((int) ModernForgeEventBridge.number("Chams", "Blue", 255.0D));
+        return (alpha << 24) | red << 16 | green << 8 | blue;
+    }
+
+    private static boolean espFilled() {
+        String mode = ModernForgeEventBridge.mode("ESP", "Mode", "BOTH");
+        return "FILLED".equalsIgnoreCase(mode) || "BOTH".equalsIgnoreCase(mode);
+    }
+
+    private static boolean espThroughWalls() {
+        return ModernForgeEventBridge.bool("ESP", "Through Walls", false);
+    }
+
+    private static boolean isInvisible(Object entity) {
+        Object value = ModernForgeEventBridge.invoke(entity, "isInvisible");
+        if (value == null) {
+            value = ModernForgeEventBridge.invoke(entity, "m_5833_");
+        }
+        return value instanceof Boolean && ((Boolean) value).booleanValue();
+    }
+
+    private static int hurtTime(Object entity) {
+        Object value = ModernForgeEventBridge.field(entity, "hurtTime");
+        if (value == null) {
+            value = ModernForgeEventBridge.field(entity, "f_20916_");
+        }
+        if (value == null) {
+            value = ModernForgeEventBridge.invoke(entity, "getHurtTime");
+        }
+        return value instanceof Number ? ((Number) value).intValue() : 0;
+    }
+
+    private static boolean isPlayerType(Object entity) {
+        return isInstance(entity, "net.minecraft.world.entity.player.Player");
+    }
+
+    private static boolean isAnimalType(Object entity) {
+        return isInstance(entity, "net.minecraft.world.entity.animal.Animal")
+                || isInstance(entity, "net.minecraft.world.entity.animal.WaterAnimal")
+                || isInstance(entity, "net.minecraft.world.entity.ambient.AmbientCreature")
+                || isInstance(entity, "net.minecraft.world.entity.npc.Villager");
+    }
+
+    private static boolean isInstance(Object object, String className) {
+        Class<?> type = ModernRotationBridge.classForName(className);
+        return type != null && object != null && type.isInstance(object);
+    }
+
+    private static int rainbow(long now, int offset) {
+        float hue = ((now + offset * 73L) % 4200L) / 4200.0f;
+        return java.awt.Color.HSBtoRGB(hue, 0.52f, 1.0f) | 0xFF000000;
+    }
+
+    private static int clampColor(int value) {
+        return Math.max(0, Math.min(255, value));
     }
 
     private static void renderHud(ModernRender2D render, int width, int height, Object minecraft, long now) {

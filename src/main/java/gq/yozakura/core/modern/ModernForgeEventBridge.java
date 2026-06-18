@@ -62,9 +62,30 @@ public final class ModernForgeEventBridge {
                     ModernHudEditor.handleScroll(event);
                 }
             });
-            log("Modern visual event bridge registered");
+            registerOptionalListener(bus, "net.minecraftforge.event.TickEvent$ClientTickEvent", new Consumer<Object>() {
+                @Override
+                public void accept(Object event) {
+                    ModernRaycastBridge.onClientTick(event);
+                    ModernCombatBridge.onClientTick(event);
+                }
+            });
+            registerOptionalListener(bus, "net.minecraftforge.client.event.MovementInputUpdateEvent", new Consumer<Object>() {
+                @Override
+                public void accept(Object event) {
+                    ModernMovementBridge.onMovementInput(event);
+                }
+            });
+            registerOptionalListener(bus, "net.minecraftforge.event.TickEvent$ClientTickEvent", new Consumer<Object>() {
+                @Override
+                public void accept(Object event) {
+                    ModernMovementBridge.onClientTick(event);
+                    ModernPacketBridge.onClientTick(event);
+                    ModernFullBrightBridge.onClientTick(event);
+                }
+            });
+            log("Modern visual and gameplay event bridge registered");
         } catch (Throwable throwable) {
-            log("Unable to register modern visual event bridge", throwable);
+            log("Unable to register modern visual and gameplay event bridge", throwable);
         }
     }
 
@@ -139,11 +160,28 @@ public final class ModernForgeEventBridge {
     }
 
     static Class<?> findClass(String name) throws ClassNotFoundException {
-        ClassLoader loader = Thread.currentThread().getContextClassLoader();
-        if (loader == null) {
-            loader = ModernForgeEventBridge.class.getClassLoader();
+        ClassNotFoundException failure = null;
+        ClassLoader[] loaders = new ClassLoader[]{
+                Thread.currentThread().getContextClassLoader(),
+                ModernForgeEventBridge.class.getClassLoader(),
+                ClassLoader.getSystemClassLoader()
+        };
+        for (ClassLoader loader : loaders) {
+            if (loader == null) {
+                continue;
+            }
+            try {
+                return Class.forName(name, false, loader);
+            } catch (ClassNotFoundException exception) {
+                if (failure == null) {
+                    failure = exception;
+                }
+            }
         }
-        return Class.forName(name, false, loader);
+        if (failure != null) {
+            throw failure;
+        }
+        return Class.forName(name);
     }
 
     static Object invoke(Object target, String methodName, Object... args) {

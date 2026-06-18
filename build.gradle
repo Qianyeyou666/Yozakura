@@ -50,6 +50,19 @@ configurations {
     implementation.extendsFrom(shade)
 }
 
+sourceSets {
+    modern1201 {
+        java {
+            srcDir 'src/modern1201/java'
+        }
+        resources {
+            srcDir 'src/modern1201/resources'
+        }
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+        runtimeClasspath += output + compileClasspath
+    }
+}
+
 dependencies {
     shade 'javazoom:jlayer:1.0.1'
     shade 'com.google.zxing:core:3.5.3'
@@ -97,7 +110,9 @@ processResources {
 }
 
 jar {
+    dependsOn tasks.named('modern1201Classes')
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from sourceSets.modern1201.output
     from {
         configurations.shade.collect { it.isDirectory() ? it : zipTree(it) }
     }

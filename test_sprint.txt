@@ -1,0 +1,17 @@
+问题诊断：
+
+1. ModernMovementBridge.onClientTick 被触发 ✓（日志确认）
+2. handleSprint 被调用 ✓（日志确认）
+3. setSprinting 尝试了三种方式：
+   - setSprinting(boolean) 方法调用
+   - m_6858_(boolean) SRG 调用  
+   - 直接设置 isSprinting / f_20098_ 字段
+4. 但 Sprint 仍然不工作
+
+可能的原因：
+A. Forge 1.20.1 的 LivingEntity.aiStep() 在每个 tick 结束后重置 sprinting
+B. 字段名错误（1.20.1 用的不是 isSprinting/f_20098_）
+C. LocalPlayer 覆盖了 setSprinting 方法且行为不同
+D. 需要同时设置 sprintingClientSide 客户端字段
+
+下一步：检查 1.20.1 的正确字段名
