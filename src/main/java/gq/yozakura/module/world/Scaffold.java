@@ -86,6 +86,7 @@ public class Scaffold extends Module {
     private final float[] lastErrors = new float[20];
     private int errorIndex = 0;
     public final ModeProperty rotationMode = new ModeProperty("rotations", 5, new String[]{"None", "Vanilla", "BackWards", "Strafe", "Test", "Prediction"});
+    public final PercentProperty rotationSmoothing = new PercentProperty("rotation-smoothing", 35, () -> this.rotationMode.getValue() != 0);
     public final ModeProperty moveFix = new ModeProperty("move-fix", 1, new String[]{"NONE", "SILENT"});
     public final ModeProperty sprintMode = new ModeProperty("sprint", 0, new String[]{"NONE", "VANILLA"});
     public final PercentProperty groundMotion = new PercentProperty("ground-motion", 100);
@@ -120,6 +121,9 @@ public class Scaffold extends Module {
     private float lastYaw = 0;
     private float lastYawChange = 0;
     private float lastPitchChange = 0;
+    private boolean publishRotationSmoothActive = false;
+    private float publishYaw = 0.0F;
+    private float publishPitch = 0.0F;
     private float blockCounterAlpha = 0.0F;
     private float displayedBlockCount = -1.0F;
     private float blockCounterPulse = 0.0F;
@@ -565,6 +569,9 @@ public class Scaffold extends Module {
                             this.yaw = RotationUtil.quantizeAngle(diagonalYaw);
                     }
                 }
+                if (this.rotationMode.getValue() == 0) {
+                    this.resetRotationSmoothing();
+                }
                 if (this.rotationMode.getValue() != 0) {
                     float targetYaw = this.yaw;
                     float targetPitch = this.pitch;
@@ -583,6 +590,19 @@ public class Scaffold extends Module {
                         targetPitch = RotationUtil.quantizeAngle(RandomUtil.nextFloat(30.0F, 80.0F));
                         this.rotationTick = 3;
                         this.towering = true;
+                    }
+                    float[] smoothedRotation = this.smoothPublishedRotation(targetYaw, targetPitch, event);
+                    targetYaw = smoothedRotation[0];
+                    targetPitch = smoothedRotation[1];
+                    this.yaw = targetYaw;
+                    this.pitch = targetPitch;
+                    if (blockData != null && hitVec != null) {
+                        MovingObjectPosition smoothedMop = RotationUtil.rayTrace(this.yaw, this.pitch, mc.playerController.getBlockReachDistance(), 1.0F);
+                        if (this.isPlacementRayTrace(smoothedMop, blockData)) {
+                            hitVec = smoothedMop.hitVec;
+                        } else {
+                            hitVec = null;
+                        }
                     }
                     event.setRotation(targetYaw, targetPitch, 3);
                     VisualRotationState.publish("Scaffold", targetYaw, targetPitch, 3);
@@ -649,6 +669,41 @@ public class Scaffold extends Module {
             }
         }
     }
+
+    private float[] smoothPublishedRotation(float targetYaw, float targetPitch, UpdateEvent event) {
+        if (!this.publishRotationSmoothActive) {
+            this.publishYaw = event.getNewYaw();
+            this.publishPitch = event.getNewPitch();
+            this.publishRotationSmoothActive = true;
+        }
+        float smoothing = MathHelper.clamp_float((float) this.rotationSmoothing.getValue() / 100.0F, 0.0F, 1.0F);
+        float yawSpeed = 90.0F - smoothing * 48.0F;
+        float pitchSpeed = 65.0F - smoothing * 36.0F;
+        if (this.towering || this.rotationTick > 0) {
+            yawSpeed += 18.0F;
+            pitchSpeed += 12.0F;
+        }
+        this.publishYaw = RotationUtil.quantizeAngle(this.publishYaw + MathHelper.clamp_float(
+                MathHelper.wrapAngleTo180_float(targetYaw - this.publishYaw), -yawSpeed, yawSpeed));
+        this.publishPitch = RotationUtil.quantizeAngle(this.publishPitch + MathHelper.clamp_float(
+                targetPitch - this.publishPitch, -pitchSpeed, pitchSpeed));
+        this.publishPitch = MathHelper.clamp_float(this.publishPitch, -90.0F, 90.0F);
+        return new float[]{this.publishYaw, this.publishPitch};
+    }
+
+    private boolean isPlacementRayTrace(MovingObjectPosition mop, BlockData blockData) {
+        return mop != null
+                && mop.typeOfHit == MovingObjectType.BLOCK
+                && mop.getBlockPos().equals(blockData.blockPos())
+                && mop.sideHit == blockData.facing();
+    }
+
+    private void resetRotationSmoothing() {
+        this.publishRotationSmoothActive = false;
+        this.publishYaw = 0.0F;
+        this.publishPitch = 0.0F;
+    }
+
     private float getCurrentSpeed(float distance) {
         float baseSpeed;
         if (this.towering) {
@@ -947,6 +1002,7 @@ public class Scaffold extends Module {
         this.yaw = -180.0F;
         this.pitch = 0.0F;
         this.canRotate = false;
+        this.resetRotationSmoothing();
         this.towerTick = 0;
         this.towerDelay = 0;
         this.towering = false;
@@ -968,6 +1024,7 @@ public class Scaffold extends Module {
 
     @Override
     public void onDisabled() {
+        this.resetRotationSmoothing();
         RotationCleanup.clearModuleRotations("Scaffold", 3);
         RotationDebug.setSourceEnabled("Scaffold", false);
         if (mc.thePlayer != null && this.lastSlot != -1) {

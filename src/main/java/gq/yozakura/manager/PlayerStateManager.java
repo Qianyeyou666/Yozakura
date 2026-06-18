@@ -16,7 +16,7 @@ public class PlayerStateManager {
 
     @EventTarget(Priority.HIGHEST)
     public void onTick(TickEvent event) {
-        if (event.getType() == EventType.PRE) {
+        if (event.getType() == EventType.PRE || event.getType() == EventType.POST) {
             resetTransientState();
         }
     }

@@ -348,7 +348,23 @@ final class ModernVisualRenderer {
         }
     }
 
+    private static void drawPanel(ModernRender2D render, int x, int y, int width, int height, int radius,
+                                  int fillColor, int borderColor, int glowColor, boolean accent,
+                                  boolean frostedGlass) {
+        if (frostedGlass) {
+            render.glass(x, y, width, height, radius, fillColor, borderColor, glowColor, accent);
+            return;
+        }
+        render.shadow(x, y, x + width, y + height, glowColor, 3);
+        render.shadow(x, y, x + width, y + height, 0x18000000, 2);
+        render.roundedBorder(x, y, width, height, radius, fillColor, borderColor);
+        if (accent) {
+            render.rect(x + 2, y + 1, x + width - 2, y + 2, 0x12FFFFFF);
+        }
+    }
+
     private static void renderWatermark(ModernRender2D render, Object minecraft, long now, int screenWidth, int screenHeight) {
+        boolean frostedGlass = ModernForgeEventBridge.bool("HUD", "Frosted Glass", true);
         float scale = clamp((float) ModernForgeEventBridge.number("HUD", "Watermark Scale", 1.0D), 0.65f, 1.8f);
         ModernFontRenderer font = render.font(Math.max(10, Math.round(14.0f * scale)));
         int fps = fps(minecraft);
@@ -363,8 +379,8 @@ final class ModernVisualRenderer {
         int y = Math.round(box.y);
         float pulse = (float) ((Math.sin((now - startTime) / 640.0D) + 1.0D) * 0.5D);
 
-        render.glass(x, y, width, height, 7, withAlpha(PANEL, 166),
-                withAlpha(SAKURA, 44), withAlpha(SAKURA, 28 + Math.round(18.0f * pulse)), true);
+        drawPanel(render, x, y, width, height, 7, withAlpha(PANEL, 166),
+                withAlpha(SAKURA, 44), withAlpha(SAKURA, 28 + Math.round(18.0f * pulse)), true, frostedGlass);
         render.watermarkPetals(x, y, width, height, now);
         render.sakuraLogo(x + Math.round(10.5f * scale), y + Math.round(10.2f * scale),
                 Math.max(2, Math.round(3.0f * scale)), 236);
@@ -374,6 +390,7 @@ final class ModernVisualRenderer {
     }
 
     private static void renderModuleList(final ModernRender2D render, int screenWidth, int screenHeight) {
+        boolean frostedGlass = ModernForgeEventBridge.bool("HUD", "Frosted Glass", true);
         float scale = clamp((float) ModernForgeEventBridge.number("HUD", "ModuleList Scale", 1.0D), 0.65f, 1.8f);
         final ModernFontRenderer font = render.font(Math.max(10, Math.round(14.0f * scale)));
         List<String> enabled = enabledModules(render, font, Math.max(10, Math.round(14.0f * scale)));
@@ -403,8 +420,8 @@ final class ModernVisualRenderer {
             int top = baseY + i * (rowH + rowGap);
             int accent = moduleAccent(name, i);
             render.shadow(x, top, right, top + rowH, withAlpha(accent, 16), 2);
-            render.glass(x, top, rowW, rowH, 4, withAlpha(PANEL, 152),
-                    withAlpha(accent, 28), withAlpha(accent, 18), false);
+            drawPanel(render, x, top, rowW, rowH, 4, withAlpha(PANEL, 152),
+                    withAlpha(accent, 28), withAlpha(accent, 18), false, frostedGlass);
             render.verticalGradient(right - Math.max(3, Math.round(3.0f * scale)), top + Math.round(4.0f * scale),
                     right - Math.max(1, Math.round(1.0f * scale)), top + rowH - Math.round(4.0f * scale),
                     withAlpha(accent, 190), withAlpha(SAKURA_DARK, 140));
@@ -452,6 +469,7 @@ final class ModernVisualRenderer {
         targetFlowerAnim += (targetHealthAnim - targetFlowerAnim) * Math.min(1.0f, factor * 0.72f);
         targetSwitchPulse += (0.0f - targetSwitchPulse) * factor;
 
+        boolean frostedGlass = ModernForgeEventBridge.bool("TargetHUD", "Frosted Glass", true);
         float scale = clamp((float) ModernForgeEventBridge.number("TargetHUD", "Scale", 1.0D), 0.5f, 2.0f);
         int boxW = Math.round(200.0f * scale);
         int boxH = Math.round(42.0f * scale);
@@ -465,10 +483,10 @@ final class ModernVisualRenderer {
         float pulse = clamp01(targetSwitchPulse);
 
         int radius = Math.max(5, Math.round(8.0f * scale));
-        render.glass(x, y, boxW, boxH, radius,
+        drawPanel(render, x, y, boxW, boxH, radius,
                 withAlpha(PANEL, Math.round((158.0f + pulse * 16.0f) * alpha)),
                 withAlpha(SAKURA, Math.round((28.0f + pulse * 18.0f) * alpha)),
-                withAlpha(SAKURA, Math.round((28.0f + pulse * 22.0f) * alpha)), true);
+                withAlpha(SAKURA, Math.round((28.0f + pulse * 22.0f) * alpha)), true, frostedGlass);
         render.rect(x + Math.round(10.0f * scale), y + boxH - Math.round(8.0f * scale),
                 x + Math.round(72.0f * scale), y + boxH - Math.round(5.0f * scale),
                 withAlpha(SAKURA, Math.round(14.0f * alpha)));
@@ -476,10 +494,10 @@ final class ModernVisualRenderer {
         int avatar = Math.round(26.0f * scale);
         int avatarX = x + Math.round(14.0f * scale);
         int avatarY = y + Math.round(8.0f * scale);
-        render.glass(avatarX, avatarY, avatar, avatar, Math.max(4, Math.round(6.0f * scale)),
+        drawPanel(render, avatarX, avatarY, avatar, avatar, Math.max(4, Math.round(6.0f * scale)),
                 withAlpha(PANEL_SOFT, Math.round(190.0f * alpha)),
                 withAlpha(SAKURA, Math.round(62.0f * alpha)),
-                withAlpha(SAKURA, Math.round(30.0f * alpha)), false);
+                withAlpha(SAKURA, Math.round(30.0f * alpha)), false, frostedGlass);
         render.sakuraMark(avatarX + avatar / 2, avatarY + avatar / 2,
                 Math.max(3, Math.round(4.0f * scale)), Math.round(232.0f * alpha));
 

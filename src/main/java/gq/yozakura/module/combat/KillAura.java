@@ -121,6 +121,9 @@ public class KillAura extends Module {
     private boolean blockAnimationActive = false;
     private int blockAnimationSlot = -1;
     private final Random attackRandom = new Random();
+    private boolean rotationSmoothActive = false;
+    private float smoothYaw = 0.0F;
+    private float smoothPitch = 0.0F;
 
 
     public KillAura() {
@@ -147,8 +150,8 @@ public class KillAura extends Module {
         this.switchDelay = new IntProperty("Switch Delay", 150, 0, 1000);
         this.rotations = new ModeProperty("Rotations", 2, new String[]{"None", "Legit", "Silent", "Lock View"});
         this.moveFix = new ModeProperty("Move Fix", 1, new String[]{"None", "Silent", "Strict"});
-        this.smoothing = new PercentProperty("Smoothing", 0);
-        this.angleStep = new IntProperty("Angle Step", 90, 30, 180);
+        this.smoothing = new PercentProperty("Smoothing", 25);
+        this.angleStep = new IntProperty("Angle Step", 70, 30, 180);
         this.throughWalls = new BooleanProperty("Through Walls", true);
         this.requirePress = new BooleanProperty("Require Press", false);
         this.allowMining = new BooleanProperty("Allow Mining", false);
@@ -334,13 +337,23 @@ public class KillAura extends Module {
     }
 
     private void setAttackTarget(AttackData nextTarget) {
+        if (nextTarget == null) {
+            this.resetRotationSmoothing();
+        }
         this.attackTarget = nextTarget;
         target = nextTarget == null ? null : nextTarget.getEntity();
     }
 
     private void clearRotations() {
+        this.resetRotationSmoothing();
         RotationCleanup.clearModuleRotations("KillAura", 1);
         RotationDebug.setSourceEnabled("KillAura", false);
+    }
+
+    private void resetRotationSmoothing() {
+        this.rotationSmoothActive = false;
+        this.smoothYaw = 0.0F;
+        this.smoothPitch = 0.0F;
     }
 
     private void resetBlockItemRenderer() {
@@ -940,13 +953,22 @@ public class KillAura extends Module {
     }
 
     private float[] calculateTargetRotations(UpdateEvent event) {
-        return RotationUtil.getRotationsToBox(
+        if (!this.rotationSmoothActive) {
+            this.smoothYaw = event.getNewYaw();
+            this.smoothPitch = event.getNewPitch();
+            this.rotationSmoothActive = true;
+        }
+        float smoothFactor = Math.max(0.20F, (float) this.smoothing.getValue() / 100.0F);
+        float[] rotations = RotationUtil.getRotationsToBox(
                 this.attackTarget.getBox(),
-                event.getYaw(),
-                event.getPitch(),
+                this.smoothYaw,
+                this.smoothPitch,
                 (float) this.angleStep.getValue() + RandomUtil.nextFloat(-5.0F, 5.0F),
-                (float) this.smoothing.getValue() / 100.0F
+                smoothFactor
         );
+        this.smoothYaw = rotations[0];
+        this.smoothPitch = MathHelper.clamp_float(rotations[1], -90.0F, 90.0F);
+        return new float[]{this.smoothYaw, this.smoothPitch};
     }
 
     @EventTarget
@@ -1207,6 +1229,7 @@ public class KillAura extends Module {
     @Override
     public void onEnabled() {
         this.setAttackTarget(null);
+        this.resetRotationSmoothing();
         this.switchTick = 0;
         this.hitRegistered = false;
         this.attackDelayMS = 0L;

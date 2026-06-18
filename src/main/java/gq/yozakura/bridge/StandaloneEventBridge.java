@@ -232,6 +232,7 @@ public final class StandaloneEventBridge {
         VisualRotationState.finishTick();
         syncVisibleRotation();
         RotationDebug.logUpdate("standalone", update);
+        resetTransientPacketState();
         queuePostUpdate(update);
         BridgeDebug.logUpdate("standalone", "PRE_DONE", update, pendingPostUpdate != null);
     }
@@ -261,9 +262,16 @@ public final class StandaloneEventBridge {
             BridgeDebug.logState("standalone", "POST_SKIP_NULL", false);
             return;
         }
+        resetTransientPacketState();
         BridgeDebug.logUpdate("standalone", "POST_START", post, false);
         EventManager.call(post);
         BridgeDebug.logUpdate("standalone", "POST_DONE", post, false);
+    }
+
+    private void resetTransientPacketState() {
+        if (YozakuraRuntime.playerStateManager != null) {
+            YozakuraRuntime.playerStateManager.resetTransientState();
+        }
     }
 
     private boolean hasActivePreRotation() {
@@ -425,35 +433,37 @@ public final class StandaloneEventBridge {
             }
             if (msg instanceof Packet<?>) {
                 Packet<?> packet = (Packet<?>) msg;
+                boolean packetPendingPost = pendingPostUpdate != null;
                 if (PacketBridgeSupport.consumeNoEvent(packet)) {
-                    BridgeDebug.logPacket("standalone", "SEND_NO_EVENT", packet, pendingPostUpdate != null);
+                    BridgeDebug.logPacket("standalone", "SEND_NO_EVENT", packet, packetPendingPost);
                     super.write(ctx, msg, promise);
                     return;
                 }
                 if (packet instanceof C0BPacketEntityAction
                         && MovementInputBridge.shouldBlockSprintPacket((C0BPacketEntityAction) packet)) {
-                    BridgeDebug.logPacket("standalone", "SEND_BLOCKED_SPRINT", packet, pendingPostUpdate != null);
+                    BridgeDebug.logPacket("standalone", "SEND_BLOCKED_SPRINT", packet, packetPendingPost);
                     return;
                 }
-                BridgeDebug.logPacket("standalone", "SEND_IN", packet, pendingPostUpdate != null);
+                BridgeDebug.logPacket("standalone", "SEND_IN", packet, packetPendingPost);
                 PacketEvent event = EventManager.call(new PacketEvent(EventType.SEND, packet));
                 if (event.isCancelled()) {
-                    BridgeDebug.logPacket("standalone", "SEND_CANCELLED", packet, pendingPostUpdate != null);
+                    BridgeDebug.logPacket("standalone", "SEND_CANCELLED", packet, packetPendingPost);
                     return;
                 }
                 if (shouldDelayUntilRotation(packet)) {
-                    delayedPackets.add(new DelayedPacket(packet, promise));
-                    BridgeDebug.logPacket("standalone", "SEND_DELAYED_QUEUE", packet, pendingPostUpdate != null);
+                    delayedPackets.add(new DelayedPacket(packet, promise, packetPendingPost));
+                    BridgeDebug.logPacketDetail("standalone", "SEND_DELAYED_QUEUE", packet,
+                            packetPendingPost, describeRotationState("queue"));
                     return;
                 }
                 if (packet instanceof C03PacketPlayer) {
                     flushDelayedPackets(ctx);
                 }
                 markSent(packet);
-                BridgeDebug.logPacket("standalone", "SEND_MARKED", packet, pendingPostUpdate != null);
+                BridgeDebug.logPacket("standalone", "SEND_MARKED", packet, packetPendingPost);
                 if (YozakuraRuntime.blinkManager != null && YozakuraRuntime.blinkManager.isBlinking()
                         && YozakuraRuntime.blinkManager.offerPacket(packet)) {
-                    BridgeDebug.logPacket("standalone", "SEND_BLINK_BUFFERED", packet, pendingPostUpdate != null);
+                    BridgeDebug.logPacket("standalone", "SEND_BLINK_BUFFERED", packet, packetPendingPost);
                     promise.setSuccess();
                     return;
                 }
@@ -461,7 +471,7 @@ public final class StandaloneEventBridge {
                     RotationDebug.logPacket("standalone", (C03PacketPlayer) packet, true);
                     C03PacketPlayer rewritten = rewritePlayerPacket((C03PacketPlayer) packet);
                     BridgeDebug.logPacketRewrite("standalone", (C03PacketPlayer) packet, rewritten,
-                            pendingPostUpdate != null);
+                            packetPendingPost);
                     super.write(ctx, rewritten, promise);
                     waitingForRotationPacket = false;
                     return;
@@ -473,7 +483,7 @@ public final class StandaloneEventBridge {
                     super.write(ctx, msg, promise);
                     return;
                 }
-                BridgeDebug.logPacket("standalone", "SEND_OUT", packet, pendingPostUpdate != null);
+                BridgeDebug.logPacket("standalone", "SEND_OUT", packet, packetPendingPost);
             }
             super.write(ctx, msg, promise);
         }
@@ -528,19 +538,25 @@ public final class StandaloneEventBridge {
             return yaw + (duplicateYawFlip ? ROTATION_DEDUPE_STEP : -ROTATION_DEDUPE_STEP);
         }
 
+        private String describeRotationState(String source) {
+            return "source=" + source
+                    + " waiting=" + waitingForRotationPacket
+                    + " activePre=" + hasActivePreRotation()
+                    + " rotationActive=" + RotationState.isActived();
+        }
+
         private boolean shouldDelayUntilRotation(Packet<?> packet) {
-            return isActionPacket(packet)
+            return isRotationSensitiveAction(packet)
                     && (waitingForRotationPacket
                     || hasActivePreRotation()
                     || RotationState.isActived()
                     || !delayedPackets.isEmpty());
         }
 
-        private boolean isActionPacket(Packet<?> packet) {
+        private boolean isRotationSensitiveAction(Packet<?> packet) {
             return packet instanceof net.minecraft.network.play.client.C02PacketUseEntity
                     || packet instanceof net.minecraft.network.play.client.C07PacketPlayerDigging
                     || packet instanceof net.minecraft.network.play.client.C08PacketPlayerBlockPlacement
-                    || packet instanceof net.minecraft.network.play.client.C09PacketHeldItemChange
                     || packet instanceof net.minecraft.network.play.client.C0APacketAnimation;
         }
 
@@ -548,12 +564,13 @@ public final class StandaloneEventBridge {
             while (!delayedPackets.isEmpty()) {
                 DelayedPacket delayed = delayedPackets.poll();
                 markSent(delayed.packet);
-                BridgeDebug.logPacket("standalone", "SEND_DELAYED_OUT", delayed.packet, pendingPostUpdate != null);
+                BridgeDebug.logPacketDetail("standalone", "SEND_DELAYED_OUT", delayed.packet,
+                        delayed.pendingPost, describeRotationState("flush"));
                 if (YozakuraRuntime.blinkManager != null && YozakuraRuntime.blinkManager.isBlinking()
                         && YozakuraRuntime.blinkManager.offerPacket(delayed.packet)) {
                     delayed.promise.setSuccess();
-                    BridgeDebug.logPacket("standalone", "SEND_DELAYED_BLINK_BUFFERED", delayed.packet,
-                            pendingPostUpdate != null);
+                    BridgeDebug.logPacketDetail("standalone", "SEND_DELAYED_BLINK_BUFFERED", delayed.packet,
+                            delayed.pendingPost, describeRotationState("flushBlink"));
                     continue;
                 }
                 super.write(ctx, delayed.packet, delayed.promise);
@@ -569,10 +586,12 @@ public final class StandaloneEventBridge {
         private final class DelayedPacket {
             private final Packet<?> packet;
             private final ChannelPromise promise;
+            private final boolean pendingPost;
 
-            private DelayedPacket(Packet<?> packet, ChannelPromise promise) {
+            private DelayedPacket(Packet<?> packet, ChannelPromise promise, boolean pendingPost) {
                 this.packet = packet;
                 this.promise = promise;
+                this.pendingPost = pendingPost;
             }
         }
     }

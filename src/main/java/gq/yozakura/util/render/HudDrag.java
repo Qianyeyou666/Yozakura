@@ -1,11 +1,8 @@
 package gq.yozakura.util.render;
 
 import gq.yozakura.value.Numbers;
-import gq.yozakura.ui.click.material.MaterialClickGui;
-import gq.yozakura.ui.click.sakura.SakuraClickGui;
-import gq.yozakura.ui.click.yozakura.YozakuraClickGui;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiMainMenu;
+import net.minecraft.client.gui.GuiChat;
 import net.minecraft.client.gui.ScaledResolution;
 import org.lwjgl.input.Mouse;
 
@@ -19,7 +16,7 @@ public final class HudDrag {
     }
 
     public static boolean isEditMode() {
-        return MC.currentScreen != null && !(MC.currentScreen instanceof GuiMainMenu);
+        return MC.currentScreen instanceof GuiChat;
     }
 
     public static float[] update(String id, Numbers<Double> xValue, Numbers<Double> yValue,
@@ -36,15 +33,9 @@ public final class HudDrag {
         x = clamp(x, 2.0f, Math.max(2.0f, sr.getScaledWidth() - width - 2.0f));
         y = clamp(y, 2.0f, Math.max(2.0f, sr.getScaledHeight() - height - 2.0f));
 
-        if (!isEditMode() || isClickGuiOpen()) {
-            if (!Mouse.isButtonDown(0)) {
-                activeId = null;
-                selectedId = null;
-            }
-            if (isClickGuiOpen()) {
-                activeId = null;
-                selectedId = null;
-            }
+        if (!isEditMode()) {
+            activeId = null;
+            selectedId = null;
             return new float[]{x, y};
         }
 
@@ -73,7 +64,7 @@ public final class HudDrag {
     }
 
     public static void drawHint(String id, float x, float y, float width, float height, float radius) {
-        if (!isEditMode() || isClickGuiOpen()) {
+        if (!isEditMode()) {
             return;
         }
         ScaledResolution sr = new ScaledResolution(MC);
@@ -88,10 +79,6 @@ public final class HudDrag {
                 Math.max(2.0f, radius + 1.0f), 1.0f, 0x00000000, color);
         RenderUtil.drawRoundedRect(x + width / 2.0f - 12.0f, y + 4.0f,
                 x + width / 2.0f + 12.0f, y + 6.0f, 1.0f, color);
-        RenderUtil.drawRoundedRect(x + width - 9.0f, y + height - 9.0f,
-                x + width - 3.0f, y + height - 7.6f, 0.8f, color);
-        RenderUtil.drawRoundedRect(x + width - 7.6f, y + height - 7.6f,
-                x + width - 3.0f, y + height - 6.2f, 0.8f, color);
     }
 
     public static int mouseX(ScaledResolution sr) {
@@ -117,7 +104,7 @@ public final class HudDrag {
     public static void handleScroll(String id, Numbers<Double> scaleValue,
                                     float x, float y, float width, float height,
                                     float minScale, float maxScale) {
-        if (!isEditMode() || isClickGuiOpen() || scaleValue == null) {
+        if (!isEditMode() || scaleValue == null) {
             return;
         }
         ScaledResolution sr = new ScaledResolution(MC);
@@ -136,12 +123,6 @@ public final class HudDrag {
         if (Math.abs(next - current) > 0.0001) {
             scaleValue.setValue(next);
         }
-    }
-
-    private static boolean isClickGuiOpen() {
-        return MC.currentScreen instanceof YozakuraClickGui
-                || MC.currentScreen instanceof MaterialClickGui
-                || MC.currentScreen instanceof SakuraClickGui;
     }
 
     private static float resolvePosition(Numbers<Double> value, float fallback) {

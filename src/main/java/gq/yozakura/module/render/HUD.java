@@ -145,6 +145,7 @@ public class HUD extends Module {
     private final Option<Boolean> watermark = new Option<Boolean>("Watermark", "Watermark", true);
     private final Option<Boolean> arrayList = new Option<Boolean>("ModuleList", "ModuleList", true);
     private final Option<Boolean> backgrounds = new Option<Boolean>("Backgrounds", "Backgrounds", true);
+    private final Option<Boolean> frostedGlass = new Option<Boolean>("Frosted Glass", "FrostedGlass", true);
     private final Option<Boolean> keybinds = new Option<Boolean>("Keybinds", "Keybinds", false);
     private final Option<Boolean> parameters = new Option<Boolean>("Parameters", "Parameters", true);
     private final Option<Boolean> notifications = new Option<Boolean>("Notifications", "Notifications", true);
@@ -184,7 +185,7 @@ public class HUD extends Module {
         Chinese = "HUD界面";
         instance = this;
         activeStyle = getSelectedStyle();
-        this.addValues(hudStyle,notificationTheme, arrayListTheme, theme, watermark, arrayList, backgrounds, keybinds, parameters, notifications,
+        this.addValues(hudStyle,notificationTheme, arrayListTheme, theme, watermark, arrayList, backgrounds, frostedGlass, keybinds, parameters, notifications,
                 potionEffects, inventoryDisplay, glow, alpha, radius, watermarkX, watermarkY, watermarkScale,
                 moduleListX, moduleListY, moduleListScale, potionX, potionY, potionScale, inventoryX, inventoryY,
                 inventoryScale);
@@ -257,38 +258,43 @@ public class HUD extends Module {
         CFontRenderer smallFont = FontLoaders.C14;
         float capsuleW = smallFont.getStringWidth(capsule) + 36.0f;
         float boxW = Math.max(166.0f, capsuleW + 10.0f);
-        float boxH = 21.0f;
+        float panelW = Math.min(boxW, capsuleW);
+        float panelH = 19.0f;
         float round = Math.max(6.0f, getRadius() - 1.0f);
         float uiScale = getScale(watermarkScale);
         ScaledResolution sr = new ScaledResolution(mc);
         float[] pos = HudDrag.update("hud_watermark", watermarkX, watermarkY, watermarkScale, 6.0f, 6.0f,
-                boxW * uiScale, boxH * uiScale, sr);
+                panelW * uiScale, panelH * uiScale, sr);
         float x = pos[0];
         float y = pos[1];
 
         beginScaled(x, y, uiScale);
         try {
-            float pillW = Math.min(boxW, capsuleW);
             if (Boolean.TRUE.equals(backgrounds.getValue())) {
-                RenderServices.shapes().shadow(x, y + 1.0f, x + pillW, y + 19.0f, 7.0f,
-                        withAlpha(0xFF000000, 92), 7, 2.2f);
-                RenderServices.shapes().shadow(x - 1.0f, y, x + pillW + 1.0f, y + 20.0f, 7.0f,
-                        withAlpha(SAKURA, 54), 5, 2.0f);
-                RenderServices.liquidGlass().roundedBorder(x, y, x + pillW, y + 19.0f, 7.0f, 0.55f,
-                        withAlpha(SAKURA_GLASS, 166), withAlpha(SAKURA, 48), sakuraGlassSettings());
-                RenderServices.shapes().horizontalGradient(x + 2.0f, y + 1.0f, x + pillW - 2.0f, y + 9.0f,
-                        withAlpha(0xFFFFF6FA, 20), withAlpha(SAKURA, 4));
+                if (useFrostedGlass()) {
+                    RenderServices.shapes().shadow(x, y, x + panelW, y + panelH, 7.0f,
+                            withAlpha(0xFF000000, 92), 7, 2.2f);
+                    RenderServices.shapes().shadow(x, y, x + panelW, y + panelH, 7.0f,
+                            withAlpha(SAKURA, 54), 5, 2.0f);
+                }
+                drawHudLiquidGlass(x, y, x + panelW, y + panelH, 7.0f, 0.55f,
+                        withAlpha(SAKURA_GLASS, 166), withAlpha(SAKURA, 48));
+                if (useFrostedGlass()) {
+                    RenderServices.shapes().roundedBorder(x + 2.0f, y + 1.0f, x + panelW - 2.0f, y + 9.0f,
+                            6.0f, 0.0f,
+                            withAlpha(0xFFFFF6FA, 20), withAlpha(SAKURA, 4));
+                }
             }
 
-            drawWatermarkPetals(x, y, pillW, 19.0f, 1.0f);
+            drawWatermarkPetals(x, y, panelW, panelH, 1.0f);
             drawSakuraFlower(x + 10.5f, y + 10.2f, 3.0f, 1.0f);
-            smallFont.drawString(trim(capsule, smallFont, pillW - 28.0f),
-                    x + 21.0f, y + 8.4f, withAlpha(SAKURA_TEXT, 236));
+            smallFont.drawString(trim(capsule, smallFont, panelW - 28.0f),
+                    x + 21.0f, y + 8.4f, sakuraText(236));
         } finally {
             endScaled();
         }
-        HudDrag.drawHint("hud_watermark", x, y, boxW * uiScale, boxH * uiScale, round * uiScale);
-        HudDrag.handleScroll("hud_watermark", watermarkScale, x, y, boxW * uiScale, boxH * uiScale, 0.65f, 1.8f);
+        HudDrag.drawHint("hud_watermark", x, y, panelW * uiScale, panelH * uiScale, round * uiScale);
+        HudDrag.handleScroll("hud_watermark", watermarkScale, x, y, panelW * uiScale, panelH * uiScale, 0.65f, 1.8f);
     }
 
     private void drawVapeWatermark() {
@@ -418,7 +424,7 @@ public class HUD extends Module {
         beginScaled(x, y, uiScale);
         try {
             drawSakuraPanel(x, y, x + width, y + height, getRadius(), 1.0f);
-            FontLoaders.C16.drawString("Inventory", x + 10.0f, y + 10.0f, withAlpha(SAKURA_TEXT, 236));
+            FontLoaders.C16.drawString("Inventory", x + 10.0f, y + 10.0f, sakuraText(236));
 
             int filled = countInventoryItems();
             String count = filled + "/27";
@@ -547,7 +553,7 @@ public class HUD extends Module {
                     drawSakuraPanel(pos[0], y, pos[0] + listW, y + listH, round, 0.85f);
                     drawTextGlow(FontLoaders.C14, "Module List", pos[0] + 12.0f, y + 6.0f, 0.62f);
                     FontLoaders.C14.drawString("Module List", pos[0] + 12.0f, y + 6.0f,
-                            withAlpha(SAKURA_MUTED, 210));
+                            sakuraMuted(210));
                 } else {
                     drawGlass(pos[0], y, pos[0] + listW, y + listH, round, getGlassAlpha(), 42);
                     FontLoaders.C14.drawString("Module List", pos[0] + 10.0f, y + 7.0f, withAlpha(palette().muted, 220));
@@ -573,7 +579,7 @@ public class HUD extends Module {
                 String icon = ClickGuiIcons.forModule(module);
                 float rowW = textW + iconSlotW + rightPad;
                 float x = right - rowW - (1.0f - progress) * 8.0f;
-                int accent = sakura ? SAKURA : getCategoryAccent(module);
+                int accent = sakura ? palette().accent : getCategoryAccent(module);
 
                 if (sakura) {
                     drawSakuraModuleRow(module, icon, label, x, y, right, rowH,
@@ -582,7 +588,7 @@ public class HUD extends Module {
                     int rowAlpha = Math.round(getGlassAlpha() * progress);
                     RenderServices.shapes().shadow(x, y, right, y + rowH, round,
                             withAlpha(palette().shadowColor, Math.round(34.0f * progress)), 4, 2.4f);
-                    drawThemedFrostedGlass(x, y, right, y + rowH, round, 0.8f,
+                    drawHudFrostedGlass(x, y, right, y + rowH, round, 0.8f,
                             withAlpha(palette().glass, rowAlpha), withAlpha(palette().border, Math.round(42.0f * progress)));
                     RenderServices.shapes().verticalGradient(right - 3.0f, y + 3.0f, right - 1.4f, y + rowH - 3.0f,
                             withAlpha(accent, Math.round(205.0f * progress)),
@@ -616,35 +622,37 @@ public class HUD extends Module {
         boolean enabled = module.getState();
         float glassAlpha = getGlassAlpha() * 0.01f;
 
-        // Double shadow (black + sakura glow)
-        RenderServices.shapes().shadow(x, y, right, y + rowH, 4.0f,
-                withAlpha(0xFF000000, Math.round(48.0f * progress)), 5, 2.0f);
-        RenderServices.shapes().shadow(x, y, right, y + rowH, 4.0f,
-                withAlpha(SAKURA, Math.round(22.0f * progress)), 4, 1.6f);
+        if (useFrostedGlass()) {
+            // Double shadow (black + sakura glow)
+            RenderServices.shapes().shadow(x, y, right, y + rowH, 4.0f,
+                    withAlpha(0xFF000000, Math.round(48.0f * progress)), 5, 2.0f);
+            RenderServices.shapes().shadow(x, y, right, y + rowH, 4.0f,
+                    withAlpha(SAKURA, Math.round(22.0f * progress)), 4, 1.6f);
+        }
 
         // Dark glass background with sakura border
-        RenderServices.liquidGlass().roundedBorder(x, y, right, y + rowH, 4.0f, 0.50f,
+        drawHudLiquidGlass(x, y, right, y + rowH, 4.0f, 0.50f,
                 withAlpha(SAKURA_GLASS, Math.round(152.0f * glassAlpha * progress)),
-                withAlpha(SAKURA, Math.round(28.0f * progress)), sakuraGlassSettings());
+                withAlpha(SAKURA, Math.round(28.0f * progress)));
 
         // Right-edge sakura accent bar
         float barAlpha = enabled ? 0.78f : 0.35f;
         RenderServices.shapes().verticalGradient(right - 2.5f, y + 3.5f, right - 1.0f, y + rowH - 3.5f,
-                withAlpha(SAKURA, Math.round(190.0f * barAlpha * progress)),
-                withAlpha(SAKURA_STRONG, Math.round(140.0f * barAlpha * progress)));
+                withAlpha(accent, Math.round(190.0f * barAlpha * progress)),
+                withAlpha(palette().accentAlt, Math.round(140.0f * barAlpha * progress)));
 
         // Icon with sakura tint
         float iconX = x + iconSlotW / 2.0f + 2.0f;
         float iconY = y + rowH / 2.0f;
-        int iconColor = enabled ? withAlpha(SAKURA, Math.round(228.0f * progress))
-                : withAlpha(SAKURA_MUTED, Math.round(155.0f * progress));
+        int iconColor = enabled ? withAlpha(accent, Math.round(228.0f * progress))
+                : withAlpha(palette().muted, Math.round(155.0f * progress));
         drawCenteredIcon(icon, FontLoaders.I16, iconX, iconY, iconColor);
 
         // Module name with glow
         float textX = x + iconSlotW + 2.0f;
         float textY = y + (rowH - font.getHeight()) / 2.0f + 1.0f;
-        int nameColor = enabled ? withAlpha(SAKURA_TEXT, Math.round(242.0f * progress))
-                : withAlpha(SAKURA_MUTED, Math.round(200.0f * progress));
+        int nameColor = enabled ? sakuraText(Math.round(242.0f * progress))
+                : sakuraMuted(Math.round(200.0f * progress));
         if (enabled) {
             drawTextGlow(font, label.name, textX, textY, progress * 0.55f);
         }
@@ -655,13 +663,13 @@ public class HUD extends Module {
         if (label.parameter.length() > 0) {
             cursor += 3.0f;
             font.drawString(label.parameter, cursor, textY,
-                    withAlpha(SAKURA_MUTED, Math.round(170.0f * progress)));
+                    sakuraMuted(Math.round(170.0f * progress)));
             cursor += font.getStringWidth(label.parameter);
         }
         if (label.key.length() > 0) {
             cursor += 3.0f;
             font.drawString(label.key, cursor, textY,
-                    withAlpha(SAKURA_MUTED, Math.round(148.0f * progress)));
+                    sakuraMuted(Math.round(148.0f * progress)));
         }
 
         // Toggle indicator dot
@@ -802,14 +810,14 @@ public class HUD extends Module {
         beginScaled(x, y, uiScale);
         try {
             drawSakuraPanel(x, y, x + width, y + height, getRadius(), 1.0f);
-            FontLoaders.C16.drawString("Effects", x + 12.0f, y + 10.0f, withAlpha(SAKURA_TEXT, 236));
+            FontLoaders.C16.drawString("Effects", x + 12.0f, y + 10.0f, sakuraText(236));
             String count = String.valueOf(effects.size());
             float chipX = x + width - 38.0f;
             drawSakuraStatusChip(count, chipX, y + 8.0f, 28.0f, SAKURA);
             drawSakuraFlower(chipX + 7.5f, y + 15.0f, 4.0f, 1.0f);
 
             if (effects.isEmpty()) {
-                FontLoaders.C14.drawString("No effects", x + 12.0f, y + 31.0f, withAlpha(SAKURA_MUTED, 210));
+                FontLoaders.C14.drawString("No effects", x + 12.0f, y + 31.0f, sakuraMuted(210));
             } else {
                 for (int i = 0; i < Math.min(6, effects.size()); i++) {
                     PotionEffect effect = effects.get(i);
@@ -823,11 +831,11 @@ public class HUD extends Module {
                             FontLoaders.C14, 88.0f);
                     String duration = Potion.getDurationString(effect);
 
-                    RenderServices.liquidGlass().roundedBorder(x + 8.0f, rowY, x + 25.0f, rowY + 17.0f, 5.0f, 0.5f,
-                            withAlpha(0xFF160F15, 138), withAlpha(SAKURA, 30), sakuraGlassSettings());
+                    drawHudLiquidGlass(x + 8.0f, rowY, x + 25.0f, rowY + 17.0f, 5.0f, 0.5f,
+                            withAlpha(0xFF160F15, 138), withAlpha(SAKURA, 30));
                     RenderServices.shapes().circle(x + 16.5f, rowY + 8.5f, 0, 360, 3.2f, withAlpha(accent, 210));
-                    FontLoaders.C14.drawString(name, x + 31.0f, rowY + 2.0f, withAlpha(SAKURA_TEXT, 226));
-                    FontLoaders.C12.drawString(duration, x + 31.0f, rowY + 12.0f, withAlpha(SAKURA_MUTED, 210));
+                    FontLoaders.C14.drawString(name, x + 31.0f, rowY + 2.0f, sakuraText(226));
+                    FontLoaders.C12.drawString(duration, x + 31.0f, rowY + 12.0f, sakuraMuted(210));
                 }
             }
         } finally {
@@ -878,17 +886,22 @@ public class HUD extends Module {
         if (alpha <= 0.002f) {
             return;
         }
-        RenderServices.shapes().shadow(x, y, x2, y2, radius,
-                withAlpha(0xFF000000, Math.round(96.0f * alpha)), 8, 3.4f);
-        RenderServices.shapes().shadow(x, y, x2, y2, radius,
-                withAlpha(SAKURA, Math.round(34.0f * alpha)), 5, 2.2f);
-        RenderServices.liquidGlass().roundedBorder(x, y, x2, y2, radius, 0.55f,
+        int panelAccent = useFrostedGlass() ? SAKURA : palette().accent;
+        if (useFrostedGlass()) {
+            RenderServices.shapes().shadow(x, y, x2, y2, radius,
+                    withAlpha(0xFF000000, Math.round(96.0f * alpha)), 8, 3.4f);
+            RenderServices.shapes().shadow(x, y, x2, y2, radius,
+                    withAlpha(SAKURA, Math.round(34.0f * alpha)), 5, 2.2f);
+        }
+        drawHudLiquidGlass(x, y, x2, y2, radius, 0.55f,
                 withAlpha(SAKURA_GLASS, Math.round(getGlassAlpha() * alpha)),
-                withAlpha(SAKURA, Math.round(34.0f * alpha)), sakuraGlassSettings());
-        RenderServices.shapes().shadow(x + 12.0f, y + 5.0f, x2 - 12.0f, y2 - 5.0f,
-                radius, withAlpha(SAKURA, Math.round(20.0f * alpha)), 3, 1.8f);
+                withAlpha(SAKURA, Math.round(34.0f * alpha)));
+        if (useFrostedGlass()) {
+            RenderServices.shapes().shadow(x + 12.0f, y + 5.0f, x2 - 12.0f, y2 - 5.0f,
+                    radius, withAlpha(SAKURA, Math.round(20.0f * alpha)), 3, 1.8f);
+        }
         RenderServices.shapes().rounded(x + 8.0f, y2 - 9.0f, Math.min(x2 - 8.0f, x + 72.0f), y2 - 4.0f,
-                3.0f, withAlpha(SAKURA, Math.round(14.0f * alpha)));
+                3.0f, withAlpha(panelAccent, Math.round(14.0f * alpha)));
     }
 
     private void drawSakuraIconWell(float x, float y, float size, float alpha) {
@@ -901,11 +914,11 @@ public class HUD extends Module {
 
     private void drawSakuraStatusChip(String text, float x, float y, float w, int accent) {
         if (Boolean.TRUE.equals(backgrounds.getValue())) {
-            RenderServices.liquidGlass().roundedBorder(x, y, x + w, y + 14.0f, 5.0f, 0.5f,
-                    withAlpha(0xFF160F15, 142), withAlpha(SAKURA, 34), sakuraGlassSettings());
+            drawHudLiquidGlass(x, y, x + w, y + 14.0f, 5.0f, 0.5f,
+                    withAlpha(0xFF160F15, 142), withAlpha(SAKURA, 34));
         }
         FontLoaders.C14.drawString(trim(text, FontLoaders.C14, w - 17.0f), x + 15.0f, y + 4.0f,
-                withAlpha(SAKURA_TEXT, 220));
+                sakuraText(220));
     }
 
     private LiquidGlassSettings sakuraGlassSettings() {
@@ -1022,7 +1035,7 @@ public class HUD extends Module {
 
     private void drawStatusChip(String text, float x, float y, float w, int accent) {
         if (Boolean.TRUE.equals(backgrounds.getValue())) {
-            drawThemedFrostedGlass(x, y, x + w, y + 14.0f, 5.0f, 0.6f,
+            drawHudFrostedGlass(x, y, x + w, y + 14.0f, 5.0f, 0.6f,
                     withAlpha(palette().glassSoft, getSoftAlpha()), withAlpha(accent, 48));
             RenderServices.shapes().circle(x + 7.5f, y + 7.0f, 0, 360, 2.0f, withAlpha(accent, 185));
         }
@@ -1031,8 +1044,137 @@ public class HUD extends Module {
     }
 
     private void drawGlass(float x, float y, float x2, float y2, float round, int fillAlpha, int borderAlpha) {
-        HudRenderSupport.drawGlass(x, y, x2, y2, round, withAlpha(palette().shadowColor, 44),
-                withAlpha(palette().glass, fillAlpha), withAlpha(palette().border, borderAlpha));
+        int fill = withAlpha(palette().glass, fillAlpha);
+        int border = withAlpha(palette().border, borderAlpha);
+        if (useFrostedGlass()) {
+            RenderServices.shapes().shadow(x, y, x2, y2, round, withAlpha(palette().shadowColor, 44), 6, 3.2f);
+        }
+        drawHudFrostedGlass(x, y, x2, y2, round, 1.0f, fill, border);
+    }
+
+    private void drawHudFrostedGlass(float x, float y, float x2, float y2, float radius,
+                                     float strength, int fillColor, int borderColor) {
+        if (useFrostedGlass()) {
+            HudRenderSupport.drawThemedFrostedGlass(x, y, x2, y2, radius, strength, fillColor, borderColor);
+        } else {
+            drawSolidPanel(x, y, x2, y2, radius, 0.6f, fillColor, borderColor);
+        }
+    }
+
+    private void drawHudLiquidGlass(float x, float y, float x2, float y2, float radius, float borderWidth,
+                                    int fillColor, int borderColor) {
+        if (useFrostedGlass()) {
+            RenderServices.liquidGlass().roundedBorder(x, y, x2, y2, radius, borderWidth,
+                    fillColor, borderColor, sakuraGlassSettings());
+        } else {
+            drawSolidPanel(x, y, x2, y2, radius, Math.min(borderWidth, 0.65f), fillColor, borderColor);
+        }
+    }
+
+    private void drawSolidPanel(float x, float y, float x2, float y2, float radius, float borderWidth,
+                                int fillColor, int borderColor) {
+        float opacity = solidOpacity(fillColor, Math.max(1, getGlassAlpha()));
+        RenderServices.shapes().shadow(x, y, x2, y2, radius,
+                getSolidPanelShadowColor(opacity), 8, 4.8f);
+        RenderServices.shapes().roundedBorder(x, y, x2, y2, radius, borderWidth,
+                solidHudFill(fillColor), solidHudBorder(borderColor));
+        if (isLightTheme() || isSakuraTheme()) {
+            RenderServices.shapes().horizontalGradient(x + 1.0f, y + 1.0f, x2 - 1.0f,
+                    Math.min(y2 - 1.0f, y + 10.0f), withAlpha(0xFFFFFFFF, 26), 0x00FFFFFF);
+        } else {
+            RenderServices.shapes().horizontalGradient(x + 1.0f, y + 1.0f, x2 - 1.0f,
+                    Math.min(y2 - 1.0f, y + 10.0f), withAlpha(0xFFFFFFFF, 12), 0x00FFFFFF);
+        }
+    }
+
+    private int solidHudFill(int originalColor) {
+        return getSolidPanelFillColor(solidOpacity(originalColor, Math.max(1, getGlassAlpha())));
+    }
+
+    private int solidHudBorder(int originalColor) {
+        return getSolidPanelBorderColor(solidOpacity(originalColor, 34));
+    }
+
+    private float solidOpacity(int color, int fullAlpha) {
+        int alpha = (color >>> 24) & 255;
+        if (alpha <= 0) {
+            return 0.0f;
+        }
+        return ColorUtils.clamp(alpha / (float) Math.max(1, fullAlpha), 0.0f, 1.0f);
+    }
+
+    private static int clickGuiStyleFill() {
+        Theme t = getTheme();
+        if (t == Theme.SAKURA) {
+            return 0xFFFFF9FC;
+        }
+        if (t == Theme.LIGHT) {
+            return 0xFFE8ECF4;
+        }
+        if (t == Theme.GRAY) {
+            return 0xFF12151A;
+        }
+        return 0xFF07090D;
+    }
+
+    private static int clickGuiStyleSoftFill() {
+        Theme t = getTheme();
+        if (t == Theme.SAKURA) {
+            return 0xFFFFF9FC;
+        }
+        if (t == Theme.LIGHT) {
+            return 0xFFE1E6F0;
+        }
+        if (t == Theme.GRAY) {
+            return 0xFF181B20;
+        }
+        return 0xFF07090D;
+    }
+
+    private static int clickGuiStyleBorder() {
+        Theme t = getTheme();
+        if (t == Theme.SAKURA) {
+            return 0xFFE2A5C2;
+        }
+        if (t == Theme.LIGHT) {
+            return 0xFF9BB9D2;
+        }
+        if (t == Theme.GRAY) {
+            return 0xFFBEC4CE;
+        }
+        return 0xFF9ABED6;
+    }
+
+    private static int solidPanelFillAlpha() {
+        Theme t = getTheme();
+        if (t == Theme.SAKURA || t == Theme.LIGHT) {
+            return 250;
+        }
+        return t == Theme.GRAY ? 168 : 154;
+    }
+
+    private static int solidPanelBorderAlpha() {
+        Theme t = getTheme();
+        if (t == Theme.SAKURA || t == Theme.LIGHT) {
+            return 104;
+        }
+        return t == Theme.GRAY ? 62 : 58;
+    }
+
+    private static int solidPanelShadowAlpha() {
+        return isLightTheme() || isSakuraTheme() ? 92 : 76;
+    }
+
+    private boolean useFrostedGlass() {
+        return Boolean.TRUE.equals(frostedGlass.getValue());
+    }
+
+    private int sakuraText(int alpha) {
+        return withAlpha(useFrostedGlass() ? SAKURA_TEXT : palette().text, alpha);
+    }
+
+    private int sakuraMuted(int alpha) {
+        return withAlpha(useFrostedGlass() ? SAKURA_MUTED : palette().muted, alpha);
     }
 
     public static void drawThemedFrostedGlass(float x, float y, float x2, float y2, float radius, float strength,
@@ -1463,6 +1605,57 @@ public class HUD extends Module {
             return Boolean.TRUE.equals(instance.glow.getValue());
         }
         return false;
+    }
+
+    public static boolean isHudFrostedGlassEnabled() {
+        if (instance != null && instance.frostedGlass != null) {
+            return Boolean.TRUE.equals(instance.frostedGlass.getValue());
+        }
+        return true;
+    }
+
+    public static int getThemeBackgroundColor() {
+        return clickGuiStyleFill();
+    }
+
+    public static int getThemeSoftBackgroundColor() {
+        return clickGuiStyleSoftFill();
+    }
+
+    public static int getSolidPanelFillColor(float opacity) {
+        return withAlpha(clickGuiStyleFill(),
+                Math.round(solidPanelFillAlpha() * ColorUtils.clamp(opacity, 0.0f, 1.0f)));
+    }
+
+    public static int getSolidPanelBorderColor(float opacity) {
+        return withAlpha(clickGuiStyleBorder(),
+                Math.round(solidPanelBorderAlpha() * ColorUtils.clamp(opacity, 0.0f, 1.0f)));
+    }
+
+    public static int getSolidPanelShadowColor(float opacity) {
+        int color = isLightTheme() || isSakuraTheme() ? 0xFFFFFFFF : 0xFF000000;
+        return withAlpha(color,
+                Math.round(solidPanelShadowAlpha() * ColorUtils.clamp(opacity, 0.0f, 1.0f)));
+    }
+
+    public static int getThemeTextColor() {
+        return palette().text;
+    }
+
+    public static int getThemeMutedTextColor() {
+        return palette().muted;
+    }
+
+    public static int getThemeBorderColor() {
+        return clickGuiStyleBorder();
+    }
+
+    public static int getThemeAccentColor() {
+        return palette().accent;
+    }
+
+    public static int getThemeAccentAltColor() {
+        return palette().accentAlt;
     }
 
     public static Theme getTheme() {

@@ -29,7 +29,10 @@ final class ModernHudEditor {
         minecraft = minecraftInstance;
         editMode = isEditMode(minecraftInstance);
         updateMouseFromWindow(minecraftInstance, screenWidth, screenHeight);
-        if (!editMode || !leftDown) {
+        if (!editMode) {
+            activeId = null;
+            selectedId = null;
+        } else if (!leftDown) {
             activeId = null;
         }
         ELEMENTS.clear();
@@ -56,7 +59,7 @@ final class ModernHudEditor {
             dragOffsetX = mouseX - x;
             dragOffsetY = mouseY - y;
         }
-        if (id.equals(activeId)) {
+        if (editMode && id.equals(activeId)) {
             x = clamp(mouseX - dragOffsetX, 2.0f, Math.max(2.0f, screenWidth - width - 2.0f));
             y = clamp(mouseY - dragOffsetY, 2.0f, Math.max(2.0f, screenHeight - height - 2.0f));
             ModernWebClickGuiState.setNumberValue(module, xValue, roundPosition(x));
@@ -69,7 +72,7 @@ final class ModernHudEditor {
     }
 
     static boolean handleScroll(Object event) {
-        if (!editMode && !isEditMode(minecraft)) {
+        if (!isEditMode(minecraft)) {
             return false;
         }
         double scroll = doubleValue(ModernForgeEventBridge.invoke(event, "getScrollDelta"), 0.0D);
@@ -157,7 +160,26 @@ final class ModernHudEditor {
         if (screen == null) {
             screen = ModernForgeEventBridge.field(minecraftInstance, "f_91080_");
         }
-        return screen != null;
+        return isChatScreen(screen);
+    }
+
+    private static boolean isChatScreen(Object screen) {
+        if (screen == null) {
+            return false;
+        }
+        Class<?> type = screen.getClass();
+        while (type != null) {
+            String name = type.getName();
+            String simpleName = type.getSimpleName();
+            if ("GuiChat".equals(simpleName) || "ChatScreen".equals(simpleName)
+                    || "net.minecraft.client.gui.GuiChat".equals(name)
+                    || "net.minecraft.client.gui.screen.ChatScreen".equals(name)
+                    || "net.minecraft.client.gui.screens.ChatScreen".equals(name)) {
+                return true;
+            }
+            type = type.getSuperclass();
+        }
+        return false;
     }
 
     private static int positiveInt(Object target, String[] names, int fallback) {

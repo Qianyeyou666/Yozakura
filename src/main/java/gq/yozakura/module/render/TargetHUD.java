@@ -74,6 +74,7 @@ public class TargetHUD extends Module {
     private final Numbers<Double> yOffset = new Numbers<Double>("Y Offset", "YOffset", 28.0, -180.0, 180.0, 1.0);
     private final Option<Boolean> showAvatar = new Option<Boolean>("Avatar", "Avatar", true);
     private final Option<Boolean> auraTarget = new Option<Boolean>("Aura Target", "AuraTarget", true);
+    private final Option<Boolean> frostedGlass = new Option<Boolean>("Frosted Glass", "FrostedGlass", true);
 
     private EntityLivingBase displayTarget;
     private EntityLivingBase attackedTarget;
@@ -89,7 +90,7 @@ public class TargetHUD extends Module {
     public TargetHUD() {
         super("TargetHUD", Keyboard.KEY_NONE, ModuleType.Render, "Show target info when aiming at an entity");
         Chinese = "目标HUD";
-        this.addValues(xPosition, yPosition, scale, xOffset, yOffset, showAvatar, auraTarget);
+        this.addValues(xPosition, yPosition, scale, xOffset, yOffset, showAvatar, auraTarget, frostedGlass);
     }
 
     @Override
@@ -206,8 +207,12 @@ public class TargetHUD extends Module {
         float pulse = clamp01(switchPulse);
         float panelScale = editMode ? 1.0f : 0.88f + 0.12f * easeOutBack(rawAlpha) + pulse * 0.018f;
 
-        int fill = withAlpha(GLASS_FILL, Math.round((158.0f + pulse * 18.0f) * easedAlpha));
-        int border = withAlpha(GLASS_BORDER, Math.round((24.0f + pulse * 18.0f) * easedAlpha));
+        int fill = useFrostedGlass()
+                ? withAlpha(GLASS_FILL, Math.round((158.0f + pulse * 18.0f) * easedAlpha))
+                : HUD.getSolidPanelFillColor(easedAlpha);
+        int border = useFrostedGlass()
+                ? withAlpha(GLASS_BORDER, Math.round((24.0f + pulse * 18.0f) * easedAlpha))
+                : HUD.getSolidPanelBorderColor(easedAlpha);
 
         GlStateManager.pushMatrix();
         if (Math.abs(panelScale - 1.0f) > 0.001f) {
@@ -217,12 +222,13 @@ public class TargetHUD extends Module {
             GlStateManager.scale(panelScale, panelScale, 1.0f);
             GlStateManager.translate(-centerX, -centerY, 0.0f);
         }
-        RenderServices.shapes().shadow(x, y, x + w, y + h, radius,
-                withAlpha(0xFF000000, Math.round(96.0f * easedAlpha)), 8, 3.4f * uiScale);
-        RenderServices.shapes().shadow(x, y, x + w, y + h, radius,
-                withAlpha(SAKURA, Math.round((28.0f + 26.0f * pulse) * easedAlpha)), 5, 2.2f * uiScale);
-        RenderServices.liquidGlass().roundedBorder(x, y, x + w, y + h, radius, 0.55f * uiScale,
-                fill, border, GLASS_SETTINGS);
+        if (useFrostedGlass()) {
+            RenderServices.shapes().shadow(x, y, x + w, y + h, radius,
+                    withAlpha(0xFF000000, Math.round(96.0f * easedAlpha)), 8, 3.4f * uiScale);
+            RenderServices.shapes().shadow(x, y, x + w, y + h, radius,
+                    withAlpha(SAKURA, Math.round((28.0f + 26.0f * pulse) * easedAlpha)), 5, 2.2f * uiScale);
+        }
+        drawPanelBackground(x, y, x + w, y + h, radius, 0.55f * uiScale, fill, border, easedAlpha);
         drawBackgroundAccent(x, y, w, h, radius, uiScale, easedAlpha);
 
         drawAvatar(target, x + 14.0f * uiScale, y + 8.0f * uiScale, 26.0f * uiScale, uiScale, contentAlpha);
@@ -233,14 +239,47 @@ public class TargetHUD extends Module {
         GlStateManager.popMatrix();
     }
 
+    private void drawPanelBackground(float x, float y, float x2, float y2, float radius,
+                                     float borderWidth, int fill, int border, float opacity) {
+        if (useFrostedGlass()) {
+            RenderServices.liquidGlass().roundedBorder(x, y, x2, y2, radius, borderWidth,
+                    fill, border, GLASS_SETTINGS);
+        } else {
+            RenderServices.shapes().shadow(x, y, x2, y2, radius,
+                    HUD.getSolidPanelShadowColor(opacity), 8, 4.8f);
+            RenderServices.shapes().roundedBorder(x, y, x2, y2, radius, Math.min(borderWidth, 0.65f), fill, border);
+            RenderServices.shapes().horizontalGradient(x + 1.0f, y + 1.0f, x2 - 1.0f,
+                    Math.min(y2 - 1.0f, y + 10.0f), withAlpha(0xFFFFFFFF, 22), 0x00FFFFFF);
+        }
+    }
+
+    private boolean useFrostedGlass() {
+        return Boolean.TRUE.equals(frostedGlass.getValue());
+    }
+
+    private int textColor(int alpha) {
+        return withAlpha(useFrostedGlass() ? TEXT : HUD.getThemeTextColor(), alpha);
+    }
+
+    private int mutedTextColor(int alpha) {
+        return withAlpha(useFrostedGlass() ? MUTED : HUD.getThemeMutedTextColor(), alpha);
+    }
+
+    private int accentTextColor(int alpha) {
+        return useFrostedGlass() ? withAlpha(SAKURA, alpha) : textColor(alpha);
+    }
+
     private void drawBackgroundAccent(float x, float y, float width, float height, float radius,
                                       float uiScale, float alpha) {
-        RenderServices.shapes().shadow(x + 16.0f * uiScale, y + 5.0f * uiScale,
-                x + width - 18.0f * uiScale, y + height - 5.0f * uiScale,
-                radius, withAlpha(SAKURA, Math.round(24.0f * alpha)), 3, 1.8f * uiScale);
+        int accent = useFrostedGlass() ? SAKURA : HUD.getThemeAccentColor();
+        if (useFrostedGlass()) {
+            RenderServices.shapes().shadow(x + 16.0f * uiScale, y + 5.0f * uiScale,
+                    x + width - 18.0f * uiScale, y + height - 5.0f * uiScale,
+                    radius, withAlpha(SAKURA, Math.round(24.0f * alpha)), 3, 1.8f * uiScale);
+        }
         RenderServices.shapes().rounded(x + 8.0f * uiScale, y + height - 9.0f * uiScale,
                 x + 72.0f * uiScale, y + height - 4.0f * uiScale,
-                3.0f * uiScale, withAlpha(SAKURA, Math.round(14.0f * alpha)));
+                3.0f * uiScale, withAlpha(accent, Math.round(14.0f * alpha)));
     }
 
     private void drawText(EntityLivingBase target, float x, float y, float width, float uiScale, float alpha) {
@@ -258,9 +297,9 @@ public class TargetHUD extends Module {
         float nameMaxWidth = Math.max(48.0f * uiScale, right - nameX - pingWidth - 8.0f * uiScale);
 
         nameFont.drawString(trim(name, nameFont, nameMaxWidth), nameX, nameY,
-                withAlpha(TEXT, Math.round(248.0f * alpha)));
+                textColor(Math.round(248.0f * alpha)));
         smallFont.drawString(ping, right - pingWidth, y + 8.0f * uiScale,
-                withAlpha(SAKURA, Math.round(218.0f * alpha)));
+                accentTextColor(Math.round(218.0f * alpha)));
     }
 
     private void drawTextGlow(CFontRenderer font, String text, float x, float y, float uiScale, float alpha) {

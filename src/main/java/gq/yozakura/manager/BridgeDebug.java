@@ -76,6 +76,16 @@ public final class BridgeDebug {
         write(bridge, stage, describePacket(bridge, stage, packet), pendingPost);
     }
 
+    public static void logPacketDetail(String bridge, String stage, Packet<?> packet, boolean pendingPost,
+                                       String detail) {
+        if (!isEnabled() || !isRelevantPacket(packet)) {
+            return;
+        }
+        String packetDetail = describePacket(bridge, stage, packet);
+        write(bridge, stage, packetDetail + (detail == null || detail.length() == 0 ? "" : " " + detail),
+                pendingPost);
+    }
+
     public static void logPacketRewrite(String bridge, C03PacketPlayer original, C03PacketPlayer rewritten,
                                         boolean pendingPost) {
         if (!isEnabled()) {

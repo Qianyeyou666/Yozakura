@@ -158,6 +158,7 @@ final class ModernWebClickGuiController {
                 .bool("Watermark", true)
                 .bool("ModuleList", true)
                 .bool("Notifications", true)
+                .bool("Frosted Glass", true)
                 .mode("HUD Style", "YOZAKURA", "YOZAKURA", "SAKURA", "SIMPLE")
                 .number("Alpha", 128.0D, 45.0D, 180.0D, 5.0D)
                 .number("Watermark X", 6.0D, -1.0D, 4000.0D, 1.0D)
@@ -167,6 +168,7 @@ final class ModernWebClickGuiController {
                 .number("ModuleList Y", 6.0D, -1.0D, 2400.0D, 1.0D)
                 .number("ModuleList Scale", 1.0D, 0.65D, 1.8D, 0.05D);
         add("TargetHUD", "Render", "Show target information when aiming at an entity.")
+                .bool("Frosted Glass", true)
                 .mode("Style", "Yozakura", "Yozakura", "Sakura", "Simple")
                 .number("X", -1.0D, -1.0D, 4000.0D, 1.0D)
                 .number("Y", -1.0D, -1.0D, 2400.0D, 1.0D)
