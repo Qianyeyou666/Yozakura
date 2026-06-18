@@ -126,20 +126,14 @@ public class Notification {
             RenderUtil.drawGlowAround(x1, y1, x2, y2, 8.0f,
                     withAlpha(accent, Math.round(220.0f * bodyAlpha)), 1.0f);
         }
-        RenderServices.shapes().shadow(x1, y1, x2, y2, 8.0f,
-                withAlpha(shadowColor(), Math.round(58.0f * bodyAlpha)), 7, 3.4f);
-        HUD.drawThemedFrostedGlass(x1, y1, x2, y2, 8.0f, 1.0f,
-                withAlpha(GLASS(), Math.round(146.0f * bodyAlpha)),
-                withAlpha(BORDER(), Math.round(56.0f * bodyAlpha)));
+        drawOldPanelBackground(x1, y1, x2, y2, 8.0f, 1.0f, bodyAlpha);
         RenderServices.shapes().horizontalGradient(x1 + 10.0f, y1 + 4.0f, x2 - 10.0f, y1 + 5.1f,
                 withAlpha(accent, Math.round(120.0f * bodyAlpha)),
                 withAlpha(ACCENT_ALT(), Math.round(72.0f * bodyAlpha)));
 
         float iconX = x1 + 11.0f;
         float iconY = y1 + 10.0f;
-        HUD.drawThemedFrostedGlass(iconX, iconY, iconX + 24.0f, iconY + 24.0f, 7.0f, 0.8f,
-                withAlpha(GLASS_SOFT(), Math.round(154.0f * bodyAlpha)),
-                withAlpha(accent, Math.round(76.0f * bodyAlpha)));
+        drawOldIconBackground(iconX, iconY, iconX + 24.0f, iconY + 24.0f, 7.0f, 0.8f, bodyAlpha, accent);
         RenderServices.shapes().shadow(iconX, iconY, iconX + 24.0f, iconY + 24.0f, 7.0f,
                 withAlpha(accent, Math.round(28.0f * bodyAlpha)), 4, 1.8f);
         drawCenteredIcon(getIcon(), FontLoaders.I18, iconX + 12.0f, iconY + 12.0f,
@@ -163,11 +157,7 @@ public class Notification {
             RenderUtil.drawGlowAround(x1, y1, x2, y2, radius,
                     withAlpha(accent, Math.round(220.0f * bodyAlpha)), 1.0f);
         }
-        RenderServices.shapes().shadow(x1, y1, x2, y2, radius,
-                withAlpha(shadowColor(), Math.round(58.0f * bodyAlpha)), 6, 2.2f);
-        RenderServices.shapes().roundedBorder(x1, y1, x2, y2, radius, 0.8f,
-                withAlpha(VAPE_SURFACE(), Math.round(164.0f * bodyAlpha)),
-                withAlpha(0xFFFFFFFF, Math.round(24.0f * bodyAlpha)));
+        drawVapePanelBackground(x1, y1, x2, y2, radius, bodyAlpha);
         RenderServices.shapes().horizontalGradient(x1 + 1.0f, y1 + 1.0f, x2 - 1.0f, y1 + 18.0f,
                 withAlpha(0xFFFFFFFF, Math.round(15.0f * bodyAlpha)), withAlpha(0xFF000000, 0));
         RenderServices.shapes().rounded(x2 - 3.0f, y1 + 7.0f, x2 - 1.0f, y2 - 7.0f, 1.0f,
@@ -191,6 +181,64 @@ public class Notification {
         RenderServices.shapes().progressBar(x1 + 51.0f, y2 - 5.0f, x2 - 12.0f, y2 - 3.2f, 0.9f, progress,
                 withAlpha(progressTrack(), Math.round(16.0f * bodyAlpha)),
                 withAlpha(accent, Math.round(150.0f * bodyAlpha)));
+    }
+
+    private static void drawOldPanelBackground(float x1, float y1, float x2, float y2, float radius,
+                                               float borderWidth, float bodyAlpha) {
+        if (HUD.isHudFrostedGlassEnabled()) {
+            RenderServices.shapes().shadow(x1, y1, x2, y2, radius,
+                    withAlpha(shadowColor(), Math.round(58.0f * bodyAlpha)), 7, 3.4f);
+            HUD.drawThemedFrostedGlass(x1, y1, x2, y2, radius, 1.0f,
+                    withAlpha(GLASS(), Math.round(146.0f * bodyAlpha)),
+                    withAlpha(BORDER(), Math.round(56.0f * bodyAlpha)));
+            return;
+        }
+
+        drawHudSolidPanel(x1, y1, x2, y2, radius, borderWidth, bodyAlpha);
+    }
+
+    private static void drawOldIconBackground(float x1, float y1, float x2, float y2, float radius,
+                                              float borderWidth, float bodyAlpha, int accent) {
+        if (HUD.isHudFrostedGlassEnabled()) {
+            HUD.drawThemedFrostedGlass(x1, y1, x2, y2, radius, 0.8f,
+                    withAlpha(GLASS_SOFT(), Math.round(154.0f * bodyAlpha)),
+                    withAlpha(accent, Math.round(76.0f * bodyAlpha)));
+            return;
+        }
+
+        RenderServices.shapes().roundedBorder(x1, y1, x2, y2, radius, Math.min(borderWidth, 0.65f),
+                HUD.getSolidPanelFillColor(bodyAlpha),
+                withAlpha(accent, Math.round(76.0f * bodyAlpha)));
+        drawSolidPanelHighlight(x1, y1, x2, y2, bodyAlpha);
+    }
+
+    private static void drawVapePanelBackground(float x1, float y1, float x2, float y2, float radius,
+                                                float bodyAlpha) {
+        if (HUD.isHudFrostedGlassEnabled()) {
+            RenderServices.shapes().shadow(x1, y1, x2, y2, radius,
+                    withAlpha(shadowColor(), Math.round(58.0f * bodyAlpha)), 6, 2.2f);
+            RenderServices.shapes().roundedBorder(x1, y1, x2, y2, radius, 0.8f,
+                    withAlpha(VAPE_SURFACE(), Math.round(164.0f * bodyAlpha)),
+                    withAlpha(0xFFFFFFFF, Math.round(24.0f * bodyAlpha)));
+            return;
+        }
+
+        drawHudSolidPanel(x1, y1, x2, y2, radius, 0.8f, bodyAlpha);
+    }
+
+    private static void drawHudSolidPanel(float x1, float y1, float x2, float y2, float radius,
+                                          float borderWidth, float opacity) {
+        RenderServices.shapes().shadow(x1, y1, x2, y2, radius,
+                HUD.getSolidPanelShadowColor(opacity), 8, 4.8f);
+        RenderServices.shapes().roundedBorder(x1, y1, x2, y2, radius, Math.min(borderWidth, 0.65f),
+                HUD.getSolidPanelFillColor(opacity), HUD.getSolidPanelBorderColor(opacity));
+        drawSolidPanelHighlight(x1, y1, x2, y2, opacity);
+    }
+
+    private static void drawSolidPanelHighlight(float x1, float y1, float x2, float y2, float opacity) {
+        int alpha = (HUD.isLightTheme() || HUD.isSakuraTheme()) ? 26 : 12;
+        RenderServices.shapes().horizontalGradient(x1 + 1.0f, y1 + 1.0f, x2 - 1.0f,
+                Math.min(y2 - 1.0f, y1 + 10.0f), withAlpha(0xFFFFFFFF, Math.round(alpha * opacity)), 0x00FFFFFF);
     }
 
     private void drawSakura(float x1, float y1, float x2, float y2, float bodyAlpha, int accent, float progress) {

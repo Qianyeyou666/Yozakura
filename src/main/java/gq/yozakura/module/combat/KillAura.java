@@ -44,6 +44,7 @@ import gq.yozakura.event.bridge.*;
 import gq.yozakura.manager.RotationState;
 import gq.yozakura.manager.RotationDebug;
 import gq.yozakura.manager.RotationCleanup;
+import gq.yozakura.manager.RotationExitState;
 import gq.yozakura.manager.VisualRotationState;
 import gq.yozakura.bridge.MinecraftAccessor;
 import gq.yozakura.module.runtime.Module;
@@ -339,6 +340,8 @@ public class KillAura extends Module {
     private void setAttackTarget(AttackData nextTarget) {
         if (nextTarget == null) {
             this.resetRotationSmoothing();
+        } else {
+            RotationExitState.clearSource("KillAura");
         }
         this.attackTarget = nextTarget;
         target = nextTarget == null ? null : nextTarget.getEntity();
@@ -354,6 +357,30 @@ public class KillAura extends Module {
         this.rotationSmoothActive = false;
         this.smoothYaw = 0.0F;
         this.smoothPitch = 0.0F;
+    }
+
+    private void requestExitRotation() {
+        if (mc.thePlayer == null
+                || !this.rotationSmoothActive
+                || (this.rotations.getValue() != 2 && this.rotations.getValue() != 3)) {
+            return;
+        }
+        float smoothFactor = Math.max(0.20F, (float) this.smoothing.getValue() / 100.0F);
+        float maxStep = Math.max(15.0F, (float) this.angleStep.getValue());
+        float yawDiff = Math.abs(MathHelper.wrapAngleTo180_float(mc.thePlayer.rotationYaw - this.smoothYaw));
+        float pitchDiff = Math.abs(mc.thePlayer.rotationPitch - this.smoothPitch);
+        int ticks = MathHelper.clamp_int((int) Math.ceil(Math.max(yawDiff, pitchDiff) / maxStep) + 2, 2, 6);
+        RotationExitState.request(
+                "KillAura",
+                this.smoothYaw,
+                this.smoothPitch,
+                1,
+                maxStep,
+                smoothFactor,
+                ticks,
+                this.moveFix.getValue() != 0 || this.rotations.getValue() == 3,
+                this.rotations.getValue() == 3
+        );
     }
 
     private void resetBlockItemRenderer() {
@@ -537,6 +564,7 @@ public class KillAura extends Module {
                     && (!this.isValidTarget(this.attackTarget.getEntity())
                     || !this.isBoxInSwingRange(this.attackTarget.getBox())
                     || !this.isBoxInAttackRange(this.attackTarget.getBox()))) {
+                this.requestExitRotation();
                 this.releaseAutoBlock(true);
                 this.clearRotations();
                 this.setAttackTarget(null);
@@ -995,6 +1023,7 @@ public class KillAura extends Module {
                             }
                         }
                         if (targets.isEmpty()) {
+                            this.requestExitRotation();
                             this.releaseAutoBlock(true);
                             this.clearRotations();
                             this.setAttackTarget(null);
@@ -1228,6 +1257,7 @@ public class KillAura extends Module {
 
     @Override
     public void onEnabled() {
+        RotationExitState.clearSource("KillAura");
         this.setAttackTarget(null);
         this.resetRotationSmoothing();
         this.switchTick = 0;
@@ -1239,6 +1269,7 @@ public class KillAura extends Module {
 
     @Override
     public void onDisabled() {
+        this.requestExitRotation();
         this.clearRotations();
         if (this.blockAnimationActive && mc.thePlayer != null) {
             this.clearUseAnimation();
