@@ -50,12 +50,17 @@ import java.util.List;
 public class Velocity extends Module {
     private static final Minecraft mc = Minecraft.getMinecraft();
 
-    public final ModeProperty mode = new ModeProperty("Mode", 0, new String[]{"Vanilla", "Prediction", "Reduce"});
+    public final ModeProperty mode = new ModeProperty("Mode", 0, new String[]{"Vanilla", "Prediction", "Reduce", "ReduceAttack"});
     public final BooleanProperty reduce = new BooleanProperty("Reduce", true, () -> mode.getValue() == 1);
     private final BooleanProperty reduceWhenCanAttack = new BooleanProperty("Reduce When Can Attack", true, () -> mode.getValue() != 0);
     private final BooleanProperty onlySprinting = new BooleanProperty("Only Sprinting", true, () -> mode.getValue() != 0);
     public final IntProperty attackTimes = new IntProperty("Attack Times", 1, 1, 5,
             () -> mode.getValue() == 1 && reduce.getValue());
+
+    // ReduceAttack mode settings
+    private final IntProperty reduceAttackCount = new IntProperty("ReduceAttack Count", 3, 0, 20, () -> mode.getValue() == 3);
+    private final PercentProperty reduceAttackHorizontal = new PercentProperty("ReduceAttack Horizontal", 60, () -> mode.getValue() == 3);
+    private final PercentProperty reduceAttackVertical = new PercentProperty("ReduceAttack Vertical", 100, () -> mode.getValue() == 3);
 
     public final BooleanProperty jump = new BooleanProperty("Jump", true, () -> mode.getValue() == 1);
     public final BooleanProperty delay = new BooleanProperty("Delay", false, () -> mode.getValue() == 1);
@@ -97,6 +102,7 @@ public class Velocity extends Module {
     private double knockbackZ;
     private float[] targetRotation;
     private int reduceTick = -1;
+    private int attackCounter = 0;  // ReduceAttack 攻击计数器
 
     private static Field s12MotionXField;
     private static Field s12MotionYField;
@@ -171,6 +177,21 @@ public class Velocity extends Module {
         }
         if (mode.getValue() == 2 && event.getType() == EventType.PRE) {
             handleReduceAttack(event, 3.2D, false);
+        }
+        // ReduceAttack mode (mode 3)
+        if (mode.getValue() == 3 && event.getType() == EventType.PRE) {
+            handleReduceAttack(event, 3.0D, true);
+        }
+    }
+
+    @EventTarget
+    public void onAttack(AttackEvent event) {
+        if (!isEnabled() || !isInGame()) {
+            return;
+        }
+        // ReduceAttack: 记录攻击次数
+        if (mode.getValue() == 3) {
+            attackCounter++;
         }
     }
 
@@ -260,6 +281,18 @@ public class Velocity extends Module {
         updateFallDamageFlag(packet);
 
         boolean handleVelocity = consumeVelocityAllowance();
+
+        // ReduceAttack mode: 只在攻击次数达标时处理击退
+        if (mode.getValue() == 3) {
+            if (attackCounter < reduceAttackCount.getValue()) {
+                attackCounter = 0;
+                return;
+            }
+            attackCounter = 0;
+            scaleVelocityPacket(packet, reduceAttackHorizontal.getValue(), reduceAttackVertical.getValue());
+            return;
+        }
+
         if (mode.getValue() != 1 || !delay.getValue()) {
             ticksSinceVelocity = 0;
             hasReceivedVelocity = true;
