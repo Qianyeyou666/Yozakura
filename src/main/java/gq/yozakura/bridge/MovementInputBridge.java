@@ -27,6 +27,7 @@ final class MovementInputBridge {
     private static int suppressedSprintKey = Integer.MIN_VALUE;
     private static float savedYaw;
     private static float savedPrevYaw;
+    private static Runnable beforeMoveInputHook;
 
     private MovementInputBridge() {
     }
@@ -45,6 +46,10 @@ final class MovementInputBridge {
         }
         restoreRotation();
         directYawPhysics = enabled;
+    }
+
+    static void setBeforeMoveInputHook(Runnable hook) {
+        beforeMoveInputHook = hook;
     }
 
     static void uninstall() {
@@ -102,6 +107,10 @@ final class MovementInputBridge {
         if (!YozakuraAuthGate.allowRuntime("movement-input")) {
             restoreRotation();
             return;
+        }
+        Runnable hook = beforeMoveInputHook;
+        if (hook != null) {
+            hook.run();
         }
         EventManager.call(new MoveInputEvent());
 

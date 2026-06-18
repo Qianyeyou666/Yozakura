@@ -52,11 +52,14 @@ public final class StandaloneEventBridge {
     private UpdateEvent pendingPostUpdate;
     private volatile UpdateEvent activePreUpdate;
     private volatile boolean waitingForRotationPacket;
+    private int lastPreUpdateTick = Integer.MIN_VALUE;
+    private boolean dispatchingPlayerPacketPreUpdate;
 
     public void tick(boolean playerTick) {
         if (!YozakuraAuthGate.allowRuntime("standalone-tick")) {
             releaseForcedSneak();
             resetMouseState();
+            MovementInputBridge.setBeforeMoveInputHook(null);
             MovementInputBridge.setDirectYawPhysics(true);
             MovementInputBridge.uninstall();
             PacketRotationState.clear();
@@ -65,11 +68,14 @@ public final class StandaloneEventBridge {
             pendingPostUpdate = null;
             activePreUpdate = null;
             waitingForRotationPacket = false;
+            lastPreUpdateTick = Integer.MIN_VALUE;
+            dispatchingPlayerPacketPreUpdate = false;
             return;
         }
         if (!isInGame()) {
             releaseForcedSneak();
             resetMouseState();
+            MovementInputBridge.setBeforeMoveInputHook(null);
             MovementInputBridge.setDirectYawPhysics(true);
             MovementInputBridge.uninstall();
             PacketRotationState.clear();
@@ -78,9 +84,17 @@ public final class StandaloneEventBridge {
             pendingPostUpdate = null;
             activePreUpdate = null;
             waitingForRotationPacket = false;
+            lastPreUpdateTick = Integer.MIN_VALUE;
+            dispatchingPlayerPacketPreUpdate = false;
             return;
         }
         MovementInputBridge.install();
+        MovementInputBridge.setBeforeMoveInputHook(new Runnable() {
+            @Override
+            public void run() {
+                dispatchPreUpdateBeforePlayerPacket();
+            }
+        });
         MovementInputBridge.setDirectYawPhysics(true);
         MovementInputBridge.restoreRotation();
         StandaloneGuiIngame.install(mc);
@@ -89,11 +103,11 @@ public final class StandaloneEventBridge {
         injectPacketHandler();
         if (!playerTick) {
             dispatchMouseButtons();
+            dispatchPendingPostUpdate();
             return;
         }
         dispatchForgeTick(gq.yozakura.bridge.forge.TickEvent.Phase.START);
         EventManager.call(new TickEvent(EventType.PRE));
-        dispatchPreUpdate();
         dispatchSafeWalk();
         dispatchMouseButtons();
         EventManager.call(new gq.yozakura.bridge.forge.LivingEvent.LivingUpdateEvent(mc.thePlayer));
@@ -109,6 +123,7 @@ public final class StandaloneEventBridge {
 
     public void shutdown() {
         releaseForcedSneak();
+        MovementInputBridge.setBeforeMoveInputHook(null);
         MovementInputBridge.setDirectYawPhysics(true);
         MovementInputBridge.uninstall();
         PacketRotationState.clear();
@@ -117,6 +132,8 @@ public final class StandaloneEventBridge {
         pendingPostUpdate = null;
         activePreUpdate = null;
         waitingForRotationPacket = false;
+        lastPreUpdateTick = Integer.MIN_VALUE;
+        dispatchingPlayerPacketPreUpdate = false;
         removePacketHandler();
     }
 
@@ -208,6 +225,7 @@ public final class StandaloneEventBridge {
     }
 
     private void dispatchPreUpdate() {
+        lastPreUpdateTick = mc.thePlayer == null ? Integer.MIN_VALUE : mc.thePlayer.ticksExisted;
         BridgeDebug.logState("standalone", "PRE_START", pendingPostUpdate != null);
         pendingPostUpdate = null;
         VisualRotationState.beginTick();
@@ -235,6 +253,22 @@ public final class StandaloneEventBridge {
         resetTransientPacketState();
         queuePostUpdate(update);
         BridgeDebug.logUpdate("standalone", "PRE_DONE", update, pendingPostUpdate != null);
+    }
+
+    private void dispatchPreUpdateBeforePlayerPacket() {
+        if (dispatchingPlayerPacketPreUpdate || mc.thePlayer == null) {
+            return;
+        }
+        int tick = mc.thePlayer.ticksExisted;
+        if (lastPreUpdateTick == tick) {
+            return;
+        }
+        dispatchingPlayerPacketPreUpdate = true;
+        try {
+            dispatchPreUpdate();
+        } finally {
+            dispatchingPlayerPacketPreUpdate = false;
+        }
     }
 
     private void applyLocalAimAssistRotation(UpdateEvent update) {
@@ -433,6 +467,9 @@ public final class StandaloneEventBridge {
             }
             if (msg instanceof Packet<?>) {
                 Packet<?> packet = (Packet<?>) msg;
+                if (packet instanceof C03PacketPlayer) {
+                    dispatchPreUpdateBeforePlayerPacket();
+                }
                 boolean packetPendingPost = pendingPostUpdate != null;
                 if (PacketBridgeSupport.consumeNoEvent(packet)) {
                     BridgeDebug.logPacket("standalone", "SEND_NO_EVENT", packet, packetPendingPost);
@@ -546,6 +583,9 @@ public final class StandaloneEventBridge {
         }
 
         private boolean shouldDelayUntilRotation(Packet<?> packet) {
+            if (dispatchingPlayerPacketPreUpdate) {
+                return false;
+            }
             return isRotationSensitiveAction(packet)
                     && (waitingForRotationPacket
                     || hasActivePreRotation()

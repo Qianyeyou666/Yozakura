@@ -88,18 +88,21 @@ public final class YozakuraEventBridge {
     public void onClientTick(TickEvent.ClientTickEvent event) {
         if (!YozakuraAuthGate.allowRuntime("forge-client-tick")) {
             releaseForcedSneak();
+            MovementInputBridge.setBeforeMoveInputHook(null);
             RotationState.clear();
             VisualRotationState.clear();
             return;
         }
         if (!isInGame()) {
             releaseForcedSneak();
+            MovementInputBridge.setBeforeMoveInputHook(null);
             MovementInputBridge.uninstall();
             RotationState.clear();
             VisualRotationState.clear();
             return;
         }
         MovementInputBridge.install();
+        MovementInputBridge.setBeforeMoveInputHook(null);
         injectPacketHandler();
         if (event.phase == TickEvent.Phase.START) {
             EventManager.call(new gq.yozakura.event.bridge.TickEvent(EventType.PRE));
