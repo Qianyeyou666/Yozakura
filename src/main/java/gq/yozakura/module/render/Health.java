@@ -27,7 +27,6 @@ public class Health extends Module {
     private static final float NIGHT_BLOOM_RADIUS = 4.0F;
     private static final int NIGHT_BLOOM_SURFACE = 0xDC16161A;
     private static final int NIGHT_BLOOM_PRIMARY = 0xFFFF4FC7;
-    private static final int NIGHT_BLOOM_DEPTH_SHADOW_LAYERS = 12;
 
     int fuck = 0;
     private int width;
@@ -126,10 +125,7 @@ public class Health extends Module {
             float y = pos[1];
             float radius = NIGHT_BLOOM_RADIUS;
             int healthColor = NightBloomHealthMotion.colorFor(motion.getHealth(), NIGHT_BLOOM);
-            RenderServices.shapes().shadowOffset(x, y, x + boxW, y + boxH, radius,
-                    NightBloomHudLayout.DEPTH_SHADOW_OFFSET_X, NightBloomHudLayout.DEPTH_SHADOW_OFFSET_Y,
-                    NightBloomHudLayout.DEPTH_SHADOW_COLOR, NIGHT_BLOOM_DEPTH_SHADOW_LAYERS,
-                    NightBloomHudLayout.DEPTH_SHADOW_BLUR_RADIUS);
+            HUD.drawNightBloomShadow(x, y, x + boxW, y + boxH, radius, 1.0F);
             RenderServices.shapes().rounded(x, y, x + boxW, y + boxH, radius, NIGHT_BLOOM_SURFACE);
 
             float iconSize = 18.0F;

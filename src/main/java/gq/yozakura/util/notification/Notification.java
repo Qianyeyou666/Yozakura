@@ -52,10 +52,6 @@ public class Notification {
     private static final int NIGHT_BLOOM_PRIMARY = 0xFFFF4FC7;
     private static final int NIGHT_BLOOM_SECONDARY = 0xFFEEEEEE;
     private static final float NIGHT_BLOOM_PANEL_RADIUS = 4.0F;
-    private static final int NIGHT_BLOOM_DEPTH_SHADOW_COLOR = 0x73000000;
-    private static final float NIGHT_BLOOM_DEPTH_SHADOW_OFFSET_X = 0.0F;
-    private static final float NIGHT_BLOOM_DEPTH_SHADOW_OFFSET_Y = 0.0F;
-    private static final float NIGHT_BLOOM_DEPTH_SHADOW_BLUR_RADIUS = 9.0F;
     private static final LiquidGlassSettings SAKURA_GLASS_SETTINGS = LiquidGlassSettings.defaults()
             .withBlurRadius(18.0f)
             .withBlurDownscale(0.92f)
@@ -266,10 +262,7 @@ public class Notification {
 
         NightBloomNotificationLayout.Layout layout = NightBloomNotificationLayout.create(x1, y1, x2, y2);
 
-        RenderServices.shapes().shadowOffset(x1, y1, x2, y2, NIGHT_BLOOM_PANEL_RADIUS,
-                NIGHT_BLOOM_DEPTH_SHADOW_OFFSET_X, NIGHT_BLOOM_DEPTH_SHADOW_OFFSET_Y,
-                withAlpha(NIGHT_BLOOM_DEPTH_SHADOW_COLOR, Math.round(115.0F * alpha)), 12,
-                NIGHT_BLOOM_DEPTH_SHADOW_BLUR_RADIUS);
+        HUD.drawNightBloomShadow(x1, y1, x2, y2, NIGHT_BLOOM_PANEL_RADIUS, alpha);
         RenderServices.shapes().rounded(x1, y1, x2, y2, NIGHT_BLOOM_PANEL_RADIUS,
                 withAlpha(NIGHT_BLOOM_PANEL_FILL, Math.round(220.0F * alpha)));
 

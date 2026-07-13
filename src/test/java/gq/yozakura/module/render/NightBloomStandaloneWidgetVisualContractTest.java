@@ -7,7 +7,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -30,11 +29,8 @@ public class NightBloomStandaloneWidgetVisualContractTest {
         assertTrue(renderer.contains("HUD.drawNightBloomText("));
         assertTrue(renderer.contains("HUD.drawNightBloomCenteredIcon("));
 
-        assertEquals(1, occurrences(renderer, "shadowOffset("));
-        assertTrue(renderer.contains("NightBloomHudLayout.DEPTH_SHADOW_COLOR"));
-        assertTrue(renderer.contains("NightBloomHudLayout.DEPTH_SHADOW_OFFSET_X"));
-        assertTrue(renderer.contains("NightBloomHudLayout.DEPTH_SHADOW_OFFSET_Y"));
-        assertTrue(renderer.contains("NightBloomHudLayout.DEPTH_SHADOW_BLUR_RADIUS"));
+        assertFalse(renderer.contains("shadowOffset("));
+        assertTrue(renderer.contains("HUD.drawNightBloomShadow("));
         assertFalse(renderer.contains("ACCENT_SHADOW"));
 
         assertFalse(renderer.contains("roundedBorder"));
@@ -55,11 +51,8 @@ public class NightBloomStandaloneWidgetVisualContractTest {
         assertFalse(renderer.contains("HUD.queueNightBloomGlow("));
         assertTrue(renderer.contains("HUD.drawNightBloomText("));
 
-        assertEquals(1, occurrences(renderer, "shadowOffset("));
-        assertTrue(renderer.contains("NightBloomHudLayout.DEPTH_SHADOW_COLOR"));
-        assertTrue(renderer.contains("NightBloomHudLayout.DEPTH_SHADOW_OFFSET_X"));
-        assertTrue(renderer.contains("NightBloomHudLayout.DEPTH_SHADOW_OFFSET_Y"));
-        assertTrue(renderer.contains("NightBloomHudLayout.DEPTH_SHADOW_BLUR_RADIUS"));
+        assertFalse(renderer.contains("shadowOffset("));
+        assertTrue(renderer.contains("HUD.drawNightBloomShadow("));
         assertFalse(renderer.contains("ACCENT_SHADOW"));
 
         assertFalse(renderer.contains("roundedBorder"));
@@ -79,13 +72,4 @@ public class NightBloomStandaloneWidgetVisualContractTest {
         return source.substring(startIndex, endIndex < 0 ? source.length() : endIndex);
     }
 
-    private static int occurrences(String source, String needle) {
-        int count = 0;
-        int index = 0;
-        while ((index = source.indexOf(needle, index)) >= 0) {
-            count++;
-            index += needle.length();
-        }
-        return count;
-    }
 }

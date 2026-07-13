@@ -306,11 +306,11 @@ public final class BridgeDebug {
             if (state == null) {
                 return "null";
             }
-            return "attack=" + state.attacking
-                    + ",dig=" + state.digging
-                    + ",place=" + state.placing
-                    + ",swap=" + state.swapping
-                    + ",swing=" + state.swinging;
+            return "attack=" + state.isAttacking()
+                    + ",dig=" + state.isDigging()
+                    + ",place=" + state.isPlacing()
+                    + ",swap=" + state.isSwapping()
+                    + ",swing=" + state.isSwinging();
         } catch (Throwable ignored) {
             return "?";
         }

@@ -3,6 +3,7 @@ package gq.yozakura.ui.click.material;
 import gq.yozakura.engine.font.FontLoaders;
 import gq.yozakura.engine.render.ui.RenderServices;
 import gq.yozakura.module.Module;
+import gq.yozakura.module.render.ClickGUI;
 import gq.yozakura.util.animation.AnimationUtil;
 import gq.yozakura.value.Mode;
 import gq.yozakura.value.Numbers;
@@ -407,6 +408,11 @@ final class MaterialValueRenderer {
         String text = formatNumber(current);
         FontLoaders.C14.drawString(gui.displayName(value), x, y, theme.muted());
         drawAnimatedValueText(value, text, current, x + width, y, theme.muted());
+        String key = gui.animationKey(value);
+        float progress = gui.animation("value.number." + key, pct(value),
+                draggingNumber == value ? 0.62f : 0.26f, pct(value));
+        drawSlider(sliderX(x, width), y + 24.0f * s, sliderW(width), progress, theme, key,
+                draggingNumber == value);
     }
 
     private void drawRange(Numbers min, Numbers max, float x, float y, float width) {
@@ -430,6 +436,10 @@ final class MaterialValueRenderer {
         float sx = sliderX(x, width);
         float sy = y + 24.0f * s;
         float sw = sliderW(width);
+        boolean active = draggingNumber == min || draggingNumber == max;
+        drawSliderTrack(sx, sy, sw, minPct, maxPct, theme, active);
+        drawKnob(sx + sw * minPct, sy + 2.0f * s, theme, minKey, draggingNumber == min);
+        drawKnob(sx + sw * maxPct, sy + 2.0f * s, theme, maxKey, draggingNumber == max);
     }
 
     private void drawColor(Numbers red, Numbers green, Numbers blue, Numbers alpha,
@@ -1174,7 +1184,7 @@ final class MaterialValueRenderer {
 
     private boolean isHiddenStandaloneNumber(Module module, int index) {
         Value value = module.getValues().get(index);
-        return value instanceof Numbers && !isColorStart(module, index);
+        return module instanceof ClickGUI && value instanceof Numbers && !isColorStart(module, index);
     }
 
     private boolean isColorStart(Module module, int index) {

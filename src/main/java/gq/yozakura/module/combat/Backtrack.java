@@ -1,5 +1,6 @@
 package gq.yozakura.module.combat;
 
+import gq.yozakura.bridge.PacketPipelineAnchors;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.Module;
 import gq.yozakura.util.render.RenderUtil;
@@ -40,7 +41,7 @@ public class Backtrack extends Module {
         HYBRID
     }
 
-    private static final String HANDLER_NAME = "yozakura_backtrack";
+    private static final String HANDLER_NAME = PacketPipelineAnchors.BACKTRACK_HANDLER_NAME;
     private static final int MAX_HISTORY = 40;
     private static final int MAX_QUEUED_PACKETS = 128;
     private static Backtrack INSTANCE;
@@ -312,11 +313,8 @@ public class Backtrack extends Module {
             if (current == null || !current.isOpen()) {
                 return;
             }
-            if (current.pipeline().get(HANDLER_NAME) != null) {
-                this.channel = current;
-                return;
-            }
-            current.pipeline().addBefore("packet_handler", HANDLER_NAME, new BacktrackPacketHandler(this));
+            PacketPipelineAnchors.installDelayHandler(current.pipeline(), HANDLER_NAME,
+                    new BacktrackPacketHandler(this));
             this.channel = current;
         } catch (Throwable ignored) {
             this.channel = null;

@@ -1,6 +1,7 @@
 package gq.yozakura.engine.render.ui;
 
 import gq.yozakura.engine.render.glow.GlowRenderer;
+import gq.yozakura.engine.render.glow.GlowProfile;
 
 public final class RenderServices {
     private static final RenderContext CONTEXT = new RenderContext();
@@ -11,7 +12,7 @@ public final class RenderServices {
     private static final PanelPainter PANELS = new PanelPainter(SHAPES, BLUR);
     private static final StencilRenderer STENCIL = new StencilRenderer();
     private static final GlowRenderer GLOW = new GlowRenderer();
-    private static final GlowRenderer SHADOWS = new GlowRenderer();
+    private static final GlowRenderer SHADOWS = createShadowRenderer();
 
     private RenderServices() {
     }
@@ -50,5 +51,30 @@ public final class RenderServices {
 
     public static GlowRenderer shadows() {
         return SHADOWS;
+    }
+
+    public static void beginHudEffectsFrame() {
+        SHADOWS.beginFrame();
+        try {
+            GLOW.beginFrame();
+        } catch (RuntimeException exception) {
+            SHADOWS.flush();
+            throw exception;
+        }
+    }
+
+    public static void flushHudEffectsFrame() {
+        try {
+            SHADOWS.flush();
+        } finally {
+            GLOW.flush();
+        }
+    }
+
+    private static GlowRenderer createShadowRenderer() {
+        GlowRenderer renderer = new GlowRenderer();
+        renderer.setQuality(GlowProfile.Quality.HIGH);
+        renderer.setGlobalStrength(0.55F);
+        return renderer;
     }
 }

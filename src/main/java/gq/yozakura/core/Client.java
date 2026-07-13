@@ -191,19 +191,48 @@ public class Client {
 
     public static void unInject() {
         state = false;
-        if (instance != null) {
-            instance.fileManager.saveIfDirtyQuietly();
-            instance.fileManager.setAutoSaveSuspended(true);
-            ModuleManager.disableAll(false);
-            instance.fileManager.setAutoSaveSuspended(false);
-            if (instance.tokenAuthGuiHandler != null) {
-                MinecraftForge.EVENT_BUS.unregister(instance.tokenAuthGuiHandler);
-                instance.tokenAuthGuiHandler = null;
+        Client client = instance;
+        try {
+            if (client != null) {
+                client.fileManager.saveIfDirtyQuietly();
+                client.fileManager.setAutoSaveSuspended(true);
+                try {
+                    ModuleManager.disableAll(false);
+                } finally {
+                    client.fileManager.setAutoSaveSuspended(false);
+                }
             }
-            MinecraftForge.EVENT_BUS.unregister(instance);
-            FMLCommonHandler.instance().bus().unregister(instance);
-            WebClickGuiService.stop();
-            instance=null;
+        } finally {
+            try {
+                YozakuraEventBridge.shutdown();
+            } finally {
+                try {
+                    if (client != null) {
+                        unregisterClient(client);
+                    }
+                } finally {
+                    instance = null;
+                }
+            }
+        }
+    }
+
+    private static void unregisterClient(Client client) {
+        try {
+            if (client.tokenAuthGuiHandler != null) {
+                MinecraftForge.EVENT_BUS.unregister(client.tokenAuthGuiHandler);
+                client.tokenAuthGuiHandler = null;
+            }
+        } finally {
+            try {
+                MinecraftForge.EVENT_BUS.unregister(client);
+            } finally {
+                try {
+                    FMLCommonHandler.instance().bus().unregister(client);
+                } finally {
+                    WebClickGuiService.stop();
+                }
+            }
         }
     }
 

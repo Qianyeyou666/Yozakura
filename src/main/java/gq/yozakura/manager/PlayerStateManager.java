@@ -7,12 +7,16 @@ import gq.yozakura.event.bridge.TickEvent;
 import net.minecraft.network.Packet;
 import net.minecraft.network.play.client.*;
 
+import java.util.concurrent.atomic.AtomicInteger;
+
 public class PlayerStateManager {
-    public boolean attacking = false;
-    public boolean digging = false;
-    public boolean placing = false;
-    public boolean swapping = false;
-    public boolean swinging = false;
+    private static final int ATTACKING = 1;
+    private static final int DIGGING = 1 << 1;
+    private static final int PLACING = 1 << 2;
+    private static final int SWAPPING = 1 << 3;
+    private static final int SWINGING = 1 << 4;
+
+    private final AtomicInteger stateMask = new AtomicInteger();
 
     @EventTarget(Priority.HIGHEST)
     public void onTick(TickEvent event) {
@@ -23,34 +27,57 @@ public class PlayerStateManager {
 
     public void handlePacket(Packet<?> packet) {
         if (packet instanceof C02PacketUseEntity) {
-            this.attacking = true;
+            setState(ATTACKING);
         }
         if (packet instanceof C07PacketPlayerDigging) {
-            this.digging = true;
+            setState(DIGGING);
         }
         if (packet instanceof C08PacketPlayerBlockPlacement) {
-            this.placing = true;
+            setState(PLACING);
         }
         if (packet instanceof C09PacketHeldItemChange) {
-            this.swapping = true;
+            setState(SWAPPING);
         }
         if (packet instanceof C0APacketAnimation) {
-            this.swinging = true;
+            setState(SWINGING);
         }
         if (packet instanceof C03PacketPlayer) {
-            this.attacking = false;
-            this.digging = false;
-            this.placing = false;
-            this.swapping = false;
-            this.swinging = false;
+            resetTransientState();
         }
     }
 
     public void resetTransientState() {
-        this.attacking = false;
-        this.digging = false;
-        this.placing = false;
-        this.swapping = false;
-        this.swinging = false;
+        stateMask.set(0);
+    }
+
+    public boolean isAttacking() {
+        return hasState(ATTACKING);
+    }
+
+    public boolean isDigging() {
+        return hasState(DIGGING);
+    }
+
+    public boolean isPlacing() {
+        return hasState(PLACING);
+    }
+
+    public boolean isSwapping() {
+        return hasState(SWAPPING);
+    }
+
+    public boolean isSwinging() {
+        return hasState(SWINGING);
+    }
+
+    private boolean hasState(int state) {
+        return (stateMask.get() & state) != 0;
+    }
+
+    private void setState(int state) {
+        int current = stateMask.get();
+        while (!stateMask.compareAndSet(current, current | state)) {
+            current = stateMask.get();
+        }
     }
 }

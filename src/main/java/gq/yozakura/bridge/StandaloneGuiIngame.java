@@ -24,7 +24,12 @@ import java.lang.reflect.Modifier;
 public class StandaloneGuiIngame extends GuiIngame {
     private static boolean installFailureLogged;
     private static boolean installLogged;
+    private static boolean unsupportedGuiLogged;
+    private static boolean lunarBypassLogged;
+    private static boolean uninstallFailureLogged;
     private static int dispatchLogCount;
+    private static GuiIngame originalGui;
+    private static StandaloneGuiIngame installedGui;
 
     public StandaloneGuiIngame(Minecraft minecraft) {
         super(minecraft);
@@ -57,30 +62,81 @@ public class StandaloneGuiIngame extends GuiIngame {
     public static void install(Minecraft minecraft) {
         // On Lunar Client, do NOT replace ingameGUI — Lunar's HUD Caching
         // relies on its own ingameGUI instance and replacing it kills FPS.
-        // Render2DEvent will be dispatched via StandaloneEntityRenderer instead.
+        // Render2DEvent is dispatched via StandaloneEntityRenderer only when its hook can be installed safely.
         if (isLunarClient()) {
+            if (!lunarBypassLogged) {
+                lunarBypassLogged = true;
+                log("Standalone ingame GUI hook skipped on Lunar Client: preserving Lunar HUD lifecycle. "
+                        + "Render2D dispatch requires a compatible client renderer hook.", null);
+            }
             return;
         }
-        if (minecraft == null || minecraft.ingameGUI instanceof StandaloneGuiIngame) {
+        if (minecraft == null) {
+            return;
+        }
+        GuiIngame current = minecraft.ingameGUI;
+        if (current == installedGui) {
+            return;
+        }
+        if (current == null) {
+            logUnsupportedGui("no GuiIngame is available");
+            return;
+        }
+        if (current.getClass() != GuiIngame.class) {
+            logUnsupportedGui("runtime GUI " + current.getClass().getName());
             return;
         }
         try {
-            GuiIngame oldGui = minecraft.ingameGUI;
             StandaloneGuiIngame hook = new StandaloneGuiIngame(minecraft);
-            copyState(oldGui, hook);
+            copyState(current, hook);
+            originalGui = current;
+            installedGui = hook;
             minecraft.ingameGUI = hook;
             if (!installLogged) {
                 installLogged = true;
                 log("Standalone ingame GUI hook installed: old="
-                        + (oldGui == null ? "null" : oldGui.getClass().getName())
+                        + current.getClass().getName()
                         + ", new=" + hook.getClass().getName(), null);
             }
         } catch (Throwable throwable) {
+            if (minecraft.ingameGUI == installedGui) {
+                minecraft.ingameGUI = originalGui;
+            }
+            installedGui = null;
+            originalGui = null;
             if (!installFailureLogged) {
                 installFailureLogged = true;
                 log("Failed to install standalone ingame GUI hook", throwable);
             }
         }
+    }
+
+    public static void uninstall(Minecraft minecraft) {
+        StandaloneGuiIngame installed = installedGui;
+        GuiIngame original = originalGui;
+        try {
+            if (minecraft != null && installed != null && minecraft.ingameGUI == installed) {
+                minecraft.ingameGUI = original;
+                log("Standalone ingame GUI hook removed", null);
+            }
+        } catch (Throwable throwable) {
+            if (!uninstallFailureLogged) {
+                uninstallFailureLogged = true;
+                log("Failed to remove standalone ingame GUI hook", throwable);
+            }
+        } finally {
+            installedGui = null;
+            originalGui = null;
+        }
+    }
+
+    private static void logUnsupportedGui(String guiDescription) {
+        if (unsupportedGuiLogged) {
+            return;
+        }
+        unsupportedGuiLogged = true;
+        log("Standalone ingame GUI hook skipped: preserving " + guiDescription
+                + ". Replacing a runtime GuiIngame subclass would discard its overlay lifecycle.", null);
     }
 
     @Override
@@ -106,11 +162,11 @@ public class StandaloneGuiIngame extends GuiIngame {
         try {
             dispatchRenderTick(gq.yozakura.bridge.forge.TickEvent.Phase.START, partialTicks);
             ShaderRenderer.beginOverlayFrame();
-            RenderServices.glow().beginFrame();
+            RenderServices.beginHudEffectsFrame();
             try {
                 EventManager.call(new Render2DEvent(partialTicks));
             } finally {
-                RenderServices.glow().flush();
+                RenderServices.flushHudEffectsFrame();
             }
             YozakuraEventBridge.markOverlayRendered();
             prepareOverlayState();
@@ -137,11 +193,11 @@ public class StandaloneGuiIngame extends GuiIngame {
             try {
                 dispatchRenderTick(gq.yozakura.bridge.forge.TickEvent.Phase.START, partialTicks);
                 ShaderRenderer.beginOverlayFrame();
-                RenderServices.glow().beginFrame();
+                RenderServices.beginHudEffectsFrame();
                 try {
                     EventManager.call(new Render2DEvent(partialTicks));
                 } finally {
-                    RenderServices.glow().flush();
+                    RenderServices.flushHudEffectsFrame();
                 }
                 YozakuraEventBridge.markOverlayRendered();
                 prepareOverlayState();

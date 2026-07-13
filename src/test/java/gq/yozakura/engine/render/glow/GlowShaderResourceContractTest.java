@@ -62,6 +62,26 @@ public class GlowShaderResourceContractTest {
                 FIXED_OPAQUE_OUTPUT.matcher(shader).find());
     }
 
+    @Test
+    public void shadowModeSeparatesOpaqueGeometryCoverageFromFinalBlackStrength() {
+        String mask = compact(readResource(MASK_SHADER));
+        String composite = compact(readResource(COMPOSITE_SHADER));
+
+        assertTrue(mask.contains("uniformintshadowMode;"));
+        assertTrue("shadow mask alpha must remain the full rounded geometry coverage",
+                mask.contains("vec4(maskColor.a*sourceAlpha,0.0,0.0,sourceAlpha)"));
+        assertTrue(composite.contains("uniformintshadowMode;"));
+        assertTrue("shadow opacity must come from the separately blurred strength channel",
+                composite.contains("blur.r"));
+        assertTrue("the shadow must continue underneath antialiased edge coverage instead of exposing a bright ring",
+                composite.contains("floatoutsideMask=1.0-mask.a;"));
+        assertTrue("edge coverage must attenuate the blurred black shadow continuously",
+                composite.contains("blur.r*outsideMask"));
+        assertFalse("discarding every non-zero mask sample punches a visible one-pixel halo around translucent panels",
+                composite.contains("mask.a>0.001"));
+        assertTrue(composite.contains("vec4(0.0,0.0,0.0,shadowAlpha)"));
+    }
+
     private static void assertShaderResource(String resource) {
         String shader = readResource(resource);
         assertFalse(resource + " must not be empty", shader.trim().isEmpty());

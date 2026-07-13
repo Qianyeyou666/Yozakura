@@ -643,43 +643,72 @@ DWORD findMinecraftTarget(int profile, wchar_t* title, DWORD titleChars) {
     return ctx.pid;
 }
 
-bool moduleAlreadyLoaded(DWORD pid, const wchar_t* dllPath) {
-    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
-    if (snap == INVALID_HANDLE_VALUE) {
+enum class LoadedModuleState {
+    NotLoaded,
+    Loaded,
+    InspectionFailed
+};
+
+bool isYozakuraLoaderName(const wchar_t* moduleName, const wchar_t* requestedName) {
+    if (!moduleName || !requestedName) {
         return false;
     }
-    wchar_t fullDll[MAX_PATH] = {};
-    GetFullPathNameW(dllPath, MAX_PATH, fullDll, nullptr);
-    MODULEENTRY32W module = {};
-    module.dwSize = sizeof(module);
-    bool loaded = false;
-    if (Module32FirstW(snap, &module)) {
-        do {
-            if (_wcsicmp(module.szExePath, fullDll) == 0) {
-                loaded = true;
-                break;
-            }
-        } while (Module32NextW(snap, &module));
+    if (_wcsicmp(moduleName, requestedName) == 0) {
+        return true;
     }
-    CloseHandle(snap);
-    return loaded;
+
+    size_t moduleLength = wcslen(moduleName);
+    if (moduleLength < 4 || _wcsicmp(moduleName + moduleLength - 4, L".dll") != 0) {
+        return false;
+    }
+    const wchar_t* prefixes[] = {L"YozakuraLoader", L"YozakuraReobf"};
+    for (const wchar_t* prefix : prefixes) {
+        size_t prefixLength = wcslen(prefix);
+        if (moduleLength >= prefixLength + 4
+            && _wcsnicmp(moduleName, prefix, prefixLength) == 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
-std::wstring stagedDllCopy(const wchar_t* dllPath) {
-    wchar_t tempDir[MAX_PATH] = {};
-    if (!GetTempPathW(MAX_PATH, tempDir)) {
-        return L"";
+LoadedModuleState inspectLoadedYozakuraModule(DWORD pid,
+                                               const wchar_t* dllPath,
+                                               std::wstring& loadedPath) {
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
+    if (snap == INVALID_HANDLE_VALUE) {
+        return LoadedModuleState::InspectionFailed;
     }
-    wchar_t staged[MAX_PATH] = {};
-    swprintf_s(staged,
-               L"%sYozakuraLoader-%lu-%llu.dll",
-               tempDir,
-               GetCurrentProcessId(),
-               GetTickCount64());
-    if (!CopyFileW(dllPath, staged, FALSE)) {
-        return L"";
+    wchar_t fullDll[MAX_PATH] = {};
+    if (!GetFullPathNameW(dllPath, MAX_PATH, fullDll, nullptr)) {
+        CloseHandle(snap);
+        return LoadedModuleState::InspectionFailed;
     }
-    return staged;
+    const wchar_t* requestedName = PathFindFileNameW(fullDll);
+    MODULEENTRY32W module = {};
+    module.dwSize = sizeof(module);
+    LoadedModuleState state = LoadedModuleState::NotLoaded;
+    if (Module32FirstW(snap, &module)) {
+        while (true) {
+            if (_wcsicmp(module.szExePath, fullDll) == 0
+                || isYozakuraLoaderName(module.szModule, requestedName)) {
+                loadedPath = module.szExePath;
+                state = LoadedModuleState::Loaded;
+                break;
+            }
+            if (!Module32NextW(snap, &module)) {
+                DWORD enumerationError = GetLastError();
+                if (enumerationError != ERROR_NO_MORE_FILES) {
+                    state = LoadedModuleState::InspectionFailed;
+                }
+                break;
+            }
+        }
+    } else if (GetLastError() != ERROR_NO_MORE_FILES) {
+        state = LoadedModuleState::InspectionFailed;
+    }
+    CloseHandle(snap);
+    return state;
 }
 
 bool injectDll(DWORD pid, const wchar_t* dllPath, std::wstring& error) {
@@ -688,13 +717,19 @@ bool injectDll(DWORD pid, const wchar_t* dllPath, std::wstring& error) {
         error = L"DLL path resolve failed";
         return false;
     }
-    std::wstring loadPath = fullPath;
-    if (moduleAlreadyLoaded(pid, fullPath)) {
-        loadPath = stagedDllCopy(fullPath);
-        if (loadPath.empty()) {
-            error = L"DLL is already loaded and staging a fresh copy failed";
-            return false;
+    std::wstring loadedPath;
+    LoadedModuleState moduleState = inspectLoadedYozakuraModule(pid, fullPath, loadedPath);
+    if (moduleState == LoadedModuleState::InspectionFailed) {
+        error = L"Unable to inspect target modules; refusing injection to avoid loading Yozakura twice";
+        return false;
+    }
+    if (moduleState == LoadedModuleState::Loaded) {
+        error = L"Yozakura is already injected into this process";
+        if (!loadedPath.empty()) {
+            error += L" (" + loadedPath + L")";
         }
+        error += L". Restart Minecraft before injecting again";
+        return false;
     }
 
     HANDLE process = OpenProcess(PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION
@@ -704,7 +739,7 @@ bool injectDll(DWORD pid, const wchar_t* dllPath, std::wstring& error) {
         return false;
     }
 
-    SIZE_T bytes = (loadPath.length() + 1) * sizeof(wchar_t);
+    SIZE_T bytes = (wcslen(fullPath) + 1) * sizeof(wchar_t);
     LPVOID remotePath = VirtualAllocEx(process, nullptr, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (!remotePath) {
         CloseHandle(process);
@@ -713,29 +748,49 @@ bool injectDll(DWORD pid, const wchar_t* dllPath, std::wstring& error) {
     }
 
     bool ok = false;
-    if (!WriteProcessMemory(process, remotePath, loadPath.c_str(), bytes, nullptr)) {
+    bool releaseRemotePath = true;
+    if (!WriteProcessMemory(process, remotePath, fullPath, bytes, nullptr)) {
         error = L"WriteProcessMemory failed";
     } else {
         HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll");
         LPTHREAD_START_ROUTINE loadLibrary = reinterpret_cast<LPTHREAD_START_ROUTINE>(
             GetProcAddress(kernel32, "LoadLibraryW"));
-        HANDLE thread = CreateRemoteThread(process, nullptr, 0, loadLibrary, remotePath, 0, nullptr);
-        if (!thread) {
-            error = L"CreateRemoteThread failed";
+        if (!loadLibrary) {
+            error = L"GetProcAddress(LoadLibraryW) failed";
         } else {
-            WaitForSingleObject(thread, 12000);
-            DWORD exitCode = 0;
-            GetExitCodeThread(thread, &exitCode);
-            CloseHandle(thread);
-            if (exitCode == 0) {
-                error = L"LoadLibraryW returned NULL";
+            HANDLE thread = CreateRemoteThread(process, nullptr, 0, loadLibrary, remotePath, 0, nullptr);
+            if (!thread) {
+                error = L"CreateRemoteThread failed";
             } else {
-                ok = true;
+                DWORD waitResult = WaitForSingleObject(thread, 12000);
+                DWORD waitError = waitResult == WAIT_FAILED ? GetLastError() : ERROR_SUCCESS;
+                DWORD exitCode = 0;
+                bool exitCodeRead = waitResult == WAIT_OBJECT_0 && GetExitCodeThread(thread, &exitCode);
+                DWORD exitCodeError = waitResult == WAIT_OBJECT_0 && !exitCodeRead
+                    ? GetLastError()
+                    : ERROR_SUCCESS;
+                CloseHandle(thread);
+                if (waitResult != WAIT_OBJECT_0) {
+                    releaseRemotePath = false;
+                    if (waitResult == WAIT_TIMEOUT) {
+                        error = L"Timed out waiting for LoadLibraryW; the remote thread is still active";
+                    } else {
+                        error = L"WaitForSingleObject failed (" + std::to_wstring(waitError) + L")";
+                    }
+                } else if (!exitCodeRead) {
+                    error = L"GetExitCodeThread failed (" + std::to_wstring(exitCodeError) + L")";
+                } else if (exitCode == 0) {
+                    error = L"LoadLibraryW returned NULL";
+                } else {
+                    ok = true;
+                }
             }
         }
     }
 
-    VirtualFreeEx(process, remotePath, 0, MEM_RELEASE);
+    if (releaseRemotePath) {
+        VirtualFreeEx(process, remotePath, 0, MEM_RELEASE);
+    }
     CloseHandle(process);
     return ok;
 }

@@ -931,6 +931,11 @@ final class ClickGuiDetailPanel {
                 gui.withAlpha(gui.guiColors().text, 245.0f * alpha * gui.guiAlpha));
         // 数值标签
         drawValuePill(gui.formatNumber(current), pillX, y + 3.0f, pillW, alpha);
+        gui.drawSoftRect(barX, barY, barX + barW, barY + 2.5f, 1.25f,
+                gui.withAlpha(gui.guiColors().valueTrack, 175.0f * alpha * gui.guiAlpha));
+        gui.drawSoftRect(barX, barY, barX + barW * value.animX, barY + 2.5f, 1.25f,
+                gui.withAlpha(gui.guiColors().valueFill, 240.0f * alpha * gui.guiAlpha));
+        drawRangeKnob(barX + barW * value.animX, barY, 3.0f, active, alpha);
     }
 
     /** 绘制范围滑块行（两个可拖拽手柄，用于设置最小/最大值） */
@@ -962,6 +967,12 @@ final class ClickGuiDetailPanel {
         gui.drawFont(gui.trim(gui.getRangeDisplayName(minValue), FontLoaders.F14, labelW - 8.0f),
                 x, y + 12.0f, gui.withAlpha(gui.guiColors().text, 245.0f * alpha * gui.guiAlpha));
         drawValuePill(rangeText, pillX, y + 3.0f, pillW, alpha);
+        gui.drawSoftRect(barX, barY, barX + barW, barY + 2.5f, 1.25f,
+                gui.withAlpha(gui.guiColors().valueTrack, 175.0f * alpha * gui.guiAlpha));
+        gui.drawSoftRect(barX + barW * lowPct, barY, barX + barW * highPct, barY + 2.5f, 1.25f,
+                gui.withAlpha(gui.guiColors().valueFill, 240.0f * alpha * gui.guiAlpha));
+        drawRangeKnob(barX + barW * minValue.animX, barY, 3.0f, activeMin, alpha);
+        drawRangeKnob(barX + barW * maxValue.animX, barY, 3.0f, activeMax, alpha);
     }
 
     /** 绘制范围滑块的拖拽手柄 */

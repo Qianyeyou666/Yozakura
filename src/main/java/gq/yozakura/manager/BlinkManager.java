@@ -18,17 +18,19 @@ import gq.yozakura.event.bridge.PacketEvent;
 import gq.yozakura.event.bridge.TickEvent;
 import gq.yozakura.util.module.PacketUtil;
 
+import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
 public class BlinkManager {
     public static Minecraft mc = Minecraft.getMinecraft();
-    public BlinkModules blinkModule = BlinkModules.NONE;
-    public boolean blinking = false;
-    public Deque<Packet<?>> blinkedPackets = new ConcurrentLinkedDeque<>();
+    private BlinkModules blinkModule = BlinkModules.NONE;
+    private boolean blinking = false;
+    private final Deque<Packet<?>> blinkedPackets = new ConcurrentLinkedDeque<>();
 
-    public boolean offerPacket(Packet<?> packet) {
-        if (this.blinkModule == BlinkModules.NONE || packet instanceof C00PacketKeepAlive || packet instanceof C01PacketChatMessage) {
+    public synchronized boolean offerPacket(Packet<?> packet) {
+        if (!this.blinking || this.blinkModule == BlinkModules.NONE
+                || packet instanceof C00PacketKeepAlive || packet instanceof C01PacketChatMessage) {
             return false;
         } else if (this.blinkedPackets.isEmpty() && packet instanceof C0FPacketConfirmTransaction) {
             return false;
@@ -39,38 +41,78 @@ public class BlinkManager {
     }
 
     public boolean setBlinkState(boolean state, BlinkModules module) {
-        if (module == BlinkModules.NONE) {
-            return false;
-        }
-        if (state) {
-            this.blinkModule = module;
-            this.blinking = true;
-        } else {
+        Deque<Packet<?>> pending = null;
+        synchronized (this) {
+            if (module == null || module == BlinkModules.NONE) {
+                return false;
+            }
+            if (state) {
+                if (blinking && blinkModule != module) {
+                    return false;
+                }
+                this.blinkModule = module;
+                this.blinking = true;
+                return true;
+            }
             if (blinkModule != module) {
                 return false;
             }
+
             this.blinking = false;
-            if (Minecraft.getMinecraft().getNetHandler() != null && this.blinkedPackets.isEmpty()) {
+            this.blinkModule = BlinkModules.NONE;
+            if (this.blinkedPackets.isEmpty()) {
                 return true;
             }
-            for (Packet<?> blinkedPacket : blinkedPackets) {
-                PacketUtil.sendPacketNoEvent(blinkedPacket);
+            pending = new ArrayDeque<Packet<?>>();
+            Packet<?> packet;
+            while ((packet = this.blinkedPackets.poll()) != null) {
+                pending.offer(packet);
             }
-            this.blinkedPackets.clear();
-            this.blinkModule = BlinkModules.NONE;
+        }
+
+        if (Minecraft.getMinecraft().getNetHandler() == null) {
+            return true;
+        }
+        for (Packet<?> blinkedPacket : pending) {
+            PacketUtil.sendPacketNoEvent(blinkedPacket);
         }
         return true;
     }
 
-    public BlinkModules getBlinkingModule() {
+    /**
+     * Acquires the outbound blink channel only when no other module owns it.
+     * BlockHit uses this instead of replacing an existing KillAura/fakelag lease.
+     */
+    public boolean tryAcquire(BlinkModules module) {
+        if (module == null || module == BlinkModules.NONE) {
+            return false;
+        }
+        return setBlinkState(true, module);
+    }
+
+    public synchronized boolean owns(BlinkModules module) {
+        return blinking && blinkModule == module;
+    }
+
+    public synchronized boolean discard(BlinkModules module) {
+        if (module == null || module == BlinkModules.NONE || blinkModule != module) {
+            return false;
+        }
+        blinking = false;
+        blinkModule = BlinkModules.NONE;
+        blinkedPackets.clear();
+        return true;
+    }
+
+    public synchronized BlinkModules getBlinkingModule() {
         return this.blinkModule;
     }
 
-    public long countMovement() {
+    public synchronized long countMovement() {
         return this.blinkedPackets.stream().filter(packet -> packet instanceof C03PacketPlayer).count();
     }
 
-    public boolean isBlinking() {
+    public synchronized boolean isBlinking() {
         return blinking;
     }
 
@@ -81,15 +123,15 @@ public class BlinkManager {
                 || event.getPacket() instanceof C00PacketServerQuery
                 || event.getPacket() instanceof C01PacketPing
                 || event.getPacket() instanceof C01PacketEncryptionResponse) {
-            this.setBlinkState(false, this.blinkModule);
+            this.discard(this.getBlinkingModule());
         }
     }
 
     @EventTarget
     public void onTick(TickEvent event) {
         if (event.getType() == EventType.POST) {
-            if (mc.thePlayer.isDead) {
-                this.setBlinkState(false, this.blinkModule);
+            if (mc.thePlayer != null && mc.thePlayer.isDead) {
+                this.setBlinkState(false, this.getBlinkingModule());
             }
         }
     }

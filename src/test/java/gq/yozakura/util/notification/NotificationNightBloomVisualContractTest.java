@@ -50,14 +50,11 @@ public class NotificationNightBloomVisualContractTest {
         String nightBloom = between(source, "private void drawNightBloom(", "private void drawSakura(");
 
         assertFalse(source.contains("NIGHT_BLOOM_ACCENT_SHADOW"));
-        assertTrue(source.contains("NIGHT_BLOOM_DEPTH_SHADOW_COLOR = 0x73000000"));
-        assertTrue(source.contains("NIGHT_BLOOM_DEPTH_SHADOW_OFFSET_X = 0.0F"));
-        assertTrue(source.contains("NIGHT_BLOOM_DEPTH_SHADOW_OFFSET_Y = 0.0F"));
-        assertTrue(source.contains("NIGHT_BLOOM_DEPTH_SHADOW_BLUR_RADIUS = 9.0F"));
-        assertTrue("Night Bloom outer depth must come from exactly one black shadow",
-                occurrences(nightBloom, "shadowOffset") == 1);
+        assertFalse("legacy immediate shadows disappear at runtime and must not render notifications",
+                nightBloom.contains("shadowOffset("));
         assertFalse("Night Bloom must not add an extra non-offset shadow",
                 nightBloom.contains("shapes().shadow("));
+        assertTrue(nightBloom.contains("HUD.drawNightBloomShadow("));
         assertTrue(source.contains("HUD.isGlowEnabled() && isGlowFrameOpen()"));
         assertTrue(source.contains("GlowProfile.TEXT"));
         assertTrue(source.contains("GlowProfile.ACCENT"));
@@ -75,13 +72,4 @@ public class NotificationNightBloomVisualContractTest {
         return source.substring(begin, finish);
     }
 
-    private static int occurrences(String source, String token) {
-        int count = 0;
-        int index = 0;
-        while ((index = source.indexOf(token, index)) >= 0) {
-            count++;
-            index += token.length();
-        }
-        return count;
-    }
 }

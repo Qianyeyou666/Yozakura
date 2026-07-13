@@ -53,6 +53,7 @@ public final class ShaderRenderer {
     private static Program solidProgram;
     private static Program gradientProgram;
     private static Program roundedProgram;
+    private static Program joinedRoundedProgram;
     private static Program roundedGradientProgram;
     private static Program roundedHueProgram;
     private static Program roundedPaletteProgram;
@@ -128,6 +129,7 @@ public final class ShaderRenderer {
             Program solid = getSolidProgram();
             Program gradient = getGradientProgram();
             Program rounded = getRoundedProgram();
+            Program joinedRounded = getJoinedRoundedProgram();
             Program roundedGradient = getRoundedGradientProgram();
             Program roundedHue = getRoundedHueProgram();
             Program roundedPalette = getRoundedPaletteProgram();
@@ -145,6 +147,7 @@ public final class ShaderRenderer {
             warmUniforms(solid, "color");
             warmUniforms(gradient, "color1", "color2", "color3", "color4");
             warmUniforms(rounded, "rectSize", "color", "radius", "padding", "softness");
+            warmUniforms(joinedRounded, "rectSize", "cornerRadii", "joinRanges", "color");
             warmUniforms(roundedGradient, "rectSize", "color1", "color2", "color3", "color4",
                     "radius", "padding", "softness");
             warmUniforms(roundedHue, "rectSize", "radius", "padding", "softness", "alpha");
@@ -242,6 +245,45 @@ public final class ShaderRenderer {
             setRoundedUniforms(program, right - left, bottom - top, radius);
             setColor(program, "color", color);
             drawQuad(left, top, right, bottom, EDGE_PADDING);
+        } finally {
+            endProgram(shaderState);
+        }
+        return true;
+    }
+
+    public static boolean drawJoinedRoundedRect(float left, float top, float right, float bottom,
+                                                float topLeftRadius, float topRightRadius,
+                                                float bottomRightRadius, float bottomLeftRadius,
+                                                int color) {
+        return drawJoinedRoundedRect(left, top, right, bottom,
+                topLeftRadius, topRightRadius, bottomRightRadius, bottomLeftRadius,
+                1.0F, 0.0F, 1.0F, 0.0F, color);
+    }
+
+    public static boolean drawJoinedRoundedRect(float left, float top, float right, float bottom,
+                                                float topLeftRadius, float topRightRadius,
+                                                float bottomRightRadius, float bottomLeftRadius,
+                                                float topJoinStart, float topJoinEnd,
+                                                float bottomJoinStart, float bottomJoinEnd, int color) {
+        Program program = getJoinedRoundedProgram();
+        if (program == null || right <= left || bottom <= top) {
+            return false;
+        }
+
+        float width = right - left;
+        float height = bottom - top;
+        float maximumRadius = Math.min(width, height) * 0.5F;
+        ShaderState shaderState = beginProgram(program);
+        try {
+            program.set2f("rectSize", width, height);
+            program.set4f("cornerRadii",
+                    clampCornerRadius(topLeftRadius, maximumRadius),
+                    clampCornerRadius(topRightRadius, maximumRadius),
+                    clampCornerRadius(bottomRightRadius, maximumRadius),
+                    clampCornerRadius(bottomLeftRadius, maximumRadius));
+            program.set4f("joinRanges", topJoinStart, topJoinEnd, bottomJoinStart, bottomJoinEnd);
+            setColor(program, "color", color);
+            drawQuad(left, top, right, bottom, 0.0f);
         } finally {
             endProgram(shaderState);
         }
@@ -935,6 +977,10 @@ public final class ShaderRenderer {
         program.set1f("softness", EDGE_SOFTNESS);
     }
 
+    private static float clampCornerRadius(float radius, float maximumRadius) {
+        return Math.max(0.0F, Math.min(radius, maximumRadius));
+    }
+
     private static Program getSolidProgram() {
         if (solidProgram == null) {
             solidProgram = createProgram(SOLID_FRAGMENT);
@@ -954,6 +1000,13 @@ public final class ShaderRenderer {
             roundedProgram = createProgram(ROUNDED_FRAGMENT);
         }
         return roundedProgram;
+    }
+
+    private static Program getJoinedRoundedProgram() {
+        if (joinedRoundedProgram == null) {
+            joinedRoundedProgram = createProgram(JOINED_ROUNDED_FRAGMENT);
+        }
+        return joinedRoundedProgram;
     }
 
     private static Program getRoundedGradientProgram() {
@@ -1546,6 +1599,45 @@ public final class ShaderRenderer {
             "    float distance = roundSDF(coord - halfSize, halfSize, r);\n" +
             "    float alpha = 1.0 - smoothstep(0.0, softness, distance);\n" +
             "    gl_FragColor = vec4(color.rgb, color.a * alpha);\n" +
+            "}\n";
+
+    private static final String JOINED_ROUNDED_FRAGMENT =
+            "#version 120\n" +
+            "uniform vec2 rectSize;\n" +
+            "uniform vec4 cornerRadii;\n" +
+            "uniform vec4 joinRanges;\n" +
+            "uniform vec4 color;\n" +
+            "float cornerRadius(vec2 point) {\n" +
+            "    float rightSide = step(0.0, point.x);\n" +
+            "    float bottomSide = step(0.0, point.y);\n" +
+            "    float topRadius = mix(cornerRadii.x, cornerRadii.y, rightSide);\n" +
+            "    float bottomRadius = mix(cornerRadii.w, cornerRadii.z, rightSide);\n" +
+            "    return mix(topRadius, bottomRadius, bottomSide);\n" +
+            "}\n" +
+            "float intervalCoverage(float value, vec2 range, float antialias) {\n" +
+            "    float valid = step(range.x, range.y);\n" +
+            "    float distance = max(range.x - value, value - range.y);\n" +
+            "    return valid * (1.0 - smoothstep(-antialias, antialias, distance));\n" +
+            "}\n" +
+            "void main() {\n" +
+            "    vec2 size = max(rectSize, vec2(0.001));\n" +
+            "    vec2 halfSize = size * 0.5;\n" +
+            "    vec2 coord = gl_TexCoord[0].st * size;\n" +
+            "    vec2 point = coord - halfSize;\n" +
+            "    float radius = cornerRadius(point);\n" +
+            "    vec2 corner = abs(point) - halfSize + vec2(radius);\n" +
+            "    float distance = length(max(corner, 0.0))\n" +
+            "            + min(max(corner.x, corner.y), 0.0) - radius;\n" +
+            "    float antialias = max(fwidth(distance) * 0.5, 0.0001);\n" +
+            "    float coverage = 1.0 - smoothstep(-antialias, antialias, distance);\n" +
+            "    float topBand = step(coord.y, antialias);\n" +
+            "    float bottomBand = step(size.y - coord.y, antialias);\n" +
+            "    float joinedCoverage = max(topBand\n" +
+            "            * intervalCoverage(coord.x, joinRanges.xy, antialias),\n" +
+            "            bottomBand * intervalCoverage(coord.x, joinRanges.zw, antialias));\n" +
+            "    coverage = max(coverage, joinedCoverage);\n" +
+            "    if (coverage <= 0.0) discard;\n" +
+            "    gl_FragColor = vec4(color.rgb, color.a * coverage);\n" +
             "}\n";
 
     private static final String ROUNDED_GRADIENT_FRAGMENT =

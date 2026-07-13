@@ -72,6 +72,23 @@ public final class ShapeRenderer {
         RenderUtil.drawRoundedRect(x, y, x2, y2, radius, color);
     }
 
+    public void joinedRounded(float x, float y, float x2, float y2,
+                              float topLeftRadius, float topRightRadius,
+                              float bottomRightRadius, float bottomLeftRadius, int color) {
+        RenderUtil.drawJoinedRoundedRect(x, y, x2, y2,
+                topLeftRadius, topRightRadius, bottomRightRadius, bottomLeftRadius, color);
+    }
+
+    public void joinedRounded(float x, float y, float x2, float y2,
+                              float topLeftRadius, float topRightRadius,
+                              float bottomRightRadius, float bottomLeftRadius,
+                              float topJoinStart, float topJoinEnd,
+                              float bottomJoinStart, float bottomJoinEnd, int color) {
+        RenderUtil.drawJoinedRoundedRect(x, y, x2, y2,
+                topLeftRadius, topRightRadius, bottomRightRadius, bottomLeftRadius,
+                topJoinStart, topJoinEnd, bottomJoinStart, bottomJoinEnd, color);
+    }
+
     public void roundedWH(float x, float y, float width, float height, float radius, int color) {
         rounded(x, y, x + width, y + height, radius, color);
     }

@@ -32,7 +32,7 @@ import java.util.Random;
 
 public class Aimbot extends Module {
     public enum AimMode {
-        NORMAL(false, AimAssistController.Profile.REGULAR),
+        ADAPTIVE(false, AimAssistController.Profile.REGULAR),
         SILENT(true, AimAssistController.Profile.REGULAR),
         BLATANT(false, AimAssistController.Profile.BLATANT),
         SILENT_BLATANT(true, AimAssistController.Profile.BLATANT);
@@ -68,7 +68,7 @@ public class Aimbot extends Module {
     private static final int SILENT_ROTATION_PRIORITY = 1;
     private static final int SILENT_RETURN_TICKS = 3;
 
-    private final Mode<AimMode> mode = new Mode<AimMode>("Mode", "Mode", AimMode.values(), AimMode.NORMAL);
+    private final Mode<AimMode> mode = new Mode<AimMode>("Mode", "Mode", AimMode.values(), AimMode.ADAPTIVE);
     private final Numbers<Double> speed = new Numbers<Double>("Horizontal Speed", "Speed", 10.0, 1.0, 180.0, 1.0);
     private final Numbers<Double> verticalSpeed =
             new Numbers<Double>("Vertical Speed", "VerticalSpeed", 5.0, 1.0, 90.0, 1.0);

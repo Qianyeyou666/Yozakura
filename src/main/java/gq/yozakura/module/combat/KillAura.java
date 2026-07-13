@@ -187,7 +187,8 @@ public class KillAura extends Module {
     }
 
     private boolean performAttack(float yaw, float pitch) {
-        if (YozakuraRuntime.playerStateManager.digging || YozakuraRuntime.playerStateManager.placing) {
+        if (YozakuraRuntime.playerStateManager.isDigging()
+                || YozakuraRuntime.playerStateManager.isPlacing()) {
             return false;
         }
         if (this.isPlayerBlocking()) {

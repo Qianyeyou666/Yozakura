@@ -22,9 +22,10 @@ public class CombatModuleContractTest {
 
     @Test
     public void blockHitDoesNotGloballyCancelRightClicks() throws IOException {
-        String source = source("src/main/java/gq/yozakura/module/combat/BlockHit.java");
+        String source = source("src/main/java/gq/yozakura/module/combat/BlockHit.java")
+                + source("src/main/java/gq/yozakura/module/combat/BlockHitSettings.java");
 
-        assertTrue(source.contains("\"Helper\", \"Auto\", \"Lag\""));
+        assertTrue(source.contains("\"Manual\", \"Predict\", \"Auto\", \"Lag\""));
         assertFalse(source.contains("RightClickMouseEvent"));
     }
 
@@ -63,11 +64,12 @@ public class CombatModuleContractTest {
     }
 
     @Test
-    public void velocityObservesBothCustomAndForgeAttackEntrypoints() throws IOException {
+    public void velocityUsesOneForgeCompatibleAttackEntrypoint() throws IOException {
         String source = source("src/main/java/gq/yozakura/module/combat/Velocity.java");
 
-        assertTrue(source.contains("onStandaloneAttack"));
         assertTrue(source.contains("onForgeAttack"));
+        assertFalse("The standalone shim reaches the Forge-compatible listener; a second listener double-counts attacks",
+                source.contains("onStandaloneAttack"));
         assertTrue(source.contains("acceptExternalAttack"));
         assertTrue(source.contains("event.getType() == EventType.POST"));
         assertTrue(source.contains("private final Object attackStateLock"));

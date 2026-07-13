@@ -127,14 +127,6 @@ public class Velocity extends Module {
         acceptCustomAttack(event.getTarget());
     }
 
-    @EventTarget(Priority.LOWEST)
-    public void onStandaloneAttack(gq.yozakura.bridge.forge.AttackEntityEvent event) {
-        if (event == null || event.isCanceled() || event.entityPlayer != mc.thePlayer) {
-            return;
-        }
-        acceptExternalAttack(event.target);
-    }
-
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onForgeAttack(AttackEntityEvent event) {
         if (event == null || event.isCanceled() || event.entityPlayer != mc.thePlayer) {
@@ -165,11 +157,13 @@ public class Velocity extends Module {
                 return;
             }
 
-            controller.tick();
-            if (!controller.hasPendingAttackSlowdown()) {
-                pendingAttackTarget = null;
+            if (event.getType() == EventType.POST) {
+                controller.tick();
+                if (!controller.hasPendingAttackSlowdown()) {
+                    pendingAttackTarget = null;
+                }
+                updateAttackFlagsLocked();
             }
-            updateAttackFlagsLocked();
         }
     }
 

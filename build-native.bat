@@ -1,9 +1,23 @@
 @echo off
 setlocal
 
+pushd "%~dp0"
+if errorlevel 1 exit /b %errorlevel%
+
+call :main
+set "EXIT_CODE=%errorlevel%"
+popd
+exit /b %EXIT_CODE%
+
+:main
+
 if not defined JAVA8_HOME if defined JAVA_HOME set "JAVA8_HOME=%JAVA_HOME%"
 if not defined JAVA8_HOME set "JAVA8_HOME=C:\Users\shiranaidk\jdk-8\jdk8u492-b09"
 if not defined VS_BUILD set "VS_BUILD=C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build"
+
+echo Refreshing build\libs\Yozakura.jar...
+call "%~dp0gradlew.bat" syncRuntimeJar
+if errorlevel 1 exit /b %errorlevel%
 
 if not exist "%JAVA8_HOME%\include\jni.h" (
   echo JDK 8 JNI headers not found: %JAVA8_HOME%
@@ -26,12 +40,12 @@ if errorlevel 1 exit /b %errorlevel%
 
 copy /Y "build\libs\YozakuraLoader-x64.dll" "build\libs\YozakuraLoader.dll" >nul
 if errorlevel 1 (
-  echo Warning: build\libs\YozakuraLoader.dll is locked. Use the arch-specific DLLs below.
-) else (
-  echo   build\libs\YozakuraLoader.dll
+  echo Failed to refresh build\libs\YozakuraLoader.dll. Close any process using the old loader and rebuild.
+  exit /b 1
 )
 
 echo Built:
+echo   build\libs\YozakuraLoader.dll
 echo   build\libs\YozakuraLoader-x64.dll
 echo   build\libs\YozakuraLoader-x86.dll
 exit /b 0

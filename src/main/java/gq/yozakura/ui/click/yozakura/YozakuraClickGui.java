@@ -1124,7 +1124,7 @@ public class YozakuraClickGui extends GuiScreen {
                 || isRangeContinuation(module, index)) {
             return false;
         }
-        if (value instanceof Numbers && !isColorStart(module, index)) {
+        if (module instanceof ClickGUI && value instanceof Numbers && !isColorStart(module, index)) {
             return false;
         }
         return getDetailValueTab(module, index) == detailTabIndex;

@@ -7,27 +7,21 @@ import net.minecraft.network.ThreadQuickExitException;
 import net.minecraft.network.play.INetHandlerPlayClient;
 import gq.yozakura.bridge.PacketBridgeSupport;
 
-import java.util.ArrayList;
-import java.util.List;
-
 public class PacketUtil {
     private static final Minecraft mc = Minecraft.getMinecraft();
-    public static List<Packet<INetHandlerPlayClient>> skipReceiveEvent = new ArrayList<>();
 
     public static void sendPacket(Packet<?> packet) {
         mc.getNetHandler().getNetworkManager().sendPacket(packet);
     }
 
     public static void sendPacketNoEvent(Packet<?> packet) {
-        PacketBridgeSupport.markNoEvent(packet);
-        mc.getNetHandler().getNetworkManager().sendPacket(packet, null);
+        PacketBridgeSupport.sendNoEvent(mc.getNetHandler().getNetworkManager(), packet);
     }
     public static void receivePacketNoEvent(Packet<?> packet) {
         if (packet == null)
             return;
         try {
             Packet<INetHandlerPlayClient> casted = castPacket(packet);
-            skipReceiveEvent.add(casted);
             casted.processPacket(mc.getNetHandler());
         } catch (ThreadQuickExitException ignored) {
         }

@@ -1,5 +1,6 @@
 package gq.yozakura.module.combat;
 
+import gq.yozakura.bridge.PacketPipelineAnchors;
 import gq.yozakura.event.bus.EventTarget;
 import gq.yozakura.event.bus.types.EventType;
 import gq.yozakura.event.bridge.AttackEvent;
@@ -51,7 +52,7 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class LagRange extends Module {
-    private static final String HANDLER_NAME = "yozakura_lag_range";
+    private static final String HANDLER_NAME = PacketPipelineAnchors.LAG_RANGE_HANDLER_NAME;
     private static final double MINIMUM_DISTANCE_SQ = 9.0D;
     private static final long INDICATOR_INTERP_MS = 80L;
     private static final double POS_EPS = 1.0E-6D;
@@ -500,9 +501,8 @@ public class LagRange extends Module {
                 flushLag();
                 removeHandler();
             }
-            if (current.pipeline().get(HANDLER_NAME) == null) {
-                current.pipeline().addBefore("packet_handler", HANDLER_NAME, new LagRangePacketHandler(this));
-            }
+            PacketPipelineAnchors.installDelayHandler(current.pipeline(), HANDLER_NAME,
+                    new LagRangePacketHandler(this));
             channel = current;
         } catch (Throwable ignored) {
             channel = null;

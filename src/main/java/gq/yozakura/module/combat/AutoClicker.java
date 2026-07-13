@@ -141,7 +141,6 @@ public class AutoClicker extends Module {
         Backtrack.applyBacktrackHit();
         if (target != null) {
             Criticals.tryCritical(false);
-            BlockHit.onAttack(target);
         }
 
         MinecraftAccessor.setLeftClickCounter(mc, 0);

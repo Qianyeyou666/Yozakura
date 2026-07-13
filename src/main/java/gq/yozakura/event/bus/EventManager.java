@@ -12,16 +12,16 @@ import java.io.PrintWriter;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public final class EventManager {
-    private static final Map<Class<?>, List<MethodData>> REGISTRY = new HashMap<Class<?>, List<MethodData>>();
+    private static final ConcurrentHashMap<Class<?>, List<MethodData>> REGISTRY =
+            new ConcurrentHashMap<Class<?>, List<MethodData>>();
     private static final Set<String> CALL_FAILURES = Collections.synchronizedSet(new HashSet<String>());
     private static final Set<String> REGISTRATION_LOGS = Collections.synchronizedSet(new HashSet<String>());
     private static final Set<String> CALL_LOGS = Collections.synchronizedSet(new HashSet<String>());
@@ -53,13 +53,16 @@ public final class EventManager {
     }
 
     public static void unregister(Object object) {
-        Iterator<Map.Entry<Class<?>, List<MethodData>>> iterator = REGISTRY.entrySet().iterator();
-        while (iterator.hasNext()) {
-            List<MethodData> list = iterator.next().getValue();
-            list.removeIf(data -> data.source == object);
-            if (list.isEmpty()) {
-                iterator.remove();
-            }
+        for (Class<?> eventClass : REGISTRY.keySet()) {
+            REGISTRY.computeIfPresent(eventClass, (key, current) -> {
+                List<MethodData> updated = new ArrayList<MethodData>(current);
+                if (!updated.removeIf(data -> data.source == object)) {
+                    return current;
+                }
+                return updated.isEmpty()
+                        ? null
+                        : new CopyOnWriteArrayList<MethodData>(updated);
+            });
         }
     }
 
@@ -99,14 +102,19 @@ public final class EventManager {
                 method.setAccessible(true);
             }
             MethodData data = new MethodData(object, method, getPriority(method));
-            List<MethodData> list = REGISTRY.get(eventClass);
-            if (list == null) {
-                list = new CopyOnWriteArrayList<MethodData>();
-                REGISTRY.put(eventClass, list);
-            }
-            if (!list.contains(data)) {
-                list.add(data);
-                sort(eventClass);
+            boolean[] registered = new boolean[1];
+            REGISTRY.compute(eventClass, (key, current) -> {
+                List<MethodData> updated = current == null
+                        ? new ArrayList<MethodData>()
+                        : new ArrayList<MethodData>(current);
+                if (updated.contains(data)) {
+                    return current;
+                }
+                updated.add(data);
+                registered[0] = true;
+                return sort(updated);
+            });
+            if (registered[0]) {
                 logWatchedRegistration(object, method, eventClass);
             }
         } catch (Throwable throwable) {
@@ -114,17 +122,16 @@ public final class EventManager {
         }
     }
 
-    private static void sort(Class<?> eventClass) {
-        List<MethodData> old = REGISTRY.get(eventClass);
+    private static List<MethodData> sort(List<MethodData> listeners) {
         List<MethodData> sorted = new CopyOnWriteArrayList<MethodData>();
         for (byte priority : gq.yozakura.event.bus.types.Priority.VALUE_ARRAY) {
-            for (MethodData data : old) {
+            for (MethodData data : listeners) {
                 if (data.priority == priority) {
                     sorted.add(data);
                 }
             }
         }
-        REGISTRY.put(eventClass, sorted);
+        return sorted;
     }
 
     private static boolean hasListenerAnnotation(Method method) {

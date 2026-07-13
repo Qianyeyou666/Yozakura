@@ -49,6 +49,50 @@ static void debugLastError(const char* message) {
     debug(line);
 }
 
+class ProcessInjectionGuard {
+public:
+    explicit ProcessInjectionGuard(HANDLE handle) : handle_(handle), retained_(false) {
+    }
+
+    ~ProcessInjectionGuard() {
+        if (handle_ && !retained_) {
+            CloseHandle(handle_);
+        }
+    }
+
+    void retainForProcessLifetime() {
+        retained_ = true;
+    }
+
+private:
+    HANDLE handle_;
+    bool retained_;
+};
+
+static HANDLE acquireProcessInjectionGuard() {
+    wchar_t guardName[256] = {};
+    swprintf_s(guardName,
+               L"Local\\%ls-Loader-%lu",
+               JAR_TO_DLL_TEMP_PREFIX,
+               GetCurrentProcessId());
+
+    SetLastError(ERROR_SUCCESS);
+    HANDLE guard = CreateMutexW(nullptr, FALSE, guardName);
+    DWORD createError = GetLastError();
+    if (!guard) {
+        debugLastError("failed to create process injection guard");
+        return nullptr;
+    }
+    if (createError == ERROR_ALREADY_EXISTS) {
+        CloseHandle(guard);
+        debug("Yozakura loader is already active in this process; duplicate injection rejected");
+        return nullptr;
+    }
+
+    debug("process injection guard acquired");
+    return guard;
+}
+
 static std::wstring tempJarPath() {
     wchar_t tempPath[MAX_PATH] = {};
     GetTempPathW(MAX_PATH, tempPath);
@@ -423,6 +467,12 @@ static bool instantiateClient(JNIEnv* env, jobject loader) {
 
 static DWORD WINAPI loaderThread(LPVOID param) {
     debug("loader thread started");
+    HANDLE guardHandle = acquireProcessInjectionGuard();
+    if (!guardHandle) {
+        return ERROR_ALREADY_EXISTS;
+    }
+    ProcessInjectionGuard injectionGuard(guardHandle);
+
     HMODULE self = static_cast<HMODULE>(param);
     std::wstring jarPath = tempJarPath();
     if (!writeEmbeddedJar(self, jarPath)) {
@@ -467,6 +517,7 @@ static DWORD WINAPI loaderThread(LPVOID param) {
         debug("native thread already attached to JVM");
     }
 
+    bool clientLoaded = false;
     jobject loader = findClientThreadClassLoader(env);
     if (!loader) {
         debug("client thread classloader not found");
@@ -491,13 +542,18 @@ static DWORD WINAPI loaderThread(LPVOID param) {
         }
         if (entryLoader && instantiateClient(env, entryLoader)) {
             debug("client loaded");
+            clientLoaded = true;
         }
     }
 
     if (attached) {
         vm->DetachCurrentThread();
     }
-    return 0;
+    if (clientLoaded) {
+        injectionGuard.retainForProcessLifetime();
+        return 0;
+    }
+    return 1;
 }
 
 static void startLoader(HMODULE module) {

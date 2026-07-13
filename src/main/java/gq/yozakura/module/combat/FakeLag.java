@@ -1,5 +1,6 @@
 package gq.yozakura.module.combat;
 
+import gq.yozakura.bridge.PacketPipelineAnchors;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.Module;
 import gq.yozakura.value.Mode;
@@ -34,7 +35,7 @@ public class FakeLag extends Module {
         REPEL
     }
 
-    private static final String HANDLER_NAME = "yozakura_fakelag";
+    private static final String HANDLER_NAME = PacketPipelineAnchors.FAKE_LAG_HANDLER_NAME;
     private static final int MIN_OFFSET_TICKS = 1;
     private static final int MAX_OFFSET_TICKS = 20;
 
@@ -148,9 +149,8 @@ public class FakeLag extends Module {
                 releaseQueuedPackets();
                 removeHandler();
             }
-            if (current.pipeline().get(HANDLER_NAME) == null) {
-                current.pipeline().addBefore("packet_handler", HANDLER_NAME, new FakeLagPacketHandler(this));
-            }
+            PacketPipelineAnchors.installDelayHandler(current.pipeline(), HANDLER_NAME,
+                    new FakeLagPacketHandler(this));
             channel = current;
         } catch (Throwable ignored) {
             channel = null;

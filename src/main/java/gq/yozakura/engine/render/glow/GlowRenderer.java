@@ -241,7 +241,7 @@ public final class GlowRenderer {
         renderMask(profile, targetWidth, targetHeight, displayWidth, displayHeight);
         renderBlur(maskFramebuffer, horizontalFramebuffer, radius, true);
         renderBlur(horizontalFramebuffer, verticalFramebuffer, radius, false);
-        renderComposite(state);
+        renderComposite(state, profile);
     }
 
     private boolean hasCommands(GlowProfile profile) {
@@ -299,9 +299,11 @@ public final class GlowRenderer {
     private void renderMask(GlowProfile profile, int targetWidth, int targetHeight,
                             int displayWidth, int displayHeight) {
         clearAndBind(maskFramebuffer);
-        configureMaskState();
+        boolean shadowMode = profile == GlowProfile.SHADOW;
+        configureMaskState(shadowMode);
         maskProgram.use();
         maskProgram.set1i("textureIn", 0);
+        maskProgram.set1i("shadowMode", shadowMode ? 1 : 0);
 
         for (GlowCommand command : commands) {
             if (command.profile != profile) {
@@ -345,7 +347,7 @@ public final class GlowRenderer {
         drawFullscreenQuad();
     }
 
-    private void renderComposite(RenderState state) {
+    private void renderComposite(RenderState state, GlowProfile profile) {
         OpenGlHelper.glBindFramebuffer(OpenGlHelper.GL_FRAMEBUFFER, state.framebuffer);
         GL11.glViewport(state.viewportX, state.viewportY, state.viewportWidth, state.viewportHeight);
         configurePassState(true);
@@ -358,6 +360,7 @@ public final class GlowRenderer {
         bindTexture(maskFramebuffer.framebufferTexture);
         compositeProgram.set1i("maskTexture", 1);
         compositeProgram.set1f("strength", globalStrength);
+        compositeProgram.set1i("shadowMode", profile == GlowProfile.SHADOW ? 1 : 0);
         setActiveTexture(OpenGlHelper.defaultTexUnit);
         drawFullscreenQuad();
     }
@@ -380,7 +383,7 @@ public final class GlowRenderer {
         GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
     }
 
-    private static void configureMaskState() {
+    private static void configureMaskState(boolean premultiplied) {
         GL11.glDisable(GL11.GL_ALPHA_TEST);
         GL11.glDisable(GL11.GL_DEPTH_TEST);
         GL11.glDisable(GL11.GL_CULL_FACE);
@@ -389,7 +392,8 @@ public final class GlowRenderer {
         GL11.glDisable(GL11.GL_SCISSOR_TEST);
         GL11.glDepthMask(false);
         GL11.glEnable(GL11.GL_BLEND);
-        OpenGlHelper.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
+        int sourceFactor = premultiplied ? GL11.GL_ONE : GL11.GL_SRC_ALPHA;
+        OpenGlHelper.glBlendFunc(sourceFactor, GL11.GL_ONE_MINUS_SRC_ALPHA,
                 GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA);
         GlStateManager.disableAlpha();
         GlStateManager.disableDepth();
@@ -397,7 +401,7 @@ public final class GlowRenderer {
         GlStateManager.disableLighting();
         GlStateManager.enableBlend();
         GlStateManager.depthMask(false);
-        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
+        GlStateManager.tryBlendFuncSeparate(sourceFactor, GL11.GL_ONE_MINUS_SRC_ALPHA,
                 GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA);
         GlStateManager.enableTexture2D();
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);

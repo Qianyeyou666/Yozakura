@@ -31,7 +31,6 @@ public class KeyboardDisplay extends Module {
     private static final float NIGHT_BLOOM_RADIUS = 4.0F;
     private static final int NIGHT_BLOOM_SURFACE = 0xDC16161A;
     private static final int NIGHT_BLOOM_PRIMARY = 0xFFFF4FC7;
-    private static final int NIGHT_BLOOM_DEPTH_SHADOW_LAYERS = 12;
 
     private static final String FORWARD = "forward";
     private static final String LEFT = "left";
@@ -235,10 +234,7 @@ public class KeyboardDisplay extends Module {
         float round = NIGHT_BLOOM_RADIUS;
         int textColor = ColorUtils.interpolate(NIGHT_BLOOM.getTextPrimary(), NIGHT_BLOOM_PRIMARY, feedback);
 
-        RenderServices.shapes().shadowOffset(x, y, x + width, y + height, round,
-                NightBloomHudLayout.DEPTH_SHADOW_OFFSET_X, NightBloomHudLayout.DEPTH_SHADOW_OFFSET_Y,
-                multiplyAlpha(NightBloomHudLayout.DEPTH_SHADOW_COLOR, opacity),
-                NIGHT_BLOOM_DEPTH_SHADOW_LAYERS, NightBloomHudLayout.DEPTH_SHADOW_BLUR_RADIUS);
+        HUD.drawNightBloomShadow(x, y, x + width, y + height, round, opacity);
         RenderServices.shapes().rounded(x, y, x + width, y + height, round,
                 multiplyAlpha(NIGHT_BLOOM_SURFACE, opacity));
         if (feedback > 0.01F) {

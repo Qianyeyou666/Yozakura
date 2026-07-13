@@ -137,19 +137,24 @@ function Find-MinecraftProcess([string]$Target) {
     return $preferred
 }
 
-function Test-ModuleLoaded([int]$ProcessId, [string]$DllPath) {
+function Get-LoadedYozakuraModule([int]$ProcessId, [string]$DllPath) {
     $target = [IO.Path]::GetFullPath($DllPath)
+    $targetName = [IO.Path]::GetFileName($target)
     $process = Get-Process -Id $ProcessId -ErrorAction Stop
     try {
         foreach ($module in $process.Modules) {
-            if ($module.FileName -ieq $target) {
-                return $true
+            $moduleName = [IO.Path]::GetFileName($module.FileName)
+            $knownLoaderName = ($moduleName.StartsWith("YozakuraLoader", [StringComparison]::OrdinalIgnoreCase) -or
+                $moduleName.StartsWith("YozakuraReobf", [StringComparison]::OrdinalIgnoreCase)) -and
+                $moduleName.EndsWith(".dll", [StringComparison]::OrdinalIgnoreCase)
+            if ($module.FileName -ieq $target -or $moduleName -ieq $targetName -or $knownLoaderName) {
+                return $module.FileName
             }
         }
     } catch {
-        return $false
+        throw "Unable to inspect modules in target PID ${ProcessId}; refusing injection to avoid loading Yozakura twice. $($_.Exception.Message)"
     }
-    return $false
+    return $null
 }
 
 $source = @'
@@ -198,11 +203,9 @@ if ($DryRun) {
     exit 0
 }
 
-if (Test-ModuleLoaded $targetProcess.Id $dllPath) {
-    $staged = Join-Path $env:TEMP ("YozakuraLoader-{0}-{1}.dll" -f $targetProcess.Id, [Environment]::TickCount)
-    Copy-Item -LiteralPath $dllPath -Destination $staged -Force
-    $dllPath = (Resolve-Path -LiteralPath $staged).Path
-    Write-Host "DLL already loaded; using staged copy: $dllPath"
+$loadedModule = Get-LoadedYozakuraModule $targetProcess.Id $dllPath
+if ($loadedModule) {
+    throw "Yozakura is already injected into target PID $($targetProcess.Id) ($loadedModule). Restart Minecraft before injecting again; another loader would create a second isolated classloader."
 }
 
 $PROCESS_ACCESS = 0x0002 -bor 0x0400 -bor 0x0008 -bor 0x0020 -bor 0x0010
@@ -210,6 +213,9 @@ $MEM_COMMIT = 0x1000
 $MEM_RESERVE = 0x2000
 $PAGE_READWRITE = 0x04
 $MEM_RELEASE = 0x8000
+$WAIT_OBJECT_0 = [uint32]0
+$WAIT_TIMEOUT = [uint32]258
+$WAIT_FAILED = [uint32]::MaxValue
 
 $process = [OneClickRemoteDllInjector]::OpenProcess($PROCESS_ACCESS, $false, [uint32]$targetProcess.Id)
 if ($process -eq [IntPtr]::Zero) {
@@ -219,6 +225,7 @@ if ($process -eq [IntPtr]::Zero) {
 try {
     $bytes = [uint32](($dllPath.Length + 1) * 2)
     $remotePath = [OneClickRemoteDllInjector]::VirtualAllocEx($process, [IntPtr]::Zero, [UIntPtr]$bytes, $MEM_COMMIT -bor $MEM_RESERVE, $PAGE_READWRITE)
+    $releaseRemotePath = $true
     if ($remotePath -eq [IntPtr]::Zero) {
         throw "VirtualAllocEx failed: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
     }
@@ -241,9 +248,21 @@ try {
         }
 
         try {
-            [void][OneClickRemoteDllInjector]::WaitForSingleObject($thread, 10000)
+            [uint32]$waitResult = [OneClickRemoteDllInjector]::WaitForSingleObject($thread, 10000)
+            if ($waitResult -ne $WAIT_OBJECT_0) {
+                $releaseRemotePath = $false
+                if ($waitResult -eq $WAIT_TIMEOUT) {
+                    throw "Timed out waiting for LoadLibraryW; remote path memory was retained for the active thread."
+                }
+                if ($waitResult -eq $WAIT_FAILED) {
+                    throw "WaitForSingleObject failed: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+                }
+                throw "Unexpected LoadLibraryW wait result: $waitResult"
+            }
             [uint32]$exitCode = 0
-            [void][OneClickRemoteDllInjector]::GetExitCodeThread($thread, [ref]$exitCode)
+            if (-not [OneClickRemoteDllInjector]::GetExitCodeThread($thread, [ref]$exitCode)) {
+                throw "GetExitCodeThread failed: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+            }
             if ($exitCode -eq 0) {
                 throw "LoadLibraryW returned NULL in target process."
             }
@@ -252,7 +271,7 @@ try {
             [void][OneClickRemoteDllInjector]::CloseHandle($thread)
         }
     } finally {
-        if ($remotePath -ne [IntPtr]::Zero) {
+        if ($remotePath -ne [IntPtr]::Zero -and $releaseRemotePath) {
             [void][OneClickRemoteDllInjector]::VirtualFreeEx($process, $remotePath, [UIntPtr]::Zero, $MEM_RELEASE)
         }
     }

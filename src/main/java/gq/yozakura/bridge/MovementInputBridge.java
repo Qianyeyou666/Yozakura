@@ -18,11 +18,11 @@ import org.lwjgl.input.Mouse;
 import java.lang.reflect.Field;
 
 final class MovementInputBridge {
+    private static final String HOOKED_INPUT_CLASS_SUFFIX = "MovementInputBridge$HookedMovementInput";
     private static final Minecraft mc = Minecraft.getMinecraft();
     private static Field sprintToggleTimerField;
     private static boolean rotationApplied;
-    private static boolean silentMovementThisTick;
-    private static boolean sprintAllowedThisTick = true;
+    private static volatile boolean blockSprintStartThisTick;
     private static boolean sprintKeySuppressed;
     private static boolean directYawPhysics = true;
     private static int suppressedSprintKey = Integer.MIN_VALUE;
@@ -38,7 +38,10 @@ final class MovementInputBridge {
         if (player == null || player.movementInput == null || player.movementInput instanceof HookedMovementInput) {
             return;
         }
-        player.movementInput = new HookedMovementInput(player.movementInput);
+        MovementInput delegate = unwrapMovementInput(player.movementInput);
+        if (delegate != null) {
+            player.movementInput = new HookedMovementInput(delegate);
+        }
     }
 
     static void setDirectYawPhysics(boolean enabled) {
@@ -58,8 +61,44 @@ final class MovementInputBridge {
         RotationState.clear();
         EntityPlayerSP player = mc.thePlayer;
         if (player != null && player.movementInput instanceof HookedMovementInput) {
-            player.movementInput = ((HookedMovementInput) player.movementInput).delegate;
+            MovementInput delegate = unwrapMovementInput(player.movementInput);
+            if (delegate != null) {
+                player.movementInput = delegate;
+            }
         }
+    }
+
+    private static MovementInput unwrapMovementInput(MovementInput input) {
+        MovementInput current = input;
+        for (int i = 0; i < 8 && current != null; i++) {
+            if (!current.getClass().getName().endsWith(HOOKED_INPUT_CLASS_SUFFIX)) {
+                return current;
+            }
+            Object next = readMovementDelegate(current);
+            if (!(next instanceof MovementInput) || next == current) {
+                return null;
+            }
+            current = (MovementInput) next;
+        }
+        return current;
+    }
+
+    private static Object readMovementDelegate(Object wrapper) {
+        Class<?> type = wrapper.getClass();
+        while (type != null && type != Object.class) {
+            try {
+                Field field = type.getDeclaredField("delegate");
+                if (!field.isAccessible()) {
+                    field.setAccessible(true);
+                }
+                return field.get(wrapper);
+            } catch (NoSuchFieldException ignored) {
+                type = type.getSuperclass();
+            } catch (Throwable ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     static void restoreRotation() {
@@ -109,14 +148,12 @@ final class MovementInputBridge {
 
     static boolean shouldBlockSprintPacket(C0BPacketEntityAction packet) {
         return packet != null
-                && silentMovementThisTick
-                && !sprintAllowedThisTick
+                && blockSprintStartThisTick
                 && packet.getAction() == C0BPacketEntityAction.Action.START_SPRINTING;
     }
 
     private static void resetSprintState() {
-        silentMovementThisTick = false;
-        sprintAllowedThisTick = true;
+        blockSprintStartThisTick = false;
     }
 
     private static void afterVanillaInput(HookedMovementInput input) {
@@ -155,16 +192,15 @@ final class MovementInputBridge {
 
     private static void updateSprintState(MovementInput input) {
         EntityPlayerSP player = mc.thePlayer;
-        silentMovementThisTick = hasMovementRotation() && RotationState.getPriority() >= 0;
-        sprintAllowedThisTick = !silentMovementThisTick;
-        if (player != null && !sprintAllowedThisTick) {
+        blockSprintStartThisTick = hasMovementRotation() && RotationState.getPriority() >= 0;
+        if (player != null && blockSprintStartThisTick) {
             stopSprint(player);
             suppressSprintKey();
         }
     }
 
     private static void enforceSprintState(EntityPlayerSP player) {
-        if (silentMovementThisTick && !sprintAllowedThisTick) {
+        if (blockSprintStartThisTick) {
             stopSprint(player);
         }
     }
@@ -268,6 +304,7 @@ final class MovementInputBridge {
 
         private HookedMovementInput(MovementInput delegate) {
             this.delegate = delegate;
+            copyFrom(delegate);
         }
 
         @Override

@@ -157,6 +157,48 @@ public class RenderUtil {
         }
     }
 
+    /**
+     * Draws a per-corner rounded rectangle for touching translucent surfaces. Its shader
+     * antialiases inside the exact supplied bounds, so shared edges stay smooth without
+     * feathering into the neighboring row and blending the same pixels twice.
+     */
+    public static void drawJoinedRoundedRect(float x, float y, float x2, float y2,
+                                             float topLeftRadius, float topRightRadius,
+                                             float bottomRightRadius, float bottomLeftRadius,
+                                             int color) {
+        drawJoinedRoundedRect(x, y, x2, y2,
+                topLeftRadius, topRightRadius, bottomRightRadius, bottomLeftRadius,
+                1.0F, 0.0F, 1.0F, 0.0F, color);
+    }
+
+    public static void drawJoinedRoundedRect(float x, float y, float x2, float y2,
+                                             float topLeftRadius, float topRightRadius,
+                                             float bottomRightRadius, float bottomLeftRadius,
+                                             float topJoinStart, float topJoinEnd,
+                                             float bottomJoinStart, float bottomJoinEnd, int color) {
+        if (getAlpha(color) <= 0) {
+            return;
+        }
+        normalizeRect(Rect.tmp, x, y, x2, y2);
+        float maximumRadius = Math.min(Rect.tmp.width(), Rect.tmp.height()) * 0.5F;
+        float topLeft = clampCornerRadius(topLeftRadius, maximumRadius);
+        float topRight = clampCornerRadius(topRightRadius, maximumRadius);
+        float bottomRight = clampCornerRadius(bottomRightRadius, maximumRadius);
+        float bottomLeft = clampCornerRadius(bottomLeftRadius, maximumRadius);
+        GLStateManager.begin2D();
+        try {
+            if (!ShaderRenderer.drawJoinedRoundedRect(
+                    Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
+                    topLeft, topRight, bottomRight, bottomLeft,
+                    topJoinStart, topJoinEnd, bottomJoinStart, bottomJoinEnd, color)) {
+                joinedRoundedRectRaw(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
+                        topLeft, topRight, bottomRight, bottomLeft, color);
+            }
+        } finally {
+            GLStateManager.end2D();
+        }
+    }
+
     public static void drawRoundRect(float x, float y, float x1, float y1, int color) {
         drawRoundedRect(x, y, x1, y1, 3.0f, color);
     }
@@ -1547,7 +1589,34 @@ public class RenderUtil {
         GL11.glEnd();
     }
 
+    private static void joinedRoundedRectRaw(float left, float top, float right, float bottom,
+                                             float topLeftRadius, float topRightRadius,
+                                             float bottomRightRadius, float bottomLeftRadius,
+                                             int color) {
+        glColor(color);
+        GL11.glBegin(GL11.GL_TRIANGLE_FAN);
+        GL11.glVertex2f((left + right) * 0.5F, (top + bottom) * 0.5F);
+        roundedCornerVertices(left + topLeftRadius, top + topLeftRadius,
+                topLeftRadius, 180.0F, 270.0F);
+        roundedCornerVertices(right - topRightRadius, top + topRightRadius,
+                topRightRadius, 270.0F, 360.0F);
+        roundedCornerVertices(right - bottomRightRadius, bottom - bottomRightRadius,
+                bottomRightRadius, 0.0F, 90.0F);
+        roundedCornerVertices(left + bottomLeftRadius, bottom - bottomLeftRadius,
+                bottomLeftRadius, 90.0F, 180.0F);
+        GL11.glVertex2f(left, top + topLeftRadius);
+        GL11.glEnd();
+    }
+
+    private static float clampCornerRadius(float radius, float maximumRadius) {
+        return Math.max(0.0F, Math.min(radius, maximumRadius));
+    }
+
     private static void roundedCornerVertices(float centerX, float centerY, float radius, float start, float end) {
+        if (radius <= 0.0F) {
+            GL11.glVertex2f(centerX, centerY);
+            return;
+        }
         for (int i = 0; i <= DEFAULT_ARC_SEGMENTS; i++) {
             float angle = start + (end - start) * i / DEFAULT_ARC_SEGMENTS;
             double radians = Math.toRadians(angle);

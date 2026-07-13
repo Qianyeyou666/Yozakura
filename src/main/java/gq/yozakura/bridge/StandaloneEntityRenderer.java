@@ -26,34 +26,88 @@ public class StandaloneEntityRenderer extends EntityRenderer {
     private static boolean renderFailureLogged;
     private static boolean cameraFailureLogged;
     private static boolean installLogged;
+    private static boolean unsupportedRendererLogged;
+    private static boolean uninstallFailureLogged;
     private static int dispatchLogCount;
     private static Method setupCameraTransformMethod;
+    private static EntityRenderer originalRenderer;
+    private static StandaloneEntityRenderer installedRenderer;
 
     public StandaloneEntityRenderer(Minecraft minecraft) {
         super(minecraft, minecraft.getResourceManager());
     }
 
     public static void install(Minecraft minecraft) {
-        if (minecraft == null || minecraft.entityRenderer instanceof StandaloneEntityRenderer) {
+        if (minecraft == null) {
+            return;
+        }
+        EntityRenderer current = minecraft.entityRenderer;
+        if (current == installedRenderer) {
+            return;
+        }
+        if (current == null) {
+            logUnsupportedRenderer("no EntityRenderer is available");
+            return;
+        }
+        // A subclass can override updateCameraAndRender and related renderer lifecycle methods.
+        // Replacing it with this vanilla subclass would silently discard those client hooks.
+        if (current.getClass() != EntityRenderer.class) {
+            logUnsupportedRenderer("runtime renderer " + current.getClass().getName());
             return;
         }
         try {
-            EntityRenderer oldRenderer = minecraft.entityRenderer;
             StandaloneEntityRenderer hook = new StandaloneEntityRenderer(minecraft);
-            copyState(oldRenderer, hook);
+            copyState(current, hook);
+            originalRenderer = current;
+            installedRenderer = hook;
             minecraft.entityRenderer = hook;
             if (!installLogged) {
                 installLogged = true;
                 log("Standalone entity renderer hook installed: old="
-                        + (oldRenderer == null ? "null" : oldRenderer.getClass().getName())
+                        + current.getClass().getName()
                         + ", new=" + hook.getClass().getName(), null);
             }
         } catch (Throwable throwable) {
+            if (minecraft.entityRenderer == installedRenderer) {
+                minecraft.entityRenderer = originalRenderer;
+            }
+            installedRenderer = null;
+            originalRenderer = null;
             if (!installFailureLogged) {
                 installFailureLogged = true;
                 log("Failed to install standalone entity renderer hook", throwable);
             }
         }
+    }
+
+    public static void uninstall(Minecraft minecraft) {
+        StandaloneEntityRenderer installed = installedRenderer;
+        EntityRenderer original = originalRenderer;
+        try {
+            if (minecraft != null && installed != null && minecraft.entityRenderer == installed) {
+                minecraft.entityRenderer = original;
+                log("Standalone entity renderer hook removed", null);
+            }
+        } catch (Throwable throwable) {
+            if (!uninstallFailureLogged) {
+                uninstallFailureLogged = true;
+                log("Failed to remove standalone entity renderer hook", throwable);
+            }
+        } finally {
+            installedRenderer = null;
+            originalRenderer = null;
+        }
+    }
+
+    private static void logUnsupportedRenderer(String rendererDescription) {
+        if (unsupportedRendererLogged) {
+            return;
+        }
+        unsupportedRendererLogged = true;
+        log("Standalone entity renderer hook skipped: preserving " + rendererDescription
+                + ". Render2D/Render3D dispatch was not installed because a vanilla replacement "
+                + "would discard runtime overrides; a compatible client renderer hook requires runtime verification.",
+                null);
     }
 
     @Override

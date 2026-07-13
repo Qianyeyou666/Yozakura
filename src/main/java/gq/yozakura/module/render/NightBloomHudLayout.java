@@ -20,11 +20,8 @@ final class NightBloomHudLayout {
     static final int SURFACE_RAISED_COLOR = 0xFF202025;
     static final float PANEL_RADIUS = 4.0F;
 
-    static final int DEPTH_SHADOW_COLOR = 0x73000000;
-    static final float DEPTH_SHADOW_OFFSET_X = 0.0F;
-    static final float DEPTH_SHADOW_OFFSET_Y = 0.0F;
-    static final float DEPTH_SHADOW_BLUR_RADIUS = 9.0F;
-    static final int MODULE_SHADOW_COLOR = 0x50000000;
+    static final int SHADOW_MASK_COLOR = 0xFF000000;
+    private static final float MODULE_ROW_JOIN_EPSILON = 0.05F;
 
     static final int MAX_VISIBLE_MODULE_ROWS = 18;
     static final int MAX_VISIBLE_POTION_ROWS = 6;
@@ -48,7 +45,11 @@ final class NightBloomHudLayout {
         if (metaWidth > 0.0F) {
             width += 3.0F + metaWidth;
         }
-        return Math.max(MIN_MODULE_ROW_WIDTH, width);
+        return width;
+    }
+
+    static int compareModuleRowsByRenderedWidth(float firstWidth, float secondWidth) {
+        return Float.compare(secondWidth, firstWidth);
     }
 
     static float moduleRowX(float right, float rowWidth, float visibility) {
@@ -58,7 +59,32 @@ final class NightBloomHudLayout {
 
     static float moduleListHeight(int visibleRows) {
         int rows = Math.max(1, Math.min(MAX_VISIBLE_MODULE_ROWS, visibleRows));
-        return rows * MODULE_ROW_HEIGHT + (rows - 1) * MODULE_ROW_GAP;
+        return rows * (MODULE_ROW_HEIGHT + MODULE_ROW_GAP);
+    }
+
+    static boolean moduleRowsTouch(float upperY, float lowerY) {
+        float expectedLowerY = upperY + MODULE_ROW_HEIGHT + MODULE_ROW_GAP;
+        return Math.abs(lowerY - expectedLowerY) <= MODULE_ROW_JOIN_EPSILON;
+    }
+
+    static float moduleJoinStart(float firstLeft, float secondLeft, float radius) {
+        return Math.max(firstLeft, secondLeft) + nonNegative(radius);
+    }
+
+    static float moduleJoinEnd(float firstRight, float secondRight) {
+        return Math.min(firstRight, secondRight);
+    }
+
+    static boolean moduleJoinRangeValid(float start, float end) {
+        return end > start;
+    }
+
+    static boolean moduleJoinReachesRight(float rowWidth, float joinEnd) {
+        return joinEnd >= nonNegative(rowWidth) - MODULE_ROW_JOIN_EPSILON;
+    }
+
+    static float moduleRowBottom(float rowY, float nextRowY, boolean joinsBelow) {
+        return joinsBelow ? nextRowY : rowY + MODULE_ROW_HEIGHT + MODULE_ROW_GAP;
     }
 
     static float potionHeight(int effectCount) {

@@ -18,6 +18,7 @@ import gq.yozakura.value.Value;
 import gq.yozakura.engine.font.CFontRenderer;
 import gq.yozakura.engine.font.FontLoaders;
 import gq.yozakura.engine.render.glow.GlowProfile;
+import gq.yozakura.engine.render.glow.GlowRenderer;
 import gq.yozakura.engine.render.ui.LiquidGlassSettings;
 import gq.yozakura.engine.render.ui.RenderServices;
 import gq.yozakura.engine.render.ui.VisualPalette;
@@ -185,6 +186,8 @@ public class HUD extends Module {
     private final Map<Module, Float> moduleAnimations = new HashMap<Module, Float>();
     private final Map<Module, NightBloomModuleRowMotion> nightBloomModuleMotions = new HashMap<Module, NightBloomModuleRowMotion>();
     private final Map<Module, ModuleListEntry> nightBloomModuleEntries = new HashMap<Module, ModuleListEntry>();
+    private final Map<Module, Float> nightBloomModuleWidthScratch = new HashMap<Module, Float>();
+    private final List<ModuleListEntry> nightBloomModuleSortScratch = new ArrayList<ModuleListEntry>();
     private final List<Module> nightBloomVisibleModuleScratch = new ArrayList<Module>();
     private final List<NightBloomModuleRenderEntry> nightBloomModuleRenderScratch = new ArrayList<NightBloomModuleRenderEntry>();
     private final UiClock nightBloomModuleClock = new UiClock();
@@ -218,11 +221,11 @@ public class HUD extends Module {
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onRender(RenderGameOverlayEvent.Text event) {
         if (!YozakuraEventBridge.hasRenderedOverlayThisFrame()) {
-            RenderServices.glow().beginFrame();
+            RenderServices.beginHudEffectsFrame();
             try {
                 renderOverlay();
             } finally {
-                RenderServices.glow().flush();
+                RenderServices.flushHudEffectsFrame();
             }
         }
     }
@@ -438,7 +441,7 @@ public class HUD extends Module {
     private void drawNightBloomModuleList(int screenWidth, int screenHeight, float factor, List<Module> modules) {
         CFontRenderer nameFont = FontLoaders.TB20;
         CFontRenderer metaFont = FontLoaders.C16;
-        List<ModuleListEntry> entries = getSortedModuleListEntries(modules, nameFont, 5.0F);
+        List<ModuleListEntry> entries = getSortedNightBloomModuleListEntries(modules, nameFont, metaFont);
         float listWidth = NightBloomHudLayout.MIN_MODULE_ROW_WIDTH;
         int visibleRows = 0;
         for (ModuleListEntry entry : entries) {
@@ -475,7 +478,8 @@ public class HUD extends Module {
             List<NightBloomModuleRenderEntry> rows = updateNightBloomModuleRows(entries, y,
                     nightBloomModuleClock.tick(System.nanoTime()));
             if (rows.isEmpty() && modules.isEmpty()) {
-                drawNightBloomPanel(x, y, right, y + NightBloomHudLayout.MODULE_ROW_HEIGHT,
+                drawNightBloomPanel(x, y, right, y + NightBloomHudLayout.MODULE_ROW_HEIGHT
+                                + NightBloomHudLayout.MODULE_ROW_GAP,
                         NIGHT_BLOOM_RADIUS, 1.0F);
                 float textWidth = nameFont.getStringWidth("Module List");
                 drawNightBloomText(nameFont, "Module List", right - textWidth - 8.0F,
@@ -560,25 +564,42 @@ public class HUD extends Module {
         if (!Boolean.TRUE.equals(backgrounds.getValue())) {
             return;
         }
-        RenderServices.shadows().beginFrame();
-        try {
-            for (NightBloomModuleRenderEntry row : rows) {
-                ModuleListEntry entry = row.entry;
-                float progress = row.snapshot.getVisibility();
-                float metaWidth = entry.sideText.length() == 0 ? 0.0F : metaFont.getStringWidth(entry.sideText);
-                float rowWidth = NightBloomHudLayout.moduleRowWidth(entry.nameWidth, metaWidth);
-                float rowX = NightBloomHudLayout.moduleRowX(right, rowWidth, progress)
-                        + (1.0F - progress) * 5.0F;
-                float bottom = row.snapshot.getY() + NightBloomHudLayout.MODULE_ROW_HEIGHT;
-                drawNightBloomModuleShadow(rowX, row.snapshot.getY(), rowX + rowWidth, bottom,
-                        NIGHT_BLOOM_RADIUS, progress);
-            }
-            for (int index = 0; index + 1 < rows.size(); index++) {
-                drawNightBloomModuleConnector(rows.get(index), rows.get(index + 1), metaFont, right, true);
-            }
-        } finally {
-            RenderServices.shadows().flush();
+        for (NightBloomModuleRenderEntry row : rows) {
+            ModuleListEntry entry = row.entry;
+            float progress = row.snapshot.getVisibility();
+            float metaWidth = entry.sideText.length() == 0 ? 0.0F : metaFont.getStringWidth(entry.sideText);
+            float rowWidth = NightBloomHudLayout.moduleRowWidth(entry.nameWidth, metaWidth);
+            float rowX = NightBloomHudLayout.moduleRowX(right, rowWidth, progress)
+                    + (1.0F - progress) * 5.0F;
+            float bottom = NightBloomHudLayout.moduleRowBottom(row.snapshot.getY(), 0.0F, false);
+            drawNightBloomModuleShadow(rowX, row.snapshot.getY(), rowX + rowWidth, bottom,
+                    NIGHT_BLOOM_RADIUS, progress);
         }
+
+        int groupStart = 0;
+        while (groupStart < rows.size()) {
+            int groupEnd = groupStart;
+            float groupAlpha = rows.get(groupStart).snapshot.getVisibility();
+            while (groupEnd + 1 < rows.size()
+                    && NightBloomHudLayout.moduleRowsTouch(rows.get(groupEnd).snapshot.getY(),
+                    rows.get(groupEnd + 1).snapshot.getY())) {
+                groupEnd++;
+                groupAlpha = Math.min(groupAlpha, rows.get(groupEnd).snapshot.getVisibility());
+            }
+            if (groupEnd > groupStart) {
+                float groupTop = rows.get(groupStart).snapshot.getY();
+                float groupBottom = rows.get(groupEnd).snapshot.getY()
+                        + NightBloomHudLayout.MODULE_ROW_HEIGHT + NightBloomHudLayout.MODULE_ROW_GAP;
+                drawNightBloomModuleShadowSpine(right - NIGHT_BLOOM_RADIUS,
+                        groupTop + NIGHT_BLOOM_RADIUS, right,
+                        groupBottom - NIGHT_BLOOM_RADIUS, groupAlpha);
+            }
+            groupStart = groupEnd + 1;
+        }
+    }
+
+    private void drawNightBloomModuleShadowSpine(float x, float y, float x2, float y2, float alpha) {
+        drawNightBloomShadow(x, y, x2, y2, 0.0F, alpha);
     }
 
     private void drawNightBloomModuleSurfaces(List<NightBloomModuleRenderEntry> rows,
@@ -594,61 +615,70 @@ public class HUD extends Module {
             float rowWidth = NightBloomHudLayout.moduleRowWidth(entry.nameWidth, metaWidth);
             float rowX = NightBloomHudLayout.moduleRowX(right, rowWidth, progress)
                     + (1.0F - progress) * 5.0F;
-            float bottom = row.snapshot.getY() + NightBloomHudLayout.MODULE_ROW_HEIGHT;
+            float bottom = NightBloomHudLayout.moduleRowBottom(row.snapshot.getY(), 0.0F, false);
+            boolean joinsAbove = index > 0
+                    && NightBloomHudLayout.moduleRowsTouch(rows.get(index - 1).snapshot.getY(),
+                    row.snapshot.getY());
+            boolean joinsBelow = index + 1 < rows.size()
+                    && NightBloomHudLayout.moduleRowsTouch(row.snapshot.getY(),
+                    rows.get(index + 1).snapshot.getY());
+
+            float topJoinStart = 1.0F;
+            float topJoinEnd = 0.0F;
+            if (joinsAbove) {
+                NightBloomModuleRenderEntry above = rows.get(index - 1);
+                float aboveWidth = nightBloomRenderedModuleRowWidth(above.entry, metaFont);
+                float aboveX = NightBloomHudLayout.moduleRowX(right, aboveWidth,
+                        above.snapshot.getVisibility())
+                        + (1.0F - above.snapshot.getVisibility()) * 5.0F;
+                topJoinStart = NightBloomHudLayout.moduleJoinStart(
+                        rowX, aboveX, NIGHT_BLOOM_RADIUS) - rowX;
+                topJoinEnd = NightBloomHudLayout.moduleJoinEnd(
+                        rowX + rowWidth, aboveX + aboveWidth) - rowX;
+                joinsAbove = NightBloomHudLayout.moduleJoinRangeValid(topJoinStart, topJoinEnd);
+            }
+
+            float bottomJoinStart = 1.0F;
+            float bottomJoinEnd = 0.0F;
+            if (joinsBelow) {
+                NightBloomModuleRenderEntry next = rows.get(index + 1);
+                float nextWidth = nightBloomRenderedModuleRowWidth(next.entry, metaFont);
+                float nextX = NightBloomHudLayout.moduleRowX(right, nextWidth,
+                        next.snapshot.getVisibility())
+                        + (1.0F - next.snapshot.getVisibility()) * 5.0F;
+                bottomJoinStart = NightBloomHudLayout.moduleJoinStart(
+                        rowX, nextX, NIGHT_BLOOM_RADIUS) - rowX;
+                bottomJoinEnd = NightBloomHudLayout.moduleJoinEnd(
+                        rowX + rowWidth, nextX + nextWidth) - rowX;
+                joinsBelow = NightBloomHudLayout.moduleJoinRangeValid(bottomJoinStart, bottomJoinEnd);
+                if (joinsBelow) {
+                    bottom = NightBloomHudLayout.moduleRowBottom(row.snapshot.getY(),
+                            rows.get(index + 1).snapshot.getY(), true);
+                }
+            }
             drawNightBloomModuleSurface(rowX, row.snapshot.getY(), rowX + rowWidth, bottom,
-                    NIGHT_BLOOM_RADIUS, progress);
+                    NIGHT_BLOOM_RADIUS, progress,
+                    joinsAbove ? topJoinStart : 1.0F, joinsAbove ? topJoinEnd : 0.0F,
+                    joinsBelow ? bottomJoinStart : 1.0F, joinsBelow ? bottomJoinEnd : 0.0F);
         }
-        for (int index = 0; index + 1 < rows.size(); index++) {
-            drawNightBloomModuleConnector(rows.get(index), rows.get(index + 1), metaFont, right, false);
-        }
-    }
-
-    private void drawNightBloomModuleConnector(NightBloomModuleRenderEntry current,
-                                                NightBloomModuleRenderEntry next,
-                                                CFontRenderer metaFont, float right,
-                                                boolean shadowPass) {
-        float currentProgress = current.snapshot.getVisibility();
-        float nextProgress = next.snapshot.getVisibility();
-        if (currentProgress < 0.98F || nextProgress < 0.98F) {
-            return;
-        }
-        float currentBottom = current.snapshot.getY() + NightBloomHudLayout.MODULE_ROW_HEIGHT;
-        float nextTop = next.snapshot.getY();
-        if (Math.abs(nextTop - currentBottom - NightBloomHudLayout.MODULE_ROW_GAP) > 0.35F) {
-            return;
-        }
-
-        float currentMetaWidth = current.entry.sideText.length() == 0
-                ? 0.0F : metaFont.getStringWidth(current.entry.sideText);
-        float nextMetaWidth = next.entry.sideText.length() == 0
-                ? 0.0F : metaFont.getStringWidth(next.entry.sideText);
-        float currentWidth = NightBloomHudLayout.moduleRowWidth(current.entry.nameWidth, currentMetaWidth);
-        float nextWidth = NightBloomHudLayout.moduleRowWidth(next.entry.nameWidth, nextMetaWidth);
-        float currentX = NightBloomHudLayout.moduleRowX(right, currentWidth, currentProgress)
-                + (1.0F - currentProgress) * 5.0F;
-        float nextX = NightBloomHudLayout.moduleRowX(right, nextWidth, nextProgress)
-                + (1.0F - nextProgress) * 5.0F;
-        float connectorLeft = Math.max(currentX, nextX) + NIGHT_BLOOM_RADIUS;
-        float connectorRight = Math.min(currentX + currentWidth, nextX + nextWidth);
-        if (connectorRight <= connectorLeft || nextTop <= currentBottom) {
-            return;
-        }
-
-        float alpha = Math.min(currentProgress, nextProgress);
-        if (shadowPass) {
-            drawNightBloomModuleShadow(connectorLeft, currentBottom, connectorRight, nextTop, 0.0F, alpha);
-            return;
-        }
-        RenderServices.shapes().rect(connectorLeft, currentBottom, connectorRight, nextTop,
-                withNightBloomAlpha(withNightBloomAlpha(NIGHT_BLOOM_SURFACE, 0.68F), alpha));
     }
 
     private void drawNightBloomModuleSurface(float x, float y, float x2, float y2, float radius,
-                                              float alpha) {
+                                              float alpha, float topJoinStart, float topJoinEnd,
+                                              float bottomJoinStart, float bottomJoinEnd) {
         if (alpha <= 0.0F) {
             return;
         }
-        RenderServices.shapes().rounded(x, y, x2, y2, radius,
+        boolean joinsAbove = NightBloomHudLayout.moduleJoinRangeValid(topJoinStart, topJoinEnd);
+        boolean joinsBelow = NightBloomHudLayout.moduleJoinRangeValid(bottomJoinStart, bottomJoinEnd);
+        float rowWidth = x2 - x;
+        float topRightRadius = joinsAbove
+                && NightBloomHudLayout.moduleJoinReachesRight(rowWidth, topJoinEnd) ? 0.0F : radius;
+        float bottomRightRadius = joinsBelow
+                && NightBloomHudLayout.moduleJoinReachesRight(rowWidth, bottomJoinEnd) ? 0.0F : radius;
+        RenderServices.shapes().joinedRounded(x, y, x2, y2,
+                radius, topRightRadius, bottomRightRadius, radius,
+                topJoinStart, topJoinEnd, bottomJoinStart, bottomJoinEnd,
                 withNightBloomAlpha(withNightBloomAlpha(NIGHT_BLOOM_SURFACE, 0.68F), alpha));
     }
 
@@ -675,12 +705,7 @@ public class HUD extends Module {
     }
 
     private void drawNightBloomModuleShadow(float x, float y, float x2, float y2, float radius, float alpha) {
-        if (alpha <= 0.0F) {
-            return;
-        }
-        RenderServices.shadows().queueRoundedRect(x, y, x2, y2, radius,
-                withNightBloomAlpha(NightBloomHudLayout.MODULE_SHADOW_COLOR, alpha),
-                1.0F, GlowProfile.SHADOW);
+        drawNightBloomShadow(x, y, x2, y2, radius, alpha);
     }
 
     private static void drawNightBloomArrayListGradientText(CFontRenderer font, String text, float x, float y,
@@ -706,10 +731,7 @@ public class HUD extends Module {
         if (!Boolean.TRUE.equals(backgrounds.getValue()) || alpha <= 0.0F) {
             return;
         }
-        RenderServices.shapes().shadowOffset(x, y, x2, y2, radius,
-                NightBloomHudLayout.DEPTH_SHADOW_OFFSET_X, NightBloomHudLayout.DEPTH_SHADOW_OFFSET_Y,
-                withNightBloomAlpha(NightBloomHudLayout.DEPTH_SHADOW_COLOR, alpha), 12,
-                NightBloomHudLayout.DEPTH_SHADOW_BLUR_RADIUS);
+        drawNightBloomShadow(x, y, x2, y2, radius, alpha);
         RenderServices.shapes().rounded(x, y, x2, y2, radius,
                 withNightBloomAlpha(NIGHT_BLOOM_SURFACE, 0.86F * alpha));
         RenderServices.shapes().horizontalGradient(x + radius, y + 1.0F, x2 - radius,
@@ -1788,6 +1810,33 @@ public class HUD extends Module {
         return hudModuleScratch;
     }
 
+    private List<ModuleListEntry> getSortedNightBloomModuleListEntries(List<Module> modules,
+                                                                        CFontRenderer nameFont,
+                                                                        final CFontRenderer metaFont) {
+        nightBloomModuleSortScratch.clear();
+        nightBloomModuleSortScratch.addAll(getSortedModuleListEntries(modules, nameFont, 5.0F));
+        nightBloomModuleWidthScratch.clear();
+        for (ModuleListEntry entry : nightBloomModuleSortScratch) {
+            nightBloomModuleWidthScratch.put(entry.module,
+                    nightBloomRenderedModuleRowWidth(entry, metaFont));
+        }
+        nightBloomModuleSortScratch.sort(new Comparator<ModuleListEntry>() {
+            @Override
+            public int compare(ModuleListEntry first, ModuleListEntry second) {
+                return NightBloomHudLayout.compareModuleRowsByRenderedWidth(
+                        nightBloomModuleWidthScratch.get(first.module),
+                        nightBloomModuleWidthScratch.get(second.module));
+            }
+        });
+        return nightBloomModuleSortScratch;
+    }
+
+    private static float nightBloomRenderedModuleRowWidth(ModuleListEntry entry, CFontRenderer metaFont) {
+        float metaWidth = entry.sideText.length() == 0
+                ? 0.0F : metaFont.getStringWidth(entry.sideText);
+        return NightBloomHudLayout.moduleRowWidth(entry.nameWidth, metaWidth);
+    }
+
     private List<ModuleListEntry> getSortedModuleListEntries(List<Module> modules, CFontRenderer font, float gap) {
         int roundedGap = Math.round(gap);
         int signature = moduleListSignature(modules, font, roundedGap);
@@ -2205,6 +2254,27 @@ public class HUD extends Module {
     // Night Bloom keeps its halo on glyphs, so a small boost improves legibility
     // without reintroducing a glowing panel edge.
     private static final float NIGHT_BLOOM_GLOW_STRENGTH_BOOST = 0.16F;
+
+    public static void drawNightBloomShadow(float x, float y, float x2, float y2,
+                                             float radius, float alpha) {
+        if (x2 <= x || y2 <= y || radius < 0.0F || alpha <= 0.0F) {
+            return;
+        }
+        GlowRenderer shadows = RenderServices.shadows();
+        boolean isolatedFrame = !shadows.isFrameOpen();
+        if (isolatedFrame) {
+            shadows.beginFrame();
+        }
+        try {
+            shadows.queueRoundedRect(x, y, x2, y2, radius,
+                    withNightBloomAlpha(NightBloomHudLayout.SHADOW_MASK_COLOR, alpha),
+                    1.0F, GlowProfile.SHADOW);
+        } finally {
+            if (isolatedFrame) {
+                shadows.flush();
+            }
+        }
+    }
 
     public static void drawNightBloomText(CFontRenderer font, String text, double x, double y,
                                           int textColor, int glowColor, float glowStrength) {

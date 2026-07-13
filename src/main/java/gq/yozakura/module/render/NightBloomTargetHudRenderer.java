@@ -67,11 +67,7 @@ final class NightBloomTargetHudRenderer {
 
     private void drawPanel(float x, float y, float width, float height, float radius,
                            float uiScale, float alpha) {
-        RenderServices.shapes().shadowOffset(x, y, x + width, y + height, radius,
-                NightBloomHudLayout.DEPTH_SHADOW_OFFSET_X * uiScale,
-                NightBloomHudLayout.DEPTH_SHADOW_OFFSET_Y * uiScale,
-                multiplyAlpha(NightBloomHudLayout.DEPTH_SHADOW_COLOR, alpha), 12,
-                NightBloomHudLayout.DEPTH_SHADOW_BLUR_RADIUS * uiScale);
+        HUD.drawNightBloomShadow(x, y, x + width, y + height, radius, alpha);
         RenderServices.shapes().rounded(x, y, x + width, y + height, radius,
                 multiplyAlpha(NightBloomHudLayout.SURFACE_COLOR, 0.86F * alpha));
     }

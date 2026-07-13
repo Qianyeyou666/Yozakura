@@ -430,6 +430,9 @@ public final class VanillaRemapClassLoader extends URLClassLoader {
             putShim(map, "net/minecraftforge/client/event/RenderLivingEvent", "RenderLivingEvent");
             putShim(map, "net/minecraftforge/client/event/RenderLivingEvent$Pre", "RenderLivingEvent$Pre");
             putShim(map, "net/minecraftforge/client/event/RenderLivingEvent$Post", "RenderLivingEvent$Post");
+            putShim(map, "net/minecraftforge/client/event/RenderLivingEvent$Specials", "RenderLivingEvent$Specials");
+            putShim(map, "net/minecraftforge/client/event/RenderLivingEvent$Specials$Pre", "RenderLivingEvent$Specials$Pre");
+            putShim(map, "net/minecraftforge/client/event/RenderLivingEvent$Specials$Post", "RenderLivingEvent$Specials$Post");
             putShim(map, "net/minecraftforge/client/event/RenderPlayerEvent", "RenderPlayerEvent");
             putShim(map, "net/minecraftforge/client/event/RenderPlayerEvent$Pre", "RenderPlayerEvent$Pre");
             putShim(map, "net/minecraftforge/client/event/RenderPlayerEvent$Post", "RenderPlayerEvent$Post");

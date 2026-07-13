@@ -30,16 +30,44 @@ public class NightBloomHudVisualContractTest {
     }
 
     @Test
-    public void nightBloomHudUsesOnlyTheBlackOuterShadow() throws IOException {
+    public void nightBloomHudUsesTheBatchedBlackOuterShadowForWatermarkAndPanels() throws IOException {
         String source = new String(Files.readAllBytes(Paths.get(HUD_SOURCE)), StandardCharsets.UTF_8);
+        String watermark = between(source, "private void drawNightBloomWatermark()", "private void drawNightBloomChip(");
         String panel = between(source, "private void drawNightBloomPanel(", "private void drawVapeTextChip");
+        String shadow = between(source, "public static void drawNightBloomShadow(",
+                "public static void drawNightBloomText(");
 
-        assertEquals(1, occurrences(panel, "shadowOffset("));
+        assertTrue("the watermark must go through the shared Night Bloom panel renderer",
+                watermark.contains("drawNightBloomPanel("));
+        assertFalse("legacy immediate shadows disappear at runtime and must not render Night Bloom panels",
+                panel.contains("shadowOffset("));
         assertFalse(panel.contains("shapes().shadow("));
         assertFalse(panel.contains("ACCENT_SHADOW"));
         assertFalse(panel.contains("queueNightBloomGlow"));
-        assertTrue(panel.contains("NightBloomHudLayout.DEPTH_SHADOW_OFFSET_Y"));
+        assertTrue(panel.contains("drawNightBloomShadow("));
+        assertTrue(panel.indexOf("drawNightBloomShadow(") < panel.indexOf("RenderServices.shapes().rounded("));
+        assertTrue(shadow.contains("RenderServices.shadows()"));
+        assertTrue(shadow.contains("shadows.beginFrame()"));
+        assertTrue(shadow.contains("shadows.queueRoundedRect("));
+        assertTrue(shadow.contains("shadows.flush()"));
         assertTrue(panel.contains("withNightBloomAlpha(NIGHT_BLOOM_SURFACE, 0.86F * alpha)"));
+    }
+
+    @Test
+    public void overlayLifecycleBatchesAllNightBloomShadowsBeforeTextGlow() throws IOException {
+        String services = source("src/main/java/gq/yozakura/engine/render/ui/RenderServices.java");
+        String forge = source("src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java");
+        String standalone = source("src/main/java/gq/yozakura/bridge/StandaloneGuiIngame.java");
+
+        assertTrue(services.contains("beginHudEffectsFrame()"));
+        assertTrue(services.contains("SHADOWS.beginFrame()"));
+        assertTrue(services.contains("GLOW.beginFrame()"));
+        assertTrue(services.contains("flushHudEffectsFrame()"));
+        assertTrue(services.indexOf("SHADOWS.flush()") < services.indexOf("GLOW.flush()"));
+        assertTrue(forge.contains("RenderServices.beginHudEffectsFrame()"));
+        assertTrue(forge.contains("RenderServices.flushHudEffectsFrame()"));
+        assertTrue(standalone.contains("RenderServices.beginHudEffectsFrame()"));
+        assertTrue(standalone.contains("RenderServices.flushHudEffectsFrame()"));
     }
 
     @Test
@@ -77,18 +105,17 @@ public class NightBloomHudVisualContractTest {
         assertTrue("all row shadows must be completed before the touching backgrounds are filled",
                 list.indexOf("drawNightBloomModuleShadows(") < list.indexOf("drawNightBloomModuleSurfaces("));
         assertTrue(list.contains("drawNightBloomModuleSurface("));
-        assertTrue("stable adjacent rows need a small bridge instead of two anti-aliased corner gaps",
+        assertFalse("independent rows must never be joined by a connector rectangle",
                 list.contains("drawNightBloomModuleConnector("));
+        assertFalse("the connector helper itself must be removed so it cannot draw a horizontal seam",
+                source.contains("private void drawNightBloomModuleConnector("));
         assertFalse(list.contains("RenderServices.stencil()"));
         assertTrue(list.contains("withNightBloomAlpha(NIGHT_BLOOM_SURFACE, 0.68F)"));
 
         String shadow = between(source, "private void drawNightBloomModuleShadow(",
                 "private static void drawNightBloomArrayListGradientText(");
-        assertTrue("row shadows must share one framebuffer mask before Gaussian blur",
-                list.contains("RenderServices.shadows().beginFrame()"));
-        assertTrue(list.contains("RenderServices.shadows().flush()"));
-        assertTrue(shadow.contains("RenderServices.shadows().queueRoundedRect("));
-        assertTrue(shadow.contains("GlowProfile.SHADOW"));
+        assertTrue("row shadows must join the HUD-wide framebuffer mask before Gaussian blur",
+                shadow.contains("drawNightBloomShadow("));
         assertFalse("per-row immediate shadows create the dark horizontal seams",
                 list.contains("RenderServices.shapes().shadowOffset("));
 
@@ -96,6 +123,67 @@ public class NightBloomHudVisualContractTest {
                 "private void drawNightBloomPanel(");
         assertTrue("gradient glow must use the same moving color as its glyph",
                 gradient.contains("int gradientGlow = withNightBloomAlpha(color"));
+    }
+
+    @Test
+    public void everyArrayListEntryIncludingTheLastUsesTheSameRoundedSurfacePath() throws IOException {
+        String source = new String(Files.readAllBytes(Paths.get(HUD_SOURCE)), StandardCharsets.UTF_8);
+        String surfaces = between(source, "private void drawNightBloomModuleSurfaces(",
+                "private void drawNightBloomModuleSurface(");
+        String surface = between(source, "private void drawNightBloomModuleSurface(",
+                "private void drawNightBloomModuleRow(");
+
+        assertTrue("the surface loop must include rows.size(), including the final module",
+                surfaces.contains("index < rows.size()"));
+        assertEquals("every row is rendered through the one independent rounded-surface call site",
+                1, occurrences(surfaces, "drawNightBloomModuleSurface("));
+        assertTrue("every row, including the last, keeps the same total background height",
+                surfaces.contains("float bottom = NightBloomHudLayout.moduleRowBottom("));
+        assertFalse("surface fusion rectangles caused the visible connecting line",
+                surfaces.contains("RenderServices.shapes().rect("));
+        assertTrue("touching rows must decide their shared right corners from actual animated positions",
+                surfaces.contains("NightBloomHudLayout.moduleRowsTouch("));
+        assertTrue("the row surface needs the no-outside-feather path so translucent edges are never blended twice",
+                surface.contains("RenderServices.shapes().joinedRounded("));
+        assertTrue("the joined shader must receive the exact top and bottom overlap intervals",
+                surface.contains("topJoinStart, topJoinEnd, bottomJoinStart, bottomJoinEnd"));
+        assertTrue("an animated overhanging right edge must keep its own rounded corner",
+                surface.contains("NightBloomHudLayout.moduleJoinReachesRight("));
+        assertTrue("touching rows must share the exact same mathematical Y edge",
+                surfaces.contains("NightBloomHudLayout.moduleRowBottom("));
+        assertFalse("the regular rounded shader feathers outside the row and creates the dark two-pixel seam",
+                surface.contains("RenderServices.shapes().rounded("));
+    }
+
+    @Test
+    public void arrayListSortsByItsFinalRenderedRowWidth() throws IOException {
+        String source = source(HUD_SOURCE);
+        String list = between(source, "private void drawNightBloomModuleList(",
+                "private List<NightBloomModuleRenderEntry> updateNightBloomModuleRows(");
+        String sorter = between(source, "private List<ModuleListEntry> getSortedNightBloomModuleListEntries(",
+                "private List<ModuleListEntry> getSortedModuleListEntries(");
+
+        assertTrue(list.contains("getSortedNightBloomModuleListEntries(modules, nameFont, metaFont)"));
+        assertTrue(sorter.contains("NightBloomHudLayout.moduleRowWidth("));
+        assertTrue(sorter.contains("metaFont.getStringWidth(entry.sideText)"));
+        assertTrue(sorter.contains("nightBloomModuleSortScratch.addAll(getSortedModuleListEntries("));
+        assertTrue(sorter.contains("NightBloomHudLayout.compareModuleRowsByRenderedWidth("));
+        assertFalse("NightBloom sorting must never reorder the shared legacy cache",
+                sorter.contains("moduleEntryCache.sort"));
+        assertFalse("the legacy all-TB20 label width is not the NightBloom rendered width",
+                sorter.contains("entry.labelWidth"));
+    }
+
+    @Test
+    public void arrayListShadowMaskFusesTheContinuousRightEdgeWithoutDrawingAVisibleConnector() throws IOException {
+        String source = new String(Files.readAllBytes(Paths.get(HUD_SOURCE)), StandardCharsets.UTF_8);
+        String shadows = between(source, "private void drawNightBloomModuleShadows(",
+                "private void drawNightBloomModuleSurfaces(");
+
+        assertTrue("a mask-only spine must close the rounded notches between touching right-aligned rows",
+                shadows.contains("drawNightBloomModuleShadowSpine("));
+        assertFalse("fusion belongs to the shadow mask and must never add a visible surface rectangle",
+                shadows.contains("RenderServices.shapes().rect("));
     }
 
     @Test
@@ -139,5 +227,9 @@ public class NightBloomHudVisualContractTest {
             index += needle.length();
         }
         return count;
+    }
+
+    private static String source(String path) throws IOException {
+        return new String(Files.readAllBytes(Paths.get(path)), StandardCharsets.UTF_8);
     }
 }

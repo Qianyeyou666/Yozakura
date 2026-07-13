@@ -7,6 +7,7 @@
 uniform sampler2D textureIn;
 uniform vec4 maskColor;
 uniform float strength;
+uniform int shadowMode;
 
 uniform int mode;
 uniform vec2 rectSize;
@@ -31,6 +32,11 @@ void main() {
     float fontAlpha = texture2D(textureIn, uv).a;
     float sourceAlpha = mode == 1 ? roundedRectAlpha(uv) : fontAlpha;
     float alpha = clamp(sourceAlpha * maskColor.a * max(strength, 0.0), 0.0, 1.0);
+
+    if (shadowMode == 1) {
+        gl_FragColor = vec4(maskColor.a * sourceAlpha, 0.0, 0.0, sourceAlpha);
+        return;
+    }
 
     gl_FragColor = vec4(maskColor.rgb, alpha);
 }

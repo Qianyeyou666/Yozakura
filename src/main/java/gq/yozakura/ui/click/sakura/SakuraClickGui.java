@@ -393,7 +393,7 @@ public final class SakuraClickGui extends GuiScreen {
                 if (!value.isVisible()) {
                     continue;
                 }
-                if (value instanceof Numbers && !isColorStart(values, index)) {
+                if (isHiddenStandaloneNumber(values, index)) {
                     continue;
                 }
                 if (isColorContinuation(values, index)) {
@@ -490,6 +490,21 @@ public final class SakuraClickGui extends GuiScreen {
         String text = formatNumber(current);
         drawGlowText(FontLoaders.C14, text, vx + vw - FontLoaders.C14.getStringWidth(text), vy,
                 alpha(hover > 0.1f ? SAKURA : MUTED, (205.0f + 26.0f * hover) * guiAlpha), 0.3f + 0.38f * hover);
+        float sliderY = vy + 24.0f;
+        float progress = animateMap(numberProgress, value,
+                pct(current, value.getMinimum().doubleValue(), value.getMaximum().doubleValue()),
+                draggingNumber == value ? 0.34f : 0.18f);
+        RenderServices.shapes().rounded(vx, sliderY, vx + vw, sliderY + 5.0f, 2.5f,
+                alpha(TRACK, 190.0f * guiAlpha));
+        RenderServices.shapes().rounded(vx, sliderY, vx + vw * progress, sliderY + 5.0f, 2.5f,
+                alpha(SAKURA, 238.0f * guiAlpha));
+        if (hover > 0.02f) {
+            RenderServices.shapes().shadow(vx + vw * progress - 6.0f, sliderY - 3.5f,
+                    vx + vw * progress + 6.0f, sliderY + 8.5f, 6.0f,
+                    alpha(SAKURA, 58.0f * hover * guiAlpha), 4, 2.0f);
+        }
+        RenderServices.shapes().circle(vx + vw * progress, sliderY + 2.5f, 0, 360, 5.6f,
+                alpha(TEXT, 246.0f * guiAlpha));
     }
 
     private void drawColorPicker(Numbers red, Numbers green, Numbers blue, float vx, float vy, float vw) {
@@ -784,7 +799,7 @@ public final class SakuraClickGui extends GuiScreen {
             if (!value.isVisible()) {
                 continue;
             }
-            if (value instanceof Numbers && !isColorStart(values, index)) {
+            if (isHiddenStandaloneNumber(values, index)) {
                 continue;
             }
             if (isColorContinuation(values, index)) {
@@ -1103,6 +1118,10 @@ public final class SakuraClickGui extends GuiScreen {
         return isColorStart(values, index - 1) || isColorStart(values, index - 2);
     }
 
+    private boolean isHiddenStandaloneNumber(List<Value> values, int index) {
+        return selectedModule instanceof ClickGUI && values.get(index) instanceof Numbers && !isColorStart(values, index);
+    }
+
     private String colorChannelBase(Value value, String channel) {
         if (!(value instanceof Numbers)) {
             return null;
@@ -1130,7 +1149,7 @@ public final class SakuraClickGui extends GuiScreen {
         List<Value> values = selectedModule.getValues();
         for (int index = 0; index < values.size(); index++) {
             if (!values.get(index).isVisible() || isColorContinuation(values, index)
-                    || (values.get(index) instanceof Numbers && !isColorStart(values, index))) {
+                    || isHiddenStandaloneNumber(values, index)) {
                 continue;
             }
             total += valueHeight(values, index);

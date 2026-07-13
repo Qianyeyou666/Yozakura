@@ -396,7 +396,7 @@
         return "";
       }
       const type = String(value.type || "").toLowerCase();
-      if (type === "number") {
+      if (type === "number" && isClickGuiModule(module)) {
         return "";
       }
       if (type === "boolean") {
@@ -476,6 +476,10 @@
     }
     const label = String(red.displayName || red.name || "Color").replace(/\s*red\s*$/i, "") || "Color";
     return { red, green, blue, label, hex: rgbHex(red.current, green.current, blue.current) };
+  }
+
+  function isClickGuiModule(module) {
+    return String(module && module.name || "").replace(/[\s_-]/g, "").toLowerCase() === "clickgui";
   }
 
   function isColorContinuation(values, index) {

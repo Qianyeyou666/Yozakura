@@ -7,7 +7,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -32,12 +31,11 @@ public class NightBloomTargetHudRendererVisualContractTest {
     }
 
     @Test
-    public void targetHudDrawsOnlyTheBlackOuterShadow() throws IOException {
+    public void targetHudDrawsItsBlackOuterShadowThroughTheBatchedRenderer() throws IOException {
         String panel = between(source(), "private void drawPanel(", "private void drawContent(");
 
-        assertEquals(1, occurrences(panel, "shadowOffset("));
-        assertTrue(panel.contains("NightBloomHudLayout.DEPTH_SHADOW_OFFSET_Y"));
-        assertTrue(panel.contains("NightBloomHudLayout.DEPTH_SHADOW_BLUR_RADIUS"));
+        assertFalse(panel.contains("shadowOffset("));
+        assertTrue(panel.contains("HUD.drawNightBloomShadow("));
         assertFalse(panel.contains("ACCENT_SHADOW"));
         assertFalse(panel.contains("queueNightBloomGlow"));
     }
@@ -64,13 +62,4 @@ public class NightBloomTargetHudRendererVisualContractTest {
         return source.substring(begin, finish);
     }
 
-    private static int occurrences(String source, String needle) {
-        int count = 0;
-        int index = 0;
-        while ((index = source.indexOf(needle, index)) >= 0) {
-            count++;
-            index += needle.length();
-        }
-        return count;
-    }
 }
