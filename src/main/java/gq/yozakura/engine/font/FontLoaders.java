@@ -86,6 +86,7 @@ public abstract class FontLoaders {
     public static final CFontRenderer TB14 = tenacityBold(14);
     public static final CFontRenderer TB16 = tenacityBold(16);
     public static final CFontRenderer TB18 = tenacityBold(18);
+    public static final CFontRenderer TB20 = tenacityBold(20);
 
     public static final CFontRenderer Logo = icon(40);
     public static final CFontRenderer I14 = icon(14);

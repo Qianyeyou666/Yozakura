@@ -11,6 +11,8 @@ import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
 import gq.yozakura.engine.font.FontLoaders;
 import gq.yozakura.engine.render.ui.RenderServices;
+import gq.yozakura.engine.render.ui.VisualPalette;
+import gq.yozakura.util.animation.UiClock;
 import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
@@ -25,6 +27,12 @@ import java.util.List;
 import java.util.Map;
 
 public class KeyboardDisplay extends Module {
+    private static final VisualPalette NIGHT_BLOOM = VisualPalette.nightBloom();
+    private static final float NIGHT_BLOOM_RADIUS = 4.0F;
+    private static final int NIGHT_BLOOM_SURFACE = 0xDC16161A;
+    private static final int NIGHT_BLOOM_PRIMARY = 0xFFFF4FC7;
+    private static final int NIGHT_BLOOM_DEPTH_SHADOW_LAYERS = 12;
+
     private static final String FORWARD = "forward";
     private static final String LEFT = "left";
     private static final String BACK = "back";
@@ -45,9 +53,11 @@ public class KeyboardDisplay extends Module {
     private final Numbers<Double> yPosition = new Numbers<Double>("Y", "Y", -1.0, -1.0, 1200.0, 1.0);
 
     private final Map<String, Float> animations = new HashMap<String, Float>();
+    private final Map<String, NightBloomKeyFeedback> nightBloomFeedback = new HashMap<String, NightBloomKeyFeedback>();
     private final List<Long> leftClicks = new ArrayList<Long>();
     private final List<Long> rightClicks = new ArrayList<Long>();
     private final Layout layoutScratch = new Layout();
+    private final UiClock nightBloomClock = new UiClock();
     private boolean previousLeft;
     private boolean previousRight;
 
@@ -112,6 +122,8 @@ public class KeyboardDisplay extends Module {
     @Override
     public void disable() {
         animations.clear();
+        nightBloomFeedback.clear();
+        nightBloomClock.reset();
         leftClicks.clear();
         rightClicks.clear();
         previousLeft = false;
@@ -180,6 +192,10 @@ public class KeyboardDisplay extends Module {
     }
 
     private void drawKey(float x, float y, float width, float height, String id, int index) {
+        if (HUD.getActiveStyle() == HUD.HudStyle.NIGHT_BLOOM) {
+            drawNightBloomKey(x, y, width, height, id, getNightBloomFeedback(id));
+            return;
+        }
         float animation = animations.containsKey(id) ? animations.get(id) : 0.0f;
         int accent = ColorUtils.rainbow(220, 18, index);
         int baseAlpha = alpha.getValue().intValue();
@@ -211,6 +227,46 @@ public class KeyboardDisplay extends Module {
         } else {
             FontLoaders.C18.drawString(label, x + (width - FontLoaders.C18.getStringWidth(label)) / 2.0f,
                     y + (height - FontLoaders.C18.getHeight()) / 2.0f + 3.0f, textColor);
+        }
+    }
+
+    private void drawNightBloomKey(float x, float y, float width, float height, String id, float feedback) {
+        float opacity = Math.max(0.0F, Math.min(1.0F, alpha.getValue().floatValue() / 255.0F));
+        float round = NIGHT_BLOOM_RADIUS;
+        int textColor = ColorUtils.interpolate(NIGHT_BLOOM.getTextPrimary(), NIGHT_BLOOM_PRIMARY, feedback);
+
+        RenderServices.shapes().shadowOffset(x, y, x + width, y + height, round,
+                NightBloomHudLayout.DEPTH_SHADOW_OFFSET_X, NightBloomHudLayout.DEPTH_SHADOW_OFFSET_Y,
+                multiplyAlpha(NightBloomHudLayout.DEPTH_SHADOW_COLOR, opacity),
+                NIGHT_BLOOM_DEPTH_SHADOW_LAYERS, NightBloomHudLayout.DEPTH_SHADOW_BLUR_RADIUS);
+        RenderServices.shapes().rounded(x, y, x + width, y + height, round,
+                multiplyAlpha(NIGHT_BLOOM_SURFACE, opacity));
+        if (feedback > 0.01F) {
+            RenderServices.shapes().progressBar(x + 3.0F, y + height - 3.4F, x + width - 3.0F, y + height - 1.8F,
+                    1.0F, feedback, multiplyAlpha(NIGHT_BLOOM.getSurfaceOverlay(), opacity * 0.82F),
+                    multiplyAlpha(NIGHT_BLOOM_PRIMARY, opacity * 0.96F));
+        }
+
+        String label = getLabel(id);
+        if ((LMB.equals(id) || RMB.equals(id)) && Boolean.TRUE.equals(showCps.getValue())) {
+            int cps = LMB.equals(id) ? leftClicks.size() : rightClicks.size();
+            String cpsText = cps + " CPS";
+            HUD.drawNightBloomText(FontLoaders.C18, label,
+                    x + (width - FontLoaders.C18.getStringWidth(label)) * 0.5F, y + 6.0F,
+                    multiplyAlpha(textColor, opacity),
+                    multiplyAlpha(NIGHT_BLOOM_PRIMARY, opacity * (0.42F + feedback * 0.24F)),
+                    0.42F + feedback * 0.08F);
+            HUD.drawNightBloomText(FontLoaders.C14, cpsText,
+                    x + (width - FontLoaders.C14.getStringWidth(cpsText)) * 0.5F, y + 17.0F,
+                    multiplyAlpha(NIGHT_BLOOM.getTextPrimary(), opacity * 0.82F),
+                    multiplyAlpha(NIGHT_BLOOM_PRIMARY, opacity * 0.20F), 0.18F);
+        } else {
+            HUD.drawNightBloomText(FontLoaders.C18, label,
+                    x + (width - FontLoaders.C18.getStringWidth(label)) * 0.5F,
+                    y + (height - FontLoaders.C18.getHeight()) * 0.5F + 3.0F,
+                    multiplyAlpha(textColor, opacity),
+                    multiplyAlpha(NIGHT_BLOOM_PRIMARY, opacity * (0.42F + feedback * 0.24F)),
+                    0.42F + feedback * 0.08F);
         }
     }
 
@@ -252,16 +308,22 @@ public class KeyboardDisplay extends Module {
 
     private void updateInputState() {
         boolean acceptInput = mc.currentScreen == null;
-        setAnimated(FORWARD, acceptInput && isBindingDown(mc.gameSettings.keyBindForward.getKeyCode()));
-        setAnimated(LEFT, acceptInput && isBindingDown(mc.gameSettings.keyBindLeft.getKeyCode()));
-        setAnimated(BACK, acceptInput && isBindingDown(mc.gameSettings.keyBindBack.getKeyCode()));
-        setAnimated(RIGHT, acceptInput && isBindingDown(mc.gameSettings.keyBindRight.getKeyCode()));
-        setAnimated(JUMP, acceptInput && isBindingDown(mc.gameSettings.keyBindJump.getKeyCode()));
+        boolean nightBloom = HUD.getActiveStyle() == HUD.HudStyle.NIGHT_BLOOM;
+        float nightBloomDelta = nightBloom ? nightBloomClock.tick(System.nanoTime()) : 0.0F;
+        if (!nightBloom) {
+            nightBloomClock.reset();
+            nightBloomFeedback.clear();
+        }
+        updateKeyAnimation(FORWARD, acceptInput && isBindingDown(mc.gameSettings.keyBindForward.getKeyCode()), nightBloom, nightBloomDelta);
+        updateKeyAnimation(LEFT, acceptInput && isBindingDown(mc.gameSettings.keyBindLeft.getKeyCode()), nightBloom, nightBloomDelta);
+        updateKeyAnimation(BACK, acceptInput && isBindingDown(mc.gameSettings.keyBindBack.getKeyCode()), nightBloom, nightBloomDelta);
+        updateKeyAnimation(RIGHT, acceptInput && isBindingDown(mc.gameSettings.keyBindRight.getKeyCode()), nightBloom, nightBloomDelta);
+        updateKeyAnimation(JUMP, acceptInput && isBindingDown(mc.gameSettings.keyBindJump.getKeyCode()), nightBloom, nightBloomDelta);
 
         boolean leftDown = acceptInput && Mouse.isButtonDown(0);
         boolean rightDown = acceptInput && Mouse.isButtonDown(1);
-        setAnimated(LMB, leftDown);
-        setAnimated(RMB, rightDown);
+        updateKeyAnimation(LMB, leftDown, nightBloom, nightBloomDelta);
+        updateKeyAnimation(RMB, rightDown, nightBloom, nightBloomDelta);
 
         long now = System.currentTimeMillis();
         if (leftDown && !previousLeft) {
@@ -274,6 +336,25 @@ public class KeyboardDisplay extends Module {
         previousRight = rightDown;
         trimClicks(leftClicks, now);
         trimClicks(rightClicks, now);
+    }
+
+    private void updateKeyAnimation(String id, boolean pressed, boolean nightBloom, float deltaSeconds) {
+        setAnimated(id, pressed);
+        if (!nightBloom) {
+            return;
+        }
+        NightBloomKeyFeedback feedback = nightBloomFeedback.get(id);
+        if (feedback == null) {
+            feedback = new NightBloomKeyFeedback();
+            nightBloomFeedback.put(id, feedback);
+        }
+        feedback.setPressed(pressed);
+        feedback.update(deltaSeconds);
+    }
+
+    private float getNightBloomFeedback(String id) {
+        NightBloomKeyFeedback feedback = nightBloomFeedback.get(id);
+        return feedback == null ? 0.0F : feedback.get();
     }
 
     private void setAnimated(String id, boolean pressed) {
@@ -335,6 +416,12 @@ public class KeyboardDisplay extends Module {
                 clicks.remove(i);
             }
         }
+    }
+
+    private static int multiplyAlpha(int color, float alpha) {
+        int sourceAlpha = color >>> 24 & 255;
+        int resolvedAlpha = Math.round(sourceAlpha * Math.max(0.0F, Math.min(1.0F, alpha)));
+        return color & 0x00FFFFFF | resolvedAlpha << 24;
     }
 
     private static class KeyBox {

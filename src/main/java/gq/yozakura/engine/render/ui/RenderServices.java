@@ -1,5 +1,7 @@
 package gq.yozakura.engine.render.ui;
 
+import gq.yozakura.engine.render.glow.GlowRenderer;
+
 public final class RenderServices {
     private static final RenderContext CONTEXT = new RenderContext();
     private static final ShapeRenderer SHAPES = new ShapeRenderer(CONTEXT);
@@ -8,6 +10,8 @@ public final class RenderServices {
     private static final LiquidGlassRenderer LIQUID_GLASS = new LiquidGlassRenderer();
     private static final PanelPainter PANELS = new PanelPainter(SHAPES, BLUR);
     private static final StencilRenderer STENCIL = new StencilRenderer();
+    private static final GlowRenderer GLOW = new GlowRenderer();
+    private static final GlowRenderer SHADOWS = new GlowRenderer();
 
     private RenderServices() {
     }
@@ -38,5 +42,13 @@ public final class RenderServices {
 
     public static StencilRenderer stencil() {
         return STENCIL;
+    }
+
+    public static GlowRenderer glow() {
+        return GLOW;
+    }
+
+    public static GlowRenderer shadows() {
+        return SHADOWS;
     }
 }

@@ -14,6 +14,7 @@ import gq.yozakura.event.bus.types.EventType;
 import gq.yozakura.manager.BridgeDebug;
 import gq.yozakura.manager.PacketRotationState;
 import gq.yozakura.manager.RotationDebug;
+import gq.yozakura.manager.RotationExitState;
 import gq.yozakura.manager.RotationState;
 import gq.yozakura.manager.VisualRotationState;
 import gq.yozakura.runtime.YozakuraRuntime;
@@ -181,7 +182,7 @@ public final class StandaloneEventBridge {
                 HitBlockEvent hit = EventManager.call(new HitBlockEvent());
                 cancelled |= hit.isCancelled();
             }
-            if (mc.objectMouseOver != null && mc.objectMouseOver.entityHit != null) {
+            if (!cancelled && mc.objectMouseOver != null && mc.objectMouseOver.entityHit != null) {
                 EventManager.call(new gq.yozakura.bridge.forge.AttackEntityEvent(mc.thePlayer,
                         mc.objectMouseOver.entityHit));
             }
@@ -234,6 +235,7 @@ public final class StandaloneEventBridge {
         activePreUpdate = update;
         try {
             EventManager.call(update);
+            RotationExitState.apply(update);
         } finally {
             if (update.isRotated()) {
                 waitingForRotationPacket = true;
@@ -242,7 +244,7 @@ public final class StandaloneEventBridge {
         }
         BridgeDebug.logUpdate("standalone", "PRE_AFTER_EVENT", update, pendingPostUpdate != null);
         RotationState.applyState(update.isRotated(), update.getNewYaw(), update.getNewPitch(),
-                update.getPreYaw(), update.isRotating());
+                update.getPreYaw(), update.isRotating(), update.isMoveFix());
         applyLocalAimAssistRotation(update);
         if (!update.isRotated()) {
             waitingForRotationPacket = false;
@@ -493,6 +495,27 @@ public final class StandaloneEventBridge {
                             packetPendingPost, describeRotationState("queue"));
                     return;
                 }
+
+                boolean silentPlayerPacket = packet instanceof C03PacketPlayer && RotationState.isActived();
+                if (silentPlayerPacket) {
+                    markSent(packet);
+                    BridgeDebug.logPacket("standalone", "SEND_MARKED", packet, packetPendingPost);
+
+                    C03PacketPlayer rewritten = rewritePlayerPacket((C03PacketPlayer) packet);
+                    RotationDebug.logPacket("standalone", (C03PacketPlayer) packet, true);
+                    BridgeDebug.logPacketRewrite("standalone", (C03PacketPlayer) packet, rewritten,
+                            packetPendingPost);
+                    if (YozakuraRuntime.blinkManager != null && YozakuraRuntime.blinkManager.isBlinking()
+                            && YozakuraRuntime.blinkManager.offerPacket(rewritten)) {
+                        BridgeDebug.logPacket("standalone", "SEND_BLINK_BUFFERED", rewritten, packetPendingPost);
+                        promise.setSuccess();
+                    } else {
+                        super.write(ctx, rewritten, promise);
+                    }
+                    waitingForRotationPacket = false;
+                    flushDelayedPackets(ctx);
+                    return;
+                }
                 if (packet instanceof C03PacketPlayer) {
                     flushDelayedPackets(ctx);
                 }
@@ -502,15 +525,6 @@ public final class StandaloneEventBridge {
                         && YozakuraRuntime.blinkManager.offerPacket(packet)) {
                     BridgeDebug.logPacket("standalone", "SEND_BLINK_BUFFERED", packet, packetPendingPost);
                     promise.setSuccess();
-                    return;
-                }
-                if (packet instanceof C03PacketPlayer && RotationState.isActived()) {
-                    RotationDebug.logPacket("standalone", (C03PacketPlayer) packet, true);
-                    C03PacketPlayer rewritten = rewritePlayerPacket((C03PacketPlayer) packet);
-                    BridgeDebug.logPacketRewrite("standalone", (C03PacketPlayer) packet, rewritten,
-                            packetPendingPost);
-                    super.write(ctx, rewritten, promise);
-                    waitingForRotationPacket = false;
                     return;
                 }
                 if (packet instanceof C03PacketPlayer) {
@@ -583,14 +597,16 @@ public final class StandaloneEventBridge {
         }
 
         private boolean shouldDelayUntilRotation(Packet<?> packet) {
-            if (dispatchingPlayerPacketPreUpdate) {
+            if (!isRotationSensitiveAction(packet)) {
                 return false;
             }
-            return isRotationSensitiveAction(packet)
-                    && (waitingForRotationPacket
+            if (activePreUpdate != null) {
+                return true;
+            }
+            return waitingForRotationPacket
                     || hasActivePreRotation()
                     || RotationState.isActived()
-                    || !delayedPackets.isEmpty());
+                    || !delayedPackets.isEmpty();
         }
 
         private boolean isRotationSensitiveAction(Packet<?> packet) {

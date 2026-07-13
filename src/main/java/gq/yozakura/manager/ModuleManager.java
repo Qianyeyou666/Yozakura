@@ -147,9 +147,11 @@ public class ModuleManager {
         addModule("WTap", new ModuleFactory() { public Module create() { return new WTap(); } });
         addModule("BlockHit", new ModuleFactory() { public Module create() { return new BlockHit(); } });
         addModule("FakeLag", new ModuleFactory() { public Module create() { return new FakeLag(); } });
+        addModule("LagRange", new ModuleFactory() { public Module create() { return new LagRange(); } });
         addModule("KnockbackDelay", new ModuleFactory() { public Module create() { return new KnockbackDelay(); } });
         addModule("HitSelect", new ModuleFactory() { public Module create() { return new HitSelect(); } });
         addModule("Velocity", new ModuleFactory() { public Module create() { return new Velocity(); } });
+        addModule("JumpReset", new ModuleFactory() { public Module create() { return new JumpReset(); } });
         addModule("Uninject", new ModuleFactory() { public Module create() { return new Uninject(); } });
         addModule("InvMove", new ModuleFactory() { public Module create() { return new InvMove(); } });
         addModule("Health", new ModuleFactory() { public Module create() { return new Health(); } });

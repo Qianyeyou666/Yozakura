@@ -13,6 +13,7 @@ import gq.yozakura.module.combat.Backtrack;
 import gq.yozakura.module.combat.KillAura;
 import gq.yozakura.util.render.HudDrag;
 import gq.yozakura.util.render.RenderUtil;
+import gq.yozakura.value.Mode;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
 import net.minecraft.client.entity.AbstractClientPlayer;
@@ -42,10 +43,12 @@ import org.lwjgl.opengl.GL11;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
 public class TargetHUD extends Module {
+    private static final int NIGHT_BLOOM_PREVIEW_TARGET_ID = Integer.MIN_VALUE;
     private static final int TEXT = 0xFFF5F0F5;
     private static final int MUTED = 0xFFB8AEB8;
     private static final int SAKURA = 0xFFFFB7D1;
@@ -67,6 +70,8 @@ public class TargetHUD extends Module {
     private static final Map<Class<?>, Method> ENTITY_TEXTURE_METHODS = new HashMap<Class<?>, Method>();
     private static final Set<Class<?>> ENTITY_TEXTURE_MISSES = new HashSet<Class<?>>();
 
+    private final Mode<TargetHudStyle> style = new Mode<TargetHudStyle>("Style", "Style",
+            TargetHudStyle.values(), TargetHudStyle.LEGACY);
     private final Numbers<Double> xPosition = new Numbers<Double>("X", "X", -1.0, -1.0, 2000.0, 1.0);
     private final Numbers<Double> yPosition = new Numbers<Double>("Y", "Y", -1.0, -1.0, 1200.0, 1.0);
     private final Numbers<Double> scale = new Numbers<Double>("Scale", "Scale", 1.0, 0.65, 1.8, 0.05);
@@ -75,6 +80,8 @@ public class TargetHUD extends Module {
     private final Option<Boolean> showAvatar = new Option<Boolean>("Avatar", "Avatar", true);
     private final Option<Boolean> auraTarget = new Option<Boolean>("Aura Target", "AuraTarget", true);
     private final Option<Boolean> frostedGlass = new Option<Boolean>("Frosted Glass", "FrostedGlass", true);
+    private final TargetHudMotion nightBloomMotion = new TargetHudMotion();
+    private final NightBloomTargetHudRenderer nightBloomRenderer = new NightBloomTargetHudRenderer();
 
     private EntityLivingBase displayTarget;
     private EntityLivingBase attackedTarget;
@@ -86,11 +93,15 @@ public class TargetHUD extends Module {
     private float damageAnimation = 0.88f;
     private float flowerAnimation = 0.88f;
     private float switchPulse;
+    private NightBloomTargetHudRenderer.Content nightBloomCurrent;
+    private NightBloomTargetHudRenderer.Content nightBloomPrevious;
+    private long lastNightBloomFrameMS = System.currentTimeMillis();
+    private TargetHudStyle renderedStyle;
 
     public TargetHUD() {
         super("TargetHUD", Keyboard.KEY_NONE, ModuleType.Render, "Show target info when aiming at an entity");
         Chinese = "目标HUD";
-        this.addValues(xPosition, yPosition, scale, xOffset, yOffset, showAvatar, auraTarget, frostedGlass);
+        this.addValues(xPosition, yPosition, scale, xOffset, yOffset, showAvatar, auraTarget, frostedGlass, style);
     }
 
     @Override
@@ -105,6 +116,8 @@ public class TargetHUD extends Module {
         attackedTargetUntil = 0L;
         lastTargetId = -1;
         lastFrameMS = System.currentTimeMillis();
+        resetNightBloomState();
+        renderedStyle = null;
     }
 
     @Override
@@ -114,6 +127,8 @@ public class TargetHUD extends Module {
         attackedTarget = null;
         attackedTargetUntil = 0L;
         lastTargetId = -1;
+        resetNightBloomState();
+        renderedStyle = null;
     }
 
     @SubscribeEvent
@@ -145,6 +160,23 @@ public class TargetHUD extends Module {
 
     private void renderOverlay() {
         if (!isInGame()) {
+            resetNightBloomState();
+            return;
+        }
+
+        TargetHudStyle selectedStyle = style.getValue() == null ? TargetHudStyle.LEGACY : style.getValue();
+        if (renderedStyle != selectedStyle) {
+            if (renderedStyle != null) {
+                if (selectedStyle == TargetHudStyle.NIGHT_BLOOM) {
+                    resetNightBloomState();
+                } else {
+                    resetLegacyState();
+                }
+            }
+            renderedStyle = selectedStyle;
+        }
+        if (selectedStyle == TargetHudStyle.NIGHT_BLOOM) {
+            renderNightBloomOverlay();
             return;
         }
 
@@ -184,6 +216,97 @@ public class TargetHUD extends Module {
         switchPulse += (0.0f - switchPulse) * factor;
 
         drawHud(new ScaledResolution(mc), displayTarget, visibility);
+    }
+
+    private void renderNightBloomOverlay() {
+        long now = System.currentTimeMillis();
+        float deltaSeconds = Math.max(0.0F, Math.min(0.05F, (now - lastNightBloomFrameMS) / 1000.0F));
+        lastNightBloomFrameMS = now;
+        boolean editMode = HudDrag.isEditMode();
+        EntityLivingBase target = mc.currentScreen == null ? resolveTarget() : null;
+
+        if (target != null) {
+            NightBloomTargetHudRenderer.Content next = nightBloomContent(target);
+            if (nightBloomCurrent == null || next.getEntityId() != nightBloomCurrent.getEntityId()) {
+                nightBloomPrevious = nightBloomCurrent;
+                nightBloomCurrent = next;
+            } else {
+                nightBloomCurrent = next;
+            }
+            nightBloomMotion.acquire(next.getEntityId(), next.getHealthRatio());
+        } else if (editMode) {
+            NightBloomTargetHudRenderer.Content preview = nightBloomPreviewContent();
+            if (nightBloomCurrent == null || preview.getEntityId() != nightBloomCurrent.getEntityId()) {
+                nightBloomPrevious = nightBloomCurrent;
+                nightBloomCurrent = preview;
+            }
+            nightBloomMotion.acquire(preview.getEntityId(), preview.getHealthRatio());
+        } else {
+            nightBloomMotion.release();
+        }
+
+        float targetHealth = nightBloomCurrent == null ? 0.0F : nightBloomCurrent.getHealthRatio();
+        nightBloomMotion.update(deltaSeconds, targetHealth);
+        if (nightBloomMotion.getPreviousTargetId() == TargetHudMotion.NO_TARGET) {
+            nightBloomPrevious = null;
+        }
+        if (!nightBloomMotion.hasRetainedTarget()) {
+            nightBloomCurrent = null;
+            nightBloomPrevious = null;
+            return;
+        }
+
+        drawNightBloomHud(new ScaledResolution(mc), editMode);
+    }
+
+    private void drawNightBloomHud(ScaledResolution resolution, boolean editMode) {
+        float uiScale = Math.max(0.1F, scale.getValue().floatValue());
+        float defaultX = resolution.getScaledWidth() / 2.0F + xOffset.getValue().floatValue();
+        float defaultY = resolution.getScaledHeight() / 2.0F + yOffset.getValue().floatValue();
+        float width = NightBloomTargetHudRenderer.WIDTH * uiScale;
+        float height = NightBloomTargetHudRenderer.HEIGHT * uiScale;
+        float[] position = HudDrag.update("target_hud", xPosition, yPosition, scale, defaultX, defaultY,
+                width, height, resolution);
+
+        nightBloomRenderer.draw(position[0], position[1], uiScale, nightBloomCurrent, nightBloomPrevious,
+                nightBloomMotion, editMode, Boolean.TRUE.equals(showAvatar.getValue()));
+        HudDrag.drawHint("target_hud", position[0], position[1], width, height, 7.0F * uiScale);
+        HudDrag.handleScroll("target_hud", scale, position[0], position[1], width, height, 0.65F, 1.8F);
+    }
+
+    private NightBloomTargetHudRenderer.Content nightBloomContent(EntityLivingBase target) {
+        return new NightBloomTargetHudRenderer.Content(target, target.getEntityId(), target.getName(),
+                distanceText(target) + "  |  " + pingText(target), healthRatio(target), target.hurtTime > 0);
+    }
+
+    private NightBloomTargetHudRenderer.Content nightBloomPreviewContent() {
+        return new NightBloomTargetHudRenderer.Content(null, NIGHT_BLOOM_PREVIEW_TARGET_ID,
+                "Steve", "3.2m  |  --", 0.76F, false);
+    }
+
+    private String distanceText(EntityLivingBase target) {
+        if (target == null || mc.thePlayer == null) {
+            return "--";
+        }
+        return String.format(Locale.ROOT, "%.1fm", mc.thePlayer.getDistanceToEntity(target));
+    }
+
+    private void resetLegacyState() {
+        visibility = 0.0F;
+        healthAnimation = 0.88F;
+        damageAnimation = 0.88F;
+        flowerAnimation = 0.88F;
+        switchPulse = 0.0F;
+        displayTarget = null;
+        lastTargetId = -1;
+        lastFrameMS = System.currentTimeMillis();
+    }
+
+    private void resetNightBloomState() {
+        nightBloomMotion.reset();
+        nightBloomCurrent = null;
+        nightBloomPrevious = null;
+        lastNightBloomFrameMS = System.currentTimeMillis();
     }
 
     private void drawHud(ScaledResolution sr, EntityLivingBase target, float alpha) {

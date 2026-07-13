@@ -36,6 +36,10 @@ public class RotationManager {
         this.rotated = false;
     }
 
+    public void clear() {
+        this.resetRotationState();
+    }
+
     public void setRotation(float yaw, float pitch, int priority, boolean force) {
         if (this.priority <= priority) {
             this.priority = priority;

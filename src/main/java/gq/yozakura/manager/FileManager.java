@@ -6,6 +6,7 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import gq.yozakura.core.YozakuraClientState;
+import gq.yozakura.module.combat.aim.AimAssistConfigMigration;
 import gq.yozakura.ui.click.yozakura.YozakuraClickGui;
 import gq.yozakura.module.Module;
 import gq.yozakura.util.minecraft.Helper;
@@ -104,6 +105,7 @@ public class FileManager {
                     }
 
                     final JsonObject moduleJson = (JsonObject) moduleElement;
+                    migrateLegacyAimAssistValues(module, moduleJson);
 
                     if (moduleJson.has("key")) {
                         module.setKey(moduleJson.get("key").getAsInt());
@@ -206,6 +208,34 @@ public class FileManager {
             return jsonObject.get("Aimbot");
         }
         return null;
+    }
+
+    private void migrateLegacyAimAssistValues(Module module, JsonObject moduleJson) {
+        if (!"AimAssist".equalsIgnoreCase(module.getName()) || !moduleJson.has("VapeMode")) {
+            return;
+        }
+        JsonElement mode = moduleJson.get("Mode");
+        JsonElement vapeMode = moduleJson.get("VapeMode");
+        if (isStringPrimitive(mode) && isStringPrimitive(vapeMode)) {
+            String mergedMode = AimAssistConfigMigration.resolveMode(mode.getAsString(), vapeMode.getAsString());
+            if (mergedMode != null) {
+                moduleJson.addProperty("Mode", mergedMode);
+            }
+        }
+
+        JsonElement keepMoveDirection = moduleJson.get("KeepMoveDirection");
+        if (isBooleanPrimitive(keepMoveDirection)) {
+            moduleJson.addProperty("KeepMoveDirection",
+                    AimAssistConfigMigration.migrateKeepMoveDirection(keepMoveDirection.getAsBoolean()));
+        }
+    }
+
+    private boolean isStringPrimitive(JsonElement element) {
+        return element != null && element.isJsonPrimitive() && element.getAsJsonPrimitive().isString();
+    }
+
+    private boolean isBooleanPrimitive(JsonElement element) {
+        return element != null && element.isJsonPrimitive() && element.getAsJsonPrimitive().isBoolean();
     }
 
     private String createSnapshot() {

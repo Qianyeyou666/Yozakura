@@ -17,9 +17,11 @@ import gq.yozakura.value.Option;
 import gq.yozakura.value.Value;
 import gq.yozakura.engine.font.CFontRenderer;
 import gq.yozakura.engine.font.FontLoaders;
+import gq.yozakura.engine.render.glow.GlowProfile;
 import gq.yozakura.engine.render.ui.LiquidGlassSettings;
 import gq.yozakura.engine.render.ui.RenderServices;
-import gq.yozakura.util.render.RenderUtil;
+import gq.yozakura.engine.render.ui.VisualPalette;
+import gq.yozakura.util.animation.UiClock;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.client.gui.ScaledResolution;
@@ -40,6 +42,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -49,6 +52,12 @@ public class HUD extends Module {
     private static final int SAKURA = 0xFFFFB7D1;
     private static final int SAKURA_STRONG = 0xFFFF80B3;
     private static final int SAKURA_GLASS = 0xFF08080D;
+    private static final VisualPalette NIGHT_BLOOM_PALETTE = VisualPalette.nightBloom();
+    private static final int NIGHT_BLOOM_PRIMARY = NightBloomHudLayout.PRIMARY_COLOR;
+    private static final int NIGHT_BLOOM_SECONDARY = NightBloomHudLayout.SECONDARY_COLOR;
+    private static final int NIGHT_BLOOM_SURFACE = NightBloomHudLayout.SURFACE_COLOR;
+    private static final int NIGHT_BLOOM_SURFACE_RAISED = NightBloomHudLayout.SURFACE_RAISED_COLOR;
+    private static final float NIGHT_BLOOM_RADIUS = NightBloomHudLayout.PANEL_RADIUS;
     private static final long MODULE_LIST_CACHE_MILLIS = 80L;
     private static final LiquidGlassSettings SAKURA_GLASS_SETTINGS = LiquidGlassSettings.defaults()
             .withBlurRadius(18.0f)
@@ -65,7 +74,8 @@ public class HUD extends Module {
 
     public enum HudStyle {
         YOZAKURA,
-        OLD
+        OLD,
+        NIGHT_BLOOM
     }
 
     public enum Theme {
@@ -82,7 +92,8 @@ public class HUD extends Module {
 
     public enum NotificationTheme {
         OLD,
-        SAKURA
+        SAKURA,
+        NIGHT_BLOOM
     }
 
     private static final class HudPalette {
@@ -172,6 +183,13 @@ public class HUD extends Module {
     private final Numbers<Double> inventoryScale = new Numbers<Double>("Inventory Scale", "InventoryScale", 1.0, 0.65, 1.8, 0.05);
 
     private final Map<Module, Float> moduleAnimations = new HashMap<Module, Float>();
+    private final Map<Module, NightBloomModuleRowMotion> nightBloomModuleMotions = new HashMap<Module, NightBloomModuleRowMotion>();
+    private final Map<Module, ModuleListEntry> nightBloomModuleEntries = new HashMap<Module, ModuleListEntry>();
+    private final List<Module> nightBloomVisibleModuleScratch = new ArrayList<Module>();
+    private final List<NightBloomModuleRenderEntry> nightBloomModuleRenderScratch = new ArrayList<NightBloomModuleRenderEntry>();
+    private final UiClock nightBloomModuleClock = new UiClock();
+    private final Map<Integer, Float> nightBloomPotionAnimations = new HashMap<Integer, Float>();
+    private final float[] nightBloomInventorySlotAnimations = new float[27];
     private final List<Module> hudModuleScratch = new ArrayList<Module>();
     private final List<ModuleListEntry> moduleEntryCache = new ArrayList<ModuleListEntry>();
     private int moduleEntryCacheSignature;
@@ -179,6 +197,7 @@ public class HUD extends Module {
     private CFontRenderer moduleEntryCacheFont;
     private long moduleEntryCacheTime;
     private long lastFrameMS = System.currentTimeMillis();
+    private float nightBloomInventoryFill;
 
     public HUD() {
         super("HUD", Keyboard.KEY_H, ModuleType.Render, "Show " + Client.name + " HUD Screen");
@@ -199,7 +218,12 @@ public class HUD extends Module {
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onRender(RenderGameOverlayEvent.Text event) {
         if (!YozakuraEventBridge.hasRenderedOverlayThisFrame()) {
-            renderOverlay();
+            RenderServices.glow().beginFrame();
+            try {
+                renderOverlay();
+            } finally {
+                RenderServices.glow().flush();
+            }
         }
     }
 
@@ -223,10 +247,10 @@ public class HUD extends Module {
             drawModuleList(width, height, factor);
         }
         if (Boolean.TRUE.equals(potionEffects.getValue())) {
-            drawPotionEffects();
+            drawPotionEffects(factor);
         }
         if (Boolean.TRUE.equals(inventoryDisplay.getValue())) {
-            drawInventory(width, height);
+            drawInventory(width, height, factor);
         }
         if (Boolean.TRUE.equals(notifications.getValue())) {
             NotificationManager.doRender(width, height);
@@ -239,11 +263,21 @@ public class HUD extends Module {
     @Override
     public void disable() {
         moduleAnimations.clear();
+        clearNightBloomModuleMotions();
+        nightBloomPotionAnimations.clear();
+        for (int i = 0; i < nightBloomInventorySlotAnimations.length; i++) {
+            nightBloomInventorySlotAnimations[i] = 0.0F;
+        }
+        nightBloomInventoryFill = 0.0F;
         clearModuleEntryCache();
         lastFrameMS = System.currentTimeMillis();
     }
 
     private void drawWatermark() {
+        if (getSelectedStyle() == HudStyle.NIGHT_BLOOM) {
+            drawNightBloomWatermark();
+            return;
+        }
         if (useVapeStyle()) {
             drawVapeWatermark();
             return;
@@ -337,6 +371,358 @@ public class HUD extends Module {
         HudDrag.handleScroll("hud_watermark", watermarkScale, x, y, boxW * uiScale, boxH * uiScale, 0.65f, 1.8f);
     }
 
+    private void drawNightBloomWatermark() {
+        CFontRenderer brandFont = FontLoaders.TB14;
+        CFontRenderer chipFont = FontLoaders.C12;
+        String brand = Client.name == null || Client.name.length() == 0 ? "Yozakura" : Client.name;
+        String version = "v" + (Client.version == null || Client.version.length() == 0 ? "--" : Client.version);
+        int ping = getPing();
+        String fps = Minecraft.getDebugFPS() + " FPS" + (ping >= 0 ? "  " + ping + " ms" : "");
+        float brandWidth = brandFont.getStringWidth(brand);
+        float versionWidth = chipFont.getStringWidth(version);
+        float fpsWidth = chipFont.getStringWidth(fps);
+        float panelWidth = NightBloomHudLayout.watermarkWidth(brandWidth, versionWidth, fpsWidth);
+        float panelHeight = NightBloomHudLayout.WATERMARK_HEIGHT;
+        float uiScale = getScale(watermarkScale);
+        ScaledResolution sr = new ScaledResolution(mc);
+        float[] pos = HudDrag.update("hud_watermark", watermarkX, watermarkY, watermarkScale, 6.0F, 6.0F,
+                panelWidth * uiScale, panelHeight * uiScale, sr);
+        float x = pos[0];
+        float y = pos[1];
+
+        beginScaled(x, y, uiScale);
+        try {
+            drawNightBloomPanel(x, y, x + panelWidth, y + panelHeight, NIGHT_BLOOM_RADIUS, 1.0F);
+
+            if (Boolean.TRUE.equals(backgrounds.getValue())) {
+
+                RenderServices.shapes().rounded(x + 4.0F, y + 4.0F, x + 22.0F, y + panelHeight - 4.0F,
+                        3.0F, withNightBloomAlpha(NIGHT_BLOOM_SURFACE_RAISED, 0.88F));
+            }
+            drawNightBloomCenteredIcon(FontLoaders.ICON_SPARK, FontLoaders.I14,
+                    x + 13.0F, y + panelHeight * 0.5F,
+                    withNightBloomAlpha(NIGHT_BLOOM_PRIMARY, 1.0F),
+                    withNightBloomAlpha(NIGHT_BLOOM_PRIMARY, 0.78F), 0.62F);
+            float brandX = x + 26.0F;
+            float brandY = y + (panelHeight - brandFont.getHeight()) * 0.5F + 1.0F;
+            drawNightBloomText(brandFont, brand, brandX, brandY,
+                    withNightBloomAlpha(NIGHT_BLOOM_PRIMARY, 1.0F),
+                    withNightBloomAlpha(NIGHT_BLOOM_PRIMARY, 0.70F), 0.48F);
+
+            float chipX = brandX + brandWidth + 6.0F;
+            drawNightBloomChip(version, chipFont, chipX, y + 4.0F, versionWidth,
+                    NIGHT_BLOOM_SECONDARY);
+            chipX += versionWidth + 16.0F;
+            drawNightBloomChip(fps, chipFont, chipX, y + 4.0F, fpsWidth,
+                    NIGHT_BLOOM_SECONDARY);
+        } finally {
+            endScaled();
+        }
+        HudDrag.drawHint("hud_watermark", x, y, panelWidth * uiScale, panelHeight * uiScale,
+                NIGHT_BLOOM_RADIUS * uiScale);
+        HudDrag.handleScroll("hud_watermark", watermarkScale, x, y, panelWidth * uiScale, panelHeight * uiScale,
+                0.65F, 1.8F);
+    }
+
+    private void drawNightBloomChip(String text, CFontRenderer font, float x, float y, float textWidth, int textColor) {
+        float width = textWidth + 12.0F;
+        if (Boolean.TRUE.equals(backgrounds.getValue())) {
+            RenderServices.shapes().rounded(x, y, x + width, y + 14.0F, 3.0F,
+                    withNightBloomAlpha(NIGHT_BLOOM_SURFACE_RAISED, 0.82F));
+        }
+        drawNightBloomText(font, text, x + 6.0F, y + (14.0F - font.getHeight()) * 0.5F + 1.0F,
+                withNightBloomAlpha(textColor, 0.94F),
+                withNightBloomAlpha(NIGHT_BLOOM_PRIMARY, 0.30F), 0.22F);
+    }
+
+    private void drawNightBloomModuleList(int screenWidth, int screenHeight, float factor, List<Module> modules) {
+        CFontRenderer nameFont = FontLoaders.TB20;
+        CFontRenderer metaFont = FontLoaders.C16;
+        List<ModuleListEntry> entries = getSortedModuleListEntries(modules, nameFont, 5.0F);
+        float listWidth = NightBloomHudLayout.MIN_MODULE_ROW_WIDTH;
+        int visibleRows = 0;
+        for (ModuleListEntry entry : entries) {
+            float metaWidth = entry.sideText.length() == 0 ? 0.0F : metaFont.getStringWidth(entry.sideText);
+            listWidth = Math.max(listWidth, NightBloomHudLayout.moduleRowWidth(entry.nameWidth, metaWidth));
+            visibleRows++;
+            if (visibleRows >= NightBloomHudLayout.MAX_VISIBLE_MODULE_ROWS) {
+                break;
+            }
+        }
+        for (ModuleListEntry entry : nightBloomModuleEntries.values()) {
+            float metaWidth = entry.sideText.length() == 0 ? 0.0F : metaFont.getStringWidth(entry.sideText);
+            listWidth = Math.max(listWidth, NightBloomHudLayout.moduleRowWidth(entry.nameWidth, metaWidth));
+        }
+        visibleRows = Math.max(visibleRows, Math.min(NightBloomHudLayout.MAX_VISIBLE_MODULE_ROWS,
+                nightBloomModuleMotions.size()));
+        if (modules.isEmpty() && nightBloomModuleMotions.isEmpty() && !HudDrag.isEditMode()) {
+            return;
+        }
+
+        float listHeight = NightBloomHudLayout.moduleListHeight(visibleRows);
+        float uiScale = getScale(moduleListScale);
+        ScaledResolution sr = new ScaledResolution(mc);
+        float[] pos = HudDrag.update("hud_module_list", moduleListX, moduleListY, moduleListScale,
+                screenWidth - listWidth * uiScale - 6.0F, 6.0F,
+                listWidth * uiScale, listHeight * uiScale, sr);
+        float x = pos[0];
+        float y = pos[1];
+        float right = x + listWidth;
+
+        beginScaled(x, y, uiScale);
+        try {
+            long gradientTick = System.currentTimeMillis();
+            List<NightBloomModuleRenderEntry> rows = updateNightBloomModuleRows(entries, y,
+                    nightBloomModuleClock.tick(System.nanoTime()));
+            if (rows.isEmpty() && modules.isEmpty()) {
+                drawNightBloomPanel(x, y, right, y + NightBloomHudLayout.MODULE_ROW_HEIGHT,
+                        NIGHT_BLOOM_RADIUS, 1.0F);
+                float textWidth = nameFont.getStringWidth("Module List");
+                drawNightBloomText(nameFont, "Module List", right - textWidth - 8.0F,
+                        y + (NightBloomHudLayout.MODULE_ROW_HEIGHT - nameFont.getHeight()) * 0.5F + 1.0F,
+                        withNightBloomAlpha(NIGHT_BLOOM_SECONDARY, 0.72F),
+                        withNightBloomAlpha(NIGHT_BLOOM_PRIMARY, 0.22F), 0.18F);
+            } else {
+                drawNightBloomModuleShadows(rows, metaFont, right);
+                drawNightBloomModuleSurfaces(rows, metaFont, right);
+                for (int index = 0; index < rows.size(); index++) {
+                    NightBloomModuleRenderEntry row = rows.get(index);
+                    ModuleListEntry entry = row.entry;
+                    float progress = row.snapshot.getVisibility();
+                    float metaWidth = entry.sideText.length() == 0 ? 0.0F : metaFont.getStringWidth(entry.sideText);
+                    float rowWidth = NightBloomHudLayout.moduleRowWidth(entry.nameWidth, metaWidth);
+                    float rowX = NightBloomHudLayout.moduleRowX(right, rowWidth, progress)
+                            + (1.0F - progress) * 5.0F;
+                    drawNightBloomModuleRow(entry, nameFont, metaFont, rowX, row.snapshot.getY(), rowWidth,
+                            progress, gradientTick, x, y);
+                }
+            }
+        } finally {
+            endScaled();
+        }
+        HudDrag.drawHint("hud_module_list", x, y, listWidth * uiScale, listHeight * uiScale,
+                NightBloomHudLayout.MODULE_ROW_HEIGHT * 0.5F * uiScale);
+        HudDrag.handleScroll("hud_module_list", moduleListScale, x, y, listWidth * uiScale, listHeight * uiScale,
+                0.65F, 1.8F);
+    }
+
+    private List<NightBloomModuleRenderEntry> updateNightBloomModuleRows(List<ModuleListEntry> entries,
+                                                                           float firstRowY, float deltaSeconds) {
+        nightBloomVisibleModuleScratch.clear();
+        float targetY = firstRowY;
+        int visibleCount = 0;
+        for (ModuleListEntry entry : entries) {
+            if (visibleCount >= NightBloomHudLayout.MAX_VISIBLE_MODULE_ROWS) {
+                break;
+            }
+            NightBloomModuleRowMotion motion = nightBloomModuleMotions.get(entry.module);
+            if (motion == null) {
+                motion = new NightBloomModuleRowMotion();
+                nightBloomModuleMotions.put(entry.module, motion);
+            }
+            nightBloomModuleEntries.put(entry.module, entry);
+            nightBloomVisibleModuleScratch.add(entry.module);
+            motion.setVisible(true);
+            motion.setTargetY(targetY);
+            targetY += NightBloomHudLayout.MODULE_ROW_HEIGHT + NightBloomHudLayout.MODULE_ROW_GAP;
+            visibleCount++;
+        }
+
+        nightBloomModuleRenderScratch.clear();
+        Iterator<Map.Entry<Module, NightBloomModuleRowMotion>> iterator = nightBloomModuleMotions.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<Module, NightBloomModuleRowMotion> state = iterator.next();
+            Module module = state.getKey();
+            NightBloomModuleRowMotion motion = state.getValue();
+            if (!nightBloomVisibleModuleScratch.contains(module)) {
+                motion.setVisible(false);
+            }
+            NightBloomModuleRowMotion.Snapshot snapshot = motion.update(deltaSeconds);
+            ModuleListEntry entry = nightBloomModuleEntries.get(module);
+            if (entry != null && snapshot.getVisibility() > 0.01F) {
+                nightBloomModuleRenderScratch.add(new NightBloomModuleRenderEntry(entry, snapshot));
+            } else if (motion.isFinishedExit()) {
+                iterator.remove();
+                nightBloomModuleEntries.remove(module);
+            }
+        }
+        nightBloomModuleRenderScratch.sort(new Comparator<NightBloomModuleRenderEntry>() {
+            @Override
+            public int compare(NightBloomModuleRenderEntry first, NightBloomModuleRenderEntry second) {
+                return Float.compare(first.snapshot.getY(), second.snapshot.getY());
+            }
+        });
+        return nightBloomModuleRenderScratch;
+    }
+
+    private void drawNightBloomModuleShadows(List<NightBloomModuleRenderEntry> rows,
+                                              CFontRenderer metaFont, float right) {
+        if (!Boolean.TRUE.equals(backgrounds.getValue())) {
+            return;
+        }
+        RenderServices.shadows().beginFrame();
+        try {
+            for (NightBloomModuleRenderEntry row : rows) {
+                ModuleListEntry entry = row.entry;
+                float progress = row.snapshot.getVisibility();
+                float metaWidth = entry.sideText.length() == 0 ? 0.0F : metaFont.getStringWidth(entry.sideText);
+                float rowWidth = NightBloomHudLayout.moduleRowWidth(entry.nameWidth, metaWidth);
+                float rowX = NightBloomHudLayout.moduleRowX(right, rowWidth, progress)
+                        + (1.0F - progress) * 5.0F;
+                float bottom = row.snapshot.getY() + NightBloomHudLayout.MODULE_ROW_HEIGHT;
+                drawNightBloomModuleShadow(rowX, row.snapshot.getY(), rowX + rowWidth, bottom,
+                        NIGHT_BLOOM_RADIUS, progress);
+            }
+            for (int index = 0; index + 1 < rows.size(); index++) {
+                drawNightBloomModuleConnector(rows.get(index), rows.get(index + 1), metaFont, right, true);
+            }
+        } finally {
+            RenderServices.shadows().flush();
+        }
+    }
+
+    private void drawNightBloomModuleSurfaces(List<NightBloomModuleRenderEntry> rows,
+                                               CFontRenderer metaFont, float right) {
+        if (!Boolean.TRUE.equals(backgrounds.getValue())) {
+            return;
+        }
+        for (int index = 0; index < rows.size(); index++) {
+            NightBloomModuleRenderEntry row = rows.get(index);
+            ModuleListEntry entry = row.entry;
+            float progress = row.snapshot.getVisibility();
+            float metaWidth = entry.sideText.length() == 0 ? 0.0F : metaFont.getStringWidth(entry.sideText);
+            float rowWidth = NightBloomHudLayout.moduleRowWidth(entry.nameWidth, metaWidth);
+            float rowX = NightBloomHudLayout.moduleRowX(right, rowWidth, progress)
+                    + (1.0F - progress) * 5.0F;
+            float bottom = row.snapshot.getY() + NightBloomHudLayout.MODULE_ROW_HEIGHT;
+            drawNightBloomModuleSurface(rowX, row.snapshot.getY(), rowX + rowWidth, bottom,
+                    NIGHT_BLOOM_RADIUS, progress);
+        }
+        for (int index = 0; index + 1 < rows.size(); index++) {
+            drawNightBloomModuleConnector(rows.get(index), rows.get(index + 1), metaFont, right, false);
+        }
+    }
+
+    private void drawNightBloomModuleConnector(NightBloomModuleRenderEntry current,
+                                                NightBloomModuleRenderEntry next,
+                                                CFontRenderer metaFont, float right,
+                                                boolean shadowPass) {
+        float currentProgress = current.snapshot.getVisibility();
+        float nextProgress = next.snapshot.getVisibility();
+        if (currentProgress < 0.98F || nextProgress < 0.98F) {
+            return;
+        }
+        float currentBottom = current.snapshot.getY() + NightBloomHudLayout.MODULE_ROW_HEIGHT;
+        float nextTop = next.snapshot.getY();
+        if (Math.abs(nextTop - currentBottom - NightBloomHudLayout.MODULE_ROW_GAP) > 0.35F) {
+            return;
+        }
+
+        float currentMetaWidth = current.entry.sideText.length() == 0
+                ? 0.0F : metaFont.getStringWidth(current.entry.sideText);
+        float nextMetaWidth = next.entry.sideText.length() == 0
+                ? 0.0F : metaFont.getStringWidth(next.entry.sideText);
+        float currentWidth = NightBloomHudLayout.moduleRowWidth(current.entry.nameWidth, currentMetaWidth);
+        float nextWidth = NightBloomHudLayout.moduleRowWidth(next.entry.nameWidth, nextMetaWidth);
+        float currentX = NightBloomHudLayout.moduleRowX(right, currentWidth, currentProgress)
+                + (1.0F - currentProgress) * 5.0F;
+        float nextX = NightBloomHudLayout.moduleRowX(right, nextWidth, nextProgress)
+                + (1.0F - nextProgress) * 5.0F;
+        float connectorLeft = Math.max(currentX, nextX) + NIGHT_BLOOM_RADIUS;
+        float connectorRight = Math.min(currentX + currentWidth, nextX + nextWidth);
+        if (connectorRight <= connectorLeft || nextTop <= currentBottom) {
+            return;
+        }
+
+        float alpha = Math.min(currentProgress, nextProgress);
+        if (shadowPass) {
+            drawNightBloomModuleShadow(connectorLeft, currentBottom, connectorRight, nextTop, 0.0F, alpha);
+            return;
+        }
+        RenderServices.shapes().rect(connectorLeft, currentBottom, connectorRight, nextTop,
+                withNightBloomAlpha(withNightBloomAlpha(NIGHT_BLOOM_SURFACE, 0.68F), alpha));
+    }
+
+    private void drawNightBloomModuleSurface(float x, float y, float x2, float y2, float radius,
+                                              float alpha) {
+        if (alpha <= 0.0F) {
+            return;
+        }
+        RenderServices.shapes().rounded(x, y, x2, y2, radius,
+                withNightBloomAlpha(withNightBloomAlpha(NIGHT_BLOOM_SURFACE, 0.68F), alpha));
+    }
+
+    private void drawNightBloomModuleRow(ModuleListEntry entry, CFontRenderer nameFont, CFontRenderer metaFont,
+                                          float x, float y, float width, float progress, long gradientTick,
+                                          float gradientOriginX, float gradientOriginY) {
+        float rowRight = x + width;
+        String meta = entry.sideText;
+        float nameY = y + (NightBloomHudLayout.MODULE_ROW_HEIGHT - nameFont.getHeight()) * 0.5F + 1.0F;
+        float metaY = y + (NightBloomHudLayout.MODULE_ROW_HEIGHT - metaFont.getHeight()) * 0.5F + 1.0F;
+        float contentRight = rowRight - 3.0F;
+        float metaWidth = meta.length() == 0 ? 0.0F : metaFont.getStringWidth(meta);
+        float nameX = contentRight - entry.nameWidth;
+        if (metaWidth > 0.0F) {
+            float metaX = contentRight - metaWidth;
+            drawNightBloomText(metaFont, meta, metaX, metaY,
+                    withNightBloomAlpha(NIGHT_BLOOM_SECONDARY, 0.90F * progress),
+                    withNightBloomAlpha(NIGHT_BLOOM_PRIMARY, 0.24F * progress), 0.20F);
+            nameX = metaX - 3.0F - entry.nameWidth;
+        }
+        drawNightBloomArrayListGradientText(nameFont, entry.label.name, nameX, nameY,
+                0.98F * progress, 0.68F * progress, 0.52F, gradientTick,
+                gradientOriginX, gradientOriginY);
+    }
+
+    private void drawNightBloomModuleShadow(float x, float y, float x2, float y2, float radius, float alpha) {
+        if (alpha <= 0.0F) {
+            return;
+        }
+        RenderServices.shadows().queueRoundedRect(x, y, x2, y2, radius,
+                withNightBloomAlpha(NightBloomHudLayout.MODULE_SHADOW_COLOR, alpha),
+                1.0F, GlowProfile.SHADOW);
+    }
+
+    private static void drawNightBloomArrayListGradientText(CFontRenderer font, String text, float x, float y,
+                                                            float opacity, float glowOpacity, float glowStrength,
+                                                            long gradientTick, float gradientOriginX,
+                                                            float gradientOriginY) {
+        if (font == null || text == null || text.length() == 0) {
+            return;
+        }
+        float cursor = x;
+        for (int index = 0; index < text.length(); index++) {
+            String glyph = String.valueOf(text.charAt(index));
+            int color = NightBloomArrayListGradient.colorAt(cursor - gradientOriginX,
+                    y - gradientOriginY, gradientTick);
+            int glyphColor = withNightBloomAlpha(color, opacity);
+            int gradientGlow = withNightBloomAlpha(color, glowOpacity);
+            drawNightBloomText(font, glyph, cursor, y, glyphColor, gradientGlow, glowStrength);
+            cursor += font.getStringWidth(glyph);
+        }
+    }
+
+    private void drawNightBloomPanel(float x, float y, float x2, float y2, float radius, float alpha) {
+        if (!Boolean.TRUE.equals(backgrounds.getValue()) || alpha <= 0.0F) {
+            return;
+        }
+        RenderServices.shapes().shadowOffset(x, y, x2, y2, radius,
+                NightBloomHudLayout.DEPTH_SHADOW_OFFSET_X, NightBloomHudLayout.DEPTH_SHADOW_OFFSET_Y,
+                withNightBloomAlpha(NightBloomHudLayout.DEPTH_SHADOW_COLOR, alpha), 12,
+                NightBloomHudLayout.DEPTH_SHADOW_BLUR_RADIUS);
+        RenderServices.shapes().rounded(x, y, x2, y2, radius,
+                withNightBloomAlpha(NIGHT_BLOOM_SURFACE, 0.86F * alpha));
+        RenderServices.shapes().horizontalGradient(x + radius, y + 1.0F, x2 - radius,
+                Math.min(y2 - 1.0F, y + 6.0F),
+                withNightBloomAlpha(NIGHT_BLOOM_SURFACE_RAISED, 0.28F * alpha), 0x00000000);
+    }
+
+    private static int withNightBloomAlpha(int color, float alpha) {
+        int sourceAlpha = color >>> 24 & 255;
+        int resolvedAlpha = Math.round(sourceAlpha * Math.max(0.0F, Math.min(1.0F, alpha)));
+        return withAlpha(color, resolvedAlpha);
+    }
+
     private void drawVapeTextChip(String text, float x, float y, float width, int accent) {
         RenderServices.shapes().rounded(x, y, x + width, y + 15.0f, 4.0f, withAlpha(palette().vapeSurfaceVariant, 185));
         RenderServices.shapes().rounded(x, y + 13.0f, x + width, y + 15.0f, 1.0f, withAlpha(accent, 165));
@@ -403,7 +789,191 @@ public class HUD extends Module {
         HudDrag.handleScroll("hud_potions", potionScale, x, y, width * uiScale, height * uiScale, 0.65f, 1.8f);
     }
 
-    private void drawInventory(int screenWidth, int screenHeight) {
+    private void drawNightBloomPotionEffects(ArrayList<PotionEffect> effects, float factor) {
+        float width = NightBloomHudLayout.POTION_WIDTH;
+        float height = NightBloomHudLayout.potionHeight(effects.size());
+        float uiScale = getScale(potionScale);
+        ScaledResolution sr = new ScaledResolution(mc);
+        float[] pos = HudDrag.update("hud_potions", potionX, potionY, potionScale, 6.0F,
+                Boolean.TRUE.equals(watermark.getValue()) ? 54.0F : 6.0F,
+                width * uiScale, height * uiScale, sr);
+        float x = pos[0];
+        float y = pos[1];
+
+        beginScaled(x, y, uiScale);
+        try {
+            drawNightBloomPanel(x, y, x + width, y + height, NIGHT_BLOOM_RADIUS, 1.0F);
+            if (effects.isEmpty()) {
+                float rowY = y + (height - 18.0F) * 0.5F;
+                drawNightBloomCenteredIcon(FontLoaders.ICON_SPARK, FontLoaders.I14,
+                        x + 15.0F, rowY + 9.0F,
+                        withNightBloomAlpha(NIGHT_BLOOM_PRIMARY, 0.90F),
+                        withNightBloomAlpha(NIGHT_BLOOM_PRIMARY, 0.62F), 0.56F);
+                drawNightBloomText(FontLoaders.C14, "No active effects", x + 29.0F, rowY + 5.0F,
+                        withNightBloomAlpha(NIGHT_BLOOM_SECONDARY, 0.72F),
+                        withNightBloomAlpha(NIGHT_BLOOM_PRIMARY, 0.22F), 0.18F);
+            } else {
+                for (int i = 0; i < Math.min(NightBloomHudLayout.MAX_VISIBLE_POTION_ROWS, effects.size()); i++) {
+                    PotionEffect effect = effects.get(i);
+                    Potion potion = Potion.potionTypes[effect.getPotionID()];
+                    if (potion == null) {
+                        continue;
+                    }
+
+                    float visibility = animateNightBloomPotion(effect, factor);
+                    float rowY = y + 7.0F + i * NightBloomHudLayout.POTION_ROW_HEIGHT
+                            + (1.0F - visibility) * 4.0F;
+                    int accent = nightBloomPotionAccent(potion);
+                    String duration = Potion.getDurationString(effect);
+                    float durationWidth = FontLoaders.C12.getStringWidth(duration);
+                    float durationX = x + width - durationWidth - 9.0F;
+                    String name = trim(I18n.format(potion.getName()) + amplifierSuffix(effect.getAmplifier()),
+                            FontLoaders.C14, durationX - (x + 30.0F) - 7.0F);
+
+                    if (Boolean.TRUE.equals(backgrounds.getValue())) {
+                        RenderServices.shapes().rounded(x + 6.0F, rowY, x + width - 6.0F,
+                                rowY + 19.0F, NIGHT_BLOOM_RADIUS,
+                                withNightBloomAlpha(NIGHT_BLOOM_SURFACE_RAISED, 0.36F * visibility));
+                        RenderServices.shapes().rounded(x + 8.0F, rowY + 2.0F, x + 22.0F,
+                                rowY + 16.0F, 3.0F,
+                                withNightBloomAlpha(NIGHT_BLOOM_SURFACE_RAISED, 0.78F * visibility));
+                    }
+
+                    drawNightBloomCenteredIcon(nightBloomPotionIcon(potion), FontLoaders.I14,
+                            x + 15.0F, rowY + 9.0F,
+                            withNightBloomAlpha(accent, 0.96F * visibility),
+                            withNightBloomAlpha(accent, 0.62F * visibility), 0.58F);
+                    drawNightBloomText(FontLoaders.C14, name, x + 30.0F, rowY + 5.0F,
+                            withNightBloomAlpha(NIGHT_BLOOM_PALETTE.getTextPrimary(), 0.98F * visibility),
+                            withNightBloomAlpha(NIGHT_BLOOM_PRIMARY, 0.44F * visibility), 0.34F);
+                    drawNightBloomText(FontLoaders.C12, duration, durationX, rowY + 6.0F,
+                            withNightBloomAlpha(nightBloomPotionDurationColor(effect), 0.96F * visibility),
+                            withNightBloomAlpha(NIGHT_BLOOM_PRIMARY, 0.20F * visibility), 0.17F);
+                    if (Boolean.TRUE.equals(backgrounds.getValue())) {
+                        float remaining = Math.max(0.08F, Math.min(1.0F, effect.getDuration() / 1200.0F));
+                        RenderServices.shapes().progressBar(x + 30.0F, rowY + 17.0F, x + width - 9.0F,
+                                rowY + 18.2F, 0.6F, remaining,
+                                withNightBloomAlpha(NIGHT_BLOOM_PALETTE.getSurfaceOverlay(), 0.50F * visibility),
+                                withNightBloomAlpha(accent, 0.70F * visibility));
+                    }
+                }
+            }
+        } finally {
+            endScaled();
+        }
+        HudDrag.drawHint("hud_potions", x, y, width * uiScale, height * uiScale, getRadius() * uiScale);
+        HudDrag.handleScroll("hud_potions", potionScale, x, y, width * uiScale, height * uiScale, 0.65F, 1.8F);
+    }
+
+    private float animateNightBloomPotion(PotionEffect effect, float factor) {
+        int key = effect.getPotionID() * 31 + effect.getAmplifier();
+        Float current = nightBloomPotionAnimations.get(key);
+        float previous = current == null ? 0.0F : current.floatValue();
+        float response = Math.max(0.0F, Math.min(1.0F, factor));
+        float next = previous + (1.0F - previous) * response;
+        nightBloomPotionAnimations.put(key, next);
+        return next;
+    }
+
+    private int nightBloomPotionAccent(Potion potion) {
+        return potion.isBadEffect() ? NIGHT_BLOOM_PALETTE.getDanger() : NIGHT_BLOOM_PRIMARY;
+    }
+
+    private String nightBloomPotionIcon(Potion potion) {
+        return potion.isBadEffect() ? FontLoaders.ICON_WARNING : FontLoaders.ICON_SHIELD;
+    }
+
+    private int nightBloomPotionDurationColor(PotionEffect effect) {
+        return effect.getDuration() <= 20 * 15
+                ? NIGHT_BLOOM_PALETTE.getWarning()
+                : NIGHT_BLOOM_SECONDARY;
+    }
+
+    private void drawNightBloomInventory(int screenWidth, int screenHeight, float factor) {
+        float slot = NightBloomHudLayout.INVENTORY_SLOT_SIZE;
+        float stride = NightBloomHudLayout.INVENTORY_SLOT_STRIDE;
+        float width = NightBloomHudLayout.INVENTORY_WIDTH;
+        float height = NightBloomHudLayout.INVENTORY_HEIGHT;
+        float uiScale = getScale(inventoryScale);
+        ScaledResolution sr = new ScaledResolution(mc);
+        float[] pos = HudDrag.update("hud_inventory", inventoryX, inventoryY, inventoryScale,
+                screenWidth / 2.0F - width * uiScale / 2.0F, Math.max(58.0F, screenHeight - 114.0F),
+                width * uiScale, height * uiScale, sr);
+        float x = pos[0];
+        float y = pos[1];
+        int filled = countInventoryItems();
+        float response = Math.max(0.0F, Math.min(1.0F, factor));
+        nightBloomInventoryFill += (filled / 27.0F - nightBloomInventoryFill) * response;
+
+        beginScaled(x, y, uiScale);
+        try {
+            float panelRadius = getRadius();
+            drawNightBloomPanel(x, y, x + width, y + height,
+                    Math.min(panelRadius, NIGHT_BLOOM_RADIUS), 1.0F);
+
+            drawNightBloomText(FontLoaders.C16, "Inventory", x + 10.0F, y + 10.0F,
+                    withNightBloomAlpha(NIGHT_BLOOM_PRIMARY, 0.98F),
+                    withNightBloomAlpha(NIGHT_BLOOM_PRIMARY, 0.62F), 0.44F);
+            String count = filled + "/27";
+            float countWidth = FontLoaders.C14.getStringWidth(count);
+            float countX = x + width - countWidth - 11.0F;
+            drawNightBloomCenteredIcon(FontLoaders.ICON_CUBE, FontLoaders.I14,
+                    countX - 8.0F, y + 14.0F,
+                    withNightBloomAlpha(NIGHT_BLOOM_PRIMARY, 0.94F),
+                    withNightBloomAlpha(NIGHT_BLOOM_PRIMARY, 0.58F), 0.54F);
+            drawNightBloomText(FontLoaders.C14, count, countX, y + 10.0F,
+                    withNightBloomAlpha(NIGHT_BLOOM_SECONDARY, 0.98F),
+                    withNightBloomAlpha(NIGHT_BLOOM_PRIMARY, 0.24F), 0.20F);
+
+            float startX = x + 8.0F;
+            float startY = y + 28.0F;
+            float gridRight = x + NightBloomHudLayout.inventoryGridRight(8.0F);
+            if (Boolean.TRUE.equals(backgrounds.getValue())) {
+                RenderServices.shapes().progressBar(startX, y + 23.0F, gridRight, y + 24.2F, 0.6F,
+                        nightBloomInventoryFill,
+                        withNightBloomAlpha(NIGHT_BLOOM_PALETTE.getSurfaceOverlay(), 0.56F),
+                        withNightBloomAlpha(NIGHT_BLOOM_PRIMARY, 0.78F));
+            }
+
+            for (int row = 0; row < 3; row++) {
+                for (int col = 0; col < NightBloomHudLayout.INVENTORY_COLUMNS; col++) {
+                    int itemIndex = 9 + row * NightBloomHudLayout.INVENTORY_COLUMNS + col;
+                    int animationIndex = row * NightBloomHudLayout.INVENTORY_COLUMNS + col;
+                    ItemStack stack = mc.thePlayer.inventory.mainInventory[itemIndex];
+                    float feedback = animateNightBloomInventorySlot(animationIndex, stack != null, response);
+                    float slotX = startX + col * stride;
+                    float slotY = startY + row * stride;
+
+                    if (Boolean.TRUE.equals(backgrounds.getValue())) {
+                        int slotFill = stack == null ? NIGHT_BLOOM_SURFACE_RAISED : NIGHT_BLOOM_PRIMARY;
+                        float slotAlpha = stack == null ? 0.52F : 0.18F + feedback * 0.10F;
+                        RenderServices.shapes().rounded(slotX - 1.0F, slotY - 1.0F,
+                                slotX + slot + 1.0F, slotY + slot + 1.0F, 3.0F,
+                                withNightBloomAlpha(slotFill, slotAlpha));
+                    }
+                    drawItemStack(stack, slotX, slotY);
+                }
+            }
+        } finally {
+            endScaled();
+        }
+        HudDrag.drawHint("hud_inventory", x, y, width * uiScale, height * uiScale, getRadius() * uiScale);
+        HudDrag.handleScroll("hud_inventory", inventoryScale, x, y, width * uiScale, height * uiScale, 0.65F, 1.8F);
+    }
+
+    private float animateNightBloomInventorySlot(int index, boolean occupied, float response) {
+        float target = occupied ? 1.0F : 0.0F;
+        float previous = nightBloomInventorySlotAnimations[index];
+        float next = previous + (target - previous) * response;
+        nightBloomInventorySlotAnimations[index] = next;
+        return next;
+    }
+
+    private void drawInventory(int screenWidth, int screenHeight, float factor) {
+        if (getSelectedStyle() == HudStyle.NIGHT_BLOOM) {
+            drawNightBloomInventory(screenWidth, screenHeight, factor);
+            return;
+        }
         if (useVapeStyle()) {
             drawVapeInventory(screenWidth, screenHeight);
             return;
@@ -511,10 +1081,16 @@ public class HUD extends Module {
     private void drawModuleList(int screenWidth, int screenHeight, float factor) {
         List<Module> modules = getHudModules();
         moduleAnimations.keySet().retainAll(modules);
-        if (hudStyle.getValue() == HudStyle.OLD) {
+        if (getSelectedStyle() == HudStyle.OLD) {
+            clearNightBloomModuleMotions();
             drawVapeModuleList(screenWidth, screenHeight, factor, modules);
             return;
         }
+        if (getSelectedStyle() == HudStyle.NIGHT_BLOOM) {
+            drawNightBloomModuleList(screenWidth, screenHeight, factor, modules);
+            return;
+        }
+        clearNightBloomModuleMotions();
 
         final boolean sakura = arrayListTheme.getValue() == ArrayListTheme.SAKURA;
         final CFontRenderer font = sakura ? FontLoaders.C14 : FontLoaders.C18;
@@ -774,7 +1350,7 @@ public class HUD extends Module {
         HudDrag.handleScroll("hud_module_list", moduleListScale, pos[0], pos[1], listW * uiScale, listH * uiScale, 0.65f, 1.8f);
     }
 
-    private void drawPotionEffects() {
+    private void drawPotionEffects(float factor) {
         Collection<PotionEffect> activeEffects = mc.thePlayer.getActivePotionEffects();
         if ((activeEffects == null || activeEffects.isEmpty()) && !HudDrag.isEditMode()) {
             return;
@@ -789,6 +1365,11 @@ public class HUD extends Module {
                 return second.getDuration() - first.getDuration();
             }
         });
+
+        if (getSelectedStyle() == HudStyle.NIGHT_BLOOM) {
+            drawNightBloomPotionEffects(effects, factor);
+            return;
+        }
 
         if (useVapeStyle()) {
             drawVapePotionEffects(effects);
@@ -926,16 +1507,11 @@ public class HUD extends Module {
     }
 
     private void drawTextGlow(CFontRenderer font, String text, float x, float y, float alpha) {
-        int wideGlow = withAlpha(SAKURA, Math.round(28.0f * alpha));
-        int nearGlow = withAlpha(0xFFFFBED8, Math.round(48.0f * alpha));
-        font.drawString(text, x - 0.88f, y, wideGlow);
-        font.drawString(text, x + 0.88f, y, wideGlow);
-        font.drawString(text, x, y - 0.88f, wideGlow);
-        font.drawString(text, x, y + 0.88f, wideGlow);
-        font.drawString(text, x - 0.50f, y - 0.50f, nearGlow);
-        font.drawString(text, x + 0.50f, y - 0.50f, nearGlow);
-        font.drawString(text, x - 0.50f, y + 0.50f, nearGlow);
-        font.drawString(text, x + 0.50f, y + 0.50f, nearGlow);
+        if (alpha <= 0.0f) {
+            return;
+        }
+        font.drawGlowString(text, x, y, withAlpha(SAKURA, Math.round(186.0f * alpha)),
+                0.72f, GlowProfile.TEXT);
     }
 
     private void drawSakuraFlower(float centerX, float centerY, float size, float alpha) {
@@ -1189,7 +1765,8 @@ public class HUD extends Module {
 
     private void drawGlowIfEnabled(float x, float y, float x2, float y2, float radius, int glowColor) {
         if (Boolean.TRUE.equals(glow.getValue()) && Boolean.TRUE.equals(backgrounds.getValue())) {
-            RenderUtil.drawGlowAround(x, y, x2, y2, radius, glowColor, 1.0f);
+            RenderServices.glow().queueRoundedRect(x, y, x2, y2, radius, glowColor,
+                    0.70f, GlowProfile.PANEL);
         }
     }
 
@@ -1494,6 +2071,14 @@ public class HUD extends Module {
         return value;
     }
 
+    private void clearNightBloomModuleMotions() {
+        nightBloomModuleMotions.clear();
+        nightBloomModuleEntries.clear();
+        nightBloomVisibleModuleScratch.clear();
+        nightBloomModuleRenderScratch.clear();
+        nightBloomModuleClock.reset();
+    }
+
     private float animationFactor(long now) {
         float delta = Math.max(1.0f, Math.min(50.0f, now - lastFrameMS));
         lastFrameMS = now;
@@ -1541,6 +2126,16 @@ public class HUD extends Module {
             this.sideText = sideText == null ? "" : sideText;
             this.sideWidth = sideWidth;
             this.fullText = fullText == null ? "" : fullText;
+        }
+    }
+
+    private static final class NightBloomModuleRenderEntry {
+        private final ModuleListEntry entry;
+        private final NightBloomModuleRowMotion.Snapshot snapshot;
+
+        private NightBloomModuleRenderEntry(ModuleListEntry entry, NightBloomModuleRowMotion.Snapshot snapshot) {
+            this.entry = entry;
+            this.snapshot = snapshot;
         }
     }
 
@@ -1605,6 +2200,39 @@ public class HUD extends Module {
             return Boolean.TRUE.equals(instance.glow.getValue());
         }
         return false;
+    }
+
+    // Night Bloom keeps its halo on glyphs, so a small boost improves legibility
+    // without reintroducing a glowing panel edge.
+    private static final float NIGHT_BLOOM_GLOW_STRENGTH_BOOST = 0.16F;
+
+    public static void drawNightBloomText(CFontRenderer font, String text, double x, double y,
+                                          int textColor, int glowColor, float glowStrength) {
+        drawNightBloomGlyph(font, text, x, y, textColor, glowColor, glowStrength, GlowProfile.TEXT);
+    }
+
+    public static void drawNightBloomCenteredIcon(String icon, CFontRenderer font,
+                                                   float centerX, float centerY,
+                                                   int textColor, int glowColor, float glowStrength) {
+        float x = centerX - font.getStringWidth(icon) / 2.0F + ClickGuiIcons.visualOffsetX(icon);
+        float y = centerY - font.getHeight() / 2.0F + 2.0F + ClickGuiIcons.visualOffsetY(icon);
+        drawNightBloomGlyph(font, icon, x, y, textColor, glowColor, glowStrength, GlowProfile.ACCENT);
+    }
+
+    private static void drawNightBloomGlyph(CFontRenderer font, String text, double x, double y,
+                                            int textColor, int glowColor, float glowStrength,
+                                            GlowProfile profile) {
+        if (font == null || text == null || text.length() == 0) {
+            return;
+        }
+        if (isGlowEnabled() && RenderServices.glow().isFrameOpen()
+                && glowStrength > 0.0F && (glowColor >>> 24) > 0) {
+            float resolvedStrength = Math.min(1.0F,
+                    Math.max(0.0F, glowStrength + NIGHT_BLOOM_GLOW_STRENGTH_BOOST));
+            font.drawStringWithGlow(text, x, y, textColor, glowColor, resolvedStrength, profile);
+            return;
+        }
+        font.drawString(text, (float) x, (float) y, textColor);
     }
 
     public static boolean isHudFrostedGlassEnabled() {
@@ -1687,6 +2315,13 @@ public class HUD extends Module {
     public static boolean isNotificationSakura() {
         if (instance != null && instance.notificationTheme != null) {
             return instance.notificationTheme.getValue() == NotificationTheme.SAKURA;
+        }
+        return false;
+    }
+
+    public static boolean isNotificationNightBloom() {
+        if (instance != null && instance.notificationTheme != null) {
+            return instance.notificationTheme.getValue() == NotificationTheme.NIGHT_BLOOM;
         }
         return false;
     }

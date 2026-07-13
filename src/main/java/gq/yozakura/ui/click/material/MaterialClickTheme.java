@@ -1,6 +1,7 @@
 package gq.yozakura.ui.click.material;
 
 import gq.yozakura.util.animation.AnimationUtil;
+import gq.yozakura.engine.render.ui.VisualPalette;
 
 /**
  * MaterialClickGui 的颜色与透明度工具。
@@ -9,19 +10,38 @@ import gq.yozakura.util.animation.AnimationUtil;
  * 让 ClickGUI 模块里的透明度配置可以继续生效。</p>
  */
 final class MaterialClickTheme {
-    static final int PRIMARY = 0xFFD0BCFF;
-    static final int ON_PRIMARY = 0xFF381E72;
-    static final int PRIMARY_CONTAINER = 0xFF4F378B;
-    static final int ON_PRIMARY_CONTAINER = 0xFFEADDFF;
-    static final int TEXT = 0xFFE6E1E5;
-    static final int MUTED = 0xFFCAC4D0;
-    static final int SURFACE = 0xFF141218;
-    static final int SURFACE_VARIANT = 0xFF49454F;
-    static final int CARD_SURFACE = 0xFF101010;
-    static final int CARD_HOVER = 0xFF181818;
-    static final int ACTIVE_CARD = 0xFF46317C;
-    static final int BACKDROP = 0xFF0B080F;
-    static final int OUTLINE = 0xFFFFFFFF;
+    static int PRIMARY = 0xFFD0BCFF;
+    static int ON_PRIMARY = 0xFF381E72;
+    static int PRIMARY_CONTAINER = 0xFF4F378B;
+    static int ON_PRIMARY_CONTAINER = 0xFFEADDFF;
+    static int TEXT = 0xFFE6E1E5;
+    static int MUTED = 0xFFCAC4D0;
+    static int SURFACE = 0xFF141218;
+    static int SURFACE_VARIANT = 0xFF49454F;
+    static int CARD_SURFACE = 0xFF101010;
+    static int CARD_HOVER = 0xFF181818;
+    static int ACTIVE_CARD = 0xFF46317C;
+    static int BACKDROP = 0xFF0B080F;
+    static int OUTLINE = 0xFFFFFFFF;
+
+    static void applyPalette(VisualPalette palette) {
+        if (palette == null) {
+            return;
+        }
+        PRIMARY = palette.getAccentPrimary();
+        ON_PRIMARY = palette.getSurface();
+        PRIMARY_CONTAINER = palette.getSurfaceOverlay();
+        ON_PRIMARY_CONTAINER = palette.getTextPrimary();
+        TEXT = palette.getTextPrimary();
+        MUTED = palette.getTextSecondary();
+        SURFACE = palette.getSurface();
+        SURFACE_VARIANT = palette.getSurfaceRaised();
+        CARD_SURFACE = palette.getSurface();
+        CARD_HOVER = palette.getSurfaceRaised();
+        ACTIVE_CARD = palette.getSurfaceOverlay();
+        BACKDROP = palette.getCanvas();
+        OUTLINE = palette.getBorderSubtle();
+    }
 
     private float alpha = 1.0f;
 

@@ -4,7 +4,6 @@ import gq.yozakura.core.Client;
 import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.module.Module;
 import gq.yozakura.module.render.ClickGUI;
-import gq.yozakura.module.render.HUD;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.engine.font.FontLoaders;
 import gq.yozakura.engine.render.ui.RenderServices;
@@ -153,7 +152,7 @@ final class ClickGuiSidePanel {
                 gui.withAlpha(gui.guiColors().glassBorder, gui.getAlpha(gui.guiColors().glassBorder) * gui.guiAlpha));
         // 用户头像图标
         gui.drawSoftRect(x + 10.0f, y + 6.0f, x + 26.0f, y + 22.0f, 5.0f,
-                gui.withAlpha(new Color(81, 87, 103, 220).getRGB(), 220.0f * gui.guiAlpha));
+                gui.withAlpha(gui.guiColors().glassFillSoft, 220.0f * gui.guiAlpha));
         gui.drawCenteredIcon(FontLoaders.ICON_USER, FontLoaders.I14, x + 18.0f, y + 14.0f,
                 gui.withAlpha(gui.guiColors().text, 235.0f * gui.guiAlpha));
         // 用户名和 Premium 标签
@@ -175,7 +174,7 @@ final class ClickGuiSidePanel {
         drawPanelTitle(FontLoaders.ICON_INFO, "Statistics", y + 13.0f);
         // 三列状态数据
         drawStat("FPS", gui.getLiveFpsText(), gui.sideX + 12.0f, y + 32.0f, gui.guiColors().text);
-        drawStat("Ping", gui.getPingText(), gui.sideX + 68.0f, y + 32.0f, new Color(93, 180, 115).getRGB());
+        drawStat("Ping", gui.getPingText(), gui.sideX + 68.0f, y + 32.0f, gui.guiColors().accent);
         drawStat("Modules", gui.getEnabledModules() + "/" + ModuleManager.getModules().size(), gui.sideX + 122.0f, y + 32.0f,
                 gui.guiColors().accent);
         // FPS 波形图
@@ -198,7 +197,7 @@ final class ClickGuiSidePanel {
 
         // 绘制基线
         RenderServices.shapes().line(graphX, graphBottom, graphX + graphW, graphBottom, 0.55f,
-                gui.withAlpha(new Color(105, 128, 148).getRGB(), 32.0f * gui.guiAlpha));
+                gui.withAlpha(gui.guiColors().glassBorder, 32.0f * gui.guiAlpha));
         // 采样不足时绘制水平线
         if (count < 2) {
             float yMid = graphBottom - graphH * 0.48f;
@@ -322,23 +321,24 @@ final class ClickGuiSidePanel {
 
         float swatchX = gui.sideX + 15.0f;
         float swatchY = y + 37.0f;
-        drawThemeSwatch(HUD.Theme.SAKURA, swatchX, swatchY, 0xFFE56B9D, mouseX, mouseY);
-        drawThemeSwatch(HUD.Theme.LIGHT, swatchX + 29.0f, swatchY, 0xFFF8F8FA, mouseX, mouseY);
-        drawThemeSwatch(HUD.Theme.DARK, swatchX + 58.0f, swatchY, 0xFF282836, mouseX, mouseY);
-        drawThemeSwatch(HUD.Theme.GRAY, swatchX + 87.0f, swatchY, 0xFF8E949D, mouseX, mouseY);
-        drawDecorSwatch(swatchX + 116.0f, swatchY, 0xFFFFFFFF);
+        drawThemeSwatch(ClickGUI.Palette.NIGHT_BLOOM, swatchX, swatchY, 0xFFE98BC1, mouseX, mouseY);
+        drawThemeSwatch(ClickGUI.Palette.SAKURA, swatchX + 29.0f, swatchY, 0xFFE56B9D, mouseX, mouseY);
+        drawThemeSwatch(ClickGUI.Palette.OCEAN, swatchX + 58.0f, swatchY, 0xFF4CC8FF, mouseX, mouseY);
+        drawThemeSwatch(ClickGUI.Palette.GRAPHITE, swatchX + 87.0f, swatchY, 0xFFA7C7E7, mouseX, mouseY);
+        drawThemeSwatch(ClickGUI.Palette.CUSTOM, swatchX + 116.0f, swatchY,
+                ClickGUI.currentPalette().getAccentPrimary(), mouseX, mouseY);
 
         float previewX = gui.sideX + 15.0f;
         float previewY = y + 64.0f;
         float previewW = gui.sideW - 30.0f;
         RenderServices.shapes().rounded(previewX, previewY, previewX + previewW, previewY + 34.0f, 6.0f,
-                gui.withAlpha(new Color(255, 235, 245).getRGB(), 230.0f * gui.guiAlpha));
+                gui.withAlpha(gui.guiColors().glassFill, 230.0f * gui.guiAlpha));
         RenderServices.shapes().horizontalGradient(previewX + 2.0f, previewY + 2.0f,
                 previewX + previewW - 2.0f, previewY + 32.0f,
-                gui.withAlpha(new Color(255, 210, 230).getRGB(), 158.0f * gui.guiAlpha),
-                gui.withAlpha(new Color(190, 222, 252).getRGB(), 138.0f * gui.guiAlpha));
+                gui.withAlpha(gui.guiColors().accent, 158.0f * gui.guiAlpha),
+                gui.withAlpha(gui.guiColors().detailSelectedBorder, 138.0f * gui.guiAlpha));
         RenderServices.shapes().circle(previewX + previewW * 0.72f, previewY + 16.0f, 0, 360, 16.0f,
-                gui.withAlpha(new Color(255, 255, 255).getRGB(), 52.0f * gui.guiAlpha));
+                gui.withAlpha(gui.guiColors().text, 52.0f * gui.guiAlpha));
 
         float glassY = y + 105.0f;
         boolean glassEnabled = Boolean.TRUE.equals(ClickGUI.glassBackground.getValue());
@@ -363,7 +363,7 @@ final class ClickGuiSidePanel {
             RenderServices.shapes().shadow(gui.sideX + 15.0f, buttonY, gui.sideX + gui.sideW - 15.0f, buttonY + 15.0f,
                     5.0f, gui.withAlpha(gui.guiColors().accent, 22.0f * buttonHover * gui.guiAlpha), 4, 2.0f);
         }
-        gui.drawCenteredText("Theme  " + formatTheme(HUD.getTheme()), gui.sideX + 18.0f, buttonY + 3.0f + textShift,
+        gui.drawCenteredText("Palette  " + formatPalette(ClickGUI.palette.getValue()), gui.sideX + 18.0f, buttonY + 3.0f + textShift,
                 gui.sideX + gui.sideW - 18.0f, buttonY + 14.0f,
                 gui.withAlpha(gui.guiColors().text, (218.0f + 24.0f * buttonHover) * gui.guiAlpha));
 
@@ -393,17 +393,17 @@ final class ClickGuiSidePanel {
                 gui.withAlpha(gui.guiColors().text, (214.0f + 28.0f * resetHover) * gui.guiAlpha));
     }
 
-    private void drawThemeSwatch(HUD.Theme theme, float x, float y, int color, int mouseX, int mouseY) {
-        boolean selected = HUD.getTheme() == theme;
+    private void drawThemeSwatch(ClickGUI.Palette palette, float x, float y, int color, int mouseX, int mouseY) {
+        boolean selected = ClickGUI.palette.getValue() == palette;
         boolean hovered = YozakuraClickGui.isHovered(x - 4.0f, y - 4.0f, x + 18.0f, y + 18.0f, mouseX, mouseY);
-        Float current = gui.themeSwatchProgress.get(theme);
+        Float current = gui.themeSwatchProgress.get(palette);
         float progress = current == null ? (selected ? 1.0f : 0.0f) : current.floatValue();
         progress = gui.animate(progress, selected ? 1.0f : 0.0f, 0.18f);
-        gui.themeSwatchProgress.put(theme, progress);
-        Float currentHover = gui.designSwatchHoverProgress.get(theme);
+        gui.themeSwatchProgress.put(palette, progress);
+        Float currentHover = gui.designSwatchHoverProgress.get(palette);
         float hover = currentHover == null ? 0.0f : currentHover.floatValue();
         hover = gui.animate(hover, hovered ? 1.0f : 0.0f, 0.20f);
-        gui.designSwatchHoverProgress.put(theme, hover);
+        gui.designSwatchHoverProgress.put(palette, hover);
 
         float eased = gui.easeSmooth(progress);
         float hoverEase = gui.easeSmooth(hover);
@@ -419,16 +419,11 @@ final class ClickGuiSidePanel {
                 gui.withAlpha(color, (210.0f + 35.0f * progress + 18.0f * hover) * gui.guiAlpha),
                 gui.withAlpha(selected ? gui.guiColors().accent : gui.guiColors().glassBorder,
                         (70.0f + 120.0f * progress + 48.0f * hover) * gui.guiAlpha));
-        if (theme == HUD.Theme.LIGHT || theme == HUD.Theme.GRAY) {
+        if (palette == ClickGUI.Palette.SAKURA) {
             RenderServices.shapes().roundedBorder(px + 1.0f, py + 1.0f, px + size - 1.0f, py + size - 1.0f, 3.0f, 0.5f,
                     gui.withAlpha(0x00FFFFFF, 0.0f),
                     gui.withAlpha(0xFFB8C0CC, 80.0f * gui.guiAlpha));
         }
-    }
-
-    private void drawDecorSwatch(float x, float y, int color) {
-        RenderServices.shapes().rounded(x, y, x + 14.0f, y + 14.0f, 4.0f,
-                gui.withAlpha(color, 220.0f * gui.guiAlpha));
     }
 
     private boolean handleDesignClick(int mouseX, int mouseY) {
@@ -436,13 +431,13 @@ final class ClickGuiSidePanel {
         float y = getPanelY(getDesignY(), ClickGUI.sideDesignOffsetY);
         float swatchX = xBase + 15.0f;
         float swatchY = y + 37.0f;
-        HUD.Theme[] themes = new HUD.Theme[]{HUD.Theme.SAKURA, HUD.Theme.LIGHT, HUD.Theme.DARK, HUD.Theme.GRAY};
-        for (int i = 0; i < themes.length; i++) {
+        ClickGUI.Palette[] palettes = ClickGUI.Palette.values();
+        for (int i = 0; i < palettes.length; i++) {
             float x = swatchX + i * 29.0f;
             if (YozakuraClickGui.isHovered(x - 4.0f, swatchY - 4.0f, x + 18.0f, swatchY + 18.0f, mouseX, mouseY)) {
-                HUD.setTheme(themes[i]);
+                ClickGUI.palette.setValue(palettes[i]);
                 gui.themeFadeProgress = 1.0f;
-                gui.addToast("Theme -> " + formatTheme(themes[i]));
+                gui.addToast("Palette -> " + formatPalette(palettes[i]));
                 return true;
             }
         }
@@ -561,16 +556,20 @@ final class ClickGuiSidePanel {
         void draw(float offsetX, float offsetY);
     }
 
-    private String formatTheme(HUD.Theme theme) {
-        if (theme == HUD.Theme.SAKURA) {
-            return "Sakura";
+    private String formatPalette(ClickGUI.Palette palette) {
+        switch (palette) {
+            case NIGHT_BLOOM:
+                return "Night Bloom";
+            case SAKURA:
+                return "Sakura";
+            case OCEAN:
+                return "Ocean";
+            case GRAPHITE:
+                return "Graphite";
+            case CUSTOM:
+                return "Custom";
+            default:
+                throw new IllegalArgumentException("Unsupported palette: " + palette);
         }
-        if (theme == HUD.Theme.LIGHT) {
-            return "Light";
-        }
-        if (theme == HUD.Theme.GRAY) {
-            return "Gray";
-        }
-        return "Dark";
     }
 }

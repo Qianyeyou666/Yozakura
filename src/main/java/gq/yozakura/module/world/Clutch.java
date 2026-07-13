@@ -155,18 +155,6 @@ public class Clutch extends Module {
         }
     }
 
-    @EventTarget
-    public void onMoveInput(MoveInputEvent event) {
-        if (!getState() || !isInGame() || !Boolean.TRUE.equals(moveFix.getValue())) {
-            return;
-        }
-        if (RotationState.isActived()
-                && RotationState.getPriority() == ROTATION_PRIORITY
-                && MoveUtil.isForwardPressed()) {
-            MoveUtil.fixStrafe(RotationState.getSmoothedYaw());
-        }
-    }
-
     private boolean canRun() {
         return isInGame()
                 && mc.currentScreen == null

@@ -168,6 +168,7 @@
       const next = JSON.parse(text);
       state.lastStateText = text;
       state.data = next;
+      applyPalette(next.palette);
       if (state.selectedModule && !findModule(state.selectedModule)) {
         state.selectedModule = "";
         state.detailOpen = false;
@@ -187,6 +188,30 @@
     els.statusText.textContent = "Connected";
     els.clientName.textContent = data.username || "Sakura User";
     els.clientInfo.textContent = PORT ? `127.0.0.1:${PORT}` : `127.0.0.1:${data.port || ""}`;
+  }
+
+  function applyPalette(palette) {
+    if (!palette) {
+      return;
+    }
+    const root = document.documentElement.style;
+    root.setProperty("--bg", palette.canvas);
+    root.setProperty("--bg-deep", palette.surface);
+    root.setProperty("--panel", palette.surface);
+    root.setProperty("--panel-strong", palette.raised);
+    root.setProperty("--panel-soft", palette.overlay);
+    root.setProperty("--line", palette.line);
+    root.setProperty("--line-hot", palette.focus);
+    root.setProperty("--text", palette.text);
+    root.setProperty("--muted", palette.muted);
+    root.setProperty("--dim", palette.dim);
+    root.setProperty("--pink", palette.accent);
+    root.setProperty("--pink-strong", palette.accentAlt);
+    root.setProperty("--pink-soft", palette.accentSoft);
+    root.setProperty("--violet", palette.accentAlt);
+    root.setProperty("--green", palette.success);
+    root.setProperty("--shadow", `0 28px 80px ${palette.shadow}`);
+    document.body.setAttribute("data-palette", palette.name || "NIGHT_BLOOM");
   }
 
   function syncOffline() {
@@ -349,8 +374,31 @@
     if (!values.length) {
       return `<div class="empty-state">No settings on this module.</div>`;
     }
-    return values.map((value) => {
+    return values.map((value, index) => {
+      const color = colorGroup(values, index);
+      if (color) {
+        return `
+          <div class="value-card">
+            <div class="value-head">
+              <strong>${escapeHtml(color.label)}</strong>
+              <input
+                type="color"
+                value="${escapeHtml(color.hex)}"
+                data-value-color-red="${escapeHtml(color.red.name)}"
+                data-value-color-green="${escapeHtml(color.green.name)}"
+                data-value-color-blue="${escapeHtml(color.blue.name)}"
+              />
+            </div>
+          </div>
+        `;
+      }
+      if (isColorContinuation(values, index)) {
+        return "";
+      }
       const type = String(value.type || "").toLowerCase();
+      if (type === "number") {
+        return "";
+      }
       if (type === "boolean") {
         return `
           <div class="value-card">
@@ -418,6 +466,35 @@
     }).join("");
   }
 
+  function colorGroup(values, index) {
+    const red = values[index];
+    const green = values[index + 1];
+    const blue = values[index + 2];
+    const base = colorChannelBase(red, "red");
+    if (base === null || base !== colorChannelBase(green, "green") || base !== colorChannelBase(blue, "blue")) {
+      return null;
+    }
+    const label = String(red.displayName || red.name || "Color").replace(/\s*red\s*$/i, "") || "Color";
+    return { red, green, blue, label, hex: rgbHex(red.current, green.current, blue.current) };
+  }
+
+  function isColorContinuation(values, index) {
+    return !!colorGroup(values, index - 1) || !!colorGroup(values, index - 2);
+  }
+
+  function colorChannelBase(value, channel) {
+    if (!value || String(value.type || "").toLowerCase() !== "number") {
+      return null;
+    }
+    const name = String(value.name || value.displayName || "").replace(/[\s_-]/g, "").toLowerCase();
+    return name.endsWith(channel) ? name.slice(0, -channel.length) : null;
+  }
+
+  function rgbHex(red, green, blue) {
+    const channel = (value) => Math.max(0, Math.min(255, Math.round(Number(value) || 0)));
+    return `#${[channel(red), channel(green), channel(blue)].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+  }
+
   function bindValueEvents(module) {
     els.valueList.querySelectorAll("[data-value-toggle]").forEach((button) => {
       button.addEventListener("click", (event) => {
@@ -453,6 +530,31 @@
           rememberScroll();
           postValue(module, value, button.getAttribute("data-option") || button.textContent.trim());
         }
+      });
+    });
+    els.valueList.querySelectorAll("[data-value-color-red]").forEach((input) => {
+      input.addEventListener("change", () => {
+        const hex = String(input.value || "").replace("#", "");
+        if (!/^[0-9a-f]{6}$/i.test(hex)) {
+          return;
+        }
+        const channels = [
+          parseInt(hex.slice(0, 2), 16),
+          parseInt(hex.slice(2, 4), 16),
+          parseInt(hex.slice(4, 6), 16)
+        ];
+        const names = [
+          input.getAttribute("data-value-color-red"),
+          input.getAttribute("data-value-color-green"),
+          input.getAttribute("data-value-color-blue")
+        ];
+        rememberScroll();
+        names.forEach((name, index) => {
+          const value = getValue(module, name);
+          if (value) {
+            postValue(module, value, channels[index]);
+          }
+        });
       });
     });
   }

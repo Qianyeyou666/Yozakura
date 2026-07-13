@@ -3,6 +3,7 @@ package gq.yozakura.module.render;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.Module;
 import gq.yozakura.module.combat.AntiBot;
+import gq.yozakura.engine.render.ui.VisualPalette;
 import gq.yozakura.util.color.ColorUtil;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
@@ -25,6 +26,7 @@ import java.util.Set;
 public class Chams extends Module {
     private final Option<Boolean> throughWalls = new Option<Boolean>("Through Walls", "ThroughWalls", true);
     private final Option<Boolean> textured = new Option<Boolean>("Textured", "Textured", false);
+    private final Option<Boolean> paletteColors = new Option<Boolean>("Palette Colors", "PaletteColors", true);
     private final Option<Boolean> rainbow = new Option<Boolean>("Rainbow", "Rainbow", true);
     private final Option<Boolean> players = new Option<Boolean>("Players", "Players", true);
     private final Option<Boolean> mobs = new Option<Boolean>("Mobs", "Mobs", false);
@@ -38,7 +40,11 @@ public class Chams extends Module {
 
     public Chams() {
         super("Chams", Keyboard.KEY_NONE, ModuleType.Render, "Render entities with colored chams");
-        this.addValues(throughWalls, textured, rainbow, players, mobs, animals, invisible, red, green, blue, alpha);
+        rainbow.visibleWhen(() -> !Boolean.TRUE.equals(paletteColors.getValue()));
+        red.visibleWhen(() -> !Boolean.TRUE.equals(paletteColors.getValue()));
+        green.visibleWhen(() -> !Boolean.TRUE.equals(paletteColors.getValue()));
+        blue.visibleWhen(() -> !Boolean.TRUE.equals(paletteColors.getValue()));
+        this.addValues(throughWalls, textured, paletteColors, rainbow, players, mobs, animals, invisible, red, green, blue, alpha);
         Chinese = "透视染色";
     }
 
@@ -114,7 +120,10 @@ public class Chams extends Module {
 
     private int getColor(EntityLivingBase entity) {
         if (entity.hurtTime > 0) {
-            return 0xFFFF5E70;
+            return ClickGUI.currentPalette().getEntityHurt();
+        }
+        if (Boolean.TRUE.equals(paletteColors.getValue())) {
+            return paletteColorFor(entity);
         }
         if (Boolean.TRUE.equals(rainbow.getValue())) {
             return ColorUtil.getRainbow().getRGB();
@@ -123,6 +132,20 @@ public class Chams extends Module {
         int g = clampColor(green.getValue().intValue());
         int b = clampColor(blue.getValue().intValue());
         return 0xFF000000 | r << 16 | g << 8 | b;
+    }
+
+    private int paletteColorFor(EntityLivingBase entity) {
+        VisualPalette palette = ClickGUI.currentPalette();
+        if (entity.isInvisible()) {
+            return palette.getEntityInvisible();
+        }
+        if (entity instanceof EntityPlayer) {
+            return palette.getEntityPlayer();
+        }
+        if (entity instanceof EntityAnimal || entity instanceof EntityWaterMob || entity instanceof EntityAmbientCreature) {
+            return palette.getEntityAnimal();
+        }
+        return palette.getEntityMob();
     }
 
     private int clampColor(int value) {

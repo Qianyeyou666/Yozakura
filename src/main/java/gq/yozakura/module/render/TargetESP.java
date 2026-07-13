@@ -4,9 +4,11 @@ import gq.yozakura.event.bridge.AttackEvent;
 import gq.yozakura.event.bridge.Render3DEvent;
 import gq.yozakura.event.bridge.RenderFrameGuard;
 import gq.yozakura.event.bus.EventTarget;
+import gq.yozakura.engine.render.GLStateManager;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.Module;
 import gq.yozakura.manager.ModuleManager;
+import gq.yozakura.engine.render.ui.VisualPalette;
 import gq.yozakura.module.combat.AntiBot;
 import gq.yozakura.module.combat.Backtrack;
 import gq.yozakura.module.combat.KillAura;
@@ -42,7 +44,8 @@ public class TargetESP extends Module {
         CAPSULE,
         COSMIC,
         AURORA,
-        SAKURA
+        SAKURA,
+        NIGHT_BLOOM
     }
 
     private final Mode<EspMode> mode = new Mode<EspMode>("Mode", "Mode", EspMode.values(), EspMode.VAPE);
@@ -292,40 +295,51 @@ public class TargetESP extends Module {
         float hurtPulse = target.hurtTime > 0 ? 1.0f : 0.0f;
         float alphaScale = fade * alpha.getValue().floatValue() / 255.0f;
         EspMode current = mode.getValue();
-        int primary = current == EspMode.AURORA ? 0xFF49D6FF
+        VisualPalette palette = ClickGUI.currentPalette();
+        int primary = current == EspMode.NIGHT_BLOOM
+                ? (target.hurtTime > 0 ? palette.getEntityHurt() : palette.getAccentAlt())
+                : current == EspMode.AURORA ? 0xFF49D6FF
                 : current == EspMode.SAKURA ? 0xFFFF9FCA
                 : target.hurtTime > 0 ? 0xFFFF6270
                 : current == EspMode.COSMIC ? rainbowColor(time * 0.08f, 0.0f) : 0xFF79C9FF;
-        int secondary = current == EspMode.COSMIC ? rainbowColor(time * 0.08f, 0.38f)
+        int secondary = current == EspMode.NIGHT_BLOOM ? nightBloomHealthColor(target, palette)
+                : current == EspMode.COSMIC ? rainbowColor(time * 0.08f, 0.38f)
                 : current == EspMode.SAKURA ? 0xFFFFFFFF
                 : current == EspMode.AURORA ? 0xFFFFFFFF : healthColor(target);
 
         int previousProgram = currentProgram();
-        GL11.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_CURRENT_BIT | GL11.GL_COLOR_BUFFER_BIT
-                | GL11.GL_DEPTH_BUFFER_BIT | GL11.GL_HINT_BIT | GL11.GL_LINE_BIT
-                | GL11.GL_POLYGON_BIT | GL11.GL_TEXTURE_BIT);
-        GL11.glPushMatrix();
-        GL11.glTranslated(x, y, z);
-        GL11.glDisable(GL11.GL_TEXTURE_2D);
-        GL11.glDisable(GL11.GL_ALPHA_TEST);
-        GL11.glDisable(GL11.GL_CULL_FACE);
-        GL11.glEnable(GL11.GL_BLEND);
-        GL11.glEnable(GL11.GL_LINE_SMOOTH);
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        GL11.glDepthMask(false);
-        if (Boolean.TRUE.equals(throughWalls.getValue())) {
-            GL11.glDisable(GL11.GL_DEPTH_TEST);
-        }
-        boolean usingShader = Boolean.TRUE.equals(shader.getValue())
-                && TargetShader.begin(primary, secondary, alphaScale, time,
-                current == EspMode.AURORA || current == EspMode.SAKURA ? 0.0f : hurtPulse);
+        boolean attribStatePushed = false;
+        boolean matrixPushed = false;
         try {
+            GL11.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_CURRENT_BIT | GL11.GL_COLOR_BUFFER_BIT
+                    | GL11.GL_DEPTH_BUFFER_BIT | GL11.GL_HINT_BIT | GL11.GL_LINE_BIT
+                    | GL11.GL_POLYGON_BIT | GL11.GL_TEXTURE_BIT);
+            attribStatePushed = true;
+            GL11.glPushMatrix();
+            matrixPushed = true;
+            GL11.glTranslated(x, y, z);
+            GL11.glDisable(GL11.GL_TEXTURE_2D);
+            GL11.glDisable(GL11.GL_ALPHA_TEST);
+            GL11.glDisable(GL11.GL_CULL_FACE);
+            GL11.glEnable(GL11.GL_BLEND);
+            GL11.glEnable(GL11.GL_LINE_SMOOTH);
+            GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+            GL11.glDepthMask(false);
+            if (Boolean.TRUE.equals(throughWalls.getValue())) {
+                GL11.glDisable(GL11.GL_DEPTH_TEST);
+            }
+            if (current != EspMode.NIGHT_BLOOM && Boolean.TRUE.equals(shader.getValue())) {
+                TargetShader.begin(primary, secondary, alphaScale, time,
+                        current == EspMode.AURORA || current == EspMode.SAKURA ? 0.0f : hurtPulse);
+            }
             if (current == EspMode.COSMIC) {
                 drawCosmic(target, baseRadius, bodyHeight, alphaScale, time);
             } else if (current == EspMode.AURORA) {
                 drawAurora(target, baseRadius, bodyHeight, alphaScale, time);
             } else if (current == EspMode.SAKURA) {
                 drawSakuraPetals(baseRadius, bodyHeight, alphaScale, time);
+            } else if (current == EspMode.NIGHT_BLOOM) {
+                drawNightBloom(target, baseRadius, bodyHeight, alphaScale, time, palette);
             } else if (current == EspMode.VAPE || current == EspMode.CAPSULE) {
                 drawCapsule(baseRadius, bodyHeight, alphaScale, time);
                 drawVerticalMarkers(baseRadius, bodyHeight, alphaScale, time);
@@ -337,17 +351,7 @@ public class TargetESP extends Module {
                 drawHealthArc(target, bodyHeight + 0.12f, baseRadius + 0.13f, 0.032f, alphaScale);
             }
         } finally {
-            if (usingShader) {
-                TargetShader.end(previousProgram);
-            }
-            GL11.glDepthMask(true);
-            GL11.glPopMatrix();
-            GL11.glPopAttrib();
-            if (!usingShader) {
-                useProgram(previousProgram);
-            }
-            gq.yozakura.engine.render.GLStateManager.syncToCurrent();
-            net.minecraft.client.renderer.GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+            restoreTargetRenderState(previousProgram, matrixPushed, attribStatePushed);
         }
     }
 
@@ -363,6 +367,30 @@ public class TargetESP extends Module {
         try {
             GL20.glUseProgram(program);
         } catch (Throwable ignored) {
+        }
+    }
+
+    private static void restoreTargetRenderState(int previousProgram, boolean matrixPushed, boolean attribStatePushed) {
+        try {
+            useProgram(previousProgram);
+        } finally {
+            try {
+                if (matrixPushed) {
+                    GL11.glPopMatrix();
+                }
+            } finally {
+                try {
+                    if (attribStatePushed) {
+                        GL11.glPopAttrib();
+                    }
+                } finally {
+                    try {
+                        GLStateManager.syncToCurrent();
+                    } finally {
+                        net.minecraft.client.renderer.GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+                    }
+                }
+            }
         }
     }
 
@@ -387,6 +415,75 @@ public class TargetESP extends Module {
             double pz = Math.sin(angle) * (radius + 0.13f);
             GL11.glVertex3d(px, 0.04D, pz);
             GL11.glVertex3d(px, height + 0.04D, pz);
+        }
+        GL11.glEnd();
+    }
+
+    private void drawNightBloom(EntityLivingBase target, float radius, float height, float alpha, float time,
+                                VisualPalette palette) {
+        float breath = 1.0f + 0.045f * (float) Math.sin(time * 2.1f);
+        int health = nightBloomHealthColor(target, palette);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
+        drawNightBloomCapsule(radius * breath, height, alpha * 0.42f, time,
+                palette.getAccentAlt(), palette.getInfo());
+        drawNightBloomRing(0.025f, radius * 1.12f, 0.038f, 64, alpha * 0.92f,
+                time, palette.getAccentPrimary());
+        drawNightBloomRing(height * 0.52f, radius * 1.04f, 0.021f, 64, alpha * 0.48f,
+                time + 0.70f, palette.getGlowSecondary());
+        drawNightBloomRing(height + 0.055f, radius * 1.10f, 0.030f, 64, alpha * 0.70f,
+                time + 1.20f, health);
+        drawNightBloomHealthArc(target, height + 0.115f, radius * 1.17f, 0.030f, alpha, health);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+    }
+
+    private void drawNightBloomCapsule(float radius, float height, float alpha, float time,
+                                       int lowerColor, int upperColor) {
+        int segments = 48;
+        GL11.glBegin(GL11.GL_QUAD_STRIP);
+        for (int index = 0; index <= segments; index++) {
+            double angle = Math.PI * 2.0D * index / segments;
+            float pulse = 0.72f + 0.28f * (float) Math.sin(time * 3.0f + angle * 2.0D);
+            double x = Math.cos(angle) * radius;
+            double z = Math.sin(angle) * radius;
+            setColor(lowerColor, alpha * (0.16f + pulse * 0.09f));
+            GL11.glVertex3d(x, 0.0D, z);
+            setColor(upperColor, alpha * (0.20f + pulse * 0.13f));
+            GL11.glVertex3d(x, height, z);
+        }
+        GL11.glEnd();
+    }
+
+    private void drawNightBloomRing(float y, float radius, float thickness, int segments, float alpha,
+                                    float time, int color) {
+        GL11.glBegin(GL11.GL_QUAD_STRIP);
+        for (int index = 0; index <= segments; index++) {
+            double angle = Math.PI * 2.0D * index / segments;
+            float pulse = 0.76f + 0.24f * (float) Math.sin(time * 4.2f + angle * 2.0D);
+            double cosine = Math.cos(angle);
+            double sine = Math.sin(angle);
+            setColor(color, alpha * pulse);
+            GL11.glVertex3d(cosine * (radius - thickness), y, sine * (radius - thickness));
+            setColor(color, alpha * pulse * 0.55f);
+            GL11.glVertex3d(cosine * (radius + thickness), y, sine * (radius + thickness));
+        }
+        GL11.glEnd();
+    }
+
+    private void drawNightBloomHealthArc(EntityLivingBase target, float y, float radius, float thickness,
+                                         float alpha, int color) {
+        float health = MathHelper.clamp_float(target.getHealth() / Math.max(1.0f, target.getMaxHealth()), 0.0f, 1.0f);
+        int segments = Math.max(4, Math.round(72.0f * health));
+        double start = -Math.PI / 2.0D;
+        double end = start + Math.PI * 2.0D * health;
+        GL11.glBegin(GL11.GL_QUAD_STRIP);
+        for (int index = 0; index <= segments; index++) {
+            double angle = start + (end - start) * index / Math.max(1, segments);
+            double cosine = Math.cos(angle);
+            double sine = Math.sin(angle);
+            setColor(color, alpha * 0.95f);
+            GL11.glVertex3d(cosine * (radius - thickness), y, sine * (radius - thickness));
+            setColor(color, alpha * 0.36f);
+            GL11.glVertex3d(cosine * (radius + thickness), y, sine * (radius + thickness));
         }
         GL11.glEnd();
     }
@@ -1077,6 +1174,13 @@ public class TargetESP extends Module {
             GL11.glVertex3d(cos * (radius + thickness), y, sin * (radius + thickness));
         }
         GL11.glEnd();
+    }
+
+    private int nightBloomHealthColor(EntityLivingBase target, VisualPalette palette) {
+        float health = MathHelper.clamp_float(target.getHealth() / Math.max(1.0f, target.getMaxHealth()), 0.0f, 1.0f);
+        return health > 0.55f
+                ? interpolate(palette.getHealthMid(), palette.getHealthHigh(), (health - 0.55f) / 0.45f)
+                : interpolate(palette.getHealthLow(), palette.getHealthMid(), health / 0.55f);
     }
 
     private int healthColor(EntityLivingBase target) {

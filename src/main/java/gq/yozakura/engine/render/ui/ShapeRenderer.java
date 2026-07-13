@@ -91,6 +91,17 @@ public final class ShapeRenderer {
         RenderUtil.drawSoftShadow(x, y, x2, y2, radius, color, layers, spread);
     }
 
+    /**
+     * Draws a rounded shadow translated independently from the source panel.
+     * Offsets and spread are expressed in the same logical GUI units as the
+     * rectangle coordinates.
+     */
+    public void shadowOffset(float x, float y, float x2, float y2, float radius,
+                             float offsetX, float offsetY, int color, int layers, float blurSpread) {
+        RenderUtil.drawSoftShadowOffset(x, y, x2, y2, radius,
+                offsetX, offsetY, color, layers, blurSpread);
+    }
+
     public RenderContext context() {
         return context;
     }

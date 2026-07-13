@@ -4,10 +4,10 @@ import gq.yozakura.ui.click.ClickGuiIcons;
 import gq.yozakura.module.Module;
 import gq.yozakura.module.render.HUD;
 import gq.yozakura.util.color.ColorUtils;
-import gq.yozakura.util.render.RenderUtil;
 import gq.yozakura.util.time.TimerUtil;
 import gq.yozakura.engine.font.CFontRenderer;
 import gq.yozakura.engine.font.FontLoaders;
+import gq.yozakura.engine.render.glow.GlowProfile;
 import gq.yozakura.engine.render.ui.LiquidGlassSettings;
 import gq.yozakura.engine.render.ui.RenderServices;
 import net.minecraft.client.Minecraft;
@@ -47,6 +47,15 @@ public class Notification {
     private static final int SK_BORDER = 0xFFFFB7D1;
     private static final int SK_ACCENT = 0xFFFFB7D1;
     private static final int SK_ACCENT_ALT = 0xFFFF80B3;
+    private static final int NIGHT_BLOOM_PANEL_FILL = 0xFF16161A;
+    private static final int NIGHT_BLOOM_ICON_FILL = 0xFF202025;
+    private static final int NIGHT_BLOOM_PRIMARY = 0xFFFF4FC7;
+    private static final int NIGHT_BLOOM_SECONDARY = 0xFFEEEEEE;
+    private static final float NIGHT_BLOOM_PANEL_RADIUS = 4.0F;
+    private static final int NIGHT_BLOOM_DEPTH_SHADOW_COLOR = 0x73000000;
+    private static final float NIGHT_BLOOM_DEPTH_SHADOW_OFFSET_X = 0.0F;
+    private static final float NIGHT_BLOOM_DEPTH_SHADOW_OFFSET_Y = 0.0F;
+    private static final float NIGHT_BLOOM_DEPTH_SHADOW_BLUR_RADIUS = 9.0F;
     private static final LiquidGlassSettings SAKURA_GLASS_SETTINGS = LiquidGlassSettings.defaults()
             .withBlurRadius(18.0f)
             .withBlurDownscale(0.92f)
@@ -103,11 +112,13 @@ public class Notification {
         }
         animationY = lerp(animationY, offsetY, factor);
 
+        float drawWidth = renderWidth();
+        float drawHeight = renderHeight();
         float easedOut = ease(animationX);
-        float x1 = screenWidth - width - 9.0f + easedOut * (width + 16.0f);
-        float y1 = animationY - height;
-        float x2 = x1 + width;
-        float y2 = y1 + height;
+        float x1 = screenWidth - drawWidth - 9.0f + easedOut * (drawWidth + 16.0f);
+        float y1 = animationY - drawHeight;
+        float x2 = x1 + drawWidth;
+        float y2 = y1 + drawHeight;
         float bodyAlpha = 1.0f - Math.min(1.0f, animationX * 0.85f);
         int accent = getAccentColor();
         float progress = 1.0f - ColorUtils.clamp((now - createdAt) / (float) Math.max(1L, stayTime), 0.0f, 1.0f);
@@ -122,9 +133,15 @@ public class Notification {
             return;
         }
 
-        if (HUD.isGlowEnabled()) {
-            RenderUtil.drawGlowAround(x1, y1, x2, y2, 8.0f,
-                    withAlpha(accent, Math.round(220.0f * bodyAlpha)), 1.0f);
+        if (useNightBloomRenderer()) {
+            drawNightBloom(x1, y1, x2, y2,
+                    NightBloomNotificationLayout.progressForLifetime(now - createdAt, stayTime));
+            return;
+        }
+
+        if (HUD.isGlowEnabled() && isGlowFrameOpen()) {
+            RenderServices.glow().queueRoundedRect(x1, y1, x2, y2, 8.0f,
+                    withAlpha(accent, Math.round(220.0f * bodyAlpha)), 0.62f, GlowProfile.PANEL);
         }
         drawOldPanelBackground(x1, y1, x2, y2, 8.0f, 1.0f, bodyAlpha);
         RenderServices.shapes().horizontalGradient(x1 + 10.0f, y1 + 4.0f, x2 - 10.0f, y1 + 5.1f,
@@ -153,9 +170,9 @@ public class Notification {
 
     private void drawVape(float x1, float y1, float x2, float y2, float bodyAlpha, int accent, float progress) {
         float radius = 7.0f;
-        if (HUD.isGlowEnabled()) {
-            RenderUtil.drawGlowAround(x1, y1, x2, y2, radius,
-                    withAlpha(accent, Math.round(220.0f * bodyAlpha)), 1.0f);
+        if (HUD.isGlowEnabled() && isGlowFrameOpen()) {
+            RenderServices.glow().queueRoundedRect(x1, y1, x2, y2, radius,
+                    withAlpha(accent, Math.round(220.0f * bodyAlpha)), 0.62f, GlowProfile.PANEL);
         }
         drawVapePanelBackground(x1, y1, x2, y2, radius, bodyAlpha);
         RenderServices.shapes().horizontalGradient(x1 + 1.0f, y1 + 1.0f, x2 - 1.0f, y1 + 18.0f,
@@ -241,6 +258,50 @@ public class Notification {
                 Math.min(y2 - 1.0f, y1 + 10.0f), withAlpha(0xFFFFFFFF, Math.round(alpha * opacity)), 0x00FFFFFF);
     }
 
+    private void drawNightBloom(float x1, float y1, float x2, float y2, float progress) {
+        float alpha = NightBloomNotificationLayout.alphaForSlide(animationX);
+        if (alpha <= 0.002F) {
+            return;
+        }
+
+        NightBloomNotificationLayout.Layout layout = NightBloomNotificationLayout.create(x1, y1, x2, y2);
+
+        RenderServices.shapes().shadowOffset(x1, y1, x2, y2, NIGHT_BLOOM_PANEL_RADIUS,
+                NIGHT_BLOOM_DEPTH_SHADOW_OFFSET_X, NIGHT_BLOOM_DEPTH_SHADOW_OFFSET_Y,
+                withAlpha(NIGHT_BLOOM_DEPTH_SHADOW_COLOR, Math.round(115.0F * alpha)), 12,
+                NIGHT_BLOOM_DEPTH_SHADOW_BLUR_RADIUS);
+        RenderServices.shapes().rounded(x1, y1, x2, y2, NIGHT_BLOOM_PANEL_RADIUS,
+                withAlpha(NIGHT_BLOOM_PANEL_FILL, Math.round(220.0F * alpha)));
+
+        float iconLeft = layout.getIconLeft();
+        float iconTop = layout.getIconTop();
+        float iconSize = layout.getIconSize();
+        float iconCenterX = iconLeft + iconSize * 0.5F;
+        float iconCenterY = iconTop + iconSize * 0.5F;
+        RenderServices.shapes().circle(iconCenterX, iconCenterY, 0, 360, iconSize * 0.5F,
+                withAlpha(NIGHT_BLOOM_ICON_FILL, Math.round(217.0F * alpha)));
+        HUD.drawNightBloomCenteredIcon(getIcon(), FontLoaders.I16, iconCenterX, iconCenterY,
+                withAlpha(NIGHT_BLOOM_PRIMARY, Math.round(246.0F * alpha)),
+                withAlpha(NIGHT_BLOOM_PRIMARY, Math.round(156.0F * alpha)), 0.58F);
+
+        float panelWidth = x2 - x1;
+        String titleText = trim(getTitle(), FontLoaders.C16, panelWidth - 52.0F);
+        HUD.drawNightBloomText(FontLoaders.C16, titleText, layout.getTitleX(), layout.getTitleY(),
+                withAlpha(NIGHT_BLOOM_PRIMARY, Math.round(248.0F * alpha)),
+                withAlpha(NIGHT_BLOOM_PRIMARY, Math.round(94.0F * alpha)), 0.44F);
+        if (message.length() > 0) {
+            String messageText = trim(message, FontLoaders.C12, panelWidth - 52.0F);
+            HUD.drawNightBloomText(FontLoaders.C12, messageText, layout.getTitleX(), layout.getMessageY(),
+                    withAlpha(NIGHT_BLOOM_SECONDARY, Math.round(224.0F * alpha)),
+                    withAlpha(NIGHT_BLOOM_PRIMARY, Math.round(48.0F * alpha)), 0.24F);
+        }
+
+        RenderServices.shapes().progressBar(layout.getProgressLeft(), layout.getProgressTop(),
+                layout.getProgressRight(), layout.getProgressBottom(), 1.0F, progress,
+                withAlpha(NIGHT_BLOOM_SECONDARY, Math.round(28.0F * alpha)),
+                withAlpha(NIGHT_BLOOM_PRIMARY, Math.round(224.0F * alpha)));
+    }
+
     private void drawSakura(float x1, float y1, float x2, float y2, float bodyAlpha, int accent, float progress) {
         float radius = 8.0f;
         float sakuraAlpha = bodyAlpha;
@@ -277,17 +338,9 @@ public class Notification {
         String titleStr = trim(getTitle(), FontLoaders.C18, width - 52.0f);
         float titleX = x1 + 43.0f;
         float titleY = y1 + 11.0f;
-        // Glow offsets
-        int wideGlow = withAlpha(SK_SAKURA, Math.round(22.0f * sakuraAlpha));
-        int nearGlow = withAlpha(0xFFFFDCEB, Math.round(34.0f * sakuraAlpha));
-        FontLoaders.C18.drawString(titleStr, titleX - 0.65f, titleY, wideGlow);
-        FontLoaders.C18.drawString(titleStr, titleX + 0.65f, titleY, wideGlow);
-        FontLoaders.C18.drawString(titleStr, titleX, titleY - 0.65f, wideGlow);
-        FontLoaders.C18.drawString(titleStr, titleX, titleY + 0.65f, wideGlow);
-        FontLoaders.C18.drawString(titleStr, titleX - 0.35f, titleY - 0.35f, nearGlow);
-        FontLoaders.C18.drawString(titleStr, titleX + 0.35f, titleY + 0.35f, nearGlow);
-        FontLoaders.C18.drawString(titleStr, titleX, titleY,
-                withAlpha(SK_TEXT, Math.round(245.0f * sakuraAlpha)));
+        drawStringWithOptionalGlow(FontLoaders.C18, titleStr, titleX, titleY,
+                withAlpha(SK_TEXT, Math.round(245.0f * sakuraAlpha)),
+                withAlpha(SK_SAKURA, Math.round(184.0f * sakuraAlpha)), 0.62F);
 
         // Message in muted sakura
         if (message.length() > 0) {
@@ -306,8 +359,29 @@ public class Notification {
         return isFinished() && animationX > 0.985f;
     }
 
+    private float renderWidth() {
+        if (!useNightBloomRenderer()) {
+            return width;
+        }
+        return NightBloomNotificationLayout.panelWidth(
+                FontLoaders.C16.getStringWidth(getTitle()),
+                FontLoaders.C12.getStringWidth(message));
+    }
+
+    private float renderHeight() {
+        return useNightBloomRenderer()
+                ? NightBloomNotificationLayout.panelHeight(message.length() > 0)
+                : height;
+    }
+
+    private boolean useNightBloomRenderer() {
+        return !HUD.useVapeSimpleStyle()
+                && !HUD.isNotificationSakura()
+                && HUD.isNotificationNightBloom();
+    }
+
     public float getHeight() {
-        return height;
+        return renderHeight();
     }
 
     private boolean isFinished() {
@@ -378,9 +452,33 @@ public class Notification {
         return (color & 0x00FFFFFF) | (ColorUtils.clamp(alpha, 0, 255) << 24);
     }
 
+    private static boolean isGlowFrameOpen() {
+        return RenderServices.glow().isFrameOpen();
+    }
+
+    private static void drawStringWithOptionalGlow(CFontRenderer font, String text, float x, float y,
+                                                   int textColor, int glowColor, float glowStrength) {
+        if (HUD.isGlowEnabled() && isGlowFrameOpen()) {
+            font.drawStringWithGlow(text, x, y, textColor, glowColor, glowStrength, GlowProfile.TEXT);
+            return;
+        }
+        font.drawString(text, x, y, textColor);
+    }
+
     private static void drawCenteredIcon(String icon, CFontRenderer font, float centerX, float centerY, int color) {
         font.drawString(icon, centerX - font.getStringWidth(icon) / 2.0f + ClickGuiIcons.visualOffsetX(icon),
                 centerY - font.getHeight() / 2.0f + 2.0f + ClickGuiIcons.visualOffsetY(icon), color);
+    }
+
+    private static void drawCenteredIconWithOptionalGlow(String icon, CFontRenderer font, float centerX, float centerY,
+                                                          int textColor, int glowColor, float glowStrength) {
+        float x = centerX - font.getStringWidth(icon) / 2.0F + ClickGuiIcons.visualOffsetX(icon);
+        float y = centerY - font.getHeight() / 2.0F + 2.0F + ClickGuiIcons.visualOffsetY(icon);
+        if (HUD.isGlowEnabled() && isGlowFrameOpen()) {
+            font.drawStringWithGlow(icon, x, y, textColor, glowColor, glowStrength, GlowProfile.ACCENT);
+            return;
+        }
+        font.drawString(icon, x, y, textColor);
     }
 
     private static String trim(String text, CFontRenderer font, float maxWidth) {

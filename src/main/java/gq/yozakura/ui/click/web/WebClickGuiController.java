@@ -7,6 +7,8 @@ import gq.yozakura.core.Client;
 import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.module.Module;
 import gq.yozakura.module.ModuleType;
+import gq.yozakura.module.render.ClickGUI;
+import gq.yozakura.engine.render.ui.VisualPalette;
 import gq.yozakura.value.Mode;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
@@ -47,6 +49,8 @@ final class WebClickGuiController {
         builder.append(',');
         appendProperty(builder, "moduleCount", ModuleManager.getModules().size());
         builder.append(',');
+        appendPalette(builder);
+        builder.append(',');
         builder.append("\"categories\":[");
         ModuleType[] types = ModuleType.values();
         for (int i = 0; i < types.length; i++) {
@@ -79,6 +83,45 @@ final class WebClickGuiController {
         builder.append(']');
         builder.append('}');
         return builder.toString();
+    }
+
+    private static void appendPalette(StringBuilder builder) {
+        VisualPalette palette = ClickGUI.currentPalette();
+        builder.append("\"palette\":{");
+        appendProperty(builder, "name", ClickGUI.palette.getModeAsString());
+        builder.append(',');
+        appendProperty(builder, "canvas", cssColor(palette.getCanvas()));
+        builder.append(',');
+        appendProperty(builder, "surface", cssColor(palette.getSurface()));
+        builder.append(',');
+        appendProperty(builder, "raised", cssColor(palette.getSurfaceRaised()));
+        builder.append(',');
+        appendProperty(builder, "overlay", cssColor(palette.getSurfaceOverlay()));
+        builder.append(',');
+        appendProperty(builder, "text", cssColor(palette.getTextPrimary()));
+        builder.append(',');
+        appendProperty(builder, "muted", cssColor(palette.getTextSecondary()));
+        builder.append(',');
+        appendProperty(builder, "dim", cssColor(palette.getTextDisabled()));
+        builder.append(',');
+        appendProperty(builder, "line", cssColor(palette.getBorderSubtle()));
+        builder.append(',');
+        appendProperty(builder, "focus", cssColor(palette.getBorderFocus()));
+        builder.append(',');
+        appendProperty(builder, "accent", cssColor(palette.getAccentPrimary()));
+        builder.append(',');
+        appendProperty(builder, "accentSoft", cssColor(palette.getAccentSoft()));
+        builder.append(',');
+        appendProperty(builder, "accentAlt", cssColor(palette.getAccentAlt()));
+        builder.append(',');
+        appendProperty(builder, "success", cssColor(palette.getSuccess()));
+        builder.append(',');
+        appendProperty(builder, "shadow", cssColor(palette.getShadow()));
+        builder.append('}');
+    }
+
+    private static String cssColor(int color) {
+        return String.format(Locale.ROOT, "#%06X", color & 0x00FFFFFF);
     }
 
     static void toggleModule(String body) {

@@ -3,6 +3,7 @@ package gq.yozakura.bridge;
 import gq.yozakura.event.bridge.Render2DEvent;
 import gq.yozakura.event.bus.EventManager;
 import gq.yozakura.engine.render.ShaderRenderer;
+import gq.yozakura.engine.render.ui.RenderServices;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiIngame;
 import net.minecraft.client.gui.ScaledResolution;
@@ -105,7 +106,12 @@ public class StandaloneGuiIngame extends GuiIngame {
         try {
             dispatchRenderTick(gq.yozakura.bridge.forge.TickEvent.Phase.START, partialTicks);
             ShaderRenderer.beginOverlayFrame();
-            EventManager.call(new Render2DEvent(partialTicks));
+            RenderServices.glow().beginFrame();
+            try {
+                EventManager.call(new Render2DEvent(partialTicks));
+            } finally {
+                RenderServices.glow().flush();
+            }
             YozakuraEventBridge.markOverlayRendered();
             prepareOverlayState();
             EventManager.call(new gq.yozakura.bridge.forge.RenderGameOverlayEvent.Text(partialTicks));
@@ -131,7 +137,12 @@ public class StandaloneGuiIngame extends GuiIngame {
             try {
                 dispatchRenderTick(gq.yozakura.bridge.forge.TickEvent.Phase.START, partialTicks);
                 ShaderRenderer.beginOverlayFrame();
-                EventManager.call(new Render2DEvent(partialTicks));
+                RenderServices.glow().beginFrame();
+                try {
+                    EventManager.call(new Render2DEvent(partialTicks));
+                } finally {
+                    RenderServices.glow().flush();
+                }
                 YozakuraEventBridge.markOverlayRendered();
                 prepareOverlayState();
                 EventManager.call(new gq.yozakura.bridge.forge.RenderGameOverlayEvent.Text(partialTicks));

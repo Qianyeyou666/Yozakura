@@ -1,6 +1,8 @@
 package gq.yozakura.ui;
 
 import gq.yozakura.module.render.HUD;
+import gq.yozakura.module.render.ClickGUI;
+import gq.yozakura.engine.render.ui.VisualPalette;
 
 import java.awt.Color;
 
@@ -140,6 +142,40 @@ public final class UiTheme {
     }
 
     public static UiTheme current() {
+        return fromPalette(ClickGUI.currentPalette());
+    }
+
+    private static UiTheme fromPalette(VisualPalette palette) {
+        int panel = withAlpha(palette.getSurface(), 212);
+        int panelBorder = withAlpha(palette.getBorderSubtle(), 74);
+        int control = withAlpha(palette.getSurfaceRaised(), 184);
+        int controlHover = withAlpha(palette.getSurfaceOverlay(), 212);
+        return new UiTheme(
+                palette.getTextPrimary(),
+                palette.getTextSecondary(),
+                palette.getTextDisabled(),
+                palette.getAccentPrimary(),
+                palette.getDanger(),
+                panel,
+                panelBorder,
+                control,
+                controlHover,
+                withAlpha(palette.getSurfaceOverlay(), 232),
+                withAlpha(palette.getAccentPrimary(), 230),
+                palette.getTextDisabled(),
+                palette.getTextPrimary(),
+                withAlpha(palette.getSurface(), 172),
+                palette.getBorderFocus(),
+                palette.getAccentAlt(),
+                withAlpha(palette.getSurfaceRaised(), 220),
+                withAlpha(palette.getBorderSubtle(), 190));
+    }
+
+    private static int withAlpha(int color, int alpha) {
+        return (color & 0x00FFFFFF) | (alpha << 24);
+    }
+
+    private static UiTheme fromHudTheme() {
         try {
             HUD.Theme theme = HUD.getTheme();
             if (theme == HUD.Theme.SAKURA) {

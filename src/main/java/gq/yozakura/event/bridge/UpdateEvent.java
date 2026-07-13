@@ -13,6 +13,7 @@ public class UpdateEvent implements Event {
     private int lastPriority = -1;
     private int priority = -1;
     private boolean rotated = false;
+    private boolean moveFix = false;
 
     public UpdateEvent(EventType type, float yaw, float pitch, float newYaw, float newPitch) {
         this.type = type;
@@ -55,6 +56,10 @@ public class UpdateEvent implements Event {
         return this.rotated;
     }
 
+    public boolean isMoveFix() {
+        return this.moveFix;
+    }
+
     public void setRotation(float yaw, float pitch, int priority) {
         if (this.type == EventType.PRE && this.lastPriority <= priority) {
             this.newYaw = yaw;
@@ -69,6 +74,7 @@ public class UpdateEvent implements Event {
             this.prevYaw = yaw;
             this.priority = priority;
             this.rotated = true;
+            this.moveFix = true;
         }
     }
 }

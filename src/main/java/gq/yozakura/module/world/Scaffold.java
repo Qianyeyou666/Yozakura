@@ -2,6 +2,7 @@ package gq.yozakura.module.world;
 
 import gq.yozakura.engine.font.CFontRenderer;
 import gq.yozakura.engine.font.FontLoaders;
+import gq.yozakura.engine.render.glow.GlowProfile;
 import gq.yozakura.engine.render.ui.LiquidGlassSettings;
 import gq.yozakura.engine.render.ui.RenderServices;
 import net.minecraft.block.Block;
@@ -30,7 +31,6 @@ import gq.yozakura.event.bridge.*;
 import gq.yozakura.manager.RotationDebug;
 import gq.yozakura.manager.RotationState;
 import gq.yozakura.manager.VisualRotationState;
-import gq.yozakura.manager.RotationCleanup;
 import gq.yozakura.module.runtime.Module;
 import gq.yozakura.module.world.BedNuker;
 import gq.yozakura.module.movement.LongJump;
@@ -889,12 +889,6 @@ public class Scaffold extends Module {
     @EventTarget
     public void onMoveInput(MoveInputEvent event) {
         if (this.isEnabled()) {
-            if (this.moveFix.getValue() == 1
-                    && RotationState.isActived()
-                    && RotationState.getPriority() == 3.0F
-                    && MoveUtil.isForwardPressed()) {
-                MoveUtil.fixStrafe(RotationState.getSmoothedYaw());
-            }
             if (mc.thePlayer.onGround && this.stage > 0 && MoveUtil.isForwardPressed()) {
                 mc.thePlayer.movementInput.jump = true;
             }
@@ -1025,10 +1019,9 @@ public class Scaffold extends Module {
     @Override
     public void onDisabled() {
         this.resetRotationSmoothing();
-        RotationCleanup.clearModuleRotations("Scaffold", 3);
         RotationDebug.setSourceEnabled("Scaffold", false);
         if (mc.thePlayer != null && this.lastSlot != -1) {
-            this.selectHotbarSlot(this.lastSlot);
+            mc.thePlayer.inventory.currentItem = this.lastSlot;
         }
         if (this.blockCounter.getValue() && this.blockCounterAlpha > 0.025F) {
             if (this.blockCounterExitRenderer != null) {
@@ -1373,11 +1366,7 @@ public class Scaffold extends Module {
         if (alpha <= 0.018F) {
             return;
         }
-        float spread = Math.max(0.42F, 0.60F * uiScale);
-        font.drawString(text, x - spread, y, color);
-        font.drawString(text, x + spread, y, color);
-        font.drawString(text, x, y - spread, color);
-        font.drawString(text, x, y + spread, color);
+        font.drawGlowString(text, x, y, color, 1.0f, GlowProfile.TEXT);
     }
 
     private final class BlockCounterExitRenderer {

@@ -2,7 +2,7 @@ package gq.yozakura.ui.click.yozakura;
 
 import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.module.Module;
-import gq.yozakura.module.render.HUD;
+import gq.yozakura.module.render.ClickGUI;
 import gq.yozakura.util.render.RenderUtil;
 import gq.yozakura.value.Mode;
 import gq.yozakura.value.Numbers;
@@ -457,11 +457,11 @@ final class ClickGuiDetailPanel {
         RenderServices.shapes().roundedBorder(headerX, headerY, headerX + headerW, headerY + headerH, 7.0f, 0.7f,
                 gui.withAlpha(headerFill, 116.0f * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, 28.0f * gui.guiAlpha));
-        if (gq.yozakura.module.render.HUD.isSakuraTheme()) {
+        if (ClickGUI.isLightPalette()) {
             RenderServices.shapes().horizontalGradient(headerX + 2.0f, headerY + 2.0f,
                     headerX + headerW - 2.0f, headerY + 30.0f,
-                    gui.withAlpha(new Color(255, 232, 244).getRGB(), 82.0f * gui.guiAlpha),
-                    gui.withAlpha(new Color(255, 250, 253).getRGB(), 28.0f * gui.guiAlpha));
+                    gui.withAlpha(gui.guiColors().detailSelectedFill, 82.0f * gui.guiAlpha),
+                    gui.withAlpha(gui.guiColors().glassFill, 28.0f * gui.guiAlpha));
         }
 
         float contentX = gui.detailX + 13.0f;
@@ -474,25 +474,18 @@ final class ClickGuiDetailPanel {
     }
 
     private int surfaceColor(boolean header) {
-        if (gq.yozakura.module.render.HUD.isSakuraTheme()) {
-            return header ? new Color(255, 236, 246).getRGB() : new Color(255, 252, 254).getRGB();
-        }
-        if (gq.yozakura.module.render.HUD.isLightTheme()) {
-            return header ? new Color(226, 232, 242).getRGB() : new Color(246, 248, 252).getRGB();
-        }
-        return new Color(11, 14, 20).getRGB();
+        return header ? gui.guiColors().topBar : gui.guiColors().glassFill;
     }
 
     private int detailPanelFill() {
         if (isUnifiedDarkSurface()) {
-            return new Color(11, 14, 20, 226).getRGB();
+            return gui.guiColors().card;
         }
         return gui.guiColors().glassFill;
     }
 
     private boolean isUnifiedDarkSurface() {
-        return !gq.yozakura.module.render.HUD.isSakuraTheme()
-                && !gq.yozakura.module.render.HUD.isLightTheme();
+        return !ClickGUI.isLightPalette();
     }
 
     /**
@@ -570,7 +563,7 @@ final class ClickGuiDetailPanel {
                     2.0f, gui.withAlpha(gui.guiColors().accent, 100.0f * gui.guiAlpha), 4, 2.0f);
             RenderServices.shapes().horizontalGradient(tabIndicatorX, tabY + tabH - 1.4f, tabIndicatorX + each - 18.0f, tabY + tabH - 0.4f,
                     gui.withAlpha(gui.guiColors().accent, 215.0f * gui.guiAlpha),
-                    gui.withAlpha(new Color(152, 135, 255).getRGB(), 215.0f * gui.guiAlpha));
+                    gui.withAlpha(gui.guiColors().detailSelectedBorder, 215.0f * gui.guiAlpha));
         }
     }
 
@@ -936,20 +929,6 @@ final class ClickGuiDetailPanel {
         // 标签
         gui.drawFont(gui.trim(gui.getDisplayName(value), FontLoaders.F14, labelW - 8.0f), x, y + 12.0f,
                 gui.withAlpha(gui.guiColors().text, 245.0f * alpha * gui.guiAlpha));
-        // 滑块轨道
-        RenderServices.shapes().rounded(barX, barY, barX + barW, barY + 2.0f, 2.0f,
-                gui.withAlpha(gui.guiColors().valueTrack, 178.0f * alpha * gui.guiAlpha));
-        // 滑块填充
-        RenderServices.shapes().progressBar(barX, barY, barX + barW, barY + 2.0f, 2.0f, value.animX,
-                0x00000000, gui.withAlpha(gui.guiColors().valueFill, 230.0f * alpha * gui.guiAlpha));
-        // 滑块拖拽手柄（带阴影）
-        float knob = 3.2f + active * 1.0f;
-        RenderServices.shapes().shadow(barX + barW * value.animX - knob, barY - 3.0f,
-                barX + barW * value.animX + knob, barY + 5.0f, 4.0f,
-                gui.withAlpha(gui.guiColors().valueFill, 100.0f * alpha * gui.guiAlpha), 4, 2.0f);
-        RenderServices.shapes().rounded(barX + barW * value.animX - knob, barY - knob + 1.0f,
-                barX + barW * value.animX + knob, barY + knob + 1.0f, knob,
-                gui.withAlpha(gui.guiColors().valueFill, 255.0f * alpha * gui.guiAlpha));
         // 数值标签
         drawValuePill(gui.formatNumber(current), pillX, y + 3.0f, pillW, alpha);
     }
@@ -983,21 +962,6 @@ final class ClickGuiDetailPanel {
         gui.drawFont(gui.trim(gui.getRangeDisplayName(minValue), FontLoaders.F14, labelW - 8.0f),
                 x, y + 12.0f, gui.withAlpha(gui.guiColors().text, 245.0f * alpha * gui.guiAlpha));
         drawValuePill(rangeText, pillX, y + 3.0f, pillW, alpha);
-        // 轨道
-        RenderServices.shapes().rounded(barX, barY, barX + barW, barY + 2.2f, 2.0f,
-                gui.withAlpha(gui.guiColors().valueTrack, 178.0f * alpha * gui.guiAlpha));
-        // 范围填充
-        RenderServices.shapes().rounded(barX + barW * lowPct, barY, barX + barW * highPct, barY + 2.2f, 2.0f,
-                gui.withAlpha(gui.guiColors().valueFill, 230.0f * alpha * gui.guiAlpha));
-        // 两个拖拽手柄
-        drawRangeKnob(barX + barW * minValue.animX, barY, 3.1f + activeMin * 1.0f, activeMin, alpha);
-        drawRangeKnob(barX + barW * maxValue.animX, barY, 3.1f + activeMax * 1.0f, activeMax, alpha);
-        // 激活时的范围发光阴影
-        if (active > 0.02f) {
-            RenderServices.shapes().shadow(barX + barW * lowPct, barY - 2.0f, barX + barW * highPct, barY + 4.0f,
-                    3.0f, gui.withAlpha(gui.guiColors().valueFill, 62.0f * active * alpha * gui.guiAlpha),
-                    4, 2.0f);
-        }
     }
 
     /** 绘制范围滑块的拖拽手柄 */
@@ -1122,7 +1086,7 @@ final class ClickGuiDetailPanel {
         float thumbY = trackY + (trackH - thumbH) * pct;
         // 轨道
         gui.drawSoftRect(trackX, trackY, trackX + 2.0f, trackY + trackH, 2.0f,
-                gui.withAlpha(new Color(255, 255, 255, 26).getRGB(), 26.0f * gui.guiAlpha));
+                gui.withAlpha(gui.guiColors().glassBorder, 26.0f * gui.guiAlpha));
         // 滑块
         gui.drawSoftRect(trackX, thumbY, trackX + 2.0f, thumbY + thumbH, 2.0f,
                 gui.withAlpha(gui.guiColors().accent, 150.0f * gui.guiAlpha));
@@ -1382,12 +1346,11 @@ final class ClickGuiDetailPanel {
     }
 
     private void drawAnimeGirl(float posX, float posY) {
-        switch (HUD.getTheme()) {
-            case LIGHT:
-                RenderUtil.drawTexturedRect(new ResourceLocation("yozakura/light.png"), posX, posY, posX+75f, posY+50f, .5f * gui.guiAlpha);
-                break;
+        switch (ClickGUI.palette.getValue()) {
             case SAKURA:
                 RenderUtil.drawTexturedRect(new ResourceLocation("yozakura/sakura.png"), posX, posY, posX+75f, posY+50f, .5f * gui.guiAlpha);
+                break;
+            default:
                 break;
         }
     }

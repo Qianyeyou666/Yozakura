@@ -3,14 +3,17 @@ package gq.yozakura.ui.click.sakura;
 import gq.yozakura.core.Client;
 import gq.yozakura.engine.font.FontLoaders;
 import gq.yozakura.engine.render.ShaderRenderer;
+import gq.yozakura.engine.render.glow.GlowProfile;
 import gq.yozakura.engine.render.ui.LiquidGlassSettings;
 import gq.yozakura.engine.render.ui.RenderServices;
+import gq.yozakura.engine.render.ui.VisualPalette;
 import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.module.Module;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.render.ClickGUI;
 import gq.yozakura.ui.click.ClickGuiIcons;
 import gq.yozakura.util.animation.AnimationUtil;
+import gq.yozakura.util.animation.UiClock;
 import gq.yozakura.value.Mode;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
@@ -22,6 +25,7 @@ import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.GL11;
 
+import java.awt.Color;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
@@ -29,13 +33,23 @@ import java.util.Map;
 
 @SuppressWarnings({"rawtypes", "unchecked"})
 public final class SakuraClickGui extends GuiScreen {
-    private static final int TEXT = 0xFFF5F0F5;
-    private static final int MUTED = 0xFFB8AEB8;
-    private static final int FAINT = 0xFF7D717C;
-    private static final int SAKURA = 0xFFFFB7D1;
-    private static final int SAKURA_STRONG = 0xFFFF80B3;
-    private static final int GLASS = 0xFF08080D;
-    private static final int GLASS_SOFT = 0xFF160F15;
+    private static final float BASE_WIDTH = 760.0f;
+    private static final float BASE_HEIGHT = 430.0f;
+    private static final float MINIMUM_SCALE = 0.70f;
+    private static final float MAXIMUM_SCALE = 1.35f;
+    private static VisualPalette PALETTE = VisualPalette.nightBloom();
+    private static ClickGUI.Palette appliedPalette;
+    private static int TEXT = PALETTE.getTextPrimary();
+    private static int MUTED = PALETTE.getTextSecondary();
+    private static int FAINT = PALETTE.getTextDisabled();
+    private static int SAKURA = PALETTE.getAccentPrimary();
+    private static int SAKURA_STRONG = PALETTE.getGlowPrimary();
+    private static int GLASS = PALETTE.getCanvas();
+    private static int GLASS_SOFT = PALETTE.getSurface();
+    private static int SHADOW = PALETTE.getShadow();
+    private static int SURFACE_RAISED = PALETTE.getSurfaceRaised();
+    private static int SURFACE_OVERLAY = PALETTE.getSurfaceOverlay();
+    private static int TRACK = PALETTE.getBorderSubtle();
     private static final float[][] SAKURA_PETAL_POINTS = new float[][]{
             {0.00f, -0.18f}, {-0.30f, -0.07f}, {-0.64f, 0.25f}, {-0.66f, 0.62f},
             {-0.36f, 0.94f}, {-0.10f, 0.82f}, {0.00f, 0.74f}, {0.10f, 0.82f},
@@ -72,16 +86,28 @@ public final class SakuraClickGui extends GuiScreen {
     private float w;
     private float h;
     private float scale = 1.0f;
+    private float responsiveScale = 1.0f;
     private float openProgress;
     private float guiAlpha;
     private boolean draggingWindow;
+    private boolean resizingWindow;
     private float dragOffsetX;
     private float dragOffsetY;
+    private int resizeStartMouseX;
+    private int resizeStartMouseY;
+    private float resizeStartScale;
     private float listScroll;
     private float listScrollDisplay;
     private float detailScroll;
     private float detailScrollDisplay;
     private Numbers draggingNumber;
+    private Numbers draggingColorRed;
+    private Numbers draggingColorGreen;
+    private Numbers draggingColorBlue;
+    private float draggingColorX;
+    private float draggingColorY;
+    private float draggingColorW;
+    private float draggingColorH;
     private float draggingX;
     private float draggingW;
     private double draggingMin;
@@ -95,8 +121,8 @@ public final class SakuraClickGui extends GuiScreen {
     private float listTransitionProgress = 1.0f;
     private float bindingOverlayProgress;
     private boolean closing;
-    private long lastFrameNanos = System.nanoTime();
-    private float frameScale = 1.0f;
+    private final UiClock uiClock = new UiClock();
+    private float uiDeltaSeconds;
 
     private static final class SwitchAnim {
         boolean state;
@@ -106,7 +132,11 @@ public final class SakuraClickGui extends GuiScreen {
 
     @Override
     public void initGui() {
+        refreshPalette();
         ScaledResolution sr = new ScaledResolution(mc);
+        uiClock.reset();
+        uiClock.tick(System.nanoTime());
+        uiDeltaSeconds = 0.0f;
         updateLayout(sr);
         openProgress = 0.0f;
         closing = false;
@@ -121,16 +151,20 @@ public final class SakuraClickGui extends GuiScreen {
         bindingModule = null;
         bindingAnimationModule = null;
         draggingNumber = null;
+        clearColorDrag();
+        resizingWindow = false;
         super.initGui();
     }
 
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
-        updateFrameScale();
+        refreshPalette();
+        updateUiClock();
         ScaledResolution sr = new ScaledResolution(mc);
         updateLayout(sr);
         updateDrag(sr, mouseX, mouseY);
         updateNumberDrag(mouseX);
+        updateColorDrag(mouseX, mouseY);
         updateScrollAnimations();
         openProgress = animate(openProgress, closing ? 0.0f : 1.0f, closing ? 0.24f : 0.18f);
         if (closing && openProgress <= 0.015f) {
@@ -141,21 +175,28 @@ public final class SakuraClickGui extends GuiScreen {
         bindingOverlayProgress = animate(bindingOverlayProgress, bindingModule == null ? 0.0f : 1.0f, 0.20f);
         guiAlpha = easeOut(openProgress) * ClickGUI.clickGuiAlpha.getValue().floatValue();
 
-        ShaderRenderer.invalidateFrostedGlass();
-        drawBackdrop(sr);
-        drawShell(mouseX, mouseY);
-        drawSidebar(mouseX, mouseY);
-        drawModuleList(mouseX, mouseY);
-        drawDetail(mouseX, mouseY);
-        drawFlyingPetals(sr);
-        drawBindingOverlay(sr);
-        super.drawScreen(mouseX, mouseY, partialTicks);
+        RenderServices.glow().beginFrame();
+        try {
+            ShaderRenderer.invalidateFrostedGlass();
+            drawBackdrop(sr);
+            drawShell(mouseX, mouseY);
+            drawResizeHandle(mouseX, mouseY);
+            drawSidebar(mouseX, mouseY);
+            drawModuleList(mouseX, mouseY);
+            drawDetail(mouseX, mouseY);
+            drawFlyingPetals(sr);
+            drawBindingOverlay(sr);
+            super.drawScreen(mouseX, mouseY, partialTicks);
+        } finally {
+            RenderServices.glow().flush();
+        }
     }
 
     private void updateLayout(ScaledResolution sr) {
-        scale = sr.getScaledWidth() < 760 ? 0.86f : sr.getScaledWidth() < 980 ? 0.94f : 1.0f;
-        w = Math.min(sr.getScaledWidth() - 24.0f, 760.0f * scale);
-        h = Math.min(sr.getScaledHeight() - 24.0f, 430.0f * scale);
+        responsiveScale = sr.getScaledWidth() < 760 ? 0.86f : sr.getScaledWidth() < 980 ? 0.94f : 1.0f;
+        scale = responsiveScale * ClickGUI.sakuraScale.getValue().floatValue();
+        w = Math.min(sr.getScaledWidth() - 24.0f, BASE_WIDTH * scale);
+        h = Math.min(sr.getScaledHeight() - 24.0f, BASE_HEIGHT * scale);
         float defaultX = (sr.getScaledWidth() - w) * 0.5f;
         float defaultY = (sr.getScaledHeight() - h) * 0.5f;
         x = ClickGUI.windowX.getValue() == null || ClickGUI.windowX.getValue() < 0.0D
@@ -164,13 +205,13 @@ public final class SakuraClickGui extends GuiScreen {
                 ? defaultY : ClickGUI.windowY.getValue().floatValue();
         x = clamp(x, 8.0f, Math.max(8.0f, sr.getScaledWidth() - w - 8.0f));
         y = clamp(y, 8.0f, Math.max(8.0f, sr.getScaledHeight() - h - 8.0f));
+        x = clamp(x, 8.0f, Math.max(8.0f, sr.getScaledWidth() - w - 8.0f));
+        y = clamp(y, 8.0f, Math.max(8.0f, sr.getScaledHeight() - h - 8.0f));
     }
 
     private void drawBackdrop(ScaledResolution sr) {
         RenderServices.shapes().rect(0.0f, 0.0f, sr.getScaledWidth(), sr.getScaledHeight(),
-                alpha(0xFF030306, 112.0f * guiAlpha));
-        RenderServices.shapes().gradient(0.0f, 0.0f, sr.getScaledWidth(), sr.getScaledHeight(),
-                alpha(0x33120A10, 55.0f * guiAlpha), alpha(0x66000000, 96.0f * guiAlpha));
+                alpha(SHADOW, 128.0f * guiAlpha));
     }
 
     private void drawShell(int mouseX, int mouseY) {
@@ -215,7 +256,7 @@ public final class SakuraClickGui extends GuiScreen {
                     RenderServices.shapes().shadow(rowX, rowY, rowX + 114.0f, rowY + 28.0f,
                             7.0f, alpha(SAKURA, (18.0f + 36.0f * active + 24.0f * hover) * guiAlpha), 4, 1.8f);
                     drawMiniGlass(rowX, rowY, rowX + 114.0f, rowY + 28.0f, 7.0f,
-                            alpha(selected ? 0xFF26151F : 0xFF160E15,
+                            alpha(selected ? SURFACE_OVERLAY : GLASS_SOFT,
                                     (128.0f + 60.0f * active + 34.0f * hover) * guiAlpha),
                             alpha(selected ? SAKURA_STRONG : SAKURA,
                                     (34.0f + 62.0f * active + 34.0f * hover) * guiAlpha));
@@ -286,7 +327,7 @@ public final class SakuraClickGui extends GuiScreen {
                     7.0f, alpha(SAKURA, (14.0f + 32.0f * hover + 34.0f * selectedEase + 26.0f * toggle) * guiAlpha),
                     4, 1.8f);
             drawMiniGlass(rowX, rowY, rowX + rowW, rowY + 34.0f, 7.0f,
-                    alpha(selected ? 0xFF26151F : 0xFF160E15,
+                    alpha(selected ? SURFACE_OVERLAY : GLASS_SOFT,
                             (118.0f + 72.0f * selectedEase + 42.0f * hover + 28.0f * toggle) * guiAlpha),
                     alpha(toggle > 0.02f || selected ? SAKURA_STRONG : SAKURA,
                             (30.0f + 46.0f * toggle + 34.0f * hover + 28.0f * selectedEase) * guiAlpha));
@@ -307,9 +348,9 @@ public final class SakuraClickGui extends GuiScreen {
                     alpha(SAKURA, (18.0f + 38.0f * toggle + 22.0f * hover) * guiAlpha), 4, 1.6f);
         }
         RenderServices.shapes().rounded(tx, rowY + 10.0f, tx + 22.0f, rowY + 22.0f, 6.0f,
-                alpha(blend(0xFF30262F, SAKURA, toggle), (190.0f + 28.0f * toggle) * guiAlpha));
+                alpha(blend(TRACK, SAKURA, toggle), (190.0f + 28.0f * toggle) * guiAlpha));
         RenderServices.shapes().circle(tx + 6.0f + 10.0f * toggle, rowY + 16.0f, 0, 360, 4.2f,
-                alpha(blend(MUTED, 0xFFFFF3FA, toggle), 238.0f * guiAlpha));
+                alpha(blend(MUTED, TEXT, toggle), 238.0f * guiAlpha));
     }
 
     private void drawDetail(int mouseX, int mouseY) {
@@ -347,20 +388,35 @@ public final class SakuraClickGui extends GuiScreen {
                         alpha(MUTED, 205.0f * guiAlpha), 0.3f);
             }
             int visibleIndex = 0;
-            for (Value value : values) {
+            for (int index = 0; index < values.size(); index++) {
+                Value value = values.get(index);
                 if (!value.isVisible()) {
+                    continue;
+                }
+                if (value instanceof Numbers && !isColorStart(values, index)) {
+                    continue;
+                }
+                if (isColorContinuation(values, index)) {
                     continue;
                 }
                 float rowEase = clamp((detailEase - visibleIndex * 0.025f) / 0.86f, 0.0f, 1.0f);
                 float rowAlpha = guiAlpha;
                 if (rowEase > 0.01f) {
                     guiAlpha = oldAlpha * easeOut(rowEase) * detailEase;
-                    drawValue(value, dx + 16.0f, valueY + (1.0f - rowEase) * 5.0f,
-                            dw - 32.0f, mouseX, mouseY);
+                    if (isColorStart(values, index)) {
+                        drawColorPicker((Numbers) value, (Numbers) values.get(index + 1), (Numbers) values.get(index + 2),
+                                dx + 16.0f, valueY + (1.0f - rowEase) * 5.0f, dw - 32.0f);
+                    } else {
+                        drawValue(value, dx + 16.0f, valueY + (1.0f - rowEase) * 5.0f,
+                                dw - 32.0f, mouseX, mouseY);
+                    }
                     guiAlpha = rowAlpha;
                 }
-                valueY += valueHeight(value);
+                valueY += valueHeight(values, index);
                 visibleIndex++;
+                if (isColorStart(values, index)) {
+                    index += 2;
+                }
             }
             endScissor();
             guiAlpha = oldAlpha;
@@ -407,7 +463,7 @@ public final class SakuraClickGui extends GuiScreen {
         float active = easeSmooth(animateOptionSwitch(value, enabled));
         if (hover > 0.02f) {
             RenderServices.shapes().rounded(vx - 7.0f, vy + 1.0f, vx + vw + 7.0f, vy + 31.0f,
-                    7.0f, alpha(0xFF120D12, 70.0f * hover * guiAlpha));
+                    7.0f, alpha(GLASS, 70.0f * hover * guiAlpha));
         }
         drawGlowText(FontLoaders.C14, displayName(value), vx, vy + 8.0f,
                 alpha(TEXT, (218.0f + 22.0f * hover) * guiAlpha), 0.34f + 0.32f * hover);
@@ -417,9 +473,9 @@ public final class SakuraClickGui extends GuiScreen {
                     alpha(SAKURA, (18.0f + 38.0f * active + 20.0f * hover) * guiAlpha), 4, 1.6f);
         }
         RenderServices.shapes().rounded(tx, vy + 7.0f, tx + 34.0f, vy + 25.0f, 9.0f,
-                alpha(blend(0xFF30262F, SAKURA, active), (190.0f + 28.0f * active + 18.0f * hover) * guiAlpha));
+                alpha(blend(TRACK, SAKURA, active), (190.0f + 28.0f * active + 18.0f * hover) * guiAlpha));
         RenderServices.shapes().circle(tx + 10.0f + 14.0f * active, vy + 16.0f, 0, 360, 6.0f,
-                alpha(blend(MUTED, 0xFFFFF3FA, active), 238.0f * guiAlpha));
+                alpha(blend(MUTED, TEXT, active), 238.0f * guiAlpha));
     }
 
     private void drawNumber(Numbers value, float vx, float vy, float vw, int mouseX, int mouseY) {
@@ -427,25 +483,32 @@ public final class SakuraClickGui extends GuiScreen {
         float hover = easeSmooth(animateValue(value, isHovered(vx, vy, vx + vw, vy + 42.0f, mouseX, mouseY) ? 1.0f : 0.0f));
         if (hover > 0.02f) {
             RenderServices.shapes().rounded(vx - 7.0f, vy - 5.0f, vx + vw + 7.0f, vy + 40.0f,
-                    7.0f, alpha(0xFF120D12, 58.0f * hover * guiAlpha));
+                    7.0f, alpha(GLASS, 58.0f * hover * guiAlpha));
         }
         drawGlowText(FontLoaders.C14, displayName(value), vx, vy,
                 alpha(TEXT, (218.0f + 22.0f * hover) * guiAlpha), 0.34f + 0.3f * hover);
         String text = formatNumber(current);
         drawGlowText(FontLoaders.C14, text, vx + vw - FontLoaders.C14.getStringWidth(text), vy,
                 alpha(hover > 0.1f ? SAKURA : MUTED, (205.0f + 26.0f * hover) * guiAlpha), 0.3f + 0.38f * hover);
-        float sx = vx;
-        float sy = vy + 24.0f;
-        float sw = vw;
-        float pct = pct(current, value.getMinimum().doubleValue(), value.getMaximum().doubleValue());
-        float displayPct = animateMap(numberProgress, value, pct, draggingNumber == value ? 0.34f : 0.18f);
-        RenderServices.shapes().rounded(sx, sy, sx + sw, sy + 5.0f, 2.5f, alpha(0xFF30262F, 190.0f * guiAlpha));
-        RenderServices.shapes().rounded(sx, sy, sx + sw * displayPct, sy + 5.0f, 2.5f, alpha(SAKURA, 238.0f * guiAlpha));
-        if (hover > 0.02f) {
-            RenderServices.shapes().shadow(sx + sw * displayPct - 6.0f, sy - 3.5f, sx + sw * displayPct + 6.0f, sy + 8.5f,
-                    6.0f, alpha(SAKURA, 58.0f * hover * guiAlpha), 4, 2.0f);
-        }
-        RenderServices.shapes().circle(sx + sw * displayPct, sy + 2.5f, 0, 360, 5.6f, alpha(0xFFFFF3FA, 246.0f * guiAlpha));
+    }
+
+    private void drawColorPicker(Numbers red, Numbers green, Numbers blue, float vx, float vy, float vw) {
+        String label = displayName(red).replaceFirst("(?i)\\s*red$", "");
+        drawGlowText(FontLoaders.C14, label.length() == 0 ? "Color" : label, vx, vy,
+                alpha(TEXT, 228.0f * guiAlpha), 0.36f);
+        float paletteY = vy + 16.0f;
+        float paletteH = 66.0f;
+        int color = 0xFF000000 | colorChannel(red) << 16 | colorChannel(green) << 8 | colorChannel(blue);
+        RenderServices.shapes().shadow(vx, paletteY, vx + vw, paletteY + paletteH, 6.0f,
+                alpha(color, 38.0f * guiAlpha), 4, 1.8f);
+        RenderServices.shapes().roundedHue(vx, paletteY, vx + vw, paletteY + paletteH, 6.0f, guiAlpha);
+        RenderServices.shapes().roundedBorder(vx, paletteY, vx + vw, paletteY + paletteH, 6.0f, 0.8f, 0x00000000,
+                alpha(TEXT, 58.0f * guiAlpha));
+        float[] hsb = Color.RGBtoHSB(colorChannel(red), colorChannel(green), colorChannel(blue), null);
+        float markerX = clamp(vx + hsb[0] * vw, vx + 4.0f, vx + vw - 4.0f);
+        float markerY = clamp(paletteY + (1.0f - hsb[2]) * paletteH, paletteY + 4.0f, paletteY + paletteH - 4.0f);
+        RenderServices.shapes().circleOutline(markerX, markerY, 4.1f, 1.2f, alpha(TEXT, 238.0f * guiAlpha));
+        RenderServices.shapes().circle(markerX, markerY, 0, 360, 2.0f, alpha(color, 245.0f * guiAlpha));
     }
 
     private void drawMode(Mode mode, float vx, float vy, float vw, int mouseX, int mouseY) {
@@ -456,7 +519,7 @@ public final class SakuraClickGui extends GuiScreen {
         float pulse = animateMap(modeSelectionPulse, mode, 0.0f, 0.16f);
         if (hover > 0.02f) {
             RenderServices.shapes().rounded(vx - 7.0f, vy + 1.0f, vx + vw + 7.0f, vy + 31.0f,
-                    7.0f, alpha(0xFF120D12, 62.0f * hover * guiAlpha));
+                    7.0f, alpha(GLASS, 62.0f * hover * guiAlpha));
         }
         drawGlowText(FontLoaders.C14, displayName(mode), vx, vy + 8.0f,
                 alpha(TEXT, (218.0f + 22.0f * hover) * guiAlpha), 0.34f + 0.3f * hover);
@@ -486,7 +549,7 @@ public final class SakuraClickGui extends GuiScreen {
         RenderServices.shapes().shadow(vx, dropY, vx + vw, dropY + dropH, 8.0f,
                 alpha(SAKURA, 34.0f * expand * guiAlpha), 4, 1.8f);
         drawMiniGlass(vx, dropY, vx + vw, dropY + dropH, 8.0f,
-                alpha(0xFF120D12, 178.0f * expand * guiAlpha), alpha(SAKURA, 52.0f * expand * guiAlpha));
+                alpha(GLASS, 178.0f * expand * guiAlpha), alpha(SAKURA, 52.0f * expand * guiAlpha));
         for (int i = 0; i < modes.length; i++) {
             Enum option = modes[i];
             String name = option.name();
@@ -505,7 +568,7 @@ public final class SakuraClickGui extends GuiScreen {
             float rowActive = Math.max(rowSelectedAnim, rowHoverAnim * 0.62f);
             if (rowActive > 0.01f) {
                 RenderServices.shapes().rounded(vx + 5.0f, rowY + 2.0f, vx + vw - 5.0f, rowY + rowH - 2.0f,
-                        6.0f, alpha(selected ? 0xFF26151F : 0xFF1B1218,
+                        6.0f, alpha(selected ? SURFACE_OVERLAY : SURFACE_RAISED,
                                 (96.0f + 58.0f * rowActive) * rowReveal * guiAlpha));
             }
             drawGlowText(FontLoaders.C14, optionLabel, vx + 12.0f, rowY + 7.0f,
@@ -527,7 +590,7 @@ public final class SakuraClickGui extends GuiScreen {
         float pulse = animateMap(modeSelectionPulse, mode, 0.0f, 0.16f);
         if (hover > 0.02f) {
             RenderServices.shapes().rounded(vx - 7.0f, vy + 1.0f, vx + vw + 7.0f, vy + 31.0f,
-                    7.0f, alpha(0xFF120D12, 62.0f * hover * guiAlpha));
+                    7.0f, alpha(GLASS, 62.0f * hover * guiAlpha));
         }
         drawGlowText(FontLoaders.C14, displayName(mode), vx, vy + 8.0f,
                 alpha(TEXT, (218.0f + 22.0f * hover) * guiAlpha), 0.34f + 0.3f * hover);
@@ -557,7 +620,7 @@ public final class SakuraClickGui extends GuiScreen {
         RenderServices.shapes().shadow(vx, dropY, vx + vw, dropY + dropH, 8.0f,
                 alpha(SAKURA, 34.0f * expand * guiAlpha), 4, 1.8f);
         drawMiniGlass(vx, dropY, vx + vw, dropY + dropH, 8.0f,
-                alpha(0xFF120D12, 178.0f * expand * guiAlpha), alpha(SAKURA, 52.0f * expand * guiAlpha));
+                alpha(GLASS, 178.0f * expand * guiAlpha), alpha(SAKURA, 52.0f * expand * guiAlpha));
         for (int i = 0; i < modes.length; i++) {
             String name = modes[i];
             String optionLabel = modeLabel(name);
@@ -575,7 +638,7 @@ public final class SakuraClickGui extends GuiScreen {
             float rowActive = Math.max(rowSelectedAnim, rowHoverAnim * 0.62f);
             if (rowActive > 0.01f) {
                 RenderServices.shapes().rounded(vx + 5.0f, rowY + 2.0f, vx + vw - 5.0f, rowY + rowH - 2.0f,
-                        6.0f, alpha(selected ? 0xFF26151F : 0xFF1B1218,
+                        6.0f, alpha(selected ? SURFACE_OVERLAY : SURFACE_RAISED,
                                 (96.0f + 58.0f * rowActive) * rowReveal * guiAlpha));
             }
             drawGlowText(FontLoaders.C14, optionLabel, vx + 12.0f, rowY + 7.0f,
@@ -597,7 +660,7 @@ public final class SakuraClickGui extends GuiScreen {
         }
         float oldAlpha = guiAlpha;
         guiAlpha *= progress;
-        RenderServices.shapes().rect(0.0f, 0.0f, sr.getScaledWidth(), sr.getScaledHeight(), alpha(0xFF000000, 120.0f * guiAlpha));
+        RenderServices.shapes().rect(0.0f, 0.0f, sr.getScaledWidth(), sr.getScaledHeight(), alpha(SHADOW, 120.0f * guiAlpha));
         float bw = 250.0f;
         float bh = 84.0f;
         float bx = (sr.getScaledWidth() - bw) * 0.5f;
@@ -618,12 +681,20 @@ public final class SakuraClickGui extends GuiScreen {
         if (bindingModule != null) {
             return;
         }
+        if (mouseButton == 0 && isResizeHandleHovered(mouseX, mouseY)) {
+            resizingWindow = true;
+            draggingWindow = false;
+            resizeStartMouseX = mouseX;
+            resizeStartMouseY = mouseY;
+            resizeStartScale = ClickGUI.sakuraScale.getValue().floatValue();
+            return;
+        }
         float sx = unscaleX(x);
         float sy = unscaleY(y + introOffset());
         if (mouseButton == 0 && isHovered(sx, sy, sx + w / scale, sy + 52.0f, mouseX, mouseY)) {
             draggingWindow = true;
             dragOffsetX = mouseX - x;
-            dragOffsetY = mouseY - y;
+            dragOffsetY = mouseY - (y + introOffset());
             return;
         }
         if (handleSidebarClick(mouseX, mouseY, mouseButton)) {
@@ -707,12 +778,25 @@ public final class SakuraClickGui extends GuiScreen {
         float dx = sx + 388.0f;
         float dy = sy + 142.0f - detailScrollDisplay;
         float dw = w / scale - 420.0f;
-        for (Value value : selectedModule.getValues()) {
+        List<Value> values = selectedModule.getValues();
+        for (int index = 0; index < values.size(); index++) {
+            Value value = values.get(index);
             if (!value.isVisible()) {
                 continue;
             }
-            float vh = valueHeight(value);
+            if (value instanceof Numbers && !isColorStart(values, index)) {
+                continue;
+            }
+            if (isColorContinuation(values, index)) {
+                continue;
+            }
+            float vh = valueHeight(values, index);
             if (isHovered(dx, dy, dx + dw, dy + vh - 8.0f, mouseX, mouseY)) {
+                if (isColorStart(values, index)) {
+                    beginColorDrag((Numbers) value, (Numbers) values.get(index + 1), (Numbers) values.get(index + 2),
+                            mouseX, mouseY, dx, dy + 16.0f, dw, 66.0f);
+                    return true;
+                }
                 if (value instanceof Option) {
                     value.setValue(!Boolean.TRUE.equals(value.getValue()));
                     return true;
@@ -731,6 +815,9 @@ public final class SakuraClickGui extends GuiScreen {
                 }
             }
             dy += vh;
+            if (isColorStart(values, index)) {
+                index += 2;
+            }
         }
         return false;
     }
@@ -738,7 +825,9 @@ public final class SakuraClickGui extends GuiScreen {
     @Override
     protected void mouseReleased(int mouseX, int mouseY, int state) {
         draggingWindow = false;
+        resizingWindow = false;
         draggingNumber = null;
+        clearColorDrag();
         super.mouseReleased(mouseX, mouseY, state);
     }
 
@@ -799,6 +888,17 @@ public final class SakuraClickGui extends GuiScreen {
     }
 
     private void updateDrag(ScaledResolution sr, int mouseX, int mouseY) {
+        if (resizingWindow) {
+            if (!Mouse.isButtonDown(0)) {
+                resizingWindow = false;
+                return;
+            }
+            float nextScale = SakuraWindowGeometry.resizeScale(resizeStartScale,
+                    resizeStartMouseX, resizeStartMouseY, mouseX, mouseY, responsiveScale,
+                    BASE_WIDTH, BASE_HEIGHT, MINIMUM_SCALE, MAXIMUM_SCALE);
+            ClickGUI.sakuraScale.setValue((double) nextScale);
+            return;
+        }
         if (!draggingWindow) {
             return;
         }
@@ -807,9 +907,29 @@ public final class SakuraClickGui extends GuiScreen {
             return;
         }
         float nx = clamp(mouseX - dragOffsetX, 8.0f, Math.max(8.0f, sr.getScaledWidth() - w - 8.0f));
-        float ny = clamp(mouseY - dragOffsetY, 8.0f, Math.max(8.0f, sr.getScaledHeight() - h - 8.0f));
+        float ny = clamp(SakuraWindowGeometry.windowYFromHeader(mouseY, dragOffsetY, introOffset()),
+                8.0f, Math.max(8.0f, sr.getScaledHeight() - h - 8.0f));
         ClickGUI.windowX.setValue((double) nx);
         ClickGUI.windowY.setValue((double) ny);
+    }
+
+    private boolean isResizeHandleHovered(int mouseX, int mouseY) {
+        float hitSize = 32.0f;
+        float shellY = y + introOffset();
+        return SakuraWindowGeometry.containsScreen(x + w - hitSize, shellY + h - hitSize,
+                x + w + 4.0f, shellY + h + 4.0f, mouseX, mouseY);
+    }
+
+    private void drawResizeHandle(int mouseX, int mouseY) {
+        float size = 16.0f;
+        float handleX = x + w - size - 6.0f;
+        float handleY = y + introOffset() + h - size - 6.0f;
+        boolean active = resizingWindow || isResizeHandleHovered(mouseX, mouseY);
+        RenderServices.shapes().rounded(handleX, handleY, handleX + size, handleY + size, 4.0f,
+                alpha(GLASS_SOFT, (106.0f + (active ? 72.0f : 0.0f)) * guiAlpha));
+        int color = alpha(active ? SAKURA_STRONG : MUTED, (active ? 230.0f : 170.0f) * guiAlpha);
+        RenderServices.shapes().line(handleX + 4.0f, handleY + size - 2.5f, handleX + size - 2.5f, handleY + 4.0f, 1.1f, color);
+        RenderServices.shapes().line(handleX + 7.0f, handleY + size - 2.5f, handleX + size - 2.5f, handleY + 7.0f, 1.1f, color);
     }
 
     private void updateScrollAnimations() {
@@ -842,6 +962,47 @@ public final class SakuraClickGui extends GuiScreen {
         double next = inc > 0.0D ? Math.round(raw / inc) * inc : raw;
         next = Math.max(draggingMin, Math.min(draggingMax, next));
         draggingNumber.setNumberValue(next);
+    }
+
+    private void beginColorDrag(Numbers red, Numbers green, Numbers blue, int mouseX, int mouseY,
+                                float x, float y, float w, float h) {
+        draggingNumber = null;
+        draggingColorRed = red;
+        draggingColorGreen = green;
+        draggingColorBlue = blue;
+        draggingColorX = x;
+        draggingColorY = y;
+        draggingColorW = w;
+        draggingColorH = h;
+        updateColorFromPointer(mouseX, mouseY);
+    }
+
+    private void updateColorDrag(int mouseX, int mouseY) {
+        if (draggingColorRed == null) {
+            return;
+        }
+        if (!Mouse.isButtonDown(0)) {
+            clearColorDrag();
+            return;
+        }
+        updateColorFromPointer(mouseX, mouseY);
+    }
+
+    private void updateColorFromPointer(int mouseX, int mouseY) {
+        float localMouseX = mouseX / scale;
+        float localMouseY = mouseY / scale;
+        float hue = clamp((localMouseX - draggingColorX) / Math.max(1.0f, draggingColorW), 0.0f, 1.0f);
+        float brightness = 1.0f - clamp((localMouseY - draggingColorY) / Math.max(1.0f, draggingColorH), 0.0f, 1.0f) * 0.72f;
+        int color = Color.HSBtoRGB(hue, 0.86f, brightness);
+        draggingColorRed.setNumberValue((double) ((color >> 16) & 255));
+        draggingColorGreen.setNumberValue((double) ((color >> 8) & 255));
+        draggingColorBlue.setNumberValue((double) (color & 255));
+    }
+
+    private void clearColorDrag() {
+        draggingColorRed = null;
+        draggingColorGreen = null;
+        draggingColorBlue = null;
     }
 
     private boolean handleModeClick(Mode mode, float x, float y, float w, int mouseX, int mouseY) {
@@ -921,6 +1082,40 @@ public final class SakuraClickGui extends GuiScreen {
         return 38.0f;
     }
 
+    private float valueHeight(List<Value> values, int index) {
+        if (isColorStart(values, index)) {
+            return 94.0f;
+        }
+        return valueHeight(values.get(index));
+    }
+
+    private boolean isColorStart(List<Value> values, int index) {
+        if (index < 0 || index + 2 >= values.size()) {
+            return false;
+        }
+        String base = colorChannelBase(values.get(index), "red");
+        return base != null
+                && base.equals(colorChannelBase(values.get(index + 1), "green"))
+                && base.equals(colorChannelBase(values.get(index + 2), "blue"));
+    }
+
+    private boolean isColorContinuation(List<Value> values, int index) {
+        return isColorStart(values, index - 1) || isColorStart(values, index - 2);
+    }
+
+    private String colorChannelBase(Value value, String channel) {
+        if (!(value instanceof Numbers)) {
+            return null;
+        }
+        String name = value.getName() == null ? "" : value.getName();
+        name = name.replace(" ", "").replace("_", "").replace("-", "").toLowerCase();
+        return name.endsWith(channel) ? name.substring(0, name.length() - channel.length()) : null;
+    }
+
+    private int colorChannel(Numbers value) {
+        return Math.max(0, Math.min(255, ((Number) value.getValue()).intValue()));
+    }
+
     private float maxListScroll() {
         int count = ModuleManager.getModulesInType(currentType).size();
         float visible = h / scale - 130.0f;
@@ -932,16 +1127,22 @@ public final class SakuraClickGui extends GuiScreen {
             return 0.0f;
         }
         float total = 0.0f;
-        for (Value value : selectedModule.getValues()) {
-            if (value.isVisible()) {
-                total += valueHeight(value);
+        List<Value> values = selectedModule.getValues();
+        for (int index = 0; index < values.size(); index++) {
+            if (!values.get(index).isVisible() || isColorContinuation(values, index)
+                    || (values.get(index) instanceof Numbers && !isColorStart(values, index))) {
+                continue;
+            }
+            total += valueHeight(values, index);
+            if (isColorStart(values, index)) {
+                index += 2;
             }
         }
         return Math.max(0.0f, total - (h / scale - 170.0f));
     }
 
     private void drawSakuraPanel(float x, float y, float x2, float y2, float radius, float alpha) {
-        RenderServices.shapes().shadow(x, y, x2, y2, radius, alpha(0xFF000000, 92.0f * alpha * guiAlpha), 8, 3.4f);
+        RenderServices.shapes().shadow(x, y, x2, y2, radius, alpha(SHADOW, 92.0f * alpha * guiAlpha), 8, 3.4f);
         RenderServices.shapes().shadow(x, y, x2, y2, radius, alpha(SAKURA, 32.0f * alpha * guiAlpha), 5, 2.2f);
         RenderServices.liquidGlass().roundedBorder(x, y, x2, y2, radius, 0.55f,
                 alpha(GLASS, 166.0f * alpha * guiAlpha), alpha(SAKURA, 34.0f * alpha * guiAlpha), glassSettings());
@@ -962,35 +1163,28 @@ public final class SakuraClickGui extends GuiScreen {
 
     private void drawGlowText(gq.yozakura.engine.font.CFontRenderer font, String text, float x, float y,
                               int color, float strength) {
-        if (text == null || text.length() == 0 || strength <= 0.0f) {
+        if (text == null || text.length() == 0 || (color >>> 24 & 255) <= 0) {
+            return;
+        }
+        if (strength <= 0.0f) {
             font.drawString(text, x, y, color);
             return;
         }
-        int wide = alpha(SAKURA, 18.0f * strength * guiAlpha);
-        int near = alpha(0xFFFFDCEB, 30.0f * strength * guiAlpha);
-        font.drawString(text, x - 0.65f, y, wide);
-        font.drawString(text, x + 0.65f, y, wide);
-        font.drawString(text, x, y - 0.65f, wide);
-        font.drawString(text, x, y + 0.65f, wide);
-        font.drawString(text, x - 0.35f, y - 0.35f, near);
-        font.drawString(text, x + 0.35f, y + 0.35f, near);
-        font.drawString(text, x, y, color);
+        font.drawStringWithGlow(text, x, y, color,
+                alpha(SAKURA, 184.0f * guiAlpha), strength, GlowProfile.TEXT);
     }
 
     private void drawGlowIcon(gq.yozakura.engine.font.CFontRenderer font, String text, float x, float y,
                               int color, float strength) {
-        if (text == null || text.length() == 0 || strength <= 0.0f) {
+        if (text == null || text.length() == 0 || (color >>> 24 & 255) <= 0) {
+            return;
+        }
+        if (strength <= 0.0f) {
             font.drawString(text, x, y, color);
             return;
         }
-        int wide = alpha(SAKURA, 16.0f * strength * guiAlpha);
-        int near = alpha(0xFFFFDCEB, 28.0f * strength * guiAlpha);
-        font.drawString(text, x - 0.7f, y, wide);
-        font.drawString(text, x + 0.7f, y, wide);
-        font.drawString(text, x, y - 0.7f, wide);
-        font.drawString(text, x, y + 0.7f, wide);
-        font.drawString(text, x, y, near);
-        font.drawString(text, x, y, color);
+        font.drawStringWithGlow(text, x, y, color,
+                alpha(SAKURA_STRONG, 196.0f * guiAlpha), strength, GlowProfile.TEXT);
     }
 
     private void drawGlowCentered(gq.yozakura.engine.font.CFontRenderer font, String text, float centerX, float y,
@@ -1029,14 +1223,14 @@ public final class SakuraClickGui extends GuiScreen {
         }
         GL11.glEnable(GL11.GL_TEXTURE_2D);
         GL11.glPopMatrix();
-        RenderServices.shapes().circle(centerX, centerY, 0, 360, size * 0.30f, alpha(0xFFFFF3FA, 235.0f * alpha * guiAlpha));
+        RenderServices.shapes().circle(centerX, centerY, 0, 360, size * 0.30f, alpha(TEXT, 235.0f * alpha * guiAlpha));
     }
 
     private void drawPetal(float size, float alpha) {
         float width = size * 0.58f;
         float length = size * 1.12f;
         GL11.glBegin(GL11.GL_TRIANGLE_FAN);
-        glColor(0xFFFFEAF3, alpha * 0.96f * guiAlpha);
+        glColor(TEXT, alpha * 0.96f * guiAlpha);
         GL11.glVertex2f(0.0f, length * 0.36f);
         for (float[] point : SAKURA_PETAL_POINTS) {
             glColor(SAKURA, alpha * 0.70f * guiAlpha);
@@ -1123,17 +1317,32 @@ public final class SakuraClickGui extends GuiScreen {
         return value / scale;
     }
 
-    private void updateFrameScale() {
-        long now = System.nanoTime();
-        float measured = clamp((now - lastFrameNanos) / 16666666.0f, 0.45f, 2.2f);
-        lastFrameNanos = now;
-        frameScale = measured;
+    private void updateUiClock() {
+        uiDeltaSeconds = uiClock.tick(System.nanoTime());
+    }
+
+    private static void refreshPalette() {
+        ClickGUI.Palette requested = ClickGUI.palette.getValue();
+        if (requested == appliedPalette && requested != ClickGUI.Palette.CUSTOM) {
+            return;
+        }
+        appliedPalette = requested;
+        PALETTE = ClickGUI.currentPalette();
+        TEXT = PALETTE.getTextPrimary();
+        MUTED = PALETTE.getTextSecondary();
+        FAINT = PALETTE.getTextDisabled();
+        SAKURA = PALETTE.getAccentPrimary();
+        SAKURA_STRONG = PALETTE.getGlowPrimary();
+        GLASS = PALETTE.getCanvas();
+        GLASS_SOFT = PALETTE.getSurface();
+        SHADOW = PALETTE.getShadow();
+        SURFACE_RAISED = PALETTE.getSurfaceRaised();
+        SURFACE_OVERLAY = PALETTE.getSurfaceOverlay();
+        TRACK = PALETTE.getBorderSubtle();
     }
 
     private float animate(float current, float target, float speed) {
-        float factor = 1.0f - (float) Math.pow(1.0f - clamp(speed, 0.0f, 1.0f), frameScale);
-        float value = current + (target - current) * factor;
-        return Math.abs(target - value) < 0.01f ? target : value;
+        return SakuraUiMotion.approach(current, target, speed, uiDeltaSeconds);
     }
 
     private <T> float animateMap(Map<T, Float> map, T key, float target, float speed) {
@@ -1230,6 +1439,7 @@ public final class SakuraClickGui extends GuiScreen {
         closing = true;
         draggingWindow = false;
         draggingNumber = null;
+        clearColorDrag();
         expandedMode = null;
         expandedModeProperty = null;
     }

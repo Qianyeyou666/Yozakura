@@ -3,6 +3,7 @@ package gq.yozakura.ui.click.web;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import gq.yozakura.engine.render.ui.VisualPalette;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -51,9 +52,11 @@ final class ModernWebClickGuiController {
                 .mode("Rotations", "Silent", "None", "Legit", "Silent", "Lock View")
                 .number("Range", 3.2D, 2.5D, 6.0D, 0.1D)
                 .number("FOV", 360.0D, 30.0D, 360.0D, 1.0D)
-                .number("APS", 12.0D, 1.0D, 20.0D, 1.0D)
+                .number("Min CPS", 14.0D, 1.0D, 20.0D, 1.0D)
+                .number("Max CPS", 14.0D, 1.0D, 20.0D, 1.0D)
                 .number("Hurt Time", 10.0D, 0.0D, 10.0D, 1.0D)
-                .mode("AutoBlock", "None", "None", "Vanilla", "Blink")
+                .mode("AutoBlock", "VANILLA", "VANILLA", "RELEASE", "INTERACT", "SWITCH", "BLINK")
+                .number("AutoBlock Aps", 10.0D, 1.0D, 20.0D, 1.0D)
                 .mode("Move Fix", "None", "None", "Silent", "Strict")
                 .bool("Show Target", true)
                 .bool("Weapon Only", false)
@@ -104,11 +107,13 @@ final class ModernWebClickGuiController {
                 .mode("Mode", "Smart", "Smart", "HurtTime", "Combo")
                 .number("Chance", 100.0D, 0.0D, 100.0D, 1.0D);
         add("Velocity", "Combat", "Knockback control settings.")
-                .mode("Mode", "Vanilla", "Vanilla", "Prediction", "Reduce")
-                .number("Horizontal", 100.0D, 0.0D, 100.0D, 1.0D)
+                .mode("Mode", "Reduce", "Attack", "Reduce")
+                .number("Horizontal", 60.0D, 0.0D, 100.0D, 1.0D)
                 .number("Vertical", 100.0D, 0.0D, 100.0D, 1.0D)
-                .number("Explosions Horizontal", 100.0D, 0.0D, 100.0D, 1.0D)
-                .number("Explosions Vertical", 100.0D, 0.0D, 100.0D, 1.0D);
+                .number("Chance", 100.0D, 0.0D, 100.0D, 1.0D);
+        add("JumpReset", "Combat", "Jump reset after receiving velocity.")
+                .bool("Fake Check", false)
+                .bool("Force Forward", true);
         add("BowAimBot", "Combat", "Auto aim targets while using a bow.")
                 .number("Range", 35.0D, 5.0D, 80.0D, 1.0D)
                 .bool("Predict", true);
@@ -204,7 +209,8 @@ final class ModernWebClickGuiController {
                 .bool("Mobs", false)
                 .number("Alpha", 160.0D, 35.0D, 255.0D, 5.0D);
         add("WebClickGUI", "Render", "Browser based ClickGUI for the modern runtime.")
-                .number("Port", 18989.0D, 1024.0D, 65535.0D, 1.0D);
+                .number("Port", 18989.0D, 1024.0D, 65535.0D, 1.0D)
+                .mode("Palette", "NIGHT_BLOOM", "NIGHT_BLOOM", "SAKURA", "OCEAN", "GRAPHITE");
 
         add("AutoTools", "Player", "Switch correct tools when destroying blocks.");
         add("InventoryManager", "Player", "Manage inventory items.")
@@ -282,6 +288,8 @@ final class ModernWebClickGuiController {
         builder.append(',');
         appendProperty(builder, "moduleCount", MODULES.size());
         builder.append(',');
+        appendPalette(builder);
+        builder.append(',');
         builder.append("\"categories\":[");
         for (int i = 0; i < CATEGORIES.size(); i++) {
             if (i > 0) {
@@ -306,6 +314,60 @@ final class ModernWebClickGuiController {
         }
         builder.append("]}");
         return builder.toString();
+    }
+
+    private static void appendPalette(StringBuilder builder) {
+        ModernValue value = value("WebClickGUI", "Palette");
+        String name = value == null ? "NIGHT_BLOOM" : String.valueOf(value.current);
+        VisualPalette palette = palette(name);
+        builder.append("\"palette\":{");
+        appendProperty(builder, "name", name);
+        builder.append(',');
+        appendProperty(builder, "canvas", cssColor(palette.getCanvas()));
+        builder.append(',');
+        appendProperty(builder, "surface", cssColor(palette.getSurface()));
+        builder.append(',');
+        appendProperty(builder, "raised", cssColor(palette.getSurfaceRaised()));
+        builder.append(',');
+        appendProperty(builder, "overlay", cssColor(palette.getSurfaceOverlay()));
+        builder.append(',');
+        appendProperty(builder, "text", cssColor(palette.getTextPrimary()));
+        builder.append(',');
+        appendProperty(builder, "muted", cssColor(palette.getTextSecondary()));
+        builder.append(',');
+        appendProperty(builder, "dim", cssColor(palette.getTextDisabled()));
+        builder.append(',');
+        appendProperty(builder, "line", cssColor(palette.getBorderSubtle()));
+        builder.append(',');
+        appendProperty(builder, "focus", cssColor(palette.getBorderFocus()));
+        builder.append(',');
+        appendProperty(builder, "accent", cssColor(palette.getAccentPrimary()));
+        builder.append(',');
+        appendProperty(builder, "accentSoft", cssColor(palette.getAccentSoft()));
+        builder.append(',');
+        appendProperty(builder, "accentAlt", cssColor(palette.getAccentAlt()));
+        builder.append(',');
+        appendProperty(builder, "success", cssColor(palette.getSuccess()));
+        builder.append(',');
+        appendProperty(builder, "shadow", cssColor(palette.getShadow()));
+        builder.append('}');
+    }
+
+    private static VisualPalette palette(String name) {
+        if ("SAKURA".equals(name)) {
+            return VisualPalette.sakura();
+        }
+        if ("OCEAN".equals(name)) {
+            return VisualPalette.ocean();
+        }
+        if ("GRAPHITE".equals(name)) {
+            return VisualPalette.graphite();
+        }
+        return VisualPalette.nightBloom();
+    }
+
+    private static String cssColor(int color) {
+        return String.format(Locale.ROOT, "#%06X", color & 0x00FFFFFF);
     }
 
     static void toggleModule(String body) {

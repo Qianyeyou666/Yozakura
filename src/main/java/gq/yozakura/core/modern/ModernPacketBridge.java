@@ -210,24 +210,15 @@ final class ModernPacketBridge {
             if (id != ModernRotationBridge.entityId(player)) {
                 return false;
             }
-            double horizontal = ModernForgeEventBridge.number("Velocity", "Horizontal", 100.0D) / 100.0D;
-            double vertical = ModernForgeEventBridge.number("Velocity", "Vertical", 100.0D) / 100.0D;
-            if (horizontal <= 0.0D && vertical <= 0.0D) {
-                return true;
-            }
-            scaleMotionPacket(packet, horizontal, vertical);
-            return false;
-        }
-        if (name.contains("clientboundexplosionpacket") || name.contains("clientboundexplodepacket")) {
-            double horizontal = ModernForgeEventBridge.number("Velocity", "Explosions Horizontal",
-                    ModernForgeEventBridge.number("Velocity", "Horizontal", 100.0D)) / 100.0D;
-            double vertical = ModernForgeEventBridge.number("Velocity", "Explosions Vertical",
-                    ModernForgeEventBridge.number("Velocity", "Vertical", 100.0D)) / 100.0D;
-            if (horizontal <= 0.0D && vertical <= 0.0D) {
-                zeroExplosion(packet);
+            String mode = ModernForgeEventBridge.mode("Velocity", "Mode", "Reduce");
+            if (!"Reduce".equalsIgnoreCase(mode)) {
                 return false;
             }
-            scaleExplosionPacket(packet, horizontal, vertical);
+            double horizontal = ModernForgeEventBridge.number("Velocity", "Horizontal", 60.0D) / 100.0D;
+            double vertical = ModernForgeEventBridge.number("Velocity", "Vertical", 100.0D) / 100.0D;
+            scaleMotionPacket(packet, Math.max(0.0D, Math.min(1.0D, horizontal)),
+                    Math.max(0.0D, Math.min(1.0D, vertical)));
+            return false;
         }
         return false;
     }

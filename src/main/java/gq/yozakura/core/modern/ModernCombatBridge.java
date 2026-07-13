@@ -426,8 +426,9 @@ final class ModernCombatBridge {
         ModernRaycastBridge.applyHitResult(minecraft,
                 new ModernRaycastBridge.RaycastResult(target, null, Math.sqrt(distanceSq(player, target)), null));
         performAttack(minecraft, player, target, true);
-        nextAttackAt = now + Math.max(35L, Math.round(1000.0D
-                / Math.max(1.0D, ModernForgeEventBridge.number("KillAura", "APS", 12.0D))));
+        nextAttackAt = now + Math.max(35L, Math.round(randomCpsDelay(
+                ModernForgeEventBridge.number("KillAura", "Min CPS", 14.0D),
+                ModernForgeEventBridge.number("KillAura", "Max CPS", 14.0D))));
     }
 
     private static double randomCpsDelay(double minCps, double maxCps) {
@@ -565,8 +566,8 @@ final class ModernCombatBridge {
     }
 
     private static void startUseItem(Object player) {
-        String mode = ModernForgeEventBridge.mode("BlockHit", "Mode", "Manual");
-        if ("Manual".equalsIgnoreCase(mode)) {
+        String mode = ModernForgeEventBridge.mode("BlockHit", "Mode", "Helper");
+        if (!"Auto".equalsIgnoreCase(mode)) {
             return;
         }
         Object hand = ModernForgeEventBridge.invoke(player, "getUsedItemHand");

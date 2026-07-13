@@ -73,7 +73,7 @@ final class MaterialValueRenderer {
         List<Value> values = module.getValues();
         for (int i = 0; i < values.size(); i++) {
             Value value = values.get(i);
-            if (!isVisible(module, value)) {
+            if (!isVisible(module, value) || isHiddenStandaloneNumber(module, i)) {
                 continue;
             }
             if (isColorStart(module, i)) {
@@ -106,7 +106,7 @@ final class MaterialValueRenderer {
         List<Value> values = module.getValues();
         for (int i = 0; i < values.size(); i++) {
             Value value = values.get(i);
-            if (!isVisible(module, value)) {
+            if (!isVisible(module, value) || isHiddenStandaloneNumber(module, i)) {
                 continue;
             }
             if (isColorStart(module, i)) {
@@ -225,7 +225,7 @@ final class MaterialValueRenderer {
         List<Value> values = module.getValues();
         for (int i = 0; i < values.size(); i++) {
             Value value = values.get(i);
-            if (!isVisible(module, value)) {
+            if (!isVisible(module, value) || isHiddenStandaloneNumber(module, i)) {
                 continue;
             }
             if (isColorStart(module, i)) {
@@ -265,7 +265,7 @@ final class MaterialValueRenderer {
         List<Value> values = module.getValues();
         for (int i = 0; i < values.size(); i++) {
             Value value = values.get(i);
-            if (!isVisible(module, value)) {
+            if (!isVisible(module, value) || isHiddenStandaloneNumber(module, i)) {
                 continue;
             }
             if (isColorStart(module, i)) {
@@ -407,11 +407,6 @@ final class MaterialValueRenderer {
         String text = formatNumber(current);
         FontLoaders.C14.drawString(gui.displayName(value), x, y, theme.muted());
         drawAnimatedValueText(value, text, current, x + width, y, theme.muted());
-        String key = gui.animationKey(value);
-        float shownPct = gui.animation("value.number." + key, pct(value),
-                draggingNumber == value ? 0.62f : 0.26f, pct(value));
-        drawSlider(sliderX(x, width), y + 24.0f * s, sliderW(width), shownPct, theme,
-                "value.slider." + key, draggingNumber == value);
     }
 
     private void drawRange(Numbers min, Numbers max, float x, float y, float width) {
@@ -435,9 +430,6 @@ final class MaterialValueRenderer {
         float sx = sliderX(x, width);
         float sy = y + 24.0f * s;
         float sw = sliderW(width);
-        drawSliderTrack(sx, sy, sw, minPct, maxPct, theme, draggingNumber == min || draggingNumber == max);
-        drawKnob(sx + sw * minPct, sy + 2.0f * s, theme, "value.slider." + minKey, draggingNumber == min);
-        drawKnob(sx + sw * maxPct, sy + 2.0f * s, theme, "value.slider." + maxKey, draggingNumber == max);
     }
 
     private void drawColor(Numbers red, Numbers green, Numbers blue, Numbers alpha,
@@ -1180,12 +1172,20 @@ final class MaterialValueRenderer {
         return value != null && value.isVisible() && !isHiddenPaletteValue(module, value);
     }
 
+    private boolean isHiddenStandaloneNumber(Module module, int index) {
+        Value value = module.getValues().get(index);
+        return value instanceof Numbers && !isColorStart(module, index);
+    }
+
     private boolean isColorStart(Module module, int index) {
         List<Value> values = module.getValues();
-        return index + 2 < values.size()
-                && isNumberNamed(values.get(index), "red")
-                && isNumberNamed(values.get(index + 1), "green")
-                && isNumberNamed(values.get(index + 2), "blue");
+        if (index + 2 >= values.size()) {
+            return false;
+        }
+        String base = colorChannelBase(values.get(index), "red");
+        return base != null
+                && base.equals(colorChannelBase(values.get(index + 1), "green"))
+                && base.equals(colorChannelBase(values.get(index + 2), "blue"));
     }
 
     private boolean isRangeStart(Module module, int index) {
@@ -1200,6 +1200,17 @@ final class MaterialValueRenderer {
 
     private boolean isNumberNamed(Value value, String name) {
         return value instanceof Numbers && normalizeValueName(value).equals(name);
+    }
+
+    private String colorChannelBase(Value value, String channel) {
+        if (!(value instanceof Numbers)) {
+            return null;
+        }
+        String name = normalizeValueName(value);
+        if (!name.endsWith(channel)) {
+            return null;
+        }
+        return name.substring(0, name.length() - channel.length());
     }
 
     private boolean isHiddenPaletteValue(Module module, Value value) {

@@ -669,6 +669,13 @@ public class RenderUtil {
         }
     }
 
+    public static void drawSoftShadowOffset(float x, float y, float x2, float y2, float radius,
+                                            float offsetX, float offsetY, int color, int layers,
+                                            float blurSpread) {
+        drawSoftShadow(x + offsetX, y + offsetY, x2 + offsetX, y2 + offsetY,
+                radius, color, layers, blurSpread);
+    }
+
     public static void drawFrostedGlassRect(float x, float y, float x2, float y2, float radius,
                                             float borderWidth, int fillColor, int borderColor) {
         normalizeRect(Rect.tmp, x, y, x2, y2);

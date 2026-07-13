@@ -26,6 +26,7 @@ import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 import gq.yozakura.runtime.YozakuraRuntime;
 import gq.yozakura.engine.render.ShaderRenderer;
+import gq.yozakura.engine.render.ui.RenderServices;
 import gq.yozakura.event.bus.EventManager;
 import gq.yozakura.event.bus.types.EventType;
 import gq.yozakura.event.bridge.HitBlockEvent;
@@ -39,6 +40,7 @@ import gq.yozakura.event.bridge.SwapItemEvent;
 import gq.yozakura.event.bridge.UpdateEvent;
 import gq.yozakura.manager.BridgeDebug;
 import gq.yozakura.manager.RotationDebug;
+import gq.yozakura.manager.RotationExitState;
 import gq.yozakura.manager.RotationState;
 import gq.yozakura.manager.VisualRotationState;
 import gq.yozakura.util.module.PacketUtil;
@@ -161,7 +163,12 @@ public final class YozakuraEventBridge {
         }
         if (isInGame()) {
             ShaderRenderer.beginOverlayFrame();
-            EventManager.call(new Render2DEvent(event.partialTicks));
+            RenderServices.glow().beginFrame();
+            try {
+                EventManager.call(new Render2DEvent(event.partialTicks));
+            } finally {
+                RenderServices.glow().flush();
+            }
             markOverlayRendered();
         }
     }
@@ -254,9 +261,10 @@ public final class YozakuraEventBridge {
         UpdateEvent update = new UpdateEvent(EventType.PRE, mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch,
                 mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch);
         EventManager.call(update);
+        RotationExitState.apply(update);
         BridgeDebug.logUpdate("forge", "PRE_AFTER_EVENT", update, false);
         RotationState.applyState(update.isRotated(), update.getNewYaw(), update.getNewPitch(),
-                update.getPreYaw(), update.isRotating());
+                update.getPreYaw(), update.isRotating(), update.isMoveFix());
         VisualRotationState.finishTick();
         syncVisibleRotation();
         RotationDebug.logUpdate("forge", update);

@@ -15,6 +15,7 @@ import gq.yozakura.engine.font.FontLoaders;
 import gq.yozakura.engine.render.GLStateManager;
 import gq.yozakura.engine.render.ShaderRenderer;
 import gq.yozakura.engine.render.ui.RenderServices;
+import gq.yozakura.engine.render.ui.VisualPalette;
 import gq.yozakura.ui.click.ClickGuiIcons;
 import gq.yozakura.ui.UiTextField;
 import gq.yozakura.ui.UiTheme;
@@ -91,32 +92,22 @@ public class YozakuraClickGui extends GuiScreen {
         }
 
         /** 暗色主题配色（默认） */
-        static final GuiPalette DARK = new GuiPalette(
-                new Color(9, 13, 18, 164).getRGB(),
-                new Color(12, 15, 20, 232).getRGB(),
-                new Color(17, 21, 27, 222).getRGB(),
-                new Color(25, 30, 38, 232).getRGB(),
-                new Color(34, 35, 77, 238).getRGB(),
-                new Color(232, 234, 236).getRGB(),
-                new Color(152, 154, 158).getRGB(),
-                new Color(83, 86, 92).getRGB(),
-                new Color(132, 117, 255).getRGB(),
-                new Color(196, 78, 83).getRGB(),
-                new Color(7, 9, 13, 154).getRGB(),
-                new Color(7, 9, 13, 122).getRGB(),
-                new Color(154, 190, 214, 58).getRGB(),
-                new Color(37, 43, 54, 190).getRGB(),
-                new Color(55, 54, 130, 218).getRGB(),
-                new Color(132, 121, 255).getRGB(),
-                new Color(132, 117, 255).getRGB(),
-                new Color(61, 67, 82, 178).getRGB(),
-                new Color(132, 117, 255, 230).getRGB(),
-                new Color(35, 38, 62, 200).getRGB(),
-                new Color(88, 90, 178, 160).getRGB(),
-                new Color(55, 58, 70, 140).getRGB(),
-                new Color(18, 22, 30, 240).getRGB(),
-                new Color(0, 0, 0, 200).getRGB(),
-                new Color(0, 0, 0, 210).getRGB());
+        static final GuiPalette DARK = nightBloom();
+
+        static GuiPalette nightBloom() {
+            return from(VisualPalette.nightBloom());
+        }
+
+        static GuiPalette from(VisualPalette palette) {
+            YozakuraVisualTokens tokens = YozakuraVisualTokens.from(palette);
+            return new GuiPalette(tokens.backdrop, tokens.topBar, tokens.card, tokens.cardHover, tokens.cardOpen,
+                    tokens.text, tokens.muted, tokens.faint, tokens.accent, tokens.danger,
+                    tokens.glassFill, tokens.glassFillSoft, tokens.glassBorder,
+                    tokens.navHover, tokens.selectedFill, tokens.focusBorder,
+                    tokens.switchGlow, tokens.valueTrack, tokens.valueFill,
+                    tokens.modeExpandedFill, tokens.modeSelected, tokens.modeHover,
+                    tokens.dropdown, tokens.dropdownShadow, tokens.shadow);
+        }
 
         /** 浅色主题配色（天蓝色系，透明度与 Sakura 对齐） */
         static final GuiPalette LIGHT = new GuiPalette(
@@ -202,30 +193,29 @@ public class YozakuraClickGui extends GuiScreen {
                 new Color(0, 0, 0, 205).getRGB());
     }
 
-    /** 根据 HUD 模块设置获取当前 GUI 配色 */
+    private ClickGUI.Palette appliedPalette;
+    private GuiPalette sharedPalette;
+
+    /** 根据 ClickGUI 的共享调色板获取当前 GUI 配色。 */
     GuiPalette guiColors() {
-        try {
-            if (gq.yozakura.module.render.HUD.getTheme() == gq.yozakura.module.render.HUD.Theme.SAKURA) {
-                return GuiPalette.SAKURA;
+        ClickGUI.Palette requested = ClickGUI.palette.getValue();
+        if (sharedPalette == null || requested != appliedPalette || requested == ClickGUI.Palette.CUSTOM) {
+            appliedPalette = requested;
+            sharedPalette = GuiPalette.from(ClickGUI.currentPalette());
+            uiTheme = UiTheme.current();
+            if (reusableToggle != null) {
+                reusableToggle.setTheme(uiTheme);
             }
-            if (gq.yozakura.module.render.HUD.getTheme() == gq.yozakura.module.render.HUD.Theme.GRAY) {
-                return GuiPalette.GRAY;
+            if (searchField != null) {
+                searchField.setTheme(uiTheme);
             }
-            return gq.yozakura.module.render.HUD.isLightTheme() ? GuiPalette.LIGHT : GuiPalette.DARK;
-        } catch (Exception e) {
-            return GuiPalette.DARK;
         }
+        return sharedPalette;
     }
 
-    /** 获取阴影颜色（浅色主题用白色半透明阴影，暗色用黑色阴影） */
+    /** 获取与当前调色板一致的阴影颜色。 */
     int shadowColor(int alpha) {
-        try {
-            return gq.yozakura.module.render.HUD.isLightTheme() || gq.yozakura.module.render.HUD.isSakuraTheme()
-                    ? withAlpha(0xFFFFFFFF, alpha)
-                    : new Color(0, 0, 0, alpha).getRGB();
-        } catch (Exception e) {
-            return new Color(0, 0, 0, alpha).getRGB();
-        }
+        return withAlpha(guiColors().shadowDim, alpha);
     }
 
     /**
@@ -396,15 +386,15 @@ public class YozakuraClickGui extends GuiScreen {
     float fpsGraphSmoothed;          // FPS 平滑值
     float frameScale = 1.0f;         // 帧缩放因子（用于帧率无关动画）
     final AnimUtil navBounce = new AnimUtil(280f);  // 导航栏选中指示器弹跳动画
-    gq.yozakura.module.render.HUD.Theme lastTheme = gq.yozakura.module.render.HUD.Theme.DARK;
+    ClickGUI.Palette lastPalette = ClickGUI.Palette.NIGHT_BLOOM;
     float themeFadeProgress = 0.0f;
-    final Map<gq.yozakura.module.render.HUD.Theme, Float> themeSwatchProgress = new HashMap<gq.yozakura.module.render.HUD.Theme, Float>();
-    final Map<gq.yozakura.module.render.HUD.Theme, Float> themeSwatchHoverProgress = new HashMap<gq.yozakura.module.render.HUD.Theme, Float>();
-    final Map<gq.yozakura.module.render.HUD.Theme, Float> designSwatchHoverProgress = new HashMap<gq.yozakura.module.render.HUD.Theme, Float>();
+    final Map<ClickGUI.Palette, Float> themeSwatchProgress = new HashMap<ClickGUI.Palette, Float>();
+    final Map<ClickGUI.Palette, Float> themeSwatchHoverProgress = new HashMap<ClickGUI.Palette, Float>();
+    final Map<ClickGUI.Palette, Float> designSwatchHoverProgress = new HashMap<ClickGUI.Palette, Float>();
     float designThemeButtonHoverProgress = 0.0f;
     float designResetButtonHoverProgress = 0.0f;
     float designResetButtonPressProgress = 0.0f;
-    final UiTheme uiTheme = UiTheme.current();                    // UI 主题
+    UiTheme uiTheme = UiTheme.current();                          // UI 主题
     final UiToggle reusableToggle = new UiToggle().setTheme(uiTheme); // 可复用的开关控件
     final UiTextField searchField = new UiTextField().setTheme(uiTheme).placeholder("Search modules...").maxLength(32); // 搜索文本框
     final ClickGuiThemeRenderer themeRenderer = new ClickGuiThemeRenderer(this);
@@ -454,7 +444,7 @@ public class YozakuraClickGui extends GuiScreen {
         fpsGraphLastSample = 0L;
         fpsGraphSmoothed = 0.0f;
         frameScale = 1.0f;
-        lastTheme = gq.yozakura.module.render.HUD.getTheme();
+        lastPalette = ClickGUI.palette.getValue();
         themeFadeProgress = 0.0f;
         themeRenderer.resetGlassAnimation();
     }
@@ -574,9 +564,9 @@ public class YozakuraClickGui extends GuiScreen {
     }
 
     void updateThemeTransition() {
-        gq.yozakura.module.render.HUD.Theme current = gq.yozakura.module.render.HUD.getTheme();
-        if (current != lastTheme) {
-            lastTheme = current;
+        ClickGUI.Palette current = ClickGUI.palette.getValue();
+        if (current != lastPalette) {
+            lastPalette = current;
             themeFadeProgress = 1.0f;
         }
         themeFadeProgress = animate(themeFadeProgress, 0.0f, 0.13f);
@@ -1054,9 +1044,10 @@ public class YozakuraClickGui extends GuiScreen {
             return false;
         }
         List<Value> values = module.getValues();
-        return isNumberNamed(values.get(index), "red")
-                && isNumberNamed(values.get(index + 1), "green")
-                && isNumberNamed(values.get(index + 2), "blue");
+        String base = colorChannelBase(values.get(index), "red");
+        return base != null
+                && base.equals(colorChannelBase(values.get(index + 1), "green"))
+                && base.equals(colorChannelBase(values.get(index + 2), "blue"));
     }
 
     /** 检查是否为颜色组的延续行（Green/Blue 部分），应合并到颜色行中 */
@@ -1131,6 +1122,9 @@ public class YozakuraClickGui extends GuiScreen {
         Value value = module.getValues().get(index);
         if (!value.isVisible() || isHiddenPaletteValue(module, value) || isColorContinuation(module, index)
                 || isRangeContinuation(module, index)) {
+            return false;
+        }
+        if (value instanceof Numbers && !isColorStart(module, index)) {
             return false;
         }
         return getDetailValueTab(module, index) == detailTabIndex;
@@ -1264,6 +1258,17 @@ public class YozakuraClickGui extends GuiScreen {
     /** 检查值是否为指定名称的 Numbers 类型 */
     private boolean isNumberNamed(Value value, String name) {
         return value instanceof Numbers && normalizeValueName(value).equals(name);
+    }
+
+    private String colorChannelBase(Value value, String channel) {
+        if (!(value instanceof Numbers)) {
+            return null;
+        }
+        String name = normalizeValueName(value);
+        if (!name.endsWith(channel)) {
+            return null;
+        }
+        return name.substring(0, name.length() - channel.length());
     }
 
     /** 标准化值名称 */

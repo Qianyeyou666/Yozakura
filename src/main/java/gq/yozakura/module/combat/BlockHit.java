@@ -1,313 +1,371 @@
 package gq.yozakura.module.combat;
 
-import gq.yozakura.bridge.MinecraftAccessor;
+import com.google.common.base.CaseFormat;
+import gq.yozakura.event.bus.EventTarget;
+import gq.yozakura.event.bus.types.EventType;
+import gq.yozakura.event.bridge.AttackEvent;
+import gq.yozakura.event.bridge.LeftClickMouseEvent;
+import gq.yozakura.event.bridge.TickEvent;
+import gq.yozakura.manager.BlinkModules;
 import gq.yozakura.module.ModuleType;
-import gq.yozakura.module.Module;
-import gq.yozakura.util.module.PacketUtil;
-import gq.yozakura.value.Mode;
-import gq.yozakura.value.Numbers;
-import gq.yozakura.value.Option;
+import gq.yozakura.module.runtime.Module;
+import gq.yozakura.runtime.YozakuraRuntime;
+import gq.yozakura.util.module.KeyBindUtil;
+import gq.yozakura.value.properties.BooleanProperty;
+import gq.yozakura.value.properties.FloatProperty;
+import gq.yozakura.value.properties.IntProperty;
+import gq.yozakura.value.properties.ModeProperty;
+import gq.yozakura.value.properties.PercentProperty;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
-import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemSword;
-import net.minecraft.network.play.client.C07PacketPlayerDigging;
-import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
-import net.minecraft.util.BlockPos;
-import net.minecraft.util.EnumFacing;
-import net.minecraftforge.client.event.MouseEvent;
-import net.minecraftforge.event.entity.player.AttackEntityEvent;
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
-import net.minecraftforge.fml.common.gameevent.TickEvent;
-import org.lwjgl.input.Keyboard;
-
-import java.util.concurrent.ThreadLocalRandom;
 
 public class BlockHit extends Module {
-    public enum BlockMode {
-        MANUAL,
-        PREDICT,
-        AUTO,
-        LAG
-    }
+    private static final int MODE_HELPER = 0;
+    private static final int MODE_AUTO = 1;
+    private static final int MODE_LAG = 2;
 
-    private static BlockHit INSTANCE;
+    private static final int TIMING_DELAY = 0;
+    private static final int TIMING_HURT_TIME = 1;
+    private static final int TIMING_SMART = 2;
 
-    private final Mode<BlockMode> mode = new Mode<BlockMode>("Mode", "Mode", BlockMode.values(), BlockMode.MANUAL);
-    private final Numbers<Double> minDelay = new Numbers<Double>("Min Delay", "MinDelay", 95.0, 0.0, 300.0, 5.0);
-    private final Numbers<Double> maxDelay = new Numbers<Double>("Max Delay", "MaxDelay", 145.0, 0.0, 380.0, 5.0);
-    private final Numbers<Double> holdMs = new Numbers<Double>("Hold MS", "HoldMS", 185.0, 35.0, 420.0, 5.0);
-    private final Numbers<Double> actionCooldown =
-            new Numbers<Double>("Action Cooldown", "ActionCooldown", 260.0, 45.0, 800.0, 5.0);
-    private final Numbers<Double> releaseCooldown =
-            new Numbers<Double>("Release Cooldown", "ReleaseCooldown", 420.0, 120.0, 1200.0, 5.0);
-    private final Numbers<Double> chance = new Numbers<Double>("Chance", "Chance", 100.0, 0.0, 100.0, 1.0);
-    private final Option<Boolean> serverRelease =
-            new Option<Boolean>("Server release", "ServerRelease", true);
-    private final Option<Boolean> requireMouseDown = new Option<Boolean>("Require mouse down", "RequireMouseDown", true);
-    private final Option<Boolean> onlySword = new Option<Boolean>("Only Sword", "OnlySword", true);
-    private final Option<Boolean> onlyPlayers = new Option<Boolean>("Only Players", "OnlyPlayers", false);
+    private static final int AUTO_SPAM = 0;
+    private static final int AUTO_HOLD = 1;
 
-    private int phase;
-    private boolean holdingUseKey;
-    private boolean blockingApplied;
-    private boolean packetBlocking;
-    private boolean mouseTriggered;
-    private Entity triggerTarget;
-    private long blockAt;
-    private long releaseAt;
-    private long lastTriggerAt;
-    private long lastReleasePacketAt;
-    private long inputGraceUntil;
+    private static BlockHit instance;
+
+    public final ModeProperty mode =
+            new ModeProperty("Mode", MODE_HELPER, new String[]{"Helper", "Auto", "Lag"});
+
+    private final IntProperty helperAttackTick =
+            new IntProperty("Attack Tick", 2, 1, 4, () -> mode.getValue() == MODE_HELPER);
+    private final IntProperty helperStopTicks =
+            new IntProperty("Stop Ticks", 3, 2, 6, () -> mode.getValue() == MODE_HELPER);
+
+    private final ModeProperty autoTiming = new ModeProperty("Auto Timing", TIMING_DELAY,
+            new String[]{"Delay", "HurtTime", "Smart"}, () -> mode.getValue() == MODE_AUTO);
+    private final ModeProperty autoMode = new ModeProperty("Auto Mode", AUTO_SPAM,
+            new String[]{"Spam", "Hold"},
+            () -> mode.getValue() == MODE_AUTO && autoTiming.getValue() == TIMING_DELAY);
+    private final IntProperty blockDelay = new IntProperty("Block Delay", 100, 0, 1000,
+            () -> mode.getValue() == MODE_AUTO && autoTiming.getValue() == TIMING_DELAY);
+    private final IntProperty holdTicks = new IntProperty("Hold Ticks", 2, 1, 8,
+            () -> mode.getValue() == MODE_AUTO
+                    && autoTiming.getValue() == TIMING_DELAY && autoMode.getValue() == AUTO_HOLD);
+    private final IntProperty minHurtTime = new IntProperty("Min HurtTime", 8, 1, 10,
+            () -> mode.getValue() == MODE_AUTO && autoTiming.getValue() == TIMING_HURT_TIME);
+    private final IntProperty maxHurtTime = new IntProperty("Max HurtTime", 10, 1, 10,
+            () -> mode.getValue() == MODE_AUTO && autoTiming.getValue() == TIMING_HURT_TIME);
+    private final IntProperty smartBlockTicks = new IntProperty("Smart Block Ticks", 2, 1, 6,
+            () -> mode.getValue() == MODE_AUTO && autoTiming.getValue() == TIMING_SMART);
+    private final PercentProperty chance =
+            new PercentProperty("Block Hit Chance", 100, () -> mode.getValue() == MODE_AUTO);
+    private final BooleanProperty rangeCheck =
+            new BooleanProperty("Range Check", true, () -> mode.getValue() == MODE_AUTO);
+    private final FloatProperty range = new FloatProperty("Range", 3.0F, 1.0F, 6.0F,
+            () -> mode.getValue() == MODE_AUTO && rangeCheck.getValue());
+
+    private final IntProperty lagStartHurtTime =
+            new IntProperty("Start HurtTime", 6, 1, 10, () -> mode.getValue() == MODE_LAG);
+    private final IntProperty lagDelayTicks =
+            new IntProperty("Delay Packet Ticks", 2, 1, 10, () -> mode.getValue() == MODE_LAG);
+    private final IntProperty lagBlockTicks =
+            new IntProperty("Block Ticks", 3, 1, 8, () -> mode.getValue() == MODE_LAG);
+
+    private int activeMode = -1;
+
+    private boolean helperActive;
+    private int helperTicks;
+
+    private EntityLivingBase autoTarget;
+    private boolean autoArmed;
+    private boolean autoBlocking;
+    private int autoTicks;
+    private int autoHoldTicks;
+    private long autoBlockAt;
+
+    private boolean lagBlocking;
+    private boolean lagBlinking;
+    private int lagBlockCounter;
+    private int lagBlinkCounter;
+
+    private int lastRecordedAttackTick = Integer.MIN_VALUE;
+    private int lastRecordedTargetId = Integer.MIN_VALUE;
 
     public BlockHit() {
-        super("BlockHit", Keyboard.KEY_NONE, ModuleType.Combat, "Automatically blockhit");
-        this.addValues(minDelay, maxDelay, mode, requireMouseDown, chance, holdMs, actionCooldown,
-                releaseCooldown, serverRelease, onlySword, onlyPlayers);
+        super("BlockHit", false);
+        setCategory(ModuleType.Combat);
         Chinese = "格挡攻击";
-        INSTANCE = this;
+        Descript = "Helper, automatic, and lag-assisted block hit";
+        About = Descript;
+        instance = this;
     }
 
     @Override
-    public void enable() {
-        phase = 0;
-        blockAt = 0L;
-        releaseAt = 0L;
-        lastTriggerAt = 0L;
-        lastReleasePacketAt = 0L;
-        inputGraceUntil = 0L;
-        packetBlocking = false;
-        mouseTriggered = false;
-        triggerTarget = null;
-        releaseBlock();
+    public void onEnabled() {
+        activeMode = mode.getValue();
+        resetRuntime(true);
     }
 
     @Override
-    public void disable() {
-        phase = 0;
-        blockAt = 0L;
-        releaseAt = 0L;
-        inputGraceUntil = 0L;
-        triggerTarget = null;
-        releaseBlock();
+    public void onDisabled() {
+        resetRuntime(true);
     }
 
-    @SubscribeEvent
-    public void onMouse(MouseEvent event) {
-        if (event.button != 0 || !event.buttonstate || !isInGame() || mc.objectMouseOver == null) {
+    @EventTarget
+    public void onTick(TickEvent event) {
+        if (!isEnabled() || event.getType() != EventType.PRE) {
             return;
         }
-        Entity entity = mc.objectMouseOver.entityHit;
-        if (entity != null) {
-            start(entity, true);
+        if (!isInGame() || mc.thePlayer.isDead || mc.currentScreen != null || !isHoldingSword()) {
+            resetRuntime(true);
+            return;
+        }
+        if (activeMode != mode.getValue()) {
+            resetRuntime(true);
+            activeMode = mode.getValue();
+        }
+
+        switch (mode.getValue()) {
+            case MODE_HELPER:
+                updateHelper();
+                break;
+            case MODE_AUTO:
+                updateAuto();
+                break;
+            case MODE_LAG:
+                updateLag();
+                break;
+            default:
+                resetRuntime(true);
+                break;
         }
     }
 
-    @SubscribeEvent
-    public void onAttackEvent(AttackEntityEvent event) {
-        if (!isInGame() || event.entityPlayer != mc.thePlayer || event.target == null) {
+    @EventTarget
+    public void onLeftClick(LeftClickMouseEvent event) {
+        if (!isEnabled() || !isInGame() || mc.objectMouseOver == null) {
             return;
         }
-        start(event.target, true);
+        recordAttack(mc.objectMouseOver.entityHit);
     }
 
-    @SubscribeEvent
-    public void onTick(TickEvent.ClientTickEvent event) {
-        if (!isInGame()) {
-            releaseBlock();
-            phase = 0;
-            return;
-        }
-        if (event.phase != TickEvent.Phase.END) {
-            return;
-        }
-        if (mode.getValue() == BlockMode.PREDICT && phase == 0 && mc.objectMouseOver != null
-                && mc.objectMouseOver.entityHit instanceof EntityLivingBase
-                && (!Boolean.TRUE.equals(requireMouseDown.getValue()) || mc.gameSettings.keyBindAttack.isKeyDown())) {
-            start(mc.objectMouseOver.entityHit, false);
-        }
-        if (phase == 0) {
-            return;
-        }
-        if (!canContinueBlock()) {
-            releaseBlock();
-            phase = 0;
-            return;
-        }
-
-        long now = System.currentTimeMillis();
-        if (phase == 1) {
-            if (now < blockAt) {
-                return;
-            }
-            applyBlock();
-            phase = 2;
-            releaseAt = now + holdDuration();
-        } else {
-            if (now < releaseAt) {
-                return;
-            }
-            if (!canReleasePacketNow(now)) {
-                releaseAt = Math.max(now + 25L, lastReleasePacketAt + releaseCooldown.getValue().longValue());
-                return;
-            }
-            releaseBlock();
-            phase = 0;
+    @EventTarget
+    public void onAttack(AttackEvent event) {
+        if (isEnabled()) {
+            recordAttack(event.getTarget());
         }
     }
 
     public static void onAttack(Entity entity) {
-        if (INSTANCE != null && INSTANCE.getState()) {
-            INSTANCE.start(entity, false);
+        if (instance != null && instance.isEnabled()) {
+            instance.recordAttack(entity);
         }
     }
 
     public static boolean isBlockingActive() {
-        return INSTANCE != null && INSTANCE.getState() && INSTANCE.blockingApplied;
+        return instance != null && instance.isEnabled()
+                && (instance.helperActive || instance.autoBlocking
+                || instance.lagBlocking || instance.lagBlinking);
     }
 
-    private void start(Entity entity, boolean mouseTrigger) {
-        BlockMode current = mode.getValue();
-        if (current == BlockMode.MANUAL && !mouseTrigger && !mc.gameSettings.keyBindAttack.isKeyDown()) {
-            return;
-        }
-        if (!canBlock(entity, mouseTrigger) || ThreadLocalRandom.current().nextDouble(100.0D) > chance.getValue()) {
-            return;
-        }
-        long now = System.currentTimeMillis();
-        if (blockingApplied || packetBlocking) {
-            return;
-        }
-        if (now - lastTriggerAt < actionCooldown.getValue().longValue()) {
-            return;
-        }
-        lastTriggerAt = now;
-        long delay = delayFor(entity, current);
-        phase = 1;
-        blockAt = now + delay;
-        releaseAt = 0L;
-        triggerTarget = entity;
-        mouseTriggered = mouseTrigger || mc.gameSettings.keyBindAttack.isKeyDown();
-        inputGraceUntil = now + delay + holdDuration() + 140L;
+    @Override
+    public String[] getSuffix() {
+        return new String[]{CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.UPPER_CAMEL, mode.getModeString())};
     }
 
-    private boolean canBlock(Entity entity) {
-        return canBlock(entity, false);
+    private void updateHelper() {
+        if (!helperActive && isAttackBindingDown() && mc.thePlayer.isBlocking()) {
+            helperActive = true;
+            helperTicks = 0;
+            setUsePressed(false);
+        }
+        if (!helperActive) {
+            return;
+        }
+
+        helperTicks++;
+        if (helperTicks == helperAttackTick.getValue()) {
+            KeyBinding.onTick(mc.gameSettings.keyBindAttack.getKeyCode());
+        }
+        if (helperTicks > helperStopTicks.getValue()) {
+            restoreUseBinding();
+            helperActive = false;
+            helperTicks = 0;
+        }
     }
 
-    private boolean canBlock(Entity entity, boolean mouseTrigger) {
+    private void updateAuto() {
+        if (!autoArmed || autoTarget == null) {
+            return;
+        }
+        if (++autoTicks > 8 || autoTarget.isDead || autoTarget.getHealth() <= 0.0F) {
+            resetAuto(true);
+            return;
+        }
+        if (Boolean.TRUE.equals(rangeCheck.getValue())
+                && mc.thePlayer.getDistanceToEntity(autoTarget) > range.getValue()) {
+            resetAuto(true);
+            return;
+        }
+
+        switch (autoTiming.getValue()) {
+            case TIMING_DELAY:
+                updateDelayAuto();
+                break;
+            case TIMING_HURT_TIME:
+                updateHurtTimeAuto();
+                break;
+            case TIMING_SMART:
+                updateSmartAuto();
+                break;
+            default:
+                resetAuto(true);
+                break;
+        }
+    }
+
+    private void updateDelayAuto() {
+        if (System.currentTimeMillis() < autoBlockAt) {
+            return;
+        }
+        if (autoMode.getValue() == AUTO_SPAM) {
+            KeyBinding.onTick(mc.gameSettings.keyBindUseItem.getKeyCode());
+            resetAuto(false);
+            return;
+        }
+
+        if (!autoBlocking) {
+            autoBlocking = true;
+            autoHoldTicks = 0;
+            setUsePressed(true);
+        }
+        if (++autoHoldTicks >= holdTicks.getValue()) {
+            resetAuto(true);
+        }
+    }
+
+    private void updateHurtTimeAuto() {
+        int min = Math.min(minHurtTime.getValue(), maxHurtTime.getValue());
+        int max = Math.max(minHurtTime.getValue(), maxHurtTime.getValue());
+        boolean shouldBlock = mc.thePlayer.hurtTime >= min && mc.thePlayer.hurtTime <= max;
+        if (shouldBlock) {
+            autoBlocking = true;
+            setUsePressed(true);
+        } else if (autoBlocking) {
+            resetAuto(true);
+        }
+    }
+
+    private void updateSmartAuto() {
+        if (autoTarget.hurtTime <= 0) {
+            return;
+        }
+        if (!autoBlocking) {
+            autoBlocking = true;
+            autoHoldTicks = 0;
+            setUsePressed(true);
+        }
+        if (++autoHoldTicks >= smartBlockTicks.getValue()) {
+            resetAuto(true);
+        }
+    }
+
+    private void updateLag() {
+        if (!lagBlocking && !lagBlinking && mc.thePlayer.hurtTime == lagStartHurtTime.getValue()) {
+            lagBlocking = true;
+            lagBlinking = true;
+            lagBlockCounter = 0;
+            lagBlinkCounter = 0;
+            setUsePressed(true);
+            YozakuraRuntime.blinkManager.setBlinkState(true, BlinkModules.AUTO_BLOCK);
+        }
+        if (lagBlinking && ++lagBlinkCounter > lagDelayTicks.getValue()) {
+            stopLagBlink();
+        }
+        if (lagBlocking && ++lagBlockCounter > lagBlockTicks.getValue()) {
+            lagBlocking = false;
+            lagBlockCounter = 0;
+            restoreUseBinding();
+        }
+    }
+
+    private void recordAttack(Entity entity) {
+        if (!(entity instanceof EntityLivingBase) || !isInGame() || !isHoldingSword()) {
+            return;
+        }
+        EntityLivingBase target = (EntityLivingBase) entity;
+        int tick = mc.thePlayer.ticksExisted;
+        if (lastRecordedAttackTick == tick && lastRecordedTargetId == target.getEntityId()) {
+            return;
+        }
+        lastRecordedAttackTick = tick;
+        lastRecordedTargetId = target.getEntityId();
+
+        if (mode.getValue() != MODE_AUTO || Math.random() * 100.0D >= chance.getValue()) {
+            return;
+        }
+        resetAuto(true);
+        autoTarget = target;
+        autoArmed = true;
+        autoBlockAt = System.currentTimeMillis() + blockDelay.getValue();
+    }
+
+    private void resetRuntime(boolean restoreUse) {
+        helperActive = false;
+        helperTicks = 0;
+        resetAuto(restoreUse);
+        lagBlocking = false;
+        lagBlockCounter = 0;
+        stopLagBlink();
+        if (restoreUse) {
+            restoreUseBinding();
+        }
+        lastRecordedAttackTick = Integer.MIN_VALUE;
+        lastRecordedTargetId = Integer.MIN_VALUE;
+    }
+
+    private void resetAuto(boolean restoreUse) {
+        if (restoreUse && autoBlocking) {
+            restoreUseBinding();
+        }
+        autoTarget = null;
+        autoArmed = false;
+        autoBlocking = false;
+        autoTicks = 0;
+        autoHoldTicks = 0;
+        autoBlockAt = 0L;
+    }
+
+    private void stopLagBlink() {
+        if (lagBlinking) {
+            YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+        }
+        lagBlinking = false;
+        lagBlinkCounter = 0;
+    }
+
+    private boolean isAttackBindingDown() {
+        return KeyBindUtil.isBindingDown(mc.gameSettings.keyBindAttack);
+    }
+
+    private void setUsePressed(boolean pressed) {
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), pressed);
+    }
+
+    private void restoreUseBinding() {
+        if (mc.gameSettings != null && mc.gameSettings.keyBindUseItem != null) {
+            KeyBindUtil.updateKeyState(mc.gameSettings.keyBindUseItem.getKeyCode());
+        }
+    }
+
+    private boolean isHoldingSword() {
         if (!isInGame()) {
             return false;
         }
-        BlockMode current = mode.getValue();
-        boolean needsManualInput = current == BlockMode.MANUAL || current == BlockMode.PREDICT;
-        if (needsManualInput && Boolean.TRUE.equals(requireMouseDown.getValue())
-                && !mouseTrigger && !mc.gameSettings.keyBindAttack.isKeyDown()) {
-            return false;
-        }
-        if (Boolean.TRUE.equals(onlyPlayers.getValue()) && entity != null && !(entity instanceof EntityPlayer)) {
-            return false;
-        }
-        ItemStack stack = mc.thePlayer.getCurrentEquippedItem();
-        return stack != null && (!Boolean.TRUE.equals(onlySword.getValue()) || stack.getItem() instanceof ItemSword);
+        ItemStack stack = mc.thePlayer.getHeldItem();
+        return stack != null && stack.getItem() instanceof ItemSword;
     }
-
-    private boolean canContinueBlock() {
-        if (!isInGame()) {
-            return false;
-        }
-        if (Boolean.TRUE.equals(onlyPlayers.getValue()) && triggerTarget != null
-                && !(triggerTarget instanceof EntityPlayer)) {
-            return false;
-        }
-        ItemStack stack = mc.thePlayer.getCurrentEquippedItem();
-        if (stack == null || (Boolean.TRUE.equals(onlySword.getValue()) && !(stack.getItem() instanceof ItemSword))) {
-            return false;
-        }
-        BlockMode current = mode.getValue();
-        boolean needsManualInput = current == BlockMode.MANUAL || current == BlockMode.PREDICT;
-        if (needsManualInput && Boolean.TRUE.equals(requireMouseDown.getValue()) && !mouseTriggered
-                && !mc.gameSettings.keyBindAttack.isKeyDown()
-                && System.currentTimeMillis() > inputGraceUntil) {
-            return false;
-        }
-        return true;
-    }
-
-    private void applyBlock() {
-        ItemStack stack = mc.thePlayer.getCurrentEquippedItem();
-        if (stack == null) {
-            return;
-        }
-        if (!blockingApplied) {
-            MinecraftAccessor.syncCurrentPlayItem(mc.playerController);
-            PacketUtil.sendPacket(new C08PacketPlayerBlockPlacement(stack));
-            packetBlocking = true;
-        }
-        BlockMode current = mode.getValue();
-        if (current == BlockMode.MANUAL || current == BlockMode.AUTO || current == BlockMode.LAG) {
-            int key = mc.gameSettings.keyBindUseItem.getKeyCode();
-            KeyBinding.setKeyBindState(key, true);
-            KeyBinding.onTick(key);
-            holdingUseKey = true;
-        }
-        mc.thePlayer.setItemInUse(stack, stack.getMaxItemUseDuration());
-        blockingApplied = true;
-    }
-
-    private void releaseBlock() {
-        if (holdingUseKey) {
-            KeyBinding.setKeyBindState(mc.gameSettings.keyBindUseItem.getKeyCode(), false);
-            holdingUseKey = false;
-        }
-        if (packetBlocking && isInGame() && Boolean.TRUE.equals(serverRelease.getValue())
-                && canReleasePacketNow(System.currentTimeMillis())) {
-            PacketUtil.sendPacket(new C07PacketPlayerDigging(C07PacketPlayerDigging.Action.RELEASE_USE_ITEM, BlockPos.ORIGIN, EnumFacing.DOWN));
-            lastReleasePacketAt = System.currentTimeMillis();
-        }
-        if (blockingApplied && isInGame()) {
-            mc.thePlayer.clearItemInUse();
-        }
-        packetBlocking = false;
-        blockingApplied = false;
-        mouseTriggered = false;
-        inputGraceUntil = 0L;
-        triggerTarget = null;
-    }
-
-    private long delayFor(Entity entity, BlockMode current) {
-        long delay = randomRange(minDelay.getValue().longValue(), maxDelay.getValue().longValue());
-        if (current == BlockMode.PREDICT && entity instanceof EntityLivingBase) {
-            EntityLivingBase living = (EntityLivingBase) entity;
-            if (living.hurtTime <= 2 || living.hurtResistantTime <= 4) {
-                delay = Math.max(0L, delay - 25L);
-            }
-        }
-        if (current == BlockMode.LAG) {
-            delay = Math.max(0L, delay - 15L);
-        }
-        return delay;
-    }
-
-    private long holdDuration() {
-        return Math.max(35L, holdMs.getValue().longValue());
-    }
-
-    private boolean canReleasePacketNow(long now) {
-        return !Boolean.TRUE.equals(serverRelease.getValue())
-                || lastReleasePacketAt == 0L
-                || now - lastReleasePacketAt >= releaseCooldown.getValue().longValue();
-    }
-
-    private static long randomRange(long first, long second) {
-        long min = Math.max(0L, Math.min(first, second));
-        long max = Math.max(min, Math.max(first, second));
-        if (max <= min) {
-            return min;
-        }
-        return ThreadLocalRandom.current().nextLong(max - min + 1L) + min;
-    }
-
 }

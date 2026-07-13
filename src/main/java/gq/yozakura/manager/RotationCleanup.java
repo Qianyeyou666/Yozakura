@@ -1,5 +1,7 @@
 package gq.yozakura.manager;
 
+import gq.yozakura.bridge.RotationBridgeCleanup;
+import gq.yozakura.runtime.YozakuraRuntime;
 import net.minecraft.client.Minecraft;
 
 public final class RotationCleanup {
@@ -9,6 +11,9 @@ public final class RotationCleanup {
     }
 
     public static void clearModuleRotations(String source, int priority) {
+        RotationBridgeCleanup.clearTransientState();
+        YozakuraRuntime.rotationManager.clear();
+        RotationExitState.clearSource(source);
         VisualRotationState.clearSource(source);
         PacketRotationState.clearSource(source);
         if (!RotationState.isActived() || RotationState.getPriority() <= priority) {

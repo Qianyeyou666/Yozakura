@@ -2,7 +2,10 @@ package gq.yozakura.module.render;
 
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.Module;
-import gq.yozakura.util.color.ColorUtil;
+import gq.yozakura.engine.render.ui.VisualPalette;
+import gq.yozakura.util.render.ScreenSpaceGlowRenderer;
+import gq.yozakura.value.Mode;
+import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
@@ -28,11 +31,22 @@ import java.awt.*;
 import java.lang.reflect.Field;
 
 public class StorageESP extends Module {
+    public enum StorageVisualMode {
+        OUTLINE,
+        GLOWESP
+    }
+
     private Option<Boolean> Chest = new Option<Boolean>("Chest","Chest", true);
     private Option<Boolean> EnderChest = new Option<Boolean>("EnderChest","EnderChest", false);
+    private final Mode<StorageVisualMode> visualMode = new Mode<StorageVisualMode>("Mode", "Mode",
+            StorageVisualMode.values(), StorageVisualMode.OUTLINE);
+    private final Numbers<Double> glowStrength = new Numbers<Double>("Glow Strength", "GlowStrength",
+            0.86D, 0.20D, 1.0D, 0.02D);
+
     public StorageESP() {
         super("StorageESP", Keyboard.KEY_NONE, ModuleType.Render,"Chest Renderer ESP");
-        this.addValues(this.Chest,this.EnderChest);
+        glowStrength.visibleWhen(() -> visualMode.getValue() == StorageVisualMode.GLOWESP);
+        this.addValues(this.Chest, this.EnderChest, visualMode, glowStrength);
         Chinese="ExampleModule";
     }
 
@@ -41,18 +55,43 @@ public class StorageESP extends Module {
         if (!isInGame()) {
             return;
         }
+        if (visualMode.getValue() == StorageVisualMode.GLOWESP) {
+            renderScreenSpaceGlow(ev.partialTicks);
+            return;
+        }
         for (final TileEntity te : mc.theWorld.loadedTileEntityList) {
             if (te instanceof TileEntityChest && this.Chest.getValue()) {
-                int rgb = 0;
-                rgb = ColorUtil.getRainbow().getRGB();
-                StorageESP.re(te.getPos(), rgb);
+                renderStorage(te.getPos(), ClickGUI.currentPalette().getStorageChest());
             }
             if(te instanceof TileEntityEnderChest && this.EnderChest.getValue()){
-                int rgb = 0;
-                rgb = ColorUtil.getRainbow().getRGB();
-                StorageESP.re(te.getPos(), rgb);
+                renderStorage(te.getPos(), ClickGUI.currentPalette().getStorageEnderChest());
             }
         }
+    }
+
+    private void renderScreenSpaceGlow(float partialTicks) {
+        ScreenSpaceGlowRenderer renderer = ScreenSpaceGlowRenderer.shared();
+        renderer.beginFrame(ClickGUI.currentPalette(), glowStrength.getValue().floatValue());
+        try {
+            for (TileEntity te : mc.theWorld.loadedTileEntityList) {
+                if (te instanceof TileEntityChest && this.Chest.getValue()) {
+                    renderer.collect(te.getPos());
+                }
+                if (te instanceof TileEntityEnderChest && this.EnderChest.getValue()) {
+                    renderer.collect(te.getPos());
+                }
+            }
+            renderer.renderMask(partialTicks);
+            renderer.composite();
+        } finally {
+            if (renderer.isFrameOpen()) {
+                renderer.discard();
+            }
+        }
+    }
+
+    private void renderStorage(BlockPos position, int color) {
+        StorageESP.re(position, color);
     }
 
     private static Minecraft mc;

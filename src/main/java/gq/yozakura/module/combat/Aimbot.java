@@ -1,44 +1,61 @@
 package gq.yozakura.module.combat;
 
 import gq.yozakura.bridge.MinecraftAccessor;
-import gq.yozakura.event.bridge.TickEvent;
 import gq.yozakura.event.bridge.UpdateEvent;
 import gq.yozakura.event.bus.EventTarget;
 import gq.yozakura.event.bus.types.EventType;
 import gq.yozakura.event.bus.types.Priority;
 import gq.yozakura.module.Module;
 import gq.yozakura.module.ModuleType;
+import gq.yozakura.module.combat.aim.AimAssistAimPoint;
+import gq.yozakura.module.combat.aim.AimAssistController;
+import gq.yozakura.module.combat.aim.AimAssistTargetSelector;
+import gq.yozakura.manager.RotationExitState;
 import gq.yozakura.util.minecraft.RotationUtil;
 import gq.yozakura.util.module.KeyBindUtil;
-import gq.yozakura.util.module.TeamUtil;
 import gq.yozakura.value.Mode;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.item.EntityArmorStand;
-import net.minecraft.entity.player.EntityPlayer;
-import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.MathHelper;
 import net.minecraft.util.MovingObjectPosition;
 import net.minecraft.util.Vec3;
+import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
 
 public class Aimbot extends Module {
     public enum AimMode {
-        NORMAL,
-        SILENT
-    }
+        NORMAL(false, AimAssistController.Profile.REGULAR),
+        SILENT(true, AimAssistController.Profile.REGULAR),
+        BLATANT(false, AimAssistController.Profile.BLATANT),
+        SILENT_BLATANT(true, AimAssistController.Profile.BLATANT);
 
-    public enum VapeMode {
-        REGULAR,
-        BLATANT
+        private final boolean silent;
+        private final AimAssistController.Profile profile;
+
+        AimMode(boolean silent, AimAssistController.Profile profile) {
+            this.silent = silent;
+            this.profile = profile;
+        }
+
+        public boolean isSilent() {
+            return silent;
+        }
+
+        public boolean isBlatant() {
+            return profile == AimAssistController.Profile.BLATANT;
+        }
+
+        public AimAssistController.Profile getProfile() {
+            return profile;
+        }
     }
 
     public enum SortMode {
@@ -48,9 +65,10 @@ public class Aimbot extends Module {
         DISTANCE
     }
 
+    private static final int SILENT_ROTATION_PRIORITY = 1;
+    private static final int SILENT_RETURN_TICKS = 3;
+
     private final Mode<AimMode> mode = new Mode<AimMode>("Mode", "Mode", AimMode.values(), AimMode.NORMAL);
-    private final Mode<VapeMode> vapeMode =
-            new Mode<VapeMode>("Vape Mode", "VapeMode", VapeMode.values(), VapeMode.REGULAR);
     private final Numbers<Double> speed = new Numbers<Double>("Horizontal Speed", "Speed", 10.0, 1.0, 180.0, 1.0);
     private final Numbers<Double> verticalSpeed =
             new Numbers<Double>("Vertical Speed", "VerticalSpeed", 5.0, 1.0, 90.0, 1.0);
@@ -80,6 +98,9 @@ public class Aimbot extends Module {
     private final Option<Boolean> ignoreTeammates =
             new Option<Boolean>("Ignore teammates", "IgnoreTeammates", true);
     private final Option<Boolean> botCheck = new Option<Boolean>("Bot Check", "BotCheck", true);
+    private final Option<Boolean> targetPlayers = new Option<Boolean>("Players", "Players", true);
+    private final Option<Boolean> targetAnimals = new Option<Boolean>("Animals", "Animals", false);
+    private final Option<Boolean> targetMobs = new Option<Boolean>("Mobs", "Mobs", false);
     private final Option<Boolean> stopWhenBreaking =
             new Option<Boolean>("Stop when breaking", "StopWhenBreaking", false);
     private final Option<Boolean> keepMoveDirection =
@@ -91,336 +112,314 @@ public class Aimbot extends Module {
     public EntityLivingBase target;
 
     private final Random random = new Random();
-    private final RotationTask task = new RotationTask();
-    private final MouseRotationState mouseState = new MouseRotationState();
-    private int targetId = -1;
+    private final AimAssistTargetSelector targetSelector = new AimAssistTargetSelector();
+    private final AimAssistController viewController = new AimAssistController();
+    private final AimAssistController silentController = new AimAssistController();
+
+    private AimAssistAimPoint aimPoint;
+    private AimMode lastMode;
+    private int activeTargetId = -1;
     private long miningStartTime = -1L;
-    private long nextAimUpdate;
-    private long taskExpireAt;
-    private float assistedYaw;
-    private float assistedPitch;
-    private boolean rotationInitialized;
+    private long nextTargetScanAt;
+    private long nextNoiseAt;
+    private long lastRenderNanos;
+    private long lastTargetUpdateMillis;
+    private float noiseYaw;
+    private float noisePitch;
+    private float desiredNoiseYaw;
+    private float desiredNoisePitch;
+    private boolean silentRotationPublished;
+    private boolean silentReturning;
+    private int silentReturnTicks;
+    private float lastServerYaw;
+    private float lastServerPitch;
 
     public Aimbot() {
-        super("AimAssist", Keyboard.KEY_NONE, ModuleType.Combat, "Vape-style aim assist");
-        this.addValues(mode, vapeMode, speed, verticalSpeed, reactionDelay, updateRate, multipointHorizontal,
-                multipointVertical, randomization, fov, range, sort, ignoreBehindWalls, ignoreBehindEntities, aimInvis, clickAim,
-                requireHover, aimVertical, ignoreTeammates, botCheck, stopWhenBreaking, keepMoveDirection, hoverDelay, weaponOnly);
+        super("AimAssist", Keyboard.KEY_NONE, ModuleType.Combat, "Mouse-like first-person aim assistance");
+        this.addValues(mode, speed, verticalSpeed, reactionDelay, updateRate, multipointHorizontal,
+                multipointVertical, randomization, fov, range, sort, ignoreBehindWalls, ignoreBehindEntities,
+                aimInvis, clickAim, requireHover, aimVertical, ignoreTeammates, botCheck, targetPlayers,
+                targetAnimals, targetMobs, stopWhenBreaking, keepMoveDirection, hoverDelay, weaponOnly);
         Chinese = "瞄准辅助";
     }
 
     @Override
     public void enable() {
-        this.miningStartTime = -1L;
-        resetTarget();
+        RotationExitState.clearSource("AimAssist");
+        resetAllState();
+        lastMode = mode.getValue();
     }
 
     @Override
     public void disable() {
-        resetTarget();
-        this.miningStartTime = -1L;
+        scheduleSilentRotationReset();
+        resetAllState();
         super.disable();
     }
 
     @EventTarget(Priority.LOW)
-    public void onBridgeTick(TickEvent event) {
-        if (event.getType() != EventType.PRE) {
+    public void onBridgeTick(gq.yozakura.event.bridge.TickEvent event) {
+        if (!getState() || event.getType() != EventType.PRE) {
             return;
         }
-        updateTargetOnly();
+
+        handleModeChange();
+        if (!conditionsMet()) {
+            clearTargetState(mode.getValue().isSilent());
+            return;
+        }
+
+        refreshTarget(System.currentTimeMillis());
     }
 
-    @EventTarget(Priority.LOW)
+    @SubscribeEvent
+    public void onRenderTick(TickEvent.RenderTickEvent event) {
+        if (!getState() || event.phase != TickEvent.Phase.START || mode.getValue().isSilent() || !hasActiveTarget()) {
+            return;
+        }
+        if (!conditionsMet()) {
+            clearTargetState(false);
+            return;
+        }
+
+        long nowMillis = System.currentTimeMillis();
+        if (!viewController.isReady(nowMillis)) {
+            return;
+        }
+        long nowNanos = System.nanoTime();
+        float deltaSeconds = lastRenderNanos == 0L
+                ? 1.0F / 60.0F
+                : (nowNanos - lastRenderNanos) / 1000000000.0F;
+        lastRenderNanos = nowNanos;
+        updateViewTarget(nowMillis, event.renderTickTime, deltaSeconds);
+
+        AimAssistController.Rotation rotation = viewController.step(mc.thePlayer.rotationYaw,
+                mc.thePlayer.rotationPitch, deltaSeconds, nowMillis, createControllerSettings());
+        if (Math.abs(rotation.getYawDelta()) > 0.00001F || Math.abs(rotation.getPitchDelta()) > 0.00001F) {
+            mc.thePlayer.setAngles(rotation.getYawDelta() / 0.15F, -rotation.getPitchDelta() / 0.15F);
+        }
+    }
+
+    @EventTarget(Priority.LOWEST)
     public void onUpdate(UpdateEvent event) {
-        if (event.getType() != EventType.PRE) {
+        if (!getState() || event.getType() != EventType.PRE) {
             return;
         }
-        AimResult result = updateAim(event.getNewYaw(), event.getNewPitch());
-        if (result == null) {
+        if (silentReturning) {
+            publishSilentReturn(event);
             return;
         }
-        if (mode.getValue() == AimMode.NORMAL) {
-            mc.thePlayer.rotationYaw = result.yaw;
-            mc.thePlayer.rotationPitch = result.pitch;
-            RotationUtil.syncHead(mc, result.yaw);
-            event.setRotation(result.yaw, result.pitch, 0);
-        } else {
-            event.setRotation(result.yaw, result.pitch, 0);
+        if (!mode.getValue().isSilent() || !hasActiveTarget()) {
+            return;
         }
-        if (mode.getValue() == AimMode.SILENT && !Boolean.TRUE.equals(keepMoveDirection.getValue())) {
-            event.setPervRotation(result.yaw, 0);
-        }
-    }
-
-    private void updateTargetOnly() {
         if (!conditionsMet()) {
-            resetTarget();
+            clearTargetState(true);
+            publishSilentReturn(event);
             return;
         }
-        EntityPlayer enemy = selectTarget(mc.thePlayer.rotationYaw);
-        if (enemy == null) {
-            resetTarget();
+        if (event.isRotated()) {
             return;
         }
-        target = enemy;
-    }
 
-    private AimResult updateAim(float currentYaw, float currentPitch) {
-        if (!conditionsMet()) {
-            resetTarget();
-            return null;
-        }
-
-        EntityPlayer enemy = selectTarget(currentYaw);
-        if (enemy == null) {
-            resetTarget();
-            return null;
-        }
-
-        prepareTarget(enemy, currentYaw, currentPitch);
         long now = System.currentTimeMillis();
-        if (!task.active || now >= nextAimUpdate || now >= taskExpireAt) {
-            AimPoint point = createAimPoint(enemy, currentYaw, currentPitch);
-            if (point == null) {
-                resetTarget();
-                return null;
-            }
-            updateAimTask(point);
-            task.active = true;
-            int reaction = Math.max(0, reactionDelay.getValue().intValue());
-            int updateDelay = Math.max(16, (int) (1000.0F / Math.max(0.1F, updateRate.getValue().floatValue())));
-            int jitter = Math.max(1, updateDelay / 4);
-            nextAimUpdate = now + updateDelay + random.nextInt(jitter + 1);
-            taskExpireAt = now + Math.max(updateDelay * 3, reaction + updateDelay);
-        }
-
-        assistedYaw = advanceVapeAxis(currentYaw, task.yaw, speed.getValue().floatValue(), true);
-        assistedPitch = Boolean.TRUE.equals(aimVertical.getValue())
-                ? MathHelper.clamp_float(
-                advanceVapeAxis(currentPitch, task.pitch, verticalSpeed.getValue().floatValue(), false),
-                -90.0F,
-                90.0F)
-                : currentPitch;
-        target = enemy;
-        return new AimResult(assistedYaw, assistedPitch);
-    }
-
-    private EntityPlayer selectTarget(float viewYaw) {
-        ArrayList<EntityPlayer> candidates = new ArrayList<EntityPlayer>();
-        for (EntityPlayer player : mc.theWorld.playerEntities) {
-            if (isValidCandidate(player, viewYaw)) {
-                candidates.add(player);
-            }
-        }
-        if (candidates.isEmpty()) {
-            return null;
-        }
-        candidates.sort(targetComparator(viewYaw));
-        if (!Boolean.TRUE.equals(ignoreBehindWalls.getValue())
-                && !Boolean.TRUE.equals(ignoreBehindEntities.getValue())) {
-            return candidates.get(0);
-        }
-        for (EntityPlayer candidate : candidates) {
-            if (findVisiblePoint(candidate) != null) {
-                return candidate;
-            }
-        }
-        return null;
-    }
-
-    private boolean isValidCandidate(EntityPlayer player, float viewYaw) {
-        if (player == null || player == mc.thePlayer || player.deathTime != 0 || player.isDead) {
-            return false;
-        }
-        if (TeamUtil.isFriend(player)) {
-            return false;
-        }
-        if (Boolean.TRUE.equals(ignoreTeammates.getValue()) && TeamUtil.isSameTeam(player)) {
-            return false;
-        }
-        if (!Boolean.TRUE.equals(aimInvis.getValue()) && player.isInvisible()) {
-            return false;
-        }
-        if (Boolean.TRUE.equals(botCheck.getValue()) && (TeamUtil.isBot(player) || AntiBot.isServerBot(player))) {
-            return false;
-        }
-        double rangeValue = range.getValue();
-        if (distanceSqFromEyeToClosestOnAABB(player) > rangeValue * rangeValue) {
-            return false;
-        }
-        if (fov.getValue() < 360.0D && angleTo(player, viewYaw) > fov.getValue() * 0.5D) {
-            return false;
-        }
-        return true;
-    }
-
-    private Comparator<EntityPlayer> targetComparator(final float viewYaw) {
-        Comparator<EntityPlayer> primary;
-        switch (sort.getValue()) {
-            case HEALTH:
-                primary = Comparator.comparingDouble(player -> player.getHealth() + player.getAbsorptionAmount());
-                break;
-            case HURT_TIME:
-                primary = Comparator.comparingInt(player -> player.hurtTime);
-                break;
-            case DISTANCE:
-                primary = Comparator.comparingDouble(player -> mc.thePlayer.getDistanceSqToEntity(player));
-                break;
-            case ANGLE:
-            default:
-                primary = Comparator.comparingDouble(player -> angleTo(player, viewYaw));
-                break;
-        }
-        return primary.thenComparingDouble(player -> mc.thePlayer.getDistanceSqToEntity(player));
-    }
-
-    private void prepareTarget(EntityPlayer enemy, float currentYaw, float currentPitch) {
-        if (enemy.getEntityId() != targetId) {
-            targetId = enemy.getEntityId();
-            task.active = false;
-            nextAimUpdate = 0L;
-            taskExpireAt = 0L;
-            rotationInitialized = false;
-        }
-        if (!rotationInitialized) {
-            assistedYaw = currentYaw;
-            assistedPitch = currentPitch;
-            rotationInitialized = true;
-        }
-    }
-
-    private void updateAimTask(AimPoint point) {
-        if (!task.active) {
-            task.yaw = point.yaw;
-            task.pitch = point.pitch;
+        if (!silentController.isReady(now)) {
             return;
         }
-        float blend = vapeMode.getValue() == VapeMode.BLATANT ? 0.42F : 0.28F;
-        task.yaw = task.yaw + MathHelper.wrapAngleTo180_float(point.yaw - task.yaw) * blend;
-        task.pitch = MathHelper.clamp_float(
-                task.pitch + MathHelper.wrapAngleTo180_float(point.pitch - task.pitch) * (blend * 0.82F),
-                -90.0F,
-                90.0F
-        );
+        AimAssistController.Rotation rotation = silentController.step(
+                silentRotationPublished ? lastServerYaw : event.getYaw(),
+                silentRotationPublished ? lastServerPitch : event.getPitch(),
+                1.0F / 20.0F, now, createControllerSettings());
+        event.setRotation(rotation.getYaw(), rotation.getPitch(), SILENT_ROTATION_PRIORITY);
+        if (Boolean.TRUE.equals(keepMoveDirection.getValue())) {
+            event.setPervRotation(rotation.getYaw(), SILENT_ROTATION_PRIORITY);
+        }
+        lastServerYaw = rotation.getYaw();
+        lastServerPitch = rotation.getPitch();
+        silentRotationPublished = true;
     }
 
-    private AimPoint createAimPoint(EntityPlayer enemy, float currentYaw, float currentPitch) {
-        Vec3 point = findVisiblePoint(enemy);
-        if (point == null) {
+    private void handleModeChange() {
+        AimMode currentMode = mode.getValue();
+        if (lastMode == null) {
+            lastMode = currentMode;
+            return;
+        }
+        if (lastMode == currentMode) {
+            return;
+        }
+        if (lastMode.isSilent() && !currentMode.isSilent()) {
+            finishSilentReturn();
+        }
+        clearTargetState(false);
+        nextTargetScanAt = 0L;
+        lastMode = currentMode;
+    }
+
+    private void refreshTarget(long now) {
+        if (target != null && !isTargetStillEligible()) {
+            clearTargetState(mode.getValue().isSilent());
+            nextTargetScanAt = now;
+        }
+        if (now < nextTargetScanAt) {
+            return;
+        }
+        nextTargetScanAt = now + sampleIntervalMillis();
+        AimAssistTargetSelector.Selection selection = targetSelector.select(mc, mc.thePlayer.rotationYaw,
+                createSelectorSettings(), now);
+        if (selection == null) {
+            clearTargetState(mode.getValue().isSilent());
+            return;
+        }
+
+        EntityLivingBase nextTarget = selection.getTarget();
+        if (nextTarget.getEntityId() != activeTargetId) {
+            activeTargetId = nextTarget.getEntityId();
+            target = nextTarget;
+            aimPoint = selection.getAimPoint();
+            resetNoise();
+            long delay = Math.max(0L, reactionDelay.getValue().longValue());
+            viewController.acquireTarget(activeTargetId, now, delay, mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch);
+            silentController.acquireTarget(activeTargetId, now, delay, mc.thePlayer.rotationYaw, mc.thePlayer.rotationPitch);
+            lastRenderNanos = 0L;
+        } else {
+            target = nextTarget;
+            aimPoint = selection.getAimPoint();
+        }
+
+        updateTickTarget(now);
+    }
+
+    private void updateTickTarget(long now) {
+        float[] rotations = resolveTargetRotation(1.0F);
+        if (rotations == null) {
+            return;
+        }
+        float deltaSeconds = lastTargetUpdateMillis == 0L
+                ? 1.0F / 20.0F
+                : (now - lastTargetUpdateMillis) / 1000.0F;
+        lastTargetUpdateMillis = now;
+        advanceNoise(now, deltaSeconds);
+        float targetYaw = rotations[0] + noiseYaw;
+        float targetPitch = MathHelper.clamp_float(rotations[1] + noisePitch, -90.0F, 90.0F);
+        float blend = temporalBlend(mode.getValue().isBlatant() ? 15.0F : 9.0F, deltaSeconds);
+        viewController.setTargetRotation(targetYaw, targetPitch, blend);
+        silentController.setTargetRotation(targetYaw, targetPitch, blend);
+    }
+
+    private void updateViewTarget(long now, float partialTicks, float deltaSeconds) {
+        float[] rotations = resolveTargetRotation(partialTicks);
+        if (rotations == null) {
+            return;
+        }
+        advanceNoise(now, deltaSeconds);
+        float targetYaw = rotations[0] + noiseYaw;
+        float targetPitch = MathHelper.clamp_float(rotations[1] + noisePitch, -90.0F, 90.0F);
+        float blend = temporalBlend(mode.getValue().isBlatant() ? 15.0F : 9.0F, deltaSeconds);
+        viewController.setTargetRotation(targetYaw, targetPitch, blend);
+    }
+
+    private float[] resolveTargetRotation(float partialTicks) {
+        if (!hasActiveTarget()) {
             return null;
         }
-
-        float[] base = RotationUtil.getRotationsTo(mc, point.xCoord, point.yCoord, point.zCoord);
-        float yawRange = speed.getValue().floatValue();
-        float pitchRange = verticalSpeed.getValue().floatValue();
-        float currentDistance = Math.abs(MathHelper.wrapAngleTo180_float(currentYaw - base[0]))
-                + Math.abs(MathHelper.wrapAngleTo180_float(currentPitch - base[1]));
-        float randomRadius = (float) Math.sqrt(yawRange * yawRange + pitchRange * pitchRange);
-
-        float yaw;
-        float pitch;
-        if (currentDistance >= randomRadius) {
-            yaw = base[0];
-            pitch = base[1];
-        } else {
-            yaw = base[0] + randomVapeOffset(yawRange, 0.6D);
-            pitch = base[1] + randomVapeOffset(pitchRange, 0.5D);
-        }
-        return new AimPoint(yaw, MathHelper.clamp_float(pitch, -90.0F, 90.0F));
+        Vec3 point = aimPoint.resolve(target, partialTicks);
+        return RotationUtil.getRotationsTo(mc, point.xCoord, point.yCoord, point.zCoord);
     }
 
-    private Vec3 findVisiblePoint(EntityPlayer enemy) {
-        AxisAlignedBB box = enemy.getEntityBoundingBox().expand(0.03D, 0.03D, 0.03D);
-        Vec3 eye = mc.thePlayer.getPositionEyes(1.0F);
-        Vec3 closest = closestPoint(eye, box);
-        double horizontal = multipointHorizontal.getValue() / 100.0D;
-        double vertical = multipointVertical.getValue() / 100.0D;
-        double widthX = box.maxX - box.minX;
-        double widthZ = box.maxZ - box.minZ;
-        double height = box.maxY - box.minY;
-        double centerX = (box.minX + box.maxX) * 0.5D;
-        double centerZ = (box.minZ + box.maxZ) * 0.5D;
-        double centerY = box.minY + height * 0.62D;
-
-        double x = centerX + (closest.xCoord - centerX) * horizontal;
-        double z = centerZ + (closest.zCoord - centerZ) * horizontal;
-        double closestY = MathHelper.clamp_double(closest.yCoord, box.minY + height * 0.18D,
-                box.minY + height * 0.92D);
-        double y = centerY + (closestY - centerY) * vertical;
-        Vec3 primary = new Vec3(
-                MathHelper.clamp_double(x, box.minX, box.maxX),
-                MathHelper.clamp_double(y, box.minY + 0.08D, box.maxY - 0.04D),
-                MathHelper.clamp_double(z, box.minZ, box.maxZ)
-        );
-        if (isAimPointAllowed(primary, enemy)) {
-            return primary;
+    private void advanceNoise(long now, float deltaSeconds) {
+        if (now >= nextNoiseAt) {
+            float strength = MathHelper.clamp_float(randomization.getValue().floatValue() / 100.0F, 0.0F, 1.0F);
+            desiredNoiseYaw = randomOffset(0.80F * strength);
+            desiredNoisePitch = randomOffset(0.45F * strength);
+            nextNoiseAt = now + 140L + random.nextInt(121);
         }
-        if (!Boolean.TRUE.equals(ignoreBehindWalls.getValue())
-                && !Boolean.TRUE.equals(ignoreBehindEntities.getValue())) {
-            return primary;
-        }
-
-        double maxXOffset = widthX * MathHelper.clamp_double(horizontal, 0.15D, 1.0D) * 0.5D;
-        double maxZOffset = widthZ * MathHelper.clamp_double(horizontal, 0.15D, 1.0D) * 0.5D;
-        double minY = box.minY + height * MathHelper.clamp_double(0.28D - vertical * 0.18D, 0.12D, 0.42D);
-        double maxY = box.minY + height * MathHelper.clamp_double(0.72D + vertical * 0.20D, 0.58D, 0.95D);
-        double[] xOffsets = new double[]{0.0D, maxXOffset, -maxXOffset};
-        double[] zOffsets = new double[]{0.0D, maxZOffset, -maxZOffset};
-        double[] yValues = new double[]{y, maxY, minY};
-        for (double nextY : yValues) {
-            for (double xOffset : xOffsets) {
-                for (double zOffset : zOffsets) {
-                    Vec3 point = new Vec3(
-                            MathHelper.clamp_double(centerX + xOffset, box.minX, box.maxX),
-                            MathHelper.clamp_double(nextY, box.minY + 0.08D, box.maxY - 0.04D),
-                            MathHelper.clamp_double(centerZ + zOffset, box.minZ, box.maxZ)
-                    );
-                    if (isAimPointAllowed(point, enemy)) {
-                        return point;
-                    }
-                }
-            }
-        }
-        return null;
+        float blend = temporalBlend(mode.getValue().isBlatant() ? 10.0F : 6.0F, deltaSeconds);
+        noiseYaw += (desiredNoiseYaw - noiseYaw) * blend;
+        noisePitch += (desiredNoisePitch - noisePitch) * blend;
     }
 
-    private boolean isAimPointAllowed(Vec3 point, EntityPlayer enemy) {
-        Vec3 eye = mc.thePlayer.getPositionEyes(1.0F);
-        double allowedRange = range.getValue() + 0.15D;
-        if (eye.squareDistanceTo(point) > allowedRange * allowedRange) {
-            return false;
-        }
-        if (Boolean.TRUE.equals(ignoreBehindWalls.getValue())
-                && mc.theWorld.rayTraceBlocks(eye, point, false, true, false) != null) {
-            return false;
-        }
-        return !Boolean.TRUE.equals(ignoreBehindEntities.getValue()) || !isBlockedByEntity(eye, point, enemy);
+    private float temporalBlend(float response, float deltaSeconds) {
+        float clampedDelta = MathHelper.clamp_float(deltaSeconds, 0.0001F, 0.25F);
+        return 1.0F - (float) Math.exp(-response * clampedDelta);
     }
 
-    private boolean isBlockedByEntity(Vec3 eye, Vec3 point, EntityPlayer targetEntity) {
-        double targetDistance = eye.distanceTo(point);
-        for (Entity entity : mc.theWorld.getLoadedEntityList()) {
-            if (entity == mc.thePlayer || entity == targetEntity || !(entity instanceof EntityLivingBase)
-                    || entity instanceof EntityArmorStand || entity.isDead) {
-                continue;
-            }
-            float border = entity.getCollisionBorderSize();
-            AxisAlignedBB box = entity.getEntityBoundingBox().expand(border, border, border);
-            MovingObjectPosition intercept = box.calculateIntercept(eye, point);
-            if (intercept != null && intercept.hitVec != null
-                    && eye.distanceTo(intercept.hitVec) < targetDistance - 0.05D) {
-                return true;
-            }
+    private float randomOffset(float maximum) {
+        return (random.nextFloat() * 2.0F - 1.0F) * maximum;
+    }
+
+    private void clearTargetState(boolean returnSilentRotation) {
+        if (returnSilentRotation) {
+            beginSilentReturn();
         }
-        return false;
+        target = null;
+        aimPoint = null;
+        activeTargetId = -1;
+        targetSelector.clear();
+        viewController.releaseTarget();
+        silentController.releaseTarget();
+        lastRenderNanos = 0L;
+        lastTargetUpdateMillis = 0L;
+        resetNoise();
+    }
+
+    private void beginSilentReturn() {
+        if (!silentRotationPublished || silentReturning) {
+            return;
+        }
+        silentReturning = true;
+        silentReturnTicks = SILENT_RETURN_TICKS;
+    }
+
+    private void publishSilentReturn(UpdateEvent event) {
+        if (!silentReturning) {
+            return;
+        }
+        if (!isInGame()) {
+            finishSilentReturn();
+            return;
+        }
+        if (event.isRotated()) {
+            return;
+        }
+
+        float cameraYaw = mc.thePlayer.rotationYaw;
+        float cameraPitch = mc.thePlayer.rotationPitch;
+        float progress = silentReturnTicks <= 1 ? 1.0F : 0.62F;
+        lastServerYaw += MathHelper.wrapAngleTo180_float(cameraYaw - lastServerYaw) * progress;
+        lastServerPitch = MathHelper.clamp_float(lastServerPitch + (cameraPitch - lastServerPitch) * progress,
+                -90.0F, 90.0F);
+        event.setRotation(lastServerYaw, lastServerPitch, SILENT_ROTATION_PRIORITY);
+        if (Boolean.TRUE.equals(keepMoveDirection.getValue())) {
+            event.setPervRotation(lastServerYaw, SILENT_ROTATION_PRIORITY);
+        }
+        silentReturnTicks--;
+        if (silentReturnTicks <= 0) {
+            finishSilentReturn();
+        }
+    }
+
+    private void finishSilentReturn() {
+        silentReturning = false;
+        silentReturnTicks = 0;
+        silentRotationPublished = false;
+        lastServerYaw = 0.0F;
+        lastServerPitch = 0.0F;
+    }
+
+    private void scheduleSilentRotationReset() {
+        if (!silentRotationPublished || !isInGame()) {
+            return;
+        }
+        RotationExitState.request("AimAssist", lastServerYaw, lastServerPitch, SILENT_ROTATION_PRIORITY,
+                180.0F, 0.0F, SILENT_RETURN_TICKS, Boolean.TRUE.equals(keepMoveDirection.getValue()), false);
     }
 
     private boolean conditionsMet() {
         if (!isInGame() || mc.currentScreen != null || (!mc.inGameHasFocus && !isAttackHeld())) {
             return false;
         }
-        // 仅当 KillAura 实际启用并有目标时才让步，避免单独使用 AimAssist 时被无故禁用
-        gq.yozakura.module.runtime.Module killAuraMod = gq.yozakura.runtime.YozakuraRuntime.moduleManager.modules.get(KillAura.class);
+        gq.yozakura.module.runtime.Module killAuraMod =
+                gq.yozakura.runtime.YozakuraRuntime.moduleManager.modules.get(KillAura.class);
         if (killAuraMod != null && killAuraMod.isEnabled() && KillAura.target != null) {
             return false;
         }
@@ -447,110 +446,13 @@ public class Aimbot extends Module {
         if (MinecraftAccessor.isHittingBlock(mc.playerController)) {
             return true;
         }
-        return isAttackHeld()
-                && mc.objectMouseOver != null
+        return isAttackHeld() && mc.objectMouseOver != null
                 && mc.objectMouseOver.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK;
     }
 
     private boolean isHoveringLivingTarget() {
-        return mc.objectMouseOver != null
-                && mc.objectMouseOver.entityHit instanceof EntityLivingBase
+        return mc.objectMouseOver != null && mc.objectMouseOver.entityHit instanceof EntityLivingBase
                 && !(mc.objectMouseOver.entityHit instanceof EntityArmorStand);
-    }
-
-    private float advanceVapeAxis(float current, float target, float configuredSpeed, boolean yawAxis) {
-        float diff = MathHelper.wrapAngleTo180_float(target - current);
-        float quantum = getMouseQuantum();
-        float absDiff = Math.abs(diff);
-        float stopDistance = Math.max(quantum * 0.22F, vapeMode.getValue() == VapeMode.BLATANT ? 0.025F : 0.045F);
-        if (absDiff <= stopDistance) {
-            if (yawAxis) {
-                mouseState.yawCounts *= 0.62F;
-            } else {
-                mouseState.pitchCounts *= 0.62F;
-            }
-            return target;
-        }
-
-        float countDiff = diff / quantum;
-        float accel = getVapeAcceleration(configuredSpeed, yawAxis);
-        if (!yawAxis && isYawCloserThanPitch()) {
-            accel *= MathHelper.clamp_float(Math.abs(countDiff) / Math.max(1.0F, Math.abs(mouseState.yawCounts)), 0.25F, 1.0F);
-        }
-        float counts = yawAxis ? mouseState.yawCounts : mouseState.pitchCounts;
-        float desiredCounts;
-        if (vapeMode.getValue() == VapeMode.BLATANT) {
-            desiredCounts = MathHelper.clamp_float(countDiff, -accel, accel);
-        } else {
-            desiredCounts = countDiff > 0.0F ? Math.min(accel, countDiff) : -Math.min(accel, Math.abs(countDiff));
-        }
-
-        float response = vapeMode.getValue() == VapeMode.BLATANT ? 0.52F : 0.34F;
-        counts += (desiredCounts - counts) * response;
-        if (Math.abs(counts) < 0.015F) {
-            counts = countDiff > 0.0F ? 0.015F : -0.015F;
-        }
-        if (yawAxis) {
-            mouseState.yawCounts = counts;
-        } else {
-            mouseState.pitchCounts = counts;
-        }
-        float maxStep = Math.min(absDiff, Math.abs(counts * quantum));
-        return limitAngle(current, target, maxStep);
-    }
-
-    private float getVapeAcceleration(float configuredSpeed, boolean yawAxis) {
-        float base = configuredSpeed * 0.25F;
-        if (vapeMode.getValue() == VapeMode.BLATANT) {
-            base *= 1.35F;
-        }
-        return MathHelper.clamp_float(base, 0.18F, yawAxis ? 45.0F : 22.5F);
-    }
-
-    private float getMouseQuantum() {
-        float sensitivity = mc.gameSettings == null ? 0.5F : mc.gameSettings.mouseSensitivity;
-        float scaled = sensitivity * 0.6F + 0.2F;
-        return scaled * scaled * scaled * 8.0F * 0.15F;
-    }
-
-    private boolean isYawCloserThanPitch() {
-        float yawDiff = Math.abs(MathHelper.wrapAngleTo180_float(task.yaw - assistedYaw));
-        float pitchDiff = Math.abs(MathHelper.wrapAngleTo180_float(task.pitch - assistedPitch));
-        return yawDiff < pitchDiff && pitchDiff > 0.0F;
-    }
-
-    private float limitAngle(float current, float target, float maxTurn) {
-        float delta = MathHelper.wrapAngleTo180_float(target - current);
-        return current + MathHelper.clamp_float(delta, -maxTurn, maxTurn);
-    }
-
-    private float randomVapeOffset(float max, double negativeThreshold) {
-        float amount = random.nextFloat()
-                * Math.max(0.0F, max)
-                * (randomization.getValue().floatValue() / 100.0F);
-        return random.nextDouble() > negativeThreshold ? -amount : amount;
-    }
-
-    private double angleTo(EntityPlayer player, float viewYaw) {
-        Vec3 point = new Vec3(player.posX,
-                player.getEntityBoundingBox().minY + (player.getEntityBoundingBox().maxY
-                        - player.getEntityBoundingBox().minY) * 0.62D,
-                player.posZ);
-        float[] rotations = RotationUtil.getRotationsTo(mc, point.xCoord, point.yCoord, point.zCoord);
-        return Math.abs(MathHelper.wrapAngleTo180_float(rotations[0] - viewYaw));
-    }
-
-    private double distanceSqFromEyeToClosestOnAABB(EntityPlayer player) {
-        Vec3 eye = mc.thePlayer.getPositionEyes(1.0F);
-        return eye.squareDistanceTo(closestPoint(eye, player.getEntityBoundingBox()));
-    }
-
-    private Vec3 closestPoint(Vec3 point, AxisAlignedBB box) {
-        return new Vec3(
-                MathHelper.clamp_double(point.xCoord, box.minX, box.maxX),
-                MathHelper.clamp_double(point.yCoord, box.minY, box.maxY),
-                MathHelper.clamp_double(point.zCoord, box.minZ, box.maxZ)
-        );
     }
 
     private boolean isAttackHeld() {
@@ -568,16 +470,83 @@ public class Aimbot extends Module {
         }
     }
 
-    private void resetTarget() {
-        this.target = null;
-        this.targetId = -1;
-        this.nextAimUpdate = 0L;
-        this.taskExpireAt = 0L;
-        this.rotationInitialized = false;
-        this.assistedYaw = 0.0F;
-        this.assistedPitch = 0.0F;
-        this.task.active = false;
-        this.mouseState.reset();
+    private boolean hasActiveTarget() {
+        return target != null && aimPoint != null && !target.isDead && target.deathTime == 0;
+    }
+
+    private boolean isTargetStillEligible() {
+        return hasActiveTarget() && targetSelector.isStillEligible(mc, target, mc.thePlayer.rotationYaw,
+                createSelectorSettings());
+    }
+
+    private long sampleIntervalMillis() {
+        double rate = Math.max(0.1D, updateRate.getValue());
+        return Math.max(1L, Math.round(1000.0D / rate));
+    }
+
+    private AimAssistTargetSelector.Settings createSelectorSettings() {
+        return new AimAssistTargetSelector.Settings(range.getValue(), fov.getValue(), toSelectorSort(sort.getValue()),
+                Boolean.TRUE.equals(ignoreBehindWalls.getValue()),
+                Boolean.TRUE.equals(ignoreBehindEntities.getValue()), Boolean.TRUE.equals(aimInvis.getValue()),
+                Boolean.TRUE.equals(ignoreTeammates.getValue()), Boolean.TRUE.equals(botCheck.getValue()),
+                Boolean.TRUE.equals(targetPlayers.getValue()), Boolean.TRUE.equals(targetAnimals.getValue()),
+                Boolean.TRUE.equals(targetMobs.getValue()), multipointHorizontal.getValue() / 100.0D,
+                multipointVertical.getValue() / 100.0D);
+    }
+
+    private AimAssistTargetSelector.Sort toSelectorSort(SortMode value) {
+        switch (value) {
+            case HEALTH:
+                return AimAssistTargetSelector.Sort.HEALTH;
+            case HURT_TIME:
+                return AimAssistTargetSelector.Sort.HURT_TIME;
+            case DISTANCE:
+                return AimAssistTargetSelector.Sort.DISTANCE;
+            case ANGLE:
+            default:
+                return AimAssistTargetSelector.Sort.ANGLE;
+        }
+    }
+
+    private AimAssistController.Settings createControllerSettings() {
+        float yawSpeed = MathHelper.clamp_float(22.0F + speed.getValue().floatValue() * 4.8F, 25.0F, 420.0F);
+        float pitchSpeed = MathHelper.clamp_float(14.0F + verticalSpeed.getValue().floatValue() * 3.4F,
+                16.0F, 260.0F);
+        AimAssistController.Profile profile = mode.getValue().getProfile();
+        if (profile == AimAssistController.Profile.BLATANT) {
+            yawSpeed = Math.min(480.0F, yawSpeed * 1.15F);
+            pitchSpeed = Math.min(300.0F, pitchSpeed * 1.15F);
+        }
+        float sensitivity = mc.gameSettings == null ? 0.5F : mc.gameSettings.mouseSensitivity;
+        return new AimAssistController.Settings(yawSpeed, pitchSpeed, sensitivity,
+                Boolean.TRUE.equals(aimVertical.getValue()), profile);
+    }
+
+    private void resetNoise() {
+        noiseYaw = 0.0F;
+        noisePitch = 0.0F;
+        desiredNoiseYaw = 0.0F;
+        desiredNoisePitch = 0.0F;
+        nextNoiseAt = 0L;
+    }
+
+    private void resetAllState() {
+        target = null;
+        aimPoint = null;
+        activeTargetId = -1;
+        miningStartTime = -1L;
+        nextTargetScanAt = 0L;
+        lastRenderNanos = 0L;
+        lastTargetUpdateMillis = 0L;
+        targetSelector.clear();
+        viewController.releaseTarget();
+        silentController.releaseTarget();
+        resetNoise();
+        silentRotationPublished = false;
+        silentReturning = false;
+        silentReturnTicks = 0;
+        lastServerYaw = 0.0F;
+        lastServerPitch = 0.0F;
     }
 
     public static void assistFaceEntity(Entity entity, float yaw, float pitch) {
@@ -590,41 +559,5 @@ public class Aimbot extends Module {
 
     public static List<Entity> getEntityList() {
         return mc.theWorld == null ? null : mc.theWorld.getLoadedEntityList();
-    }
-
-    private static final class RotationTask {
-        private float yaw;
-        private float pitch;
-        private boolean active;
-    }
-
-    private static final class MouseRotationState {
-        private float yawCounts;
-        private float pitchCounts;
-
-        private void reset() {
-            yawCounts = 0.0F;
-            pitchCounts = 0.0F;
-        }
-    }
-
-    private static final class AimPoint {
-        private final float yaw;
-        private final float pitch;
-
-        private AimPoint(float yaw, float pitch) {
-            this.yaw = yaw;
-            this.pitch = pitch;
-        }
-    }
-
-    private static final class AimResult {
-        private final float yaw;
-        private final float pitch;
-
-        private AimResult(float yaw, float pitch) {
-            this.yaw = yaw;
-            this.pitch = pitch;
-        }
     }
 }

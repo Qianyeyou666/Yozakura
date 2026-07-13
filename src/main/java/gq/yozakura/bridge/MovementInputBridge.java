@@ -6,6 +6,7 @@ import gq.yozakura.event.bridge.LivingUpdateEvent;
 import gq.yozakura.event.bridge.MoveInputEvent;
 import gq.yozakura.event.bridge.StrafeEvent;
 import gq.yozakura.manager.RotationState;
+import gq.yozakura.util.module.MoveUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.client.settings.KeyBinding;
@@ -73,6 +74,21 @@ final class MovementInputBridge {
         restoreAppliedRotation(player);
     }
 
+    static void resetMovementInput() {
+        EntityPlayerSP player = mc.thePlayer;
+        if (player == null || player.movementInput == null) {
+            return;
+        }
+        if (player.movementInput instanceof HookedMovementInput) {
+            HookedMovementInput hooked = (HookedMovementInput) player.movementInput;
+            hooked.delegate.updatePlayerMoveState();
+            hooked.copyFrom(hooked.delegate);
+            hooked.copyTo(hooked.delegate);
+            return;
+        }
+        player.movementInput.updatePlayerMoveState();
+    }
+
     static void prepareRotationForRender() {
         EntityPlayerSP player = mc.thePlayer;
         if (player == null) {
@@ -113,20 +129,33 @@ final class MovementInputBridge {
             hook.run();
         }
         EventManager.call(new MoveInputEvent());
+        applyFakeRotationMoveFix();
 
         StrafeEvent strafe = new StrafeEvent(input.moveStrafe, input.moveForward, 0.91F);
         EventManager.call(strafe);
         input.moveStrafe = strafe.getStrafe();
         input.moveForward = strafe.getForward();
 
-        EventManager.call(new LivingUpdateEvent());
+        LivingUpdateEvent livingUpdate = new LivingUpdateEvent();
+        EventManager.call(livingUpdate);
         updateSprintState(input);
         applyRotationForPhysics(input);
     }
 
+    private static void applyFakeRotationMoveFix() {
+        if (mc.thePlayer == null
+                || !hasMovementRotation()
+                || !RotationState.isMoveFix()
+                || RotationState.getPriority() < 0
+                || !MoveUtil.isForwardPressed()) {
+            return;
+        }
+        MoveUtil.fixStrafe(RotationState.getSmoothedYaw());
+    }
+
     private static void updateSprintState(MovementInput input) {
         EntityPlayerSP player = mc.thePlayer;
-        silentMovementThisTick = RotationState.isActived() && RotationState.getPriority() >= 0;
+        silentMovementThisTick = hasMovementRotation() && RotationState.getPriority() >= 0;
         sprintAllowedThisTick = !silentMovementThisTick;
         if (player != null && !sprintAllowedThisTick) {
             stopSprint(player);
@@ -151,7 +180,7 @@ final class MovementInputBridge {
     private static void applyRotationForPhysics(MovementInput input) {
         EntityPlayerSP player = mc.thePlayer;
         if (player == null
-                || !RotationState.isActived()
+                || !hasMovementRotation()
                 || RotationState.getPriority() < 0
                 || !directYawPhysics
                 || (input.moveForward == 0.0F && input.moveStrafe == 0.0F)) {
@@ -165,6 +194,10 @@ final class MovementInputBridge {
         float yaw = RotationState.getSmoothedYaw();
         player.rotationYaw = yaw;
         player.prevRotationYaw = yaw;
+    }
+
+    private static boolean hasMovementRotation() {
+        return RotationState.isActived();
     }
 
     private static void restoreAppliedRotation(EntityPlayerSP player) {

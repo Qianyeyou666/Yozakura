@@ -12,6 +12,8 @@ import gq.yozakura.value.Numbers;
 import gq.yozakura.engine.font.CFontRenderer;
 import gq.yozakura.engine.font.FontLoaders;
 import gq.yozakura.engine.render.ui.RenderServices;
+import gq.yozakura.engine.render.ui.VisualPalette;
+import gq.yozakura.util.animation.UiClock;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.util.MathHelper;
@@ -21,11 +23,19 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.lwjgl.input.Keyboard;
 
 public class Health extends Module {
+    private static final VisualPalette NIGHT_BLOOM = VisualPalette.nightBloom();
+    private static final float NIGHT_BLOOM_RADIUS = 4.0F;
+    private static final int NIGHT_BLOOM_SURFACE = 0xDC16161A;
+    private static final int NIGHT_BLOOM_PRIMARY = 0xFFFF4FC7;
+    private static final int NIGHT_BLOOM_DEPTH_SHADOW_LAYERS = 12;
+
     int fuck = 0;
     private int width;
     private final Numbers<Double> xPosition = new Numbers<Double>("X", "X", -1.0, -1.0, 2000.0, 1.0);
     private final Numbers<Double> yPosition = new Numbers<Double>("Y", "Y", -1.0, -1.0, 1200.0, 1.0);
     private final Numbers<Double> scale = new Numbers<Double>("Scale", "Scale", 1.0, 0.65, 2.0, 0.05);
+    private final NightBloomHealthMotion nightBloomMotion = new NightBloomHealthMotion();
+    private final UiClock nightBloomClock = new UiClock();
 
     public Health() {
         super("Health", Keyboard.KEY_NONE, ModuleType.Render,"show your health on your screen");
@@ -56,6 +66,12 @@ public class Health extends Module {
             this.width = 5;
         }
         ScaledResolution sr = new ScaledResolution(mc);
+        if (HUD.getActiveStyle() == HUD.HudStyle.NIGHT_BLOOM) {
+            drawNightBloomHealth(sr);
+            return;
+        }
+        nightBloomClock.reset();
+        nightBloomMotion.reset();
         String valueText = String.valueOf(MathHelper.ceiling_float_int(mc.thePlayer.getHealth()));
         if (HUD.useVapeSimpleStyle()) {
             drawVapeHealth(sr);
@@ -84,6 +100,73 @@ public class Health extends Module {
         }
         HudDrag.drawHint("health_display", pos[0], pos[1], boxW * uiScale, boxH * uiScale, 3.0f * uiScale);
         HudDrag.handleScroll("health_display", scale, pos[0], pos[1], boxW * uiScale, boxH * uiScale, 0.65f, 2.0f);
+    }
+
+    private void drawNightBloomHealth(ScaledResolution sr) {
+        float uiScale = scale.getValue().floatValue();
+        float current = Math.max(0.0F, mc.thePlayer.getHealth());
+        float maximum = Math.max(1.0F, mc.thePlayer.getMaxHealth());
+        float healthRatio = MathHelper.clamp_float(current / maximum, 0.0F, 1.0F);
+        NightBloomHealthMotion.Snapshot motion = nightBloomMotion.update(healthRatio,
+                nightBloomClock.tick(System.nanoTime()));
+        String valueText = Math.round(current) + "/" + Math.round(maximum);
+        float boxW = Math.max(88.0F, FontLoaders.C14.getStringWidth(valueText) + 48.0F);
+        float boxH = 26.0F;
+        float[] pos = HudDrag.update("health_display", xPosition, yPosition, scale,
+                sr.getScaledWidth() / 2.0F - this.width, sr.getScaledHeight() / 2.0F - 15.0F,
+                boxW * uiScale, boxH * uiScale, sr);
+
+        GlStateManager.pushMatrix();
+        try {
+            GlStateManager.translate(pos[0], pos[1], 0.0F);
+            GlStateManager.scale(uiScale, uiScale, 1.0F);
+            GlStateManager.translate(-pos[0], -pos[1], 0.0F);
+
+            float x = pos[0];
+            float y = pos[1];
+            float radius = NIGHT_BLOOM_RADIUS;
+            int healthColor = NightBloomHealthMotion.colorFor(motion.getHealth(), NIGHT_BLOOM);
+            RenderServices.shapes().shadowOffset(x, y, x + boxW, y + boxH, radius,
+                    NightBloomHudLayout.DEPTH_SHADOW_OFFSET_X, NightBloomHudLayout.DEPTH_SHADOW_OFFSET_Y,
+                    NightBloomHudLayout.DEPTH_SHADOW_COLOR, NIGHT_BLOOM_DEPTH_SHADOW_LAYERS,
+                    NightBloomHudLayout.DEPTH_SHADOW_BLUR_RADIUS);
+            RenderServices.shapes().rounded(x, y, x + boxW, y + boxH, radius, NIGHT_BLOOM_SURFACE);
+
+            float iconSize = 18.0F;
+            float iconX = x + 6.0F;
+            float iconY = y + 4.0F;
+            RenderServices.shapes().rounded(iconX, iconY, iconX + iconSize, iconY + iconSize,
+                    NIGHT_BLOOM_RADIUS, multiplyAlpha(NIGHT_BLOOM_PRIMARY, 0.16F));
+            HUD.drawNightBloomCenteredIcon(FontLoaders.ICON_HEARTBEAT, FontLoaders.I14,
+                    iconX + iconSize * 0.5F, iconY + iconSize * 0.5F,
+                    NIGHT_BLOOM_PRIMARY, multiplyAlpha(NIGHT_BLOOM_PRIMARY, 0.72F), 0.60F);
+            HUD.drawNightBloomText(FontLoaders.C14, valueText, x + 31.0F, y + 4.0F,
+                    multiplyAlpha(NIGHT_BLOOM.getTextPrimary(), 1.0F),
+                    multiplyAlpha(NIGHT_BLOOM_PRIMARY, 0.42F), 0.34F);
+
+            float barX = x + 31.0F;
+            float barY = y + 17.0F;
+            float barW = boxW - 39.0F;
+            float barH = 3.2F;
+            float barRadius = barH * 0.5F;
+            RenderServices.shapes().rounded(barX, barY, barX + barW, barY + barH, barRadius,
+                    multiplyAlpha(NIGHT_BLOOM.getSurfaceOverlay(), 0.88F));
+            float damageWidth = barW * motion.getDamageTrail();
+            if (damageWidth > 0.35F) {
+                RenderServices.shapes().rounded(barX, barY, barX + damageWidth, barY + barH, barRadius,
+                        multiplyAlpha(NIGHT_BLOOM.getHealthDamageTrail(), 0.92F));
+            }
+            float healthWidth = barW * motion.getHealth();
+            if (healthWidth > 0.35F) {
+                RenderServices.shapes().rounded(barX, barY, barX + healthWidth, barY + barH, barRadius,
+                        multiplyAlpha(healthColor, 1.0F));
+            }
+        } finally {
+            GlStateManager.popMatrix();
+        }
+        HudDrag.drawHint("health_display", pos[0], pos[1], boxW * uiScale, boxH * uiScale,
+                NIGHT_BLOOM_RADIUS * uiScale);
+        HudDrag.handleScroll("health_display", scale, pos[0], pos[1], boxW * uiScale, boxH * uiScale, 0.65F, 2.0F);
     }
 
     private void drawVapeHealth(ScaledResolution sr) {
@@ -122,5 +205,11 @@ public class Health extends Module {
         }
         HudDrag.drawHint("health_display", pos[0], pos[1], boxW * uiScale, boxH * uiScale, 2.0f * uiScale);
         HudDrag.handleScroll("health_display", scale, pos[0], pos[1], boxW * uiScale, boxH * uiScale, 0.65f, 2.0f);
+    }
+
+    private static int multiplyAlpha(int color, float alpha) {
+        int sourceAlpha = color >>> 24 & 255;
+        int resolvedAlpha = Math.round(sourceAlpha * Math.max(0.0F, Math.min(1.0F, alpha)));
+        return color & 0x00FFFFFF | resolvedAlpha << 24;
     }
 }

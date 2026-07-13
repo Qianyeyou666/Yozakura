@@ -1,17 +1,20 @@
 package gq.yozakura.util.render;
 
+import gq.yozakura.engine.render.ui.VisualPalette;
 import gq.yozakura.value.Numbers;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiChat;
 import net.minecraft.client.gui.ScaledResolution;
+import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 
 public final class HudDrag {
     private static final Minecraft MC = Minecraft.getMinecraft();
-    private static String activeId;
+    private static final HudDragSession SESSION = new HudDragSession();
+    private static final VisualPalette PALETTE = VisualPalette.nightBloom();
     private static String selectedId;
-    private static float dragOffsetX;
-    private static float dragOffsetY;
+    private static ActiveBinding activeBinding;
+
     private HudDrag() {
     }
 
@@ -28,39 +31,41 @@ public final class HudDrag {
     public static float[] update(String id, Numbers<Double> xValue, Numbers<Double> yValue,
                                  Numbers<Double> scaleValue, float defaultX, float defaultY,
                                  float width, float height, ScaledResolution sr) {
-        float x = resolvePosition(xValue, defaultX);
-        float y = resolvePosition(yValue, defaultY);
-        x = clamp(x, 2.0f, Math.max(2.0f, sr.getScaledWidth() - width - 2.0f));
-        y = clamp(y, 2.0f, Math.max(2.0f, sr.getScaledHeight() - height - 2.0f));
+        HudDragSession.Bounds bounds = new HudDragSession.Bounds(sr.getScaledWidth(), sr.getScaledHeight(), width, height);
+        HudDragSession.Position defaultPosition = HudDragSession.clampToBounds(
+                new HudDragSession.Position(resolvePosition(xValue, defaultX), resolvePosition(yValue, defaultY)), bounds);
 
         if (!isEditMode()) {
-            activeId = null;
+            cancelSession();
             selectedId = null;
-            return new float[]{x, y};
+            return asArray(defaultPosition);
         }
 
         boolean leftDown = Mouse.isButtonDown(0);
-        int mouseX = mouseX(sr);
-        int mouseY = mouseY(sr);
-        boolean hovered = isHovered(mouseX, mouseY, x, y, width, height);
+        boolean escapeDown = Keyboard.isKeyDown(Keyboard.KEY_ESCAPE);
+        float mouseX = logicalMouseX(sr);
+        float mouseY = logicalMouseY(sr);
+        settleReleasedSession();
+        if (SESSION.isTracking(SESSION.getActiveId())) {
+            if (escapeDown) {
+                finishSession(true);
+            } else if (!leftDown) {
+                finishSession(false);
+            }
+        }
 
-        if (!leftDown) {
-            activeId = null;
-        } else if (activeId == null && hovered) {
-            activeId = id;
+        HudDragSession.Position position = defaultPosition;
+        if (SESSION.isTracking(id)) {
+            position = SESSION.drag(mouseX, mouseY, bounds).getPosition();
+        } else if (SESSION.getState() == HudDragSession.DragState.IDLE && !escapeDown && leftDown
+                && isHovered(mouseX, mouseY, defaultPosition.getX(), defaultPosition.getY(), width, height)) {
+            SESSION.arm(id, defaultPosition, mouseX, mouseY);
+            activeBinding = new ActiveBinding(id, xValue, yValue);
             selectedId = id;
-            dragOffsetX = mouseX - x;
-            dragOffsetY = mouseY - y;
+            position = defaultPosition;
         }
 
-        if (id.equals(activeId)) {
-            x = clamp(mouseX - dragOffsetX, 2.0f, Math.max(2.0f, sr.getScaledWidth() - width - 2.0f));
-            y = clamp(mouseY - dragOffsetY, 2.0f, Math.max(2.0f, sr.getScaledHeight() - height - 2.0f));
-            setNumber(xValue, x);
-            setNumber(yValue, y);
-        }
-
-        return new float[]{x, y};
+        return asArray(position);
     }
 
     public static void drawHint(String id, float x, float y, float width, float height, float radius) {
@@ -68,13 +73,22 @@ public final class HudDrag {
             return;
         }
         ScaledResolution sr = new ScaledResolution(MC);
-        boolean hovered = isHovered(mouseX(sr), mouseY(sr), x, y, width, height);
-        boolean active = id.equals(activeId);
+        boolean hovered = isHovered(logicalMouseX(sr), logicalMouseY(sr), x, y, width, height);
+        boolean active = SESSION.isTracking(id);
         boolean selected = id.equals(selectedId);
-        if (!hovered && !active && !selected) {
+        boolean releasing = SESSION.isReleaseFor(id);
+        if (!hovered && !active && !selected && !releasing) {
             return;
         }
-        int color = active ? 0xC870C1DC : selected ? 0xB88B7CFF : 0x8870C1DC;
+        HudDragSession.DragState state = active || releasing ? SESSION.getState() : HudDragSession.DragState.IDLE;
+        int color = state == HudDragSession.DragState.SNAP_PREVIEW
+                ? withAlpha(PALETTE.getBorderFocus(), 0xE8)
+                : active ? withAlpha(PALETTE.getAccentPrimary(), 0xC8)
+                : selected ? withAlpha(PALETTE.getAccentAlt(), 0xB8)
+                : withAlpha(PALETTE.getAccentPrimary(), 0x88);
+        if (state == HudDragSession.DragState.SNAP_PREVIEW) {
+            drawSnapGuides(sr, SESSION.getPreview());
+        }
         RenderUtil.drawRoundedBorderedRect(x - 1.0f, y - 1.0f, x + width + 1.0f, y + height + 1.0f,
                 Math.max(2.0f, radius + 1.0f), 1.0f, 0x00000000, color);
         RenderUtil.drawRoundedRect(x + width / 2.0f - 12.0f, y + 4.0f,
@@ -82,15 +96,15 @@ public final class HudDrag {
     }
 
     public static int mouseX(ScaledResolution sr) {
-        return Mouse.getX() * sr.getScaledWidth() / Math.max(1, MC.displayWidth);
+        return (int) logicalMouseX(sr);
     }
 
     public static int mouseY(ScaledResolution sr) {
-        return sr.getScaledHeight() - Mouse.getY() * sr.getScaledHeight() / Math.max(1, MC.displayHeight) - 1;
+        return (int) logicalMouseY(sr);
     }
 
     public static boolean isDragging(String id) {
-        return id != null && id.equals(activeId);
+        return SESSION.isTracking(id);
     }
 
     public static boolean isSelected(String id) {
@@ -108,7 +122,7 @@ public final class HudDrag {
             return;
         }
         ScaledResolution sr = new ScaledResolution(MC);
-        if (!isHovered(mouseX(sr), mouseY(sr), x, y, width, height)) {
+        if (!isHovered(logicalMouseX(sr), logicalMouseY(sr), x, y, width, height)) {
             return;
         }
         int wheel = Mouse.getDWheel();
@@ -137,16 +151,95 @@ public final class HudDrag {
             return;
         }
         double rounded = Math.round(position * 10.0f) / 10.0D;
-        if (Math.abs(value.getValue() - rounded) > 0.04D) {
-            value.setValue(rounded);
+        if (value.getValue() == null || Math.abs(value.getValue() - rounded) > 0.0001D) {
+            value.setNumberValue(rounded);
         }
+    }
+
+    private static void finishSession(boolean cancelled) {
+        HudDragSession.Completion completion = cancelled ? SESSION.cancel() : SESSION.release();
+        if (activeBinding == null || completion.getPosition() == null) {
+            return;
+        }
+        if (cancelled || completion.shouldPersist()) {
+            setNumber(activeBinding.xValue, completion.getPosition().getX());
+            setNumber(activeBinding.yValue, completion.getPosition().getY());
+        }
+    }
+
+    private static void cancelSession() {
+        if (SESSION.isTracking(SESSION.getActiveId())) {
+            finishSession(true);
+        }
+        SESSION.acknowledgeRelease();
+        activeBinding = null;
+    }
+
+    private static void settleReleasedSession() {
+        if (SESSION.getState() != HudDragSession.DragState.RELEASE) {
+            return;
+        }
+        SESSION.acknowledgeRelease();
+        activeBinding = null;
+    }
+
+    private static float[] asArray(HudDragSession.Position position) {
+        return new float[]{position.getX(), position.getY()};
+    }
+
+    private static float logicalMouseX(ScaledResolution sr) {
+        return HudDragSession.toLogicalCoordinate(Mouse.getX(), MC.displayWidth, sr.getScaledWidth());
+    }
+
+    private static float logicalMouseY(ScaledResolution sr) {
+        return HudDragSession.toLogicalYFromBottom(Mouse.getY(), MC.displayHeight, sr.getScaledHeight());
+    }
+
+    private static void drawSnapGuides(ScaledResolution sr, HudDragSession.Preview preview) {
+        int guideColor = withAlpha(PALETTE.getAccentAlt(), 0x9C);
+        if (preview.getHorizontalSnap() != HudDragSession.SnapTarget.NONE) {
+            float guideX = snapGuideX(sr.getScaledWidth(), preview.getHorizontalSnap());
+            RenderUtil.drawRect(guideX - 0.5F, 2.0F, guideX + 0.5F, sr.getScaledHeight() - 2.0F, guideColor);
+        }
+        if (preview.getVerticalSnap() != HudDragSession.SnapTarget.NONE) {
+            float guideY = snapGuideY(sr.getScaledHeight(), preview.getVerticalSnap());
+            RenderUtil.drawRect(2.0F, guideY - 0.5F, sr.getScaledWidth() - 2.0F, guideY + 0.5F, guideColor);
+        }
+    }
+
+    private static float snapGuideX(float screenWidth, HudDragSession.SnapTarget target) {
+        if (target == HudDragSession.SnapTarget.CENTER) {
+            return screenWidth * 0.5F;
+        }
+        return target == HudDragSession.SnapTarget.END ? screenWidth - HudDragSession.SAFE_MARGIN
+                : HudDragSession.SAFE_MARGIN;
+    }
+
+    private static float snapGuideY(float screenHeight, HudDragSession.SnapTarget target) {
+        if (target == HudDragSession.SnapTarget.CENTER) {
+            return screenHeight * 0.5F;
+        }
+        return target == HudDragSession.SnapTarget.END ? screenHeight - HudDragSession.SAFE_MARGIN
+                : HudDragSession.SAFE_MARGIN;
     }
 
     private static boolean isHovered(float mouseX, float mouseY, float x, float y, float width, float height) {
         return mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height;
     }
 
-    private static float clamp(float value, float min, float max) {
-        return Math.max(min, Math.min(max, value));
+    private static int withAlpha(int color, int alpha) {
+        return (color & 0x00FFFFFF) | (Math.max(0, Math.min(255, alpha)) << 24);
+    }
+
+    private static final class ActiveBinding {
+        private final String id;
+        private final Numbers<Double> xValue;
+        private final Numbers<Double> yValue;
+
+        private ActiveBinding(String id, Numbers<Double> xValue, Numbers<Double> yValue) {
+            this.id = id;
+            this.xValue = xValue;
+            this.yValue = yValue;
+        }
     }
 }

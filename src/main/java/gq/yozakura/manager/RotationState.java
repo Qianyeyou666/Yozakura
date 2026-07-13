@@ -14,6 +14,7 @@ public class RotationState {
     private static float rotationPitch;
     private static float smoothYaw;
     private static int priority = -1;
+    private static boolean moveFix;
 
     private static float calculateRenderYawOffset(float targetYaw, float currentYawOffset) {
         float newYawOffset = currentYawOffset;
@@ -41,20 +42,34 @@ public class RotationState {
     }
 
     public static void applyState(boolean bl, float f, float f2, float f3, int n) {
-        state = bl ? 0 : -1;
+        applyState(bl, f, f2, f3, n, false);
+    }
+
+    public static void applyState(boolean bl, float f, float f2, float f3, int n, boolean nextMoveFix) {
+        int previousState = state;
+        float previousSmoothYaw = smoothYaw;
+        int previousPriority = priority;
+        boolean previousMoveFix = moveFix;
+        state = bl ? 0 : previousState >= 0 && previousState < 1 ? previousState + 1 : -1;
         prevRenderYawOffset = renderYawOffset;
         renderYawOffset = bl ? RotationState.calculateRenderYawOffset(f, renderYawOffset) : RotationState.mc.thePlayer.renderYawOffset;
         prevRotationYawHead = rotationYawHead;
         rotationYawHead = bl ? f : RotationState.mc.thePlayer.rotationYawHead;
         prevRotationPitch = rotationPitch;
         rotationPitch = bl ? f2 : RotationState.mc.thePlayer.rotationPitch;
-        smoothYaw = f3;
-        priority = n;
+        smoothYaw = bl || state < 0 ? f3 : previousSmoothYaw;
+        priority = bl || state < 0 ? n : previousPriority;
+        moveFix = bl ? nextMoveFix : state >= 0 && previousMoveFix;
+        if (state < 0) {
+            priority = -1;
+            moveFix = false;
+        }
     }
 
     public static void clear() {
         state = -1;
         priority = -1;
+        moveFix = false;
         if (mc.thePlayer == null) {
             prevRenderYawOffset = 0.0F;
             renderYawOffset = 0.0F;
@@ -113,5 +128,9 @@ public class RotationState {
 
     public static float getPriority() {
         return priority;
+    }
+
+    public static boolean isMoveFix() {
+        return moveFix;
     }
 }

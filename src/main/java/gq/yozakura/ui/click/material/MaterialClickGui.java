@@ -99,6 +99,7 @@ public final class MaterialClickGui extends GuiScreen {
     @Override
     public void initGui() {
         warmResources();
+        MaterialClickTheme.applyPalette(ClickGUI.currentPalette());
         layout = MaterialClickLayout.calculate(new ScaledResolution(mc));
         openProgress = 0.0f;
         animations.clear();
@@ -112,6 +113,7 @@ public final class MaterialClickGui extends GuiScreen {
 
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
+        MaterialClickTheme.applyPalette(ClickGUI.currentPalette());
         updateFrameScale();
         frameId++;
         ScaledResolution sr = new ScaledResolution(mc);

@@ -1194,6 +1194,10 @@ public final class ShaderRenderer {
         TextureState textureState = saveTexture0State();
         GL11.glPushAttrib(SHADER_ATTRIB_MASK);
         program.use();
+        // This is the shared UI-shader entry point (rounded panels, glass and
+        // shadows), not the off-screen glow mask.  Keep its original alpha
+        // cutoff and blend destination semantics; the glow renderer owns its
+        // separate premultiplied-alpha state locally.
         GlStateManager.enableAlpha();
         GlStateManager.enableBlend();
         GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0);
@@ -1210,6 +1214,7 @@ public final class ShaderRenderer {
         GL20.glUseProgram(state.previousProgram);
         GL11.glPopAttrib();
         restoreTexture0State(state.textureState);
+        gq.yozakura.engine.render.GLStateManager.syncToCurrent();
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
 

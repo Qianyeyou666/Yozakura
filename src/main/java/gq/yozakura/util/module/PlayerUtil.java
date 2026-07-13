@@ -20,6 +20,7 @@ import net.minecraft.util.DamageSource;
 import net.minecraft.util.MathHelper;
 import gq.yozakura.bridge.ForgeEnvironment;
 import gq.yozakura.runtime.YozakuraRuntime;
+import gq.yozakura.module.combat.Velocity;
 import gq.yozakura.module.movement.KeepSprint;
 
 public class PlayerUtil {
@@ -171,23 +172,16 @@ public class PlayerUtil {
                     double originalMotionX = target.motionX;
                     double originalMotionY = target.motionY;
                     double originalMotionZ = target.motionZ;
-                    if (target.attackEntityFrom(DamageSource.causePlayerDamage(mc.thePlayer), baseDamage)) {
+                    boolean attacked = target.attackEntityFrom(DamageSource.causePlayerDamage(mc.thePlayer), baseDamage);
+                    if (attacked) {
                         if (knockbackLevel > 0) {
                             target.addVelocity(
                                     -MathHelper.sin(mc.thePlayer.rotationYaw * (float) Math.PI / 180.0F) * (float) knockbackLevel * 0.5F,
                                     0.1,
                                     MathHelper.cos(mc.thePlayer.rotationYaw * (float) Math.PI / 180.0F) * (float) knockbackLevel * 0.5F
                             );
-                            KeepSprint keepSprint = (KeepSprint) YozakuraRuntime.moduleManager.modules.get(KeepSprint.class);
-                            if (keepSprint.shouldKeepSprint(target)) {
-                                mc.thePlayer.motionX *= 0.6 + 0.4 * (1.0 - keepSprint.slowdown.getValue().doubleValue() / 100.0);
-                                mc.thePlayer.motionZ *= 0.6 + 0.4 * (1.0 - keepSprint.slowdown.getValue().doubleValue() / 100.0);
-                            } else {
-                                mc.thePlayer.motionX *= 0.6;
-                                mc.thePlayer.motionZ *= 0.6;
-                                mc.thePlayer.setSprinting(false);
-                            }
                         }
+                        applyAttackMotion(target, knockbackLevel > 0);
                         if (target instanceof EntityPlayerMP && target.velocityChanged) {
                             ((EntityPlayerMP) target).playerNetServerHandler.sendPacket(new S12PacketEntityVelocity(target));
                             target.velocityChanged = false;
@@ -216,11 +210,34 @@ public class PlayerUtil {
                             }
                         }
                         mc.thePlayer.addExhaustion(0.3F);
-                    } else if (isFireAspectApplied) {
-                        target.extinguish();
+                    } else {
+                        applyAttackMotion(target, knockbackLevel > 0);
+                        if (isFireAspectApplied) {
+                            target.extinguish();
+                        }
                     }
                 }
             }
+        }
+    }
+
+    private static void applyAttackMotion(Entity target, boolean applySprintSlowdown) {
+        if (Velocity.applyAttackSlowdown(target) || !applySprintSlowdown) {
+            return;
+        }
+        applyAttackSprint(target);
+    }
+
+    public static void applyAttackSprint(Entity target) {
+        KeepSprint keepSprint = (KeepSprint) YozakuraRuntime.moduleManager.modules.get(KeepSprint.class);
+        if (keepSprint.shouldKeepSprint(target)) {
+            double factor = 0.6D + 0.4D * (1.0D - keepSprint.slowdown.getValue().doubleValue() / 100.0D);
+            mc.thePlayer.motionX *= factor;
+            mc.thePlayer.motionZ *= factor;
+        } else {
+            mc.thePlayer.motionX *= 0.6D;
+            mc.thePlayer.motionZ *= 0.6D;
+            mc.thePlayer.setSprinting(false);
         }
     }
 }

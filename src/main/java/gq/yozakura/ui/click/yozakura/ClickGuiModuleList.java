@@ -8,7 +8,6 @@ import gq.yozakura.ui.click.ClickGuiIcons;
 import gq.yozakura.ui.UiTheme;
 import org.lwjgl.input.Mouse;
 
-import java.awt.Color;
 import java.util.List;
 
 /**
@@ -254,16 +253,14 @@ final class ClickGuiModuleList {
             // 启用状态背景：随着选中动画增加而逐渐消失
             float enabledAlpha = 46.0f * (1.0f - selectAnim) * alpha * gui.guiAlpha;
             int accent = gui.guiColors().accent;
-            boolean light = gq.yozakura.module.render.HUD.isLightTheme() || gq.yozakura.module.render.HUD.isSakuraTheme();
-            int bgColor = light
-                    ? gui.blendColor(accent, 0xFFFFFFFF, 0.55f)
-                    : gui.blendColor(accent, 0xFF000000, 0.55f);
+            int bgColor = gui.blendColor(accent, gui.guiColors().glassFill, 0.55f);
             RenderServices.shapes().rounded(x, y, x + rowW, y + height, YozakuraClickGui.CARD_RADIUS,
                     gui.withAlpha(bgColor, enabledAlpha));
         }
         // 悬停高亮（非选中状态）
         if (selectAnim < 0.8f && hover > 0.01f) {
-            int hoverFill = gui.blendColor(new Color(0, 0, 0, 0).getRGB(), gui.guiColors().navDefaultHover, hover);
+            int hoverFill = gui.blendColor(gui.withAlpha(gui.guiColors().navDefaultHover, 0.0f),
+                    gui.guiColors().navDefaultHover, hover);
             float hoverAlpha = gui.getAlpha(hoverFill) * (1.0f - selectAnim) * alpha * gui.guiAlpha;
             RenderServices.shapes().rounded(x, y, x + rowW, y + height, YozakuraClickGui.CARD_RADIUS,
                     gui.withAlpha(hoverFill, hoverAlpha));
@@ -271,7 +268,7 @@ final class ClickGuiModuleList {
         // 卡片底部分隔线（选中动画完成时隐藏）
         if (selectAnim < 0.5f) {
             RenderServices.shapes().line(x + 9.0f, y + height - 0.5f, x + rowW - 9.0f, y + height - 0.5f, 0.6f,
-                    gui.withAlpha(new Color(102, 110, 128).getRGB(), 22.0f * (1.0f - selectAnim * 2.0f) * alpha * gui.guiAlpha));
+                    gui.withAlpha(gui.guiColors().glassBorder, 22.0f * (1.0f - selectAnim * 2.0f) * alpha * gui.guiAlpha));
         }
         drawCardHeader(module, x, y, selectAnim, alpha);
     }
@@ -340,7 +337,7 @@ final class ClickGuiModuleList {
 
     /** 绘制收藏星标图标 */
     private void drawStarIcon(float centerX, float centerY, boolean favorite, float alpha) {
-        int color = gui.withAlpha(favorite ? new Color(156, 147, 255).getRGB() : new Color(142, 149, 166).getRGB(),
+        int color = gui.withAlpha(favorite ? gui.guiColors().switchGlowColor : gui.guiColors().faint,
                 (favorite ? 230.0f : 176.0f) * alpha * gui.guiAlpha);
         gui.drawCenteredIcon(favorite ? FontLoaders.ICON_STAR : FontLoaders.ICON_STAR_OUTLINE,
                 FontLoaders.I18, centerX, centerY, color);
@@ -362,7 +359,7 @@ final class ClickGuiModuleList {
         // 轨道
         gui.drawSoftRect(metrics.trackX, metrics.trackY, metrics.trackX + 2.2f,
                 metrics.trackY + metrics.trackHeight, 2.0f,
-                gui.withAlpha(new Color(128, 128, 128, 32).getRGB(), 32.0f * gui.scrollbarAlpha * gui.guiAlpha));
+                gui.withAlpha(gui.guiColors().glassBorder, 32.0f * gui.scrollbarAlpha * gui.guiAlpha));
         // 滑块阴影 + 滑块本体
         RenderServices.shapes().shadow(metrics.trackX, metrics.thumbY, metrics.trackX + 2.2f,
                 metrics.thumbY + metrics.thumbHeight, 2.0f,

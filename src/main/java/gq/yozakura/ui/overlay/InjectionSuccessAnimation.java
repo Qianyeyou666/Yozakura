@@ -2,6 +2,7 @@ package gq.yozakura.ui.overlay;
 
 import gq.yozakura.engine.font.CFontRenderer;
 import gq.yozakura.engine.font.FontLoaders;
+import gq.yozakura.engine.render.glow.GlowProfile;
 import gq.yozakura.engine.render.ui.RenderServices;
 import gq.yozakura.event.bridge.Render2DEvent;
 import gq.yozakura.event.bus.EventManager;
@@ -256,16 +257,8 @@ public final class InjectionSuccessAnimation {
         if (alpha <= 0.018f) {
             return;
         }
-        float wide = Math.max(0.80f, 1.22f * uiScale * strength);
-        float near = Math.max(0.42f, 0.58f * uiScale * strength);
-        int wideGlow = withAlpha(SAKURA, 34.0f * alpha);
-        int nearGlow = withAlpha(SAKURA_SOFT, 54.0f * alpha);
-        font.drawString(text, x - wide, y, wideGlow);
-        font.drawString(text, x + wide, y, wideGlow);
-        font.drawString(text, x, y - wide, wideGlow);
-        font.drawString(text, x, y + wide, wideGlow);
-        font.drawString(text, x - near, y - near, nearGlow);
-        font.drawString(text, x + near, y + near, nearGlow);
+        font.drawGlowString(text, x, y, withAlpha(SAKURA_SOFT, 190.0f * alpha),
+                Math.min(1.0f, strength * 0.72f), GlowProfile.TEXT);
     }
 
     private static boolean isInGame() {

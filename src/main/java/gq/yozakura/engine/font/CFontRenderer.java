@@ -1,6 +1,8 @@
 package gq.yozakura.engine.font;
 
 import gq.yozakura.engine.render.GLStateManager;
+import gq.yozakura.engine.render.glow.GlowProfile;
+import gq.yozakura.engine.render.ui.RenderServices;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import org.lwjgl.BufferUtils;
@@ -87,6 +89,30 @@ public class CFontRenderer extends CFont {
         return drawStringInternal(text, x, y, color, shadow, true);
     }
 
+    /**
+     * Queues a Gaussian glow source for the active render frame without drawing
+     * another offset copy of the glyphs.
+     */
+    public float drawGlowString(String text, double x, double y, int glowColor,
+                                float strength, GlowProfile profile) {
+        RenderServices.glow().queueText(this, text, x, y, glowColor, strength, profile);
+        return (float) (x + getStringWidth(text));
+    }
+
+    public float drawStringWithGlow(String text, double x, double y, int textColor,
+                                    int glowColor, float strength, GlowProfile profile) {
+        drawGlowString(text, x, y, glowColor, strength, profile);
+        return drawString(text, x, y, textColor, false);
+    }
+
+    /**
+     * Replays glyph alpha into the off-screen glow mask. This keeps the normal
+     * font path's legacy alpha test intact for icon-font atlas compatibility.
+     */
+    public float drawStringForGlowMask(String text, double x, double y) {
+        return drawStringInternal(text, x, y, 0xFFFFFFFF, false, true, true);
+    }
+
     public static void setScaleCompensationEnabled(boolean enabled) {
         scaleCompensationEnabled = enabled;
         scaleCompensationDepth = enabled ? Math.max(1, scaleCompensationDepth) : 0;
@@ -106,20 +132,25 @@ public class CFontRenderer extends CFont {
 
     private float drawStringInternal(String text, double x, double y, int color, boolean shadow,
                                      boolean allowScaleCompensation) {
+        return drawStringInternal(text, x, y, color, shadow, allowScaleCompensation, false);
+    }
+
+    private float drawStringInternal(String text, double x, double y, int color, boolean shadow,
+                                     boolean allowScaleCompensation, boolean maskPass) {
         if (text == null || text.length() == 0) {
             return 0.0f;
         }
         if (allowScaleCompensation && scaleCompensationEnabled) {
             ParentScale parentScale = getParentScale();
             if (parentScale.scaled) {
-                return drawScaleCompensatedString(text, x, y, color, shadow, parentScale);
+                return drawScaleCompensatedString(text, x, y, color, shadow, parentScale, maskPass);
             }
         }
 
         if (color == 553648127) {
             color = 16777215;
         }
-        if ((color & 0xFC000000) == 0) {
+        if ((color & 0xFF000000) == 0) {
             color |= 0xFF000000;
         }
         if (shadow) {
@@ -148,9 +179,13 @@ public class CFontRenderer extends CFont {
         int boundTextureId = -1;
         try {
             GlStateManager.scale(0.5, 0.5, 0.5);
-            GLStateManager.enableAlpha();
+            if (maskPass) {
+                GLStateManager.disableAlpha();
+            } else {
+                GLStateManager.enableAlpha();
+            }
             GLStateManager.enableBlend();
-            GLStateManager.blendFuncSeparate(770, 771, 1, 0);
+            GLStateManager.blendFuncSeparate(770, 771, 1, maskPass ? 771 : 0);
             GLStateManager.enableTexture2D();
             GLStateManager.disableDepth();
             GLStateManager.depthMask(false);
@@ -288,7 +323,7 @@ public class CFontRenderer extends CFont {
     }
 
     private float drawScaleCompensatedString(String text, double x, double y, int color, boolean shadow,
-                                             ParentScale parentScale) {
+                                             ParentScale parentScale, boolean maskPass) {
         int scaledSize = Math.max(1, Math.min(96, Math.round(font.getSize2D() * parentScale.scale)));
         CFontRenderer renderer = getScaledRenderer(scaledSize);
 
@@ -297,7 +332,7 @@ public class CFontRenderer extends CFont {
             GL11.glTranslated(x, y, 0.0);
             GL11.glScaled(1.0 / parentScale.scale, 1.0 / parentScale.scale, 1.0);
             GL11.glTranslated(-x, -y, 0.0);
-            renderer.drawStringInternal(text, x, y, color, shadow, false);
+            renderer.drawStringInternal(text, x, y, color, shadow, false, maskPass);
         } finally {
             GL11.glPopMatrix();
         }

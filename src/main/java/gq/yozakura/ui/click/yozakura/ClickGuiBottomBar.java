@@ -2,7 +2,6 @@ package gq.yozakura.ui.click.yozakura;
 
 import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.module.render.ClickGUI;
-import gq.yozakura.module.render.HUD;
 import gq.yozakura.engine.font.FontLoaders;
 import gq.yozakura.engine.render.ui.RenderServices;
 import net.minecraft.client.gui.ScaledResolution;
@@ -100,10 +99,10 @@ final class ClickGuiBottomBar {
 
     private void drawUiSettingsSection(float x, float y, float w, int mouseX, int mouseY) {
         drawSectionTitle(FontLoaders.ICON_SETTINGS, "UI Settings", x + 16.0f, y + 17.0f);
-        gui.drawFont("Theme", x + 16.0f, y + 40.0f,
+        gui.drawFont("Palette", x + 16.0f, y + 40.0f,
                 gui.withAlpha(gui.guiColors().muted, 190.0f * gui.guiAlpha));
         drawThemeSwatches(x + 58.0f, y + 34.0f, mouseX, mouseY);
-        gui.drawFont(formatTheme(HUD.getTheme()), x + w - 60.0f, y + 37.0f,
+        gui.drawFont(formatPalette(ClickGUI.palette.getValue()), x + w - 74.0f, y + 37.0f,
                 gui.withAlpha(gui.guiColors().text, 214.0f * gui.guiAlpha));
 
         gui.drawFont("Transparency", x + 16.0f, y + 61.0f,
@@ -123,22 +122,24 @@ final class ClickGuiBottomBar {
     }
 
     private void drawThemeSwatches(float x, float y, int mouseX, int mouseY) {
-        drawThemeSwatch(HUD.Theme.SAKURA, x, y, 0xFFE56B9D, mouseX, mouseY);
-        drawThemeSwatch(HUD.Theme.LIGHT, x + 24.0f, y, 0xFFF8F8FA, mouseX, mouseY);
-        drawThemeSwatch(HUD.Theme.DARK, x + 48.0f, y, 0xFF282836, mouseX, mouseY);
+        drawThemeSwatch(ClickGUI.Palette.NIGHT_BLOOM, x, y, 0xFFE98BC1, mouseX, mouseY);
+        drawThemeSwatch(ClickGUI.Palette.SAKURA, x + 24.0f, y, 0xFFE56B9D, mouseX, mouseY);
+        drawThemeSwatch(ClickGUI.Palette.OCEAN, x + 48.0f, y, 0xFF4CC8FF, mouseX, mouseY);
+        drawThemeSwatch(ClickGUI.Palette.GRAPHITE, x + 72.0f, y, 0xFFA7C7E7, mouseX, mouseY);
+        drawThemeSwatch(ClickGUI.Palette.CUSTOM, x + 96.0f, y, ClickGUI.currentPalette().getAccentPrimary(), mouseX, mouseY);
     }
 
-    private void drawThemeSwatch(HUD.Theme theme, float x, float y, int color, int mouseX, int mouseY) {
-        boolean selected = HUD.getTheme() == theme;
+    private void drawThemeSwatch(ClickGUI.Palette palette, float x, float y, int color, int mouseX, int mouseY) {
+        boolean selected = ClickGUI.palette.getValue() == palette;
         boolean hovered = YozakuraClickGui.isHovered(x - 5.0f, y - 5.0f, x + 21.0f, y + 21.0f, mouseX, mouseY);
-        Float current = gui.themeSwatchProgress.get(theme);
+        Float current = gui.themeSwatchProgress.get(palette);
         float progress = current == null ? (selected ? 1.0f : 0.0f) : current.floatValue();
         progress = gui.animate(progress, selected ? 1.0f : 0.0f, 0.18f);
-        gui.themeSwatchProgress.put(theme, progress);
-        Float currentHover = gui.themeSwatchHoverProgress.get(theme);
+        gui.themeSwatchProgress.put(palette, progress);
+        Float currentHover = gui.themeSwatchHoverProgress.get(palette);
         float hover = currentHover == null ? 0.0f : currentHover.floatValue();
         hover = gui.animate(hover, hovered ? 1.0f : 0.0f, 0.20f);
-        gui.themeSwatchHoverProgress.put(theme, hover);
+        gui.themeSwatchHoverProgress.put(palette, hover);
 
         float selectedEase = gui.easeSmooth(progress);
         float hoverEase = gui.easeSmooth(hover);
@@ -154,7 +155,7 @@ final class ClickGuiBottomBar {
                 gui.withAlpha(color, (210.0f + 35.0f * progress + 18.0f * hover) * gui.guiAlpha),
                 gui.withAlpha(selected ? gui.guiColors().accent : gui.guiColors().glassBorder,
                         (70.0f + 116.0f * progress + 46.0f * hover) * gui.guiAlpha));
-        if (theme == HUD.Theme.LIGHT) {
+        if (palette == ClickGUI.Palette.SAKURA) {
             RenderServices.shapes().roundedBorder(px + 1.0f, py + 1.0f, px + size - 1.0f, py + size - 1.0f, 3.0f, 0.5f,
                     gui.withAlpha(0x00FFFFFF, 0.0f),
                     gui.withAlpha(0xFFB8C0CC, 80.0f * gui.guiAlpha));
@@ -164,13 +165,13 @@ final class ClickGuiBottomBar {
     private boolean handleThemeSwatchClick(float settingsX, float y, int mouseX, int mouseY) {
         float swatchX = settingsX + 58.0f;
         float swatchY = y + 34.0f;
-        HUD.Theme[] themes = new HUD.Theme[]{HUD.Theme.SAKURA, HUD.Theme.LIGHT, HUD.Theme.DARK};
-        for (int i = 0; i < themes.length; i++) {
+        ClickGUI.Palette[] palettes = ClickGUI.Palette.values();
+        for (int i = 0; i < palettes.length; i++) {
             float x = swatchX + i * 24.0f;
             if (YozakuraClickGui.isHovered(x - 5.0f, swatchY - 5.0f, x + 21.0f, swatchY + 21.0f, mouseX, mouseY)) {
-                HUD.setTheme(themes[i]);
+                ClickGUI.palette.setValue(palettes[i]);
                 gui.themeFadeProgress = 1.0f;
-                gui.addToast("Theme -> " + formatTheme(themes[i]));
+                gui.addToast("Palette -> " + formatPalette(palettes[i]));
                 return true;
             }
         }
@@ -204,7 +205,7 @@ final class ClickGuiBottomBar {
         drawSectionTitle(FontLoaders.ICON_INFO, "About", x + 16.0f, y + 17.0f);
         gui.drawFont("Vape Lite v1.3", x + 16.0f, y + 42.0f,
                 gui.withAlpha(gui.guiColors().text, 222.0f * gui.guiAlpha));
-        gui.drawFont("Made with " + (HUD.isSakuraTheme() ? "Sakura" : "care"), x + 16.0f, y + 59.0f,
+        gui.drawFont("Made with " + (ClickGUI.palette.getValue() == ClickGUI.Palette.SAKURA ? "Sakura" : "care"), x + 16.0f, y + 59.0f,
                 gui.withAlpha(gui.guiColors().muted, 185.0f * gui.guiAlpha));
         gui.drawFont("yozakura.gg", x + 16.0f, y + 74.0f,
                 gui.withAlpha(gui.guiColors().accent, 190.0f * gui.guiAlpha));
@@ -221,14 +222,21 @@ final class ClickGuiBottomBar {
                 gui.withAlpha(gui.guiColors().glassBorder, 70.0f * gui.guiAlpha));
     }
 
-    private String formatTheme(HUD.Theme theme) {
-        if (theme == HUD.Theme.SAKURA) {
-            return "Sakura";
+    private String formatPalette(ClickGUI.Palette palette) {
+        switch (palette) {
+            case NIGHT_BLOOM:
+                return "Night Bloom";
+            case SAKURA:
+                return "Sakura";
+            case OCEAN:
+                return "Ocean";
+            case GRAPHITE:
+                return "Graphite";
+            case CUSTOM:
+                return "Custom";
+            default:
+                throw new IllegalArgumentException("Unsupported palette: " + palette);
         }
-        if (theme == HUD.Theme.LIGHT) {
-            return "Light";
-        }
-        return "Dark";
     }
 
     private float getY(ScaledResolution sr) {

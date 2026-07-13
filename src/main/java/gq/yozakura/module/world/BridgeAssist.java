@@ -1,9 +1,9 @@
 package gq.yozakura.module.world;
 
-import gq.yozakura.bridge.MinecraftAccessor;
 import gq.yozakura.event.bus.EventTarget;
 import gq.yozakura.event.bus.types.EventType;
 import gq.yozakura.event.bus.types.Priority;
+import gq.yozakura.event.bridge.MoveInputEvent;
 import gq.yozakura.event.bridge.PacketEvent;
 import gq.yozakura.event.bridge.RightClickMouseEvent;
 import gq.yozakura.event.bridge.UpdateEvent;
@@ -16,12 +16,12 @@ import gq.yozakura.util.module.RotationUtil;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
 import net.minecraft.client.settings.KeyBinding;
-import net.minecraft.item.ItemStack;
 import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.BlockPos;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.MathHelper;
+import net.minecraft.util.MovementInput;
 import net.minecraft.util.MovingObjectPosition;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
@@ -36,7 +36,6 @@ public class BridgeAssist extends Module {
     private static final int ROTATION_PRIORITY = 1;
     private static final float MIN_PRE_PLACE_PITCH = 60.0F;
     private static final float MAX_PRE_PLACE_PITCH = 90.0F;
-    private static final long PRE_PLACE_DELAY_MILLIS = 45L;
 
     private final Option<Boolean> prePlace = new Option<Boolean>("Pre Place", "PrePlace", false);
     private final Numbers<Double> edgeOffset =
@@ -61,11 +60,7 @@ public class BridgeAssist extends Module {
     private int sneakJumpStartTick = -1;
     private int unsneakDelayTicks = -1;
     private int unsneakStartTick = -1;
-    private boolean hasPrePlaceRotation;
-    private float prePlaceYaw;
-    private float prePlacePitch;
     private MovingObjectPosition prePlaceMouseOver;
-    private long lastPrePlaceMillis;
 
     public BridgeAssist() {
         super("BridgeAssist", Keyboard.KEY_NONE, ModuleType.World, "Assist edge sneaking while bridging");
@@ -84,8 +79,8 @@ public class BridgeAssist extends Module {
     }
 
     @EventTarget(Priority.LOW)
-    public void onUpdate(UpdateEvent event) {
-        if (!getState() || event.getType() != EventType.PRE) {
+    public void onMoveInput(MoveInputEvent event) {
+        if (!getState()) {
             return;
         }
         if (!canAssist()) {
@@ -93,8 +88,18 @@ public class BridgeAssist extends Module {
             resetUnsneak();
             return;
         }
-
         handleSneakAssist();
+    }
+
+    @EventTarget(Priority.LOW)
+    public void onUpdate(UpdateEvent event) {
+        if (!getState() || event.getType() != EventType.PRE) {
+            return;
+        }
+        if (!canAssist()) {
+            resetPrePlace();
+            return;
+        }
         handlePrePlace(event);
     }
 
@@ -102,10 +107,6 @@ public class BridgeAssist extends Module {
     public void onRightClick(RightClickMouseEvent event) {
         if (canUsePrePlaceMouseOver()) {
             mc.objectMouseOver = prePlaceMouseOver;
-            if (placePrePlaceNow()) {
-                placed = true;
-                event.setCancelled(true);
-            }
         }
     }
 
@@ -130,8 +131,12 @@ public class BridgeAssist extends Module {
     }
 
     private void handleSneakAssist() {
-        float forward = getForwardInput();
-        float strafe = getStrafeInput();
+        MovementInput input = mc.thePlayer.movementInput;
+        if (input == null) {
+            return;
+        }
+        float forward = input.moveForward;
+        float strafe = input.moveStrafe;
         boolean moving = forward != 0.0F || strafe != 0.0F;
         boolean manualSneak = isManualSneak();
         boolean requireSneak = Boolean.TRUE.equals(sneakKeyPressed.getValue());
@@ -162,7 +167,7 @@ public class BridgeAssist extends Module {
             return;
         }
 
-        if (isJumpPressed()
+        if (input.jump
                 && mc.thePlayer.onGround
                 && moving
                 && sneakOnJump.getValue() > 0.0D
@@ -173,9 +178,9 @@ public class BridgeAssist extends Module {
             return;
         }
 
-        double offset = computeEdgeOffset(predictInputBox(forward, strafe));
+        double offset = computeEdgeOffset(predictInputBox(input));
         if (Double.isNaN(offset)) {
-            if (isJumpPressed() && (sneakOnJump.getValue() <= 0.0D || !moving)) {
+            if (input.jump && (sneakOnJump.getValue() <= 0.0D || !moving)) {
                 if (sneakingFromModule) {
                     tryReleaseSneak(true);
                 }
@@ -207,42 +212,30 @@ public class BridgeAssist extends Module {
             resetPrePlace();
             return;
         }
-        if (Boolean.TRUE.equals(notMovingForward.getValue()) && getForwardInput() > 0.0F) {
+        if (Boolean.TRUE.equals(notMovingForward.getValue())
+                && mc.thePlayer.movementInput != null
+                && mc.thePlayer.movementInput.moveForward > 0.0F) {
             resetPrePlace();
             return;
         }
 
-        float yaw = event.getNewYaw();
-        float basePitch = hasPrePlaceRotation ? prePlacePitch : event.getNewPitch();
-        TargetResult target = findTarget(yaw, basePitch, mc.playerController.getBlockReachDistance());
+        float baseYaw = event.getNewYaw();
+        float basePitch = event.getNewPitch();
+        TargetResult target = findTarget(baseYaw, basePitch, mc.playerController.getBlockReachDistance());
         if (target == null) {
             resetPrePlace();
             return;
         }
 
-        float nextYaw = stepAngle(hasPrePlaceRotation ? prePlaceYaw : yaw, target.yaw, 15.0F);
-        float nextPitch = stepLinear(basePitch, target.pitch, 20.0F);
-        nextYaw = RotationUtil.quantizeAngle(nextYaw);
-        nextPitch = RotationUtil.quantizeAngle(MathHelper.clamp_float(nextPitch, -90.0F, 90.0F));
+        float[] smoothed = smoothRotation(baseYaw, basePitch, target.yaw, target.pitch, 15.0F, 20.0F);
+        event.setRotation(smoothed[0], smoothed[1], ROTATION_PRIORITY);
+        VisualRotationState.publish("BridgeAssist", smoothed[0], smoothed[1], ROTATION_PRIORITY);
 
-        prePlaceYaw = nextYaw;
-        prePlacePitch = nextPitch;
-        hasPrePlaceRotation = true;
-        event.setRotation(nextYaw, nextPitch,
-                ROTATION_PRIORITY);
-        event.setPervRotation(nextYaw, ROTATION_PRIORITY);
-        VisualRotationState.publish("BridgeAssist", nextYaw, nextPitch, ROTATION_PRIORITY);
-
-        MovingObjectPosition hit = RotationUtil.rayTrace(nextYaw, nextPitch,
+        MovingObjectPosition hit = RotationUtil.rayTrace(smoothed[0], smoothed[1],
                 mc.playerController.getBlockReachDistance(), 1.0F);
-        if (isPrePlaceHit(hit, target)) {
-            prePlaceMouseOver = hit;
-            mc.objectMouseOver = hit;
-            if (isUsePressed()) {
-                placePrePlaceNow();
-            }
-        } else {
-            prePlaceMouseOver = null;
+        prePlaceMouseOver = isPrePlaceHit(hit, target) ? hit : null;
+        if (prePlaceMouseOver != null) {
+            mc.objectMouseOver = prePlaceMouseOver;
         }
     }
 
@@ -276,7 +269,7 @@ public class BridgeAssist extends Module {
 
     private void releaseSneak(boolean resetDelay) {
         if (!Boolean.TRUE.equals(sneakKeyPressed.getValue())) {
-            setSneakState(isManualSneak());
+            setSneakState(false);
         } else if (sneakingFromModule && isManualSneak() && (placed || !mc.thePlayer.onGround)) {
             setSneakState(false);
             forceRelease = true;
@@ -317,18 +310,14 @@ public class BridgeAssist extends Module {
     }
 
     private void resetPrePlace() {
-        hasPrePlaceRotation = false;
         prePlaceMouseOver = null;
-        lastPrePlaceMillis = 0L;
         VisualRotationState.clearSource("BridgeAssist");
     }
 
-    private AxisAlignedBB predictInputBox(float forward, float strafe) {
+    private AxisAlignedBB predictInputBox(MovementInput input) {
         AxisAlignedBB box = mc.thePlayer.getEntityBoundingBox();
-        double x = mc.thePlayer.motionX;
-        double z = mc.thePlayer.motionZ;
-        double[] input = inputMotion(forward, strafe, 0.12D);
-        return box.offset(x + input[0], 0.0D, z + input[1]);
+        double[] inputMotion = inputMotion(input.moveForward, input.moveStrafe, 0.12D);
+        return box.offset(mc.thePlayer.motionX + inputMotion[0], 0.0D, mc.thePlayer.motionZ + inputMotion[1]);
     }
 
     private double[] inputMotion(float forward, float strafe, double speed) {
@@ -359,12 +348,12 @@ public class BridgeAssist extends Module {
             return Double.NaN;
         }
 
-        double feetX = (simBox.minX + simBox.maxX) * 0.5D;
-        double feetZ = (simBox.minZ + simBox.maxZ) * 0.5D;
+        double feetX = (simBox.minX + simBox.maxX) / 2.0D;
+        double feetZ = (simBox.minZ + simBox.maxZ) / 2.0D;
         double minDistance = Double.MAX_VALUE;
         for (AxisAlignedBB box : groundBoxes) {
-            double closestX = MathHelper.clamp_double(feetX, box.minX, box.maxX);
-            double closestZ = MathHelper.clamp_double(feetZ, box.minZ, box.maxZ);
+            double closestX = Math.max(box.minX, Math.min(feetX, box.maxX));
+            double closestZ = Math.max(box.minZ, Math.min(feetZ, box.maxZ));
             double dx = Math.abs(feetX - closestX);
             double dz = Math.abs(feetZ - closestZ);
             minDistance = Math.min(minDistance, Math.max(dx, dz));
@@ -375,10 +364,10 @@ public class BridgeAssist extends Module {
     private TargetResult findTarget(float yaw, float currentPitch, double reach) {
         AxisAlignedBB box = mc.thePlayer.getEntityBoundingBox();
         int standY = MathHelper.floor_double(box.minY) - 1;
-        int minX = MathHelper.floor_double(box.minX) - 1;
-        int maxX = MathHelper.floor_double(box.maxX) + 1;
-        int minZ = MathHelper.floor_double(box.minZ) - 1;
-        int maxZ = MathHelper.floor_double(box.maxZ) + 1;
+        int minX = MathHelper.floor_double(box.minX);
+        int maxX = MathHelper.floor_double(box.maxX);
+        int minZ = MathHelper.floor_double(box.minZ);
+        int maxZ = MathHelper.floor_double(box.maxZ);
 
         ArrayList<FaceTarget> targets = new ArrayList<FaceTarget>();
         for (int x = minX; x <= maxX; x++) {
@@ -403,23 +392,32 @@ public class BridgeAssist extends Module {
         float bestPitch = Float.NaN;
         BlockPos bestSupport = null;
         EnumFacing bestFace = null;
-        for (float pitch = MIN_PRE_PLACE_PITCH; pitch <= MAX_PRE_PLACE_PITCH; pitch += 1.0F) {
-            MovingObjectPosition mop = RotationUtil.rayTrace(yaw, pitch, reach, 1.0F);
+        for (float pitch = MIN_PRE_PLACE_PITCH; pitch <= MAX_PRE_PLACE_PITCH; ) {
+            float step = 1.0F + (float) (Math.random() * 2.0D - 1.0D) * 0.38F;
+            pitch += MathHelper.clamp_float(step, 0.4F, 1.8F);
+            float samplePitch = Math.min(pitch, MAX_PRE_PLACE_PITCH);
+            MovingObjectPosition mop = RotationUtil.rayTrace(yaw, samplePitch, reach, 1.0F);
             if (mop == null || mop.sideHit == EnumFacing.UP || mop.sideHit == EnumFacing.DOWN) {
+                if (pitch >= MAX_PRE_PLACE_PITCH) {
+                    break;
+                }
                 continue;
             }
             BlockPos hitBlock = mop.getBlockPos();
             for (FaceTarget target : targets) {
                 if (hitBlock.equals(target.block) && mop.sideHit == target.face) {
-                    float delta = Math.abs(pitch - currentPitch);
+                    float delta = Math.abs(samplePitch - currentPitch);
                     if (delta < bestDelta) {
                         bestDelta = delta;
-                        bestPitch = pitch;
+                        bestPitch = samplePitch;
                         bestSupport = target.block;
                         bestFace = target.face;
                     }
                     break;
                 }
+            }
+            if (pitch >= MAX_PRE_PLACE_PITCH) {
+                break;
             }
         }
 
@@ -443,48 +441,13 @@ public class BridgeAssist extends Module {
                 && hit.sideHit == target.face;
     }
 
-    private boolean placePrePlaceNow() {
-        if (!canUsePrePlaceMouseOver()) {
-            return false;
-        }
-        long now = System.currentTimeMillis();
-        if (now - lastPrePlaceMillis < PRE_PLACE_DELAY_MILLIS) {
-            return false;
-        }
-        if (!BlockUtil.isReplaceable(prePlaceMouseOver.getBlockPos().offset(prePlaceMouseOver.sideHit))) {
-            return false;
-        }
-        boolean placedBlock = placePrePlace(prePlaceMouseOver);
-        if (placedBlock) {
-            placed = true;
-            lastPrePlaceMillis = now;
-        }
-        return placedBlock;
-    }
-
-    private boolean placePrePlace(MovingObjectPosition hit) {
-        if (hit == null || hit.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK) {
-            return false;
-        }
-        ItemStack stack = mc.thePlayer.getHeldItem();
-        if (!ItemUtil.isBlock(stack)) {
-            return false;
-        }
-        int slot = mc.thePlayer.inventory.currentItem;
-        int oldSize = stack.stackSize;
-        MinecraftAccessor.syncCurrentPlayItem(mc.playerController);
-        boolean placed = mc.playerController.onPlayerRightClick(mc.thePlayer, mc.theWorld, stack,
-                hit.getBlockPos(), hit.sideHit, hit.hitVec);
-        if (!placed) {
-            return false;
-        }
-        mc.thePlayer.swingItem();
-        if (stack.stackSize <= 0) {
-            mc.thePlayer.inventory.mainInventory[slot] = null;
-        } else if (stack.stackSize != oldSize || mc.playerController.isInCreativeMode()) {
-            mc.entityRenderer.itemRenderer.resetEquippedProgress();
-        }
-        return true;
+    private float[] smoothRotation(float yaw, float pitch, float targetYaw, float targetPitch,
+                                   float maxYawStep, float maxPitchStep) {
+        float nextYaw = stepAngle(yaw, targetYaw, maxYawStep);
+        float nextPitch = stepLinear(pitch, targetPitch, maxPitchStep);
+        nextYaw = RotationUtil.quantizeAngle(nextYaw);
+        nextPitch = RotationUtil.quantizeAngle(MathHelper.clamp_float(nextPitch, -90.0F, 90.0F));
+        return new float[]{nextYaw, nextPitch};
     }
 
     private float stepAngle(float current, float target, float maxStep) {
@@ -503,45 +466,15 @@ public class BridgeAssist extends Module {
         return base + (Math.random() < raw - base ? 1 : 0);
     }
 
-    private float getForwardInput() {
-        float forward = 0.0F;
-        if (isPhysicalKeyDown(mc.gameSettings.keyBindForward.getKeyCode())) {
-            forward += 1.0F;
-        }
-        if (isPhysicalKeyDown(mc.gameSettings.keyBindBack.getKeyCode())) {
-            forward -= 1.0F;
-        }
-        return forward;
-    }
-
-    private float getStrafeInput() {
-        float strafe = 0.0F;
-        if (isPhysicalKeyDown(mc.gameSettings.keyBindLeft.getKeyCode())) {
-            strafe += 1.0F;
-        }
-        if (isPhysicalKeyDown(mc.gameSettings.keyBindRight.getKeyCode())) {
-            strafe -= 1.0F;
-        }
-        return strafe;
-    }
-
-    private boolean isJumpPressed() {
-        return isPhysicalKeyDown(mc.gameSettings.keyBindJump.getKeyCode());
-    }
-
-    private boolean isUsePressed() {
-        return isPhysicalKeyDown(mc.gameSettings.keyBindUseItem.getKeyCode());
-    }
-
     private boolean isManualSneak() {
         return isPhysicalKeyDown(mc.gameSettings.keyBindSneak.getKeyCode());
     }
 
     private void setSneakState(boolean sneak) {
-        KeyBinding.setKeyBindState(mc.gameSettings.keyBindSneak.getKeyCode(), sneak);
         if (mc.thePlayer != null && mc.thePlayer.movementInput != null) {
             mc.thePlayer.movementInput.sneak = sneak;
         }
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindSneak.getKeyCode(), sneak);
     }
 
     private void releaseModuleSneak() {
