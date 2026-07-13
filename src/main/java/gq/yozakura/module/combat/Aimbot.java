@@ -164,12 +164,7 @@ public class Aimbot extends Module {
         }
 
         handleModeChange();
-        if (!conditionsMet()) {
-            clearTargetState(mode.getValue().isSilent());
-            return;
-        }
-
-        refreshTarget(System.currentTimeMillis());
+        refreshTargetForCurrentInput();
     }
 
     @SubscribeEvent
@@ -205,15 +200,19 @@ public class Aimbot extends Module {
         if (!getState() || event.getType() != EventType.PRE) {
             return;
         }
+        handleModeChange();
         if (silentReturning) {
-            publishSilentReturn(event);
+            if (mode.getValue().isSilent() && refreshTargetForCurrentInput()) {
+                finishSilentReturn();
+            } else {
+                publishSilentReturn(event);
+                return;
+            }
+        }
+        if (!mode.getValue().isSilent()) {
             return;
         }
-        if (!mode.getValue().isSilent() || !hasActiveTarget()) {
-            return;
-        }
-        if (!conditionsMet()) {
-            clearTargetState(true);
+        if (!refreshTargetForCurrentInput()) {
             publishSilentReturn(event);
             return;
         }
@@ -253,6 +252,16 @@ public class Aimbot extends Module {
         clearTargetState(false);
         nextTargetScanAt = 0L;
         lastMode = currentMode;
+    }
+
+    private boolean refreshTargetForCurrentInput() {
+        if (!conditionsMet()) {
+            clearTargetState(mode.getValue().isSilent());
+            nextTargetScanAt = 0L;
+            return false;
+        }
+        refreshTarget(System.currentTimeMillis());
+        return hasActiveTarget();
     }
 
     private void refreshTarget(long now) {

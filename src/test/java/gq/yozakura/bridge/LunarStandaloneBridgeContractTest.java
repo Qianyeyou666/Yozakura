@@ -14,6 +14,19 @@ import static org.junit.Assert.assertTrue;
  */
 public class LunarStandaloneBridgeContractTest {
     @Test
+    public void lunarMarkersTakePrecedenceOverForgeCompatibilityClasses() throws IOException {
+        String bootstrap = source("src/main/java/gq/yozakura/YozakuraBootstrap.java");
+
+        int lunarBranch = bootstrap.indexOf("if (isLunarClient())");
+        int forgeBranch = bootstrap.indexOf("if (ForgeEnvironment.isForgeAvailable())");
+        assertTrue("A Lunar client that bundles Forge compatibility classes must still select the standalone bridge",
+                lunarBranch >= 0 && forgeBranch >= 0 && lunarBranch < forgeBranch);
+        assertTrue("The Lunar-priority branch must retain the remapped standalone entry point",
+                bootstrap.substring(lunarBranch, forgeBranch)
+                        .contains("startMappedClass(\"gq.yozakura.core.StandaloneClient\", true, \"lunar\")"));
+    }
+
+    @Test
     public void renderLivingShimMatchesTheDescriptorsUsedByRenderModules() throws IOException {
         String shim = source("src/main/java/gq/yozakura/bridge/forge/RenderLivingEvent.java");
         String remapper = source("src/main/java/gq/yozakura/bridge/VanillaRemapClassLoader.java");
@@ -70,6 +83,20 @@ public class LunarStandaloneBridgeContractTest {
                 cli.contains("Yozakura is already injected into pid"));
         assertTrue("The loader itself must guard against concurrent or third-party reinjection",
                 loader.contains("CreateMutexW") && loader.contains("ERROR_ALREADY_EXISTS"));
+    }
+
+    @Test
+    public void nativeLoaderRetainsItsProcessGuardAfterEnteringTheClientConstructor() throws IOException {
+        String loader = source("native/yozakura_loader.cpp");
+
+        int constructorAttempt = loader.indexOf("constructorAttempted = true;");
+        int newClient = loader.indexOf("env->NewObject(clientClass, ctor)", constructorAttempt);
+        assertTrue("A constructor that can partially register bridge listeners must be recorded before NewObject",
+                constructorAttempt >= 0 && newClient > constructorAttempt);
+        assertTrue("A failed constructor attempt must retain the process-wide guard instead of allowing reinjection",
+                loader.contains("bool constructorAttempted = false;")
+                        && loader.contains("if (clientLoaded || constructorAttempted)")
+                        && loader.contains("injectionGuard.retainForProcessLifetime();"));
     }
 
     @Test

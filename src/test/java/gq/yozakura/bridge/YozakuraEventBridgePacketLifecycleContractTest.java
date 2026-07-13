@@ -79,11 +79,14 @@ public class YozakuraEventBridgePacketLifecycleContractTest {
     }
 
     @Test
-    public void preActionsWaitForTheirPublishedRotationGeneration() throws IOException {
+    public void postSensitiveActionsStayBeforeC03WithoutGivingUpSilentRotation() throws IOException {
         String source = source();
         String pre = method(source, "    private void dispatchPreUpdate() {", "    private void applyLocalViewRotation(");
         String write = writeMethod(source);
         String handler = source.substring(source.indexOf("    private final class PacketBridgeHandler"));
+        String playerPacket = method(source,
+                "        private void writePlayerPacket(ChannelHandlerContext ctx, C03PacketPlayer packet, ChannelPromise promise,",
+                "        private C03PacketPlayer rewritePlayerPacket(");
 
         int beginPre = pre.indexOf("rotationPublication.beginPre();");
         int exposePre = pre.indexOf("activePreUpdate = update;");
@@ -95,20 +98,49 @@ public class YozakuraEventBridgePacketLifecycleContractTest {
         assertTrue("The final listener rotation must be published before PRE is released",
                 publish > dispatch && finishPre > publish);
 
-        int delay = write.indexOf("shouldDelayUntilRotation(packet, rotation)");
-        int markSent = write.indexOf("markSent(packet)");
-        assertTrue("Rotation-sensitive actions must be queued before sent-state or Blink handling",
-                delay >= 0 && markSent > delay);
-        assertTrue("Forge must cover every rotation-sensitive vanilla action packet",
-                source.contains("C02PacketUseEntity")
-                        && source.contains("C07PacketPlayerDigging")
-                        && source.contains("C08PacketPlayerBlockPlacement")
-                        && source.contains("C0APacketAnimation"));
-        assertTrue("Queued actions must be tied to a rotation generation",
-                source.contains("requiredGeneration"));
-        assertTrue("A C03 must mark its captured generation sent before eligible actions flush",
-                handler.contains("rotationPublication.markSent(rotation)")
-                        && handler.contains("flushDelayedPackets(ctx"));
+        assertTrue("Post-sensitive actions must enter a two-tick batch before Blink or raw Netty handling",
+                write.contains("if (isPostSensitiveAction(packet))")
+                        && write.contains("queueCurrentActionPacket(packet, promise);"));
+        String actionClassifier = method(source,
+                "        private boolean isPostSensitiveAction(Packet<?> packet) {",
+                "        private void onRotationPublished(");
+        assertTrue("Forge must batch only actions whose server interpretation depends on silent yaw",
+                actionClassifier.contains("C02PacketUseEntity")
+                        && actionClassifier.contains("C07PacketPlayerDigging")
+                        && actionClassifier.contains("C08PacketPlayerBlockPlacement")
+                        && actionClassifier.contains("C09PacketHeldItemChange")
+                        && actionClassifier.contains("C0APacketAnimation")
+                        && actionClassifier.contains("C0EPacketClickWindow"));
+        assertFalse("Sprint/sneak transitions are movement state, not delayed combat actions",
+                actionClassifier.contains("C0BPacketEntityAction"));
+        assertFalse("Ability transitions must reach the server in their native movement order",
+                actionClassifier.contains("C13PacketPlayerAbilities"));
+        assertTrue("The close-window companion packet must stay behind an already queued inventory click",
+                write.contains("packet instanceof net.minecraft.network.play.client.C0DPacketCloseWindow")
+                        && source.contains("currentClickWindowPackets > 0")
+                        && source.contains("readyClickWindowPackets > 0"));
+        assertTrue("The packet handler must hold separate ready and current action batches",
+                handler.contains("OutboundActionBatchQueue<DelayedPacket>"));
+
+        int readyFlush = playerPacket.indexOf("flushReadyActionPackets(ctx);");
+        int tickAdvance = playerPacket.indexOf("boolean playerTickAdvanced = playerPacketTickGate.consumeNextPlayerPacket();");
+        int silentWrite = playerPacket.indexOf("super.write(ctx, rewritten, promise);");
+        int markSent = playerPacket.indexOf("rotationPublication.markSent(rotation);");
+        int promoteCurrent = playerPacket.indexOf("promoteCurrentActionPackets();");
+        assertTrue("A prior silent action batch must leave before the following C03",
+                tickAdvance >= 0 && readyFlush > tickAdvance && silentWrite > readyFlush);
+        assertTrue("The current action batch becomes ready only after its C03 has published the rotation",
+                markSent > silentWrite && promoteCurrent > markSent);
+
+        int currentFlush = playerPacket.indexOf("flushCurrentActionPackets(ctx);");
+        int normalWrite = playerPacket.indexOf("super.write(ctx, packet, promise);");
+        assertTrue("Non-silent AutoClicker actions must be emitted before the native C03",
+                currentFlush >= 0 && normalWrite > currentFlush);
+        assertTrue("Extra same-tick C03 packets must not release actions after an earlier movement packet",
+                playerPacket.contains("boolean playerTickAdvanced = playerPacketTickGate.consumeNextPlayerPacket()")
+                        && playerPacket.contains("if (playerTickAdvanced && !rotation.isActive())"));
+        assertTrue("Forge PRE must enqueue the exact published generation before the native player packet is sent",
+                source.contains("handler.markNextPlayerPacketTick(published.getGeneration());"));
     }
 
     @Test

@@ -12,6 +12,22 @@ import static org.junit.Assert.assertTrue;
 
 public class ForgeBridgeLifecycleContractTest {
     @Test
+    public void bridgeRegistrationPublishesRunningStateOnlyAfterBothEventBusesSucceed() throws IOException {
+        String bridge = source("src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java");
+        String init = method(bridge, "    public static void init() {", "    public static void markNoEvent(");
+
+        int forgeRegistration = init.indexOf("MinecraftForge.EVENT_BUS.register(INSTANCE);");
+        int fmlRegistration = init.indexOf("FMLCommonHandler.instance().bus().register(INSTANCE);");
+        int publishedState = init.lastIndexOf("registered = true;");
+        assertTrue("Both Forge buses must register before the bridge is published as active",
+                forgeRegistration >= 0 && fmlRegistration > forgeRegistration && publishedState > fmlRegistration);
+        assertTrue("A failure registering the second bus must undo the first registration",
+                init.contains("rollbackFailedRegistration(")
+                        && bridge.contains("MinecraftForge.EVENT_BUS.unregister(INSTANCE);")
+                        && bridge.contains("FMLCommonHandler.instance().bus().unregister(INSTANCE);"));
+    }
+
+    @Test
     public void forgeShutdownUnregistersTheBridgeAndClearsAllBridgeState() throws IOException {
         String bridge = source("src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java");
         String shutdown = method(bridge, "    private void shutdownInternal() {", "    private void clearBridgeState()");
@@ -81,6 +97,119 @@ public class ForgeBridgeLifecycleContractTest {
                         && client.contains("System.clearProperty(ACTIVE_INSTANCE_PROPERTY);"));
         assertTrue("The pump is started only after active state has been published",
                 constructor.indexOf("state = true;") < constructor.indexOf("startMainThreadPump();"));
+    }
+
+    @Test
+    public void forgeBridgeDoesNotReinstallBesideAnActiveStandaloneBridge() throws IOException {
+        String bridge = source("src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java");
+        String inject = method(bridge, "    private void injectPacketHandler() {", "    private void removePacketHandler() {");
+
+        assertTrue("A stale Forge listener must yield instead of reintroducing a second packet bridge in Lunar",
+                inject.contains("PacketPipelineAnchors.STANDALONE_BRIDGE_HANDLER_NAME")
+                        && inject.contains("next.pipeline().remove(HANDLER_NAME);")
+                        && inject.contains("return;"));
+    }
+
+    @Test
+    public void forgeBridgeReplacesAForeignSameNamedPacketHandlerInsteadOfLeavingSilentRotationDetached()
+            throws IOException {
+        String bridge = source("src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java");
+        String inject = method(bridge, "    private void injectPacketHandler() {", "    private void removePacketHandler() {");
+
+        int knownHandler = inject.indexOf("else if (existing instanceof PacketBridgeHandler)");
+        int channelAssigned = inject.indexOf("channel = next;", knownHandler);
+        String foreignHandlerRecovery = inject.substring(knownHandler, channelAssigned);
+        assertTrue("A handler from another injection classloader must be removed before this bridge claims the channel",
+                foreignHandlerRecovery.contains("else {")
+                        && foreignHandlerRecovery.contains("next.pipeline().remove(HANDLER_NAME);")
+                        && foreignHandlerRecovery.contains("new PacketBridgeHandler()")
+                        && foreignHandlerRecovery.contains("next.pipeline().addBefore(\"packet_handler\", HANDLER_NAME, handler)"));
+    }
+
+    @Test
+    public void forgeTickYieldsBeforeOverwritingAnActiveStandaloneMovementBridge() throws IOException {
+        String bridge = source("src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java");
+        String tick = method(bridge,
+                "    public void onClientTick(TickEvent.ClientTickEvent event) {",
+                "    @SubscribeEvent(priority = EventPriority.LOWEST)");
+
+        int standaloneYield = tick.indexOf("if (yieldToStandaloneBridge())");
+        int movementInstall = tick.indexOf("MovementInputBridge.install();");
+        assertTrue("Forge ticks must detect the standalone handler before mutating shared movement hooks",
+                standaloneYield >= 0 && movementInstall > standaloneYield);
+        assertTrue("A stale Forge listener must return instead of dispatching duplicate tick/update events",
+                tick.substring(standaloneYield, movementInstall).contains("return;"));
+        assertTrue("The detection helper must inspect the canonical standalone packet-handler name",
+                bridge.contains("private boolean yieldToStandaloneBridge()")
+                        && bridge.contains("PacketPipelineAnchors.STANDALONE_BRIDGE_HANDLER_NAME"));
+    }
+
+    @Test
+    public void everyForgeCallbackYieldsAndConvergesToTheStandalonePacketOwner() throws IOException {
+        String bridge = source("src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java");
+        String playerTick = method(bridge,
+                "    public void onPlayerTick(TickEvent.PlayerTickEvent event) {",
+                "    public static boolean hasRenderedOverlayThisFrame()");
+        String render2d = method(bridge,
+                "    public void onRender2D(RenderGameOverlayEvent.Text event) {",
+                "    @SubscribeEvent\n    public void onRender3D");
+        String render3d = method(bridge,
+                "    public void onRender3D(RenderWorldLastEvent event) {",
+                "    @SubscribeEvent\n    public void onMouse");
+        String mouse = method(bridge,
+                "    public void onMouse(MouseEvent event) {",
+                "    @SubscribeEvent(priority = EventPriority.LOWEST, receiveCanceled = true)");
+        String playerPre = method(bridge,
+                "    public void onRenderPlayerPre(RenderPlayerEvent.Pre event) {",
+                "    @SubscribeEvent\n    public void onRenderPlayerPost");
+        String playerPost = method(bridge,
+                "    public void onRenderPlayerPost(RenderPlayerEvent.Post event) {",
+                "    private void restoreLatestPlayerRenderRotation()");
+
+        assertTrue("A stale Forge player-tick callback must not restore Standalone's movement rotation",
+                yieldsBefore(playerTick, "MovementInputBridge.restoreRotation();"));
+        assertTrue("A stale Forge overlay callback must not render a duplicate HUD event",
+                yieldsBefore(render2d, "EventManager.call(new Render2DEvent"));
+        assertTrue("A stale Forge world-render callback must not render a duplicate world event",
+                yieldsBefore(render3d, "EventManager.call(new Render3DEvent"));
+        assertTrue("A stale Forge mouse callback must not synthesize a second click or wheel bridge",
+                yieldsBefore(mouse, "EventManager.call(new LeftClickMouseEvent())"));
+        assertTrue("A stale Forge render PRE callback must not mutate the local-player visual rotation",
+                yieldsBefore(playerPre, "playerRenderRotationSnapshots.push("));
+        assertTrue("A stale Forge render POST callback must not restore Standalone's visual rotation snapshot",
+                yieldsBefore(playerPost, "restoreLatestPlayerRenderRotation();"));
+
+        String ownership = method(bridge, "    private boolean yieldToStandaloneBridge() {",
+                "    private void removePacketHandler() {");
+        assertTrue("An existing Forge packet handler must be removed when Standalone takes ownership",
+                ownership.contains("next.pipeline().remove(HANDLER_NAME);"));
+        assertTrue("The stale Forge bridge must release its cached Netty handler reference",
+                ownership.contains("packetBridgeHandler = null;"));
+        assertTrue("Standalone ownership must release an old Forge-forced sneak key before discarding its state",
+                ownership.contains("releaseForcedSneak();"));
+        assertFalse("Dropping the flag directly can leave a Forge-forced sneak key stuck down",
+                ownership.contains("forcedSneak = false;"));
+    }
+
+    @Test
+    public void standaloneOwnershipDetectionFailsClosedWhenItsCleanupRacesThePipeline() throws IOException {
+        String bridge = source("src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java");
+        String ownership = method(bridge, "    private boolean yieldToStandaloneBridge() {",
+                "    private void abandonStaleForgeBridge(");
+        int standaloneCheck = ownership.indexOf("PacketPipelineAnchors.STANDALONE_BRIDGE_HANDLER_NAME");
+        int cleanupCatch = ownership.indexOf("catch (Throwable ignored)", standaloneCheck);
+        String afterStandaloneCheck = ownership.substring(standaloneCheck);
+
+        assertTrue("A pipeline failure after Standalone ownership is observed must yield instead of running Forge callbacks",
+                cleanupCatch > standaloneCheck && afterStandaloneCheck.contains("return true;"));
+        assertFalse("A cleanup race must not be interpreted as proof that Standalone is absent",
+                afterStandaloneCheck.contains("catch (Throwable ignored) {\n            return false;"));
+    }
+
+    private static boolean yieldsBefore(String callback, String sideEffect) {
+        int yield = callback.indexOf("if (yieldToStandaloneBridge())");
+        int effect = callback.indexOf(sideEffect);
+        return yield >= 0 && effect > yield && callback.substring(yield, effect).contains("return;");
     }
 
     private static String method(String source, String beginMarker, String endMarker) {

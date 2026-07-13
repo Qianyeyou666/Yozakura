@@ -32,7 +32,6 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class Backtrack extends Module {
     public enum BacktrackMode {
@@ -61,7 +60,10 @@ public class Backtrack extends Module {
     private final Option<Boolean> renderTrail = new Option<Boolean>("Trail", "Trail", true);
     private final Numbers<Double> renderAlpha = new Numbers<Double>("Render Alpha", "RenderAlpha", 82.0, 25.0, 160.0, 5.0);
     private final Map<Integer, ArrayDeque<TrackedBox>> history = new ConcurrentHashMap<Integer, ArrayDeque<TrackedBox>>();
-    private final Queue<QueuedPacket> queuedPackets = new ConcurrentLinkedQueue<QueuedPacket>();
+    private final Queue<QueuedPacket> queuedPackets = new ArrayDeque<QueuedPacket>();
+    private final Object deliveryLock = new Object();
+    private int pendingDeliveryTasks;
+    private volatile boolean acceptingPackets;
     private Channel channel;
 
     public Backtrack() {
@@ -75,13 +77,16 @@ public class Backtrack extends Module {
     @Override
     public void enable() {
         history.clear();
-        queuedPackets.clear();
+        synchronized (deliveryLock) {
+            queuedPackets.clear();
+            acceptingPackets = true;
+        }
         injectHandler();
     }
 
     @Override
     public void disable() {
-        releaseQueuedPackets();
+        stopPacketAdmissionAndRelease();
         removeHandler();
         history.clear();
     }
@@ -93,12 +98,16 @@ public class Backtrack extends Module {
         }
         if (!isInGame()) {
             history.clear();
-            releaseQueuedPackets();
+            stopPacketAdmissionAndRelease();
             removeHandler();
             return;
         }
+        acceptingPackets = true;
         if (usesPacketDelay()) {
             injectHandler();
+        } else {
+            releaseQueuedPackets();
+            removeHandler();
         }
         recordHistory();
         releaseDuePackets();
@@ -313,6 +322,10 @@ public class Backtrack extends Module {
             if (current == null || !current.isOpen()) {
                 return;
             }
+            if (channel != null && channel != current) {
+                releaseQueuedPackets();
+                removeHandler();
+            }
             PacketPipelineAnchors.installDelayHandler(current.pipeline(), HANDLER_NAME,
                     new BacktrackPacketHandler(this));
             this.channel = current;
@@ -351,8 +364,9 @@ public class Backtrack extends Module {
         return null;
     }
 
-    private boolean shouldDelay(Packet packet) {
-        if (!usesPacketDelay() || !isInGame() || packetDelay.getValue() <= 0.0D) {
+    private boolean isDelayablePacket(Packet packet) {
+        if (!acceptingPackets || !getState() || !usesPacketDelay() || !isInGame()
+                || packetDelay.getValue() <= 0.0D) {
             return false;
         }
         Entity entity = null;
@@ -372,43 +386,89 @@ public class Backtrack extends Module {
         return mode.getValue() == BacktrackMode.PACKET || mode.getValue() == BacktrackMode.HYBRID;
     }
 
-    private void queuePacket(ChannelHandlerContext ctx, Object packet) {
-        if (queuedPackets.size() > MAX_QUEUED_PACKETS) {
-            releaseQueuedPackets();
-            return;
+    private boolean queuePacketIfDelayable(ChannelHandlerContext ctx, Object packet) {
+        synchronized (deliveryLock) {
+            if (!(packet instanceof Packet) || !isDelayablePacket((Packet) packet)) {
+                return false;
+            }
+            if (queuedPackets.size() >= MAX_QUEUED_PACKETS) {
+                releaseQueuedPacketsLocked();
+                firePacketLocked(new QueuedPacket(ctx, packet,
+                        System.currentTimeMillis() + packetDelay.getValue().longValue()));
+                return true;
+            }
+            queuedPackets.offer(new QueuedPacket(ctx, packet,
+                    System.currentTimeMillis() + packetDelay.getValue().longValue()));
+            return true;
         }
-        queuedPackets.offer(new QueuedPacket(ctx, packet, System.currentTimeMillis() + packetDelay.getValue().longValue()));
+    }
+
+    private void forwardPacket(ChannelHandlerContext ctx, Object packet) {
+        synchronized (deliveryLock) {
+            firePacketLocked(new QueuedPacket(ctx, packet, System.currentTimeMillis()));
+        }
     }
 
     private void releaseDuePackets() {
         long now = System.currentTimeMillis();
-        while (true) {
-            QueuedPacket queued = queuedPackets.peek();
-            if (queued == null || queued.releaseAt > now) {
-                break;
+        synchronized (deliveryLock) {
+            while (true) {
+                QueuedPacket queued = queuedPackets.peek();
+                if (queued == null || queued.releaseAt > now) {
+                    break;
+                }
+                queuedPackets.poll();
+                firePacketLocked(queued);
             }
-            queuedPackets.poll();
-            firePacket(queued);
         }
     }
 
     private void releaseQueuedPackets() {
-        QueuedPacket queued;
-        while ((queued = queuedPackets.poll()) != null) {
-            firePacket(queued);
+        synchronized (deliveryLock) {
+            releaseQueuedPacketsLocked();
         }
     }
 
-    private void firePacket(final QueuedPacket queued) {
+    private void stopPacketAdmissionAndRelease() {
+        synchronized (deliveryLock) {
+            acceptingPackets = false;
+            releaseQueuedPacketsLocked();
+        }
+    }
+
+    private void releaseQueuedPacketsLocked() {
+        QueuedPacket queued;
+        while ((queued = queuedPackets.poll()) != null) {
+            firePacketLocked(queued);
+        }
+    }
+
+    private void firePacketLocked(final QueuedPacket queued) {
         if (queued.ctx == null || queued.packet == null) {
             return;
         }
-        queued.ctx.executor().execute(new Runnable() {
-            @Override
-            public void run() {
-                queued.ctx.fireChannelRead(queued.packet);
-            }
-        });
+        if (queued.ctx.executor().inEventLoop() && pendingDeliveryTasks == 0) {
+            queued.ctx.fireChannelRead(queued.packet);
+            return;
+        }
+        pendingDeliveryTasks++;
+        try {
+            queued.ctx.executor().execute(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        queued.ctx.fireChannelRead(queued.packet);
+                    } finally {
+                        synchronized (deliveryLock) {
+                            pendingDeliveryTasks--;
+                        }
+                    }
+                }
+            });
+        } catch (Throwable throwable) {
+            pendingDeliveryTasks--;
+            queued.ctx.fireExceptionCaught(throwable);
+        }
     }
 
     private static final class TrackedBox {
@@ -450,11 +510,10 @@ public class Backtrack extends Module {
 
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-            if (msg instanceof Packet && module.getState() && module.shouldDelay((Packet) msg)) {
-                module.queuePacket(ctx, msg);
+            if (module.queuePacketIfDelayable(ctx, msg)) {
                 return;
             }
-            super.channelRead(ctx, msg);
+            module.forwardPacket(ctx, msg);
         }
     }
 }

@@ -195,7 +195,6 @@ public class KillAura extends Module {
             return false;
         }
         this.prepareLocalAttackUseState();
-        mc.thePlayer.swingItem();
         if ((this.rotations.getValue() != 0 || !this.isBoxInAttackRange(this.attackTarget.getBox()))
                 && RotationUtil.rayTrace(this.attackTarget.getBox(), yaw, pitch, this.attackRange.getValue()) == null) {
             return false;
@@ -207,6 +206,7 @@ public class KillAura extends Module {
         }
         this.attackDelayMS = this.getAttackDelay();
         this.lastAttackAt = System.currentTimeMillis();
+        mc.thePlayer.swingItem();
         MinecraftAccessor.syncCurrentPlayItem(mc.playerController);
         PacketUtil.sendPacket(new C02PacketUseEntity(this.attackTarget.getEntity(), Action.ATTACK));
         if (mc.playerController.getCurrentGameType() != GameType.SPECTATOR) {

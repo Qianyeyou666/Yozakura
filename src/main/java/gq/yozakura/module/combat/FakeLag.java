@@ -46,9 +46,11 @@ public class FakeLag extends Module {
     private final Option<Boolean> releaseOnAttack = new Option<Boolean>("Release On Attack", "ReleaseOnAttack", true);
 
     private final Queue<QueuedPacket> queuedPackets = new ConcurrentLinkedQueue<QueuedPacket>();
+    private final Object deliveryLock = new Object();
+    private int pendingDeliveryTasks;
     private Channel channel;
-    private long nextBurstAt;
-    private long releaseAfterAttackAt;
+    private volatile long nextBurstAt;
+    private volatile long releaseAfterAttackAt;
     private volatile boolean lagAllowed;
 
     public FakeLag() {
@@ -59,18 +61,19 @@ public class FakeLag extends Module {
 
     @Override
     public void enable() {
-        queuedPackets.clear();
-        nextBurstAt = System.currentTimeMillis() + offsetMillis();
-        releaseAfterAttackAt = 0L;
-        lagAllowed = true;
+        long now = System.currentTimeMillis();
+        synchronized (deliveryLock) {
+            queuedPackets.clear();
+            lagAllowed = true;
+            nextBurstAt = now + offsetMillis();
+            releaseAfterAttackAt = 0L;
+        }
         injectHandler();
     }
 
     @Override
     public void disable() {
-        lagAllowed = false;
-        releaseAfterAttackAt = 0L;
-        releaseQueuedPackets();
+        setLagAllowed(false);
         removeHandler();
     }
 
@@ -80,35 +83,68 @@ public class FakeLag extends Module {
             return;
         }
         if (!isInGame() || mc.getNetHandler() == null) {
-            lagAllowed = false;
-            releaseQueuedPackets();
+            setLagAllowed(false);
             removeHandler();
             return;
         }
 
-        lagAllowed = shouldLagNow();
+        boolean allowed = shouldLagNow();
+        setLagAllowed(allowed);
         injectHandler();
         long now = System.currentTimeMillis();
-        if (!lagAllowed) {
-            releaseQueuedPackets();
-            nextBurstAt = now + offsetMillis();
+        if (!allowed) {
+            scheduleNextBurst(now);
             return;
         }
 
         LagMode current = mode.getValue();
-        if (current == LagMode.REPEL && now >= nextBurstAt) {
-            releaseQueuedPackets();
-            nextBurstAt = now + repelBurstInterval();
+        if (current == LagMode.REPEL && releaseRepelBurstIfDue(now)) {
             return;
         }
         releaseDuePackets();
-        if (releaseAfterAttackAt > 0L && now >= releaseAfterAttackAt) {
-            releaseAfterAttackAt = 0L;
-            releaseQueuedPackets();
-            nextBurstAt = now + offsetMillis();
+        if (releasePostAttackIfDue(now)) {
             return;
         }
         if (current != LagMode.REPEL) {
+            scheduleNextBurst(now);
+        }
+    }
+
+    private void setLagAllowed(boolean allowed) {
+        synchronized (deliveryLock) {
+            lagAllowed = allowed;
+            if (!allowed) {
+                releaseAfterAttackAt = 0L;
+                releaseQueuedPacketsLocked();
+            }
+        }
+    }
+
+    private boolean releaseRepelBurstIfDue(long now) {
+        synchronized (deliveryLock) {
+            if (now < nextBurstAt) {
+                return false;
+            }
+            releaseQueuedPacketsLocked();
+            nextBurstAt = now + repelBurstInterval();
+            return true;
+        }
+    }
+
+    private boolean releasePostAttackIfDue(long now) {
+        synchronized (deliveryLock) {
+            if (releaseAfterAttackAt <= 0L || now < releaseAfterAttackAt) {
+                return false;
+            }
+            releaseAfterAttackAt = 0L;
+            releaseQueuedPacketsLocked();
+            nextBurstAt = now + offsetMillis();
+            return true;
+        }
+    }
+
+    private void scheduleNextBurst(long now) {
+        synchronized (deliveryLock) {
             nextBurstAt = now + offsetMillis();
         }
     }
@@ -195,38 +231,50 @@ public class FakeLag extends Module {
         if (packet instanceof C02PacketUseEntity
                 && (current == LagMode.REPEL || Boolean.TRUE.equals(releaseOnAttack.getValue()))) {
             schedulePostAttackRelease();
-            return false;
+            return true;
         }
         if (packet instanceof C03PacketPlayer) {
             return true;
         }
+        if (isOrderedActionPacket(packet)) {
+            return true;
+        }
         if (current == LagMode.LATENCY) {
             return false;
-        }
-        if (packet instanceof C02PacketUseEntity || packet instanceof C0APacketAnimation
-                || packet instanceof C0BPacketEntityAction) {
-            return true;
         }
         if (current == LagMode.REPEL && (packet instanceof C08PacketPlayerBlockPlacement
                 || packet instanceof C09PacketHeldItemChange)) {
             return true;
         }
         return current == LagMode.DYNAMIC
-                && (packet instanceof C07PacketPlayerDigging
-                || packet instanceof C08PacketPlayerBlockPlacement
-                || packet instanceof C09PacketHeldItemChange
+                && (packet instanceof C09PacketHeldItemChange
                 || packet instanceof C0CPacketInput);
     }
 
+    private boolean isOrderedActionPacket(Object packet) {
+        return packet instanceof C02PacketUseEntity
+                || packet instanceof C07PacketPlayerDigging
+                || packet instanceof C08PacketPlayerBlockPlacement
+                || packet instanceof C09PacketHeldItemChange
+                || packet instanceof C0APacketAnimation
+                || packet instanceof C0BPacketEntityAction;
+    }
+
     private boolean queuePacket(ChannelHandlerContext ctx, Object packet, ChannelPromise promise) {
-        int max = maxQueuedPackets();
-        if (queuedPackets.size() >= max) {
-            releaseQueuedPackets();
-            return false;
+        synchronized (deliveryLock) {
+            if (!shouldQueuePacket(packet)) {
+                return false;
+            }
+            int max = maxQueuedPackets();
+            if (queuedPackets.size() >= max) {
+                releaseQueuedPacketsLocked();
+                writePacketLocked(new QueuedPacket(ctx, packet, promise, System.currentTimeMillis()));
+                return true;
+            }
+            long delay = queueDelay(packet);
+            queuedPackets.offer(new QueuedPacket(ctx, packet, promise, System.currentTimeMillis() + delay));
+            return true;
         }
-        long delay = queueDelay(packet);
-        queuedPackets.offer(new QueuedPacket(ctx, packet, promise, System.currentTimeMillis() + delay));
-        return true;
     }
 
     private long queueDelay(Object packet) {
@@ -289,39 +337,75 @@ public class FakeLag extends Module {
 
     private void releaseDuePackets() {
         long now = System.currentTimeMillis();
-        while (true) {
-            QueuedPacket queued = queuedPackets.peek();
-            if (queued == null || queued.releaseAt > now) {
-                break;
+        synchronized (deliveryLock) {
+            while (true) {
+                QueuedPacket queued = queuedPackets.peek();
+                if (queued == null || queued.releaseAt > now) {
+                    break;
+                }
+                queuedPackets.poll();
+                writePacketLocked(queued);
             }
-            queuedPackets.poll();
-            writePacket(queued);
         }
     }
 
     private void releaseQueuedPackets() {
+        synchronized (deliveryLock) {
+            releaseQueuedPacketsLocked();
+        }
+    }
+
+    private void releaseQueuedPacketsLocked() {
         QueuedPacket queued;
         while ((queued = queuedPackets.poll()) != null) {
-            writePacket(queued);
+            writePacketLocked(queued);
         }
     }
 
     private void schedulePostAttackRelease() {
-        long now = System.currentTimeMillis();
-        releaseAfterAttackAt = Math.max(releaseAfterAttackAt, now + 45L);
-        nextBurstAt = Math.max(nextBurstAt, releaseAfterAttackAt);
+        synchronized (deliveryLock) {
+            long now = System.currentTimeMillis();
+            releaseAfterAttackAt = Math.max(releaseAfterAttackAt, now + 45L);
+            nextBurstAt = Math.max(nextBurstAt, releaseAfterAttackAt);
+        }
     }
 
-    private void writePacket(final QueuedPacket queued) {
+    private void forwardPacket(ChannelHandlerContext ctx, Object packet, ChannelPromise promise) {
+        synchronized (deliveryLock) {
+            if (ctx.executor().inEventLoop() && pendingDeliveryTasks == 0) {
+                ctx.write(packet, promise);
+                return;
+            }
+            writePacketLocked(new QueuedPacket(ctx, packet, promise, System.currentTimeMillis()));
+        }
+    }
+
+    private void writePacketLocked(final QueuedPacket queued) {
         if (queued.ctx == null || queued.packet == null || queued.promise == null) {
             return;
         }
-        queued.ctx.executor().execute(new Runnable() {
-            @Override
-            public void run() {
-                queued.ctx.writeAndFlush(queued.packet, queued.promise);
-            }
-        });
+        if (queued.ctx.executor().inEventLoop() && pendingDeliveryTasks == 0) {
+            queued.ctx.writeAndFlush(queued.packet, queued.promise);
+            return;
+        }
+        pendingDeliveryTasks++;
+        try {
+            queued.ctx.executor().execute(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        queued.ctx.writeAndFlush(queued.packet, queued.promise);
+                    } finally {
+                        synchronized (deliveryLock) {
+                            pendingDeliveryTasks--;
+                        }
+                    }
+                }
+            });
+        } catch (Throwable throwable) {
+            pendingDeliveryTasks--;
+            queued.promise.tryFailure(throwable);
+        }
     }
 
     private static final class QueuedPacket {
@@ -347,10 +431,10 @@ public class FakeLag extends Module {
 
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
-            if (module.shouldQueuePacket(msg) && module.queuePacket(ctx, msg, promise)) {
+            if (module.queuePacket(ctx, msg, promise)) {
                 return;
             }
-            super.write(ctx, msg, promise);
+            module.forwardPacket(ctx, msg, promise);
         }
     }
 }

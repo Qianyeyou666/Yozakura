@@ -4,10 +4,13 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -15,6 +18,8 @@ public final class VanillaRemapClassLoader extends URLClassLoader {
     private static final String MAPPINGS = "/yozakura/notch-srg.srg";
     private static final String SRG_MCP_MAPPINGS = "/yozakura/srg-mcp.srg";
     private final Remapper remapper;
+    private final Map<Class<?>, Class<?>> runtimeEntityRendererHooks = new IdentityHashMap<Class<?>, Class<?>>();
+    private int runtimeEntityRendererHookSequence;
 
     public VanillaRemapClassLoader(URL[] urls, ClassLoader parent) throws IOException {
         this(urls, parent, false);
@@ -23,6 +28,75 @@ public final class VanillaRemapClassLoader extends URLClassLoader {
     public VanillaRemapClassLoader(URL[] urls, ClassLoader parent, boolean keepMinecraftClassNames) throws IOException {
         super(urls, parent);
         this.remapper = Remapper.load(keepMinecraftClassNames);
+    }
+
+    /**
+     * Defines one subclass of the live client renderer in this loader. The
+     * generated methods use invokespecial so the client renderer's own override
+     * remains in the call path rather than being replaced by a vanilla wrapper.
+     */
+    public synchronized Class<?> defineRuntimeEntityRendererHook(Class<?> runtimeRendererType) {
+        if (runtimeRendererType == null) {
+            throw new IllegalArgumentException("Cannot generate an EntityRenderer hook for null");
+        }
+        Class<?> cached = runtimeEntityRendererHooks.get(runtimeRendererType);
+        if (cached != null) {
+            return cached;
+        }
+        validateRuntimeEntityRendererType(runtimeRendererType);
+        String generatedName = "gq.yozakura.bridge.generated.RuntimeEntityRendererHook$"
+                + (++runtimeEntityRendererHookSequence);
+        try {
+            byte[] bytes = RuntimeEntityRendererHookGenerator.generate(generatedName, runtimeRendererType);
+            Class<?> generated = defineClass(generatedName, bytes, 0, bytes.length);
+            runtimeEntityRendererHooks.put(runtimeRendererType, generated);
+            return generated;
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to generate runtime EntityRenderer hook for "
+                    + runtimeRendererType.getName(), exception);
+        } catch (LinkageError error) {
+            throw new IllegalStateException("Unable to define runtime EntityRenderer hook for "
+                    + runtimeRendererType.getName(), error);
+        }
+    }
+
+    private void validateRuntimeEntityRendererType(Class<?> runtimeRendererType) {
+        int modifiers = runtimeRendererType.getModifiers();
+        if (runtimeRendererType.isInterface() || runtimeRendererType.isArray()
+                || runtimeRendererType.isPrimitive() || Modifier.isFinal(modifiers)) {
+            throw new IllegalArgumentException("Runtime EntityRenderer type is not subclassable: "
+                    + runtimeRendererType.getName());
+        }
+        if (!Modifier.isPublic(modifiers)) {
+            throw new IllegalArgumentException("Runtime EntityRenderer type is not public: "
+                    + runtimeRendererType.getName());
+        }
+        try {
+            Class<?> visibleType = Class.forName(runtimeRendererType.getName(), false, this);
+            if (visibleType != runtimeRendererType) {
+                throw new IllegalArgumentException("Runtime EntityRenderer type is not visible from the remap loader: "
+                        + runtimeRendererType.getName());
+            }
+        } catch (ClassNotFoundException exception) {
+            throw new IllegalArgumentException("Runtime EntityRenderer type is not visible from the remap loader: "
+                    + runtimeRendererType.getName(), exception);
+        }
+        validateOverridableMethod(runtimeRendererType, "renderWorld", Float.TYPE, Long.TYPE);
+        validateOverridableMethod(runtimeRendererType, "getMouseOver", Float.TYPE);
+    }
+
+    private static void validateOverridableMethod(Class<?> type, String name, Class<?>... parameterTypes) {
+        try {
+            Method method = type.getMethod(name, parameterTypes);
+            int modifiers = method.getModifiers();
+            if (!Modifier.isPublic(modifiers) || Modifier.isStatic(modifiers) || Modifier.isFinal(modifiers)) {
+                throw new IllegalArgumentException("Runtime EntityRenderer method is not overridable: "
+                        + type.getName() + '.' + name);
+            }
+        } catch (NoSuchMethodException exception) {
+            throw new IllegalArgumentException("Runtime EntityRenderer method is unavailable: "
+                    + type.getName() + '.' + name, exception);
+        }
     }
 
     @Override

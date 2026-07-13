@@ -18,6 +18,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.PrintWriter;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 
@@ -26,12 +27,13 @@ public class StandaloneEntityRenderer extends EntityRenderer {
     private static boolean renderFailureLogged;
     private static boolean cameraFailureLogged;
     private static boolean installLogged;
-    private static boolean unsupportedRendererLogged;
     private static boolean uninstallFailureLogged;
     private static int dispatchLogCount;
     private static Method setupCameraTransformMethod;
+    private static Object unsafe;
+    private static Method unsafeAllocateInstance;
     private static EntityRenderer originalRenderer;
-    private static StandaloneEntityRenderer installedRenderer;
+    private static EntityRenderer installedRenderer;
 
     public StandaloneEntityRenderer(Minecraft minecraft) {
         super(minecraft, minecraft.getResourceManager());
@@ -39,24 +41,22 @@ public class StandaloneEntityRenderer extends EntityRenderer {
 
     public static void install(Minecraft minecraft) {
         if (minecraft == null) {
-            return;
+            throw new IllegalStateException("Cannot install standalone EntityRenderer hook without Minecraft");
         }
         EntityRenderer current = minecraft.entityRenderer;
         if (current == installedRenderer) {
             return;
         }
         if (current == null) {
-            logUnsupportedRenderer("no EntityRenderer is available");
-            return;
+            throw new IllegalStateException("Cannot install standalone EntityRenderer hook: no EntityRenderer is available");
         }
-        // A subclass can override updateCameraAndRender and related renderer lifecycle methods.
-        // Replacing it with this vanilla subclass would silently discard those client hooks.
-        if (current.getClass() != EntityRenderer.class) {
-            logUnsupportedRenderer("runtime renderer " + current.getClass().getName());
-            return;
-        }
+        EntityRenderer hook = null;
         try {
-            StandaloneEntityRenderer hook = new StandaloneEntityRenderer(minecraft);
+            if (current.getClass() == EntityRenderer.class) {
+                hook = new StandaloneEntityRenderer(minecraft);
+            } else {
+                hook = createRuntimeSubclassHook(current);
+            }
             copyState(current, hook);
             originalRenderer = current;
             installedRenderer = hook;
@@ -68,20 +68,17 @@ public class StandaloneEntityRenderer extends EntityRenderer {
                         + ", new=" + hook.getClass().getName(), null);
             }
         } catch (Throwable throwable) {
-            if (minecraft.entityRenderer == installedRenderer) {
-                minecraft.entityRenderer = originalRenderer;
+            if (minecraft.entityRenderer == hook) {
+                minecraft.entityRenderer = current;
             }
             installedRenderer = null;
             originalRenderer = null;
-            if (!installFailureLogged) {
-                installFailureLogged = true;
-                log("Failed to install standalone entity renderer hook", throwable);
-            }
+            throw reportInstallFailure(current, throwable);
         }
     }
 
     public static void uninstall(Minecraft minecraft) {
-        StandaloneEntityRenderer installed = installedRenderer;
+        EntityRenderer installed = installedRenderer;
         EntityRenderer original = originalRenderer;
         try {
             if (minecraft != null && installed != null && minecraft.entityRenderer == installed) {
@@ -99,17 +96,6 @@ public class StandaloneEntityRenderer extends EntityRenderer {
         }
     }
 
-    private static void logUnsupportedRenderer(String rendererDescription) {
-        if (unsupportedRendererLogged) {
-            return;
-        }
-        unsupportedRendererLogged = true;
-        log("Standalone entity renderer hook skipped: preserving " + rendererDescription
-                + ". Render2D/Render3D dispatch was not installed because a vanilla replacement "
-                + "would discard runtime overrides; a compatible client renderer hook requires runtime verification.",
-                null);
-    }
-
     @Override
     public void renderWorld(float partialTicks, long finishTimeNano) {
         renderWorldHook(partialTicks, finishTimeNano);
@@ -118,20 +104,59 @@ public class StandaloneEntityRenderer extends EntityRenderer {
     @Override
     public void getMouseOver(float partialTicks) {
         super.getMouseOver(partialTicks);
-        if (Minecraft.getMinecraft().theWorld != null && Minecraft.getMinecraft().thePlayer != null) {
+        dispatchRuntimeMouseOver(partialTicks);
+    }
+
+    private void renderWorldHook(float partialTicks, long finishTimeNano) {
+        beginRuntimeRenderWorld();
+        try {
+            super.renderWorld(partialTicks, finishTimeNano);
+        } finally {
+            abortRuntimeRenderWorld();
+        }
+        dispatchRuntimeRenderEvents(this, partialTicks);
+    }
+
+    /** Called by the generated Lunar renderer subclass before invokespecial. */
+    public static void beginRuntimeRenderWorld() {
+        boolean rotationPrepared = false;
+        try {
+            MovementInputBridge.prepareRotationForRender();
+            rotationPrepared = true;
+            StandaloneLivingRendererBridge.install(Minecraft.getMinecraft());
+        } catch (Throwable throwable) {
+            if (rotationPrepared) {
+                MovementInputBridge.restoreRotationForRender();
+            }
+            throw throwable;
+        }
+    }
+
+    /** Called after the generated subclass returns normally from invokespecial. */
+    public static void finishRuntimeRenderWorld(Object renderer, float partialTicks) {
+        MovementInputBridge.restoreRotationForRender();
+        if (!(renderer instanceof EntityRenderer)) {
+            throw new IllegalArgumentException("Generated renderer hook is not an EntityRenderer: "
+                    + (renderer == null ? "null" : renderer.getClass().getName()));
+        }
+        dispatchRuntimeRenderEvents((EntityRenderer) renderer, partialTicks);
+    }
+
+    /** Called from the generated exception handler if the client renderer throws. */
+    public static void abortRuntimeRenderWorld() {
+        MovementInputBridge.restoreRotationForRender();
+    }
+
+    /** Called by the generated Lunar renderer subclass after invokespecial. */
+    public static void dispatchRuntimeMouseOver(float partialTicks) {
+        Minecraft minecraft = Minecraft.getMinecraft();
+        if (minecraft.theWorld != null && minecraft.thePlayer != null) {
             EventManager.call(new MouseOverEvent(partialTicks));
         }
     }
 
-    private void renderWorldHook(float partialTicks, long finishTimeNano) {
-        MovementInputBridge.prepareRotationForRender();
-        StandaloneLivingRendererBridge.install(Minecraft.getMinecraft());
-        try {
-            super.renderWorld(partialTicks, finishTimeNano);
-        } finally {
-            MovementInputBridge.restoreRotationForRender();
-        }
-        dispatchRender3D(partialTicks);
+    private static void dispatchRuntimeRenderEvents(EntityRenderer renderer, float partialTicks) {
+        dispatchRender3D(renderer, partialTicks);
         // On Lunar Client, StandaloneGuiIngame.install() is a no-op to preserve
         // Lunar's HUD Caching. Dispatch 2D overlay here instead.
         if (StandaloneGuiIngame.isLunarClient()) {
@@ -139,7 +164,7 @@ public class StandaloneEntityRenderer extends EntityRenderer {
         }
     }
 
-    private void dispatchRender3D(float partialTicks) {
+    private static void dispatchRender3D(EntityRenderer renderer, float partialTicks) {
         try {
             if (Minecraft.getMinecraft().theWorld == null || Minecraft.getMinecraft().thePlayer == null) {
                 return;
@@ -151,7 +176,7 @@ public class StandaloneEntityRenderer extends EntityRenderer {
             WorldRenderState state = beginWorldOverlayState();
             try {
                 RenderFrameGuard.nextStandalone3DFrame();
-                restoreWorldCamera(partialTicks);
+                restoreWorldCamera(renderer, partialTicks);
                 prepareWorldOverlayState();
                 EventManager.call(new Render3DEvent(partialTicks));
                 prepareWorldOverlayState();
@@ -167,7 +192,7 @@ public class StandaloneEntityRenderer extends EntityRenderer {
         }
     }
 
-    private void restoreWorldCamera(float partialTicks) {
+    private static void restoreWorldCamera(EntityRenderer renderer, float partialTicks) {
         try {
             Method method = setupCameraTransformMethod;
             if (method == null) {
@@ -175,7 +200,7 @@ public class StandaloneEntityRenderer extends EntityRenderer {
                 setupCameraTransformMethod = method;
             }
             if (method != null) {
-                method.invoke(this, partialTicks, 0);
+                method.invoke(renderer, partialTicks, 0);
             }
         } catch (Throwable throwable) {
             if (!cameraFailureLogged) {
@@ -318,11 +343,59 @@ public class StandaloneEntityRenderer extends EntityRenderer {
         }
     }
 
-    private static void copyState(EntityRenderer source, EntityRenderer target) {
-        if (source == null || target == null) {
-            return;
+    private static EntityRenderer createRuntimeSubclassHook(EntityRenderer current) throws Exception {
+        ClassLoader loader = StandaloneEntityRenderer.class.getClassLoader();
+        if (!(loader instanceof VanillaRemapClassLoader)) {
+            throw new IllegalStateException("Cannot hook runtime EntityRenderer " + current.getClass().getName()
+                    + ": the standalone bridge was not loaded by VanillaRemapClassLoader");
         }
-        Class<?> type = EntityRenderer.class;
+        Class<?> generatedType = ((VanillaRemapClassLoader) loader)
+                .defineRuntimeEntityRendererHook(current.getClass());
+        Object instance = allocateInstance(generatedType);
+        if (!(instance instanceof EntityRenderer)) {
+            throw new IllegalStateException("Generated runtime renderer hook does not extend EntityRenderer: "
+                    + generatedType.getName());
+        }
+        return (EntityRenderer) instance;
+    }
+
+    private static Object allocateInstance(Class<?> type) throws Exception {
+        Object unsafeInstance = unsafe;
+        Method allocate = unsafeAllocateInstance;
+        if (unsafeInstance == null || allocate == null) {
+            synchronized (StandaloneEntityRenderer.class) {
+                unsafeInstance = unsafe;
+                allocate = unsafeAllocateInstance;
+                if (unsafeInstance == null || allocate == null) {
+                    Class<?> unsafeType = Class.forName("sun.misc.Unsafe");
+                    Field field = unsafeType.getDeclaredField("theUnsafe");
+                    field.setAccessible(true);
+                    unsafeInstance = field.get(null);
+                    allocate = unsafeType.getMethod("allocateInstance", Class.class);
+                    unsafe = unsafeInstance;
+                    unsafeAllocateInstance = allocate;
+                }
+            }
+        }
+        try {
+            return allocate.invoke(unsafeInstance, type);
+        } catch (InvocationTargetException exception) {
+            Throwable cause = exception.getCause();
+            if (cause instanceof Exception) {
+                throw (Exception) cause;
+            }
+            if (cause instanceof Error) {
+                throw (Error) cause;
+            }
+            throw new IllegalStateException("Unsafe.allocateInstance failed for " + type.getName(), cause);
+        }
+    }
+
+    private static void copyState(Object source, Object target) {
+        if (source == null || target == null) {
+            throw new IllegalArgumentException("Cannot copy EntityRenderer state from or to null");
+        }
+        Class<?> type = source.getClass();
         while (type != null && type != Object.class) {
             Field[] fields = type.getDeclaredFields();
             for (Field field : fields) {
@@ -334,11 +407,23 @@ public class StandaloneEntityRenderer extends EntityRenderer {
                         field.setAccessible(true);
                     }
                     field.set(target, field.get(source));
-                } catch (Throwable ignored) {
+                } catch (Throwable throwable) {
+                    throw new IllegalStateException("Unable to copy runtime EntityRenderer field "
+                            + type.getName() + '.' + field.getName(), throwable);
                 }
             }
             type = type.getSuperclass();
         }
+    }
+
+    private static IllegalStateException reportInstallFailure(EntityRenderer current, Throwable throwable) {
+        IllegalStateException failure = new IllegalStateException("Failed to install standalone EntityRenderer hook for "
+                + current.getClass().getName() + "; Render2D/Render3D bridge is unavailable", throwable);
+        if (!installFailureLogged) {
+            installFailureLogged = true;
+            log(failure.getMessage(), failure);
+        }
+        return failure;
     }
 
     private static void log(String message, Throwable throwable) {

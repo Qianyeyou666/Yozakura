@@ -62,12 +62,12 @@ public class StandaloneGuiIngame extends GuiIngame {
     public static void install(Minecraft minecraft) {
         // On Lunar Client, do NOT replace ingameGUI — Lunar's HUD Caching
         // relies on its own ingameGUI instance and replacing it kills FPS.
-        // Render2DEvent is dispatched via StandaloneEntityRenderer only when its hook can be installed safely.
+        // Render2DEvent is dispatched after the renderer's runtime-subclass hook preserves Lunar's lifecycle.
         if (isLunarClient()) {
             if (!lunarBypassLogged) {
                 lunarBypassLogged = true;
                 log("Standalone ingame GUI hook skipped on Lunar Client: preserving Lunar HUD lifecycle. "
-                        + "Render2D dispatch requires a compatible client renderer hook.", null);
+                        + "Render2D dispatch is provided by the runtime EntityRenderer subclass hook.", null);
             }
             return;
         }

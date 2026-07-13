@@ -48,8 +48,8 @@ import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.GL11;
 
 import java.lang.reflect.Field;
+import java.util.ArrayDeque;
 import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class LagRange extends Module {
     private static final String HANDLER_NAME = PacketPipelineAnchors.LAG_RANGE_HANDLER_NAME;
@@ -69,11 +69,14 @@ public class LagRange extends Module {
     private final IntProperty indicatorAlpha = new IntProperty("Indicator Alpha", 100, 25, 180);
     private final FloatProperty indicatorLineWidth = new FloatProperty("Indicator Line Width", 2.0F, 1.0F, 5.0F);
 
-    private final Queue<QueuedPacket> queuedPackets = new ConcurrentLinkedQueue<QueuedPacket>();
+    private final Queue<QueuedPacket> queuedPackets = new ArrayDeque<QueuedPacket>();
+    private final Object deliveryLock = new Object();
+    private int pendingDeliveryTasks;
 
     private EntityPlayer currentTarget;
     private double lastDistSq = -1.0D;
-    private boolean lagging;
+    private volatile boolean lagging;
+    private volatile boolean acceptingPackets;
     private int lastSelfHurtTime;
     private int lastTargetHurtTime;
     private int hitMarkedEntityId = -1;
@@ -94,13 +97,15 @@ public class LagRange extends Module {
 
     @Override
     public void enable() {
+        flushLag();
         resetState();
+        acceptingPackets = true;
         injectHandler();
     }
 
     @Override
     public void disable() {
-        flushLag();
+        stopPacketAdmissionAndFlush();
         resetState();
         removeHandler();
     }
@@ -111,11 +116,12 @@ public class LagRange extends Module {
             return;
         }
         if (!isInGame() || mc.thePlayer.isDead) {
-            flushLag();
+            stopPacketAdmissionAndFlush();
             resetState();
             removeHandler();
             return;
         }
+        acceptingPackets = true;
         injectHandler();
         updateLagState();
     }
@@ -282,13 +288,15 @@ public class LagRange extends Module {
     }
 
     private void startLag() {
-        if (lagging) {
-            return;
+        synchronized (deliveryLock) {
+            if (lagging) {
+                return;
+            }
+            if (lastReleasedServerPosition == null) {
+                lastReleasedServerPosition = new Vec3(mc.thePlayer.posX, mc.thePlayer.posY, mc.thePlayer.posZ);
+            }
+            lagging = true;
         }
-        if (lastReleasedServerPosition == null) {
-            lastReleasedServerPosition = new Vec3(mc.thePlayer.posX, mc.thePlayer.posY, mc.thePlayer.posZ);
-        }
-        lagging = true;
     }
 
     private void flushLagAndTrack(double distSq) {
@@ -298,32 +306,48 @@ public class LagRange extends Module {
     }
 
     private void flushLag() {
+        synchronized (deliveryLock) {
+            flushLagLocked();
+        }
+        clearIndicatorInterp();
+    }
+
+    private void stopPacketAdmissionAndFlush() {
+        synchronized (deliveryLock) {
+            acceptingPackets = false;
+            flushLagLocked();
+        }
+        clearIndicatorInterp();
+    }
+
+    private void flushLagLocked() {
         if (!lagging && queuedPackets.isEmpty()) {
             return;
         }
         lagging = false;
         QueuedPacket queued;
         while ((queued = queuedPackets.poll()) != null) {
-            writePacket(queued);
+            writePacketLocked(queued);
         }
-        clearIndicatorInterp();
     }
 
     private void releaseExpiredPackets() {
         long now = System.currentTimeMillis();
         long maxDelay = maximumDelay.getValue();
-        while (true) {
-            QueuedPacket queued = queuedPackets.peek();
-            if (queued == null || now - queued.queuedAt < maxDelay) {
-                break;
+        synchronized (deliveryLock) {
+            while (true) {
+                QueuedPacket queued = queuedPackets.peek();
+                if (queued == null || now - queued.queuedAt < maxDelay) {
+                    break;
+                }
+                queuedPackets.poll();
+                writePacketLocked(queued);
             }
-            queuedPackets.poll();
-            writePacket(queued);
         }
     }
 
-    private boolean shouldQueuePacket(Object packet) {
-        if (!getState() || !lagging || packet == null) {
+    private boolean isQueueablePacket(Object packet) {
+        if (!acceptingPackets || !getState() || !lagging || packet == null) {
             return false;
         }
         if (packet instanceof C00Handshake
@@ -346,26 +370,64 @@ public class LagRange extends Module {
                 || packet instanceof C0CPacketInput;
     }
 
-    private boolean queuePacket(ChannelHandlerContext ctx, Object packet, ChannelPromise promise) {
-        if (queuedPackets.size() >= maxQueuedPackets()) {
-            flushLag();
-            return false;
+    private boolean queuePacketIfLagging(ChannelHandlerContext ctx, Object packet, ChannelPromise promise) {
+        boolean overflow = false;
+        synchronized (deliveryLock) {
+            if (!isQueueablePacket(packet)) {
+                return false;
+            }
+            if (queuedPackets.size() >= maxQueuedPackets()) {
+                flushLagLocked();
+                writePacketLocked(new QueuedPacket(ctx, packet, promise, System.currentTimeMillis()));
+                overflow = true;
+            } else {
+                queuedPackets.offer(new QueuedPacket(ctx, packet, promise, System.currentTimeMillis()));
+            }
         }
-        queuedPackets.offer(new QueuedPacket(ctx, packet, promise, System.currentTimeMillis()));
+        if (overflow) {
+            clearIndicatorInterp();
+        }
         return true;
     }
 
-    private void writePacket(final QueuedPacket queued) {
+    private void forwardPacket(ChannelHandlerContext ctx, Object packet, ChannelPromise promise) {
+        synchronized (deliveryLock) {
+            if (ctx.executor().inEventLoop() && pendingDeliveryTasks == 0) {
+                updateReleasedServerPosition(packet);
+                ctx.write(packet, promise);
+                return;
+            }
+            writePacketLocked(new QueuedPacket(ctx, packet, promise, System.currentTimeMillis()));
+        }
+    }
+
+    private void writePacketLocked(final QueuedPacket queued) {
         if (queued.ctx == null || queued.packet == null || queued.promise == null) {
             return;
         }
         updateReleasedServerPosition(queued.packet);
-        queued.ctx.executor().execute(new Runnable() {
-            @Override
-            public void run() {
-                queued.ctx.writeAndFlush(queued.packet, queued.promise);
-            }
-        });
+        if (queued.ctx.executor().inEventLoop() && pendingDeliveryTasks == 0) {
+            queued.ctx.writeAndFlush(queued.packet, queued.promise);
+            return;
+        }
+        pendingDeliveryTasks++;
+        try {
+            queued.ctx.executor().execute(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        queued.ctx.writeAndFlush(queued.packet, queued.promise);
+                    } finally {
+                        synchronized (deliveryLock) {
+                            pendingDeliveryTasks--;
+                        }
+                    }
+                }
+            });
+        } catch (Throwable throwable) {
+            pendingDeliveryTasks--;
+            queued.promise.tryFailure(throwable);
+        }
     }
 
     private void updateReleasedServerPosition(Object packet) {
@@ -447,13 +509,14 @@ public class LagRange extends Module {
     private void resetState() {
         currentTarget = null;
         lastDistSq = -1.0D;
-        lagging = false;
+        synchronized (deliveryLock) {
+            lagging = false;
+        }
         lastSelfHurtTime = 0;
         lastTargetHurtTime = 0;
         hitMarkedEntityId = -1;
         lastSprintState = false;
         lastBlockingState = false;
-        queuedPackets.clear();
         lastReleasedServerPosition = mc.thePlayer == null ? null : new Vec3(mc.thePlayer.posX, mc.thePlayer.posY, mc.thePlayer.posZ);
         clearIndicatorInterp();
     }
@@ -561,11 +624,10 @@ public class LagRange extends Module {
 
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
-            if (module.shouldQueuePacket(msg) && module.queuePacket(ctx, msg, promise)) {
+            if (module.queuePacketIfLagging(ctx, msg, promise)) {
                 return;
             }
-            module.updateReleasedServerPosition(msg);
-            super.write(ctx, msg, promise);
+            module.forwardPacket(ctx, msg, promise);
         }
     }
 }

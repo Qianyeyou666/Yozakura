@@ -75,35 +75,39 @@ public class StandaloneEventBridgeStateContractTest {
     }
 
     @Test
-    public void everyC03LeavesBeforeActionsWaitingBehindIt() throws IOException {
+    public void normalPlayerPacketsFlushTheCurrentActionBatchBeforeC03() throws IOException {
         String write = packetBridgeWriteMethod(source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java"));
+        String playerPacket = method(source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java"),
+                "        private void writePlayerPacket(ChannelHandlerContext ctx, C03PacketPlayer packet,",
+                "        private C03PacketPlayer rewritePlayerPacket(");
 
-        int silentWrite = write.indexOf("super.write(ctx, rewritten, promise);");
-        int silentFlush = write.indexOf("flushDelayedPackets(ctx);", silentWrite);
-        assertTrue("The rewritten C03 must precede delayed actions",
-                silentWrite >= 0 && silentFlush > silentWrite);
-
-        int normalBranch = write.indexOf("if (packet instanceof C03PacketPlayer) {", silentFlush);
-        int normalWrite = write.indexOf("super.write(ctx, msg, promise);", normalBranch);
-        int normalFlush = write.indexOf("flushDelayedPackets(ctx);", normalBranch);
-        assertTrue("An unmodified C03 must also precede delayed actions",
-                normalBranch >= 0 && normalWrite > normalBranch && normalFlush > normalWrite);
+        int currentActionFlush = playerPacket.indexOf("flushCurrentActionPackets(ctx);");
+        int normalC03Write = playerPacket.indexOf("super.write(ctx, packet, promise);");
+        assertTrue("When no silent rotation is active, the native C0A/C02 batch must leave before C03",
+                currentActionFlush >= 0 && normalC03Write > currentActionFlush);
+        assertTrue("A second C03 in the same tick must not flush actions after the first one",
+                playerPacket.contains("boolean playerTickAdvanced = playerPacketTickGate.consumeNextPlayerPacket();")
+                        && playerPacket.contains(
+                                "if (playerTickAdvanced && !preUpdatePending && !rotation.isActive())"));
+        assertTrue("C03 handling must be centralized so both rewritten and normal paths use the same batch boundary",
+                write.contains("writePlayerPacket(ctx, (C03PacketPlayer) packet, promise, rotation,"));
     }
 
     @Test
-    public void actionsAfterTheCurrentSilentC03DoNotWaitForAnotherC03() throws IOException {
+    public void silentPlayerPacketsPublishRotationThenDeferOnlyTheCurrentActionBatch() throws IOException {
         String bridge = source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java");
-        String gate = method(bridge,
-                "        private boolean shouldDelayUntilRotation(Packet<?> packet) {",
-                "        private boolean isRotationSensitiveAction(Packet<?> packet) {");
-        String write = packetBridgeWriteMethod(bridge);
+        String playerPacket = method(bridge,
+                "        private void writePlayerPacket(ChannelHandlerContext ctx, C03PacketPlayer packet,",
+                "        private C03PacketPlayer rewritePlayerPacket(");
 
-        assertTrue("The delay gate must track whether the published generation is still unsent",
-                gate.contains("rotationPublication.hasUnsentRotation()"));
-        assertFalse("An active snapshot may already have reached the pipeline",
-                gate.contains("rotationPublication.snapshot().isActive()"));
-        assertTrue("Writing a silent C03 must acknowledge its exact snapshot generation",
-                write.contains("rotationPublication.markSent(rotation);"));
+        int readyFlush = playerPacket.indexOf("flushReadyActionPackets(ctx);");
+        int silentC03 = playerPacket.indexOf("super.write(ctx, rewritten, promise);");
+        int markRotationSent = playerPacket.indexOf("rotationPublication.markSent(rotation);");
+        int deferCurrentActions = playerPacket.indexOf("promoteCurrentActionPackets();");
+        assertTrue("The prior action batch must be sent before the C03 that starts the next silent tick",
+                readyFlush >= 0 && silentC03 > readyFlush);
+        assertTrue("The new yaw must reach the server before the current batch is marked ready for the next tick",
+                markRotationSent > silentC03 && deferCurrentActions > markRotationSent);
     }
 
     @Test

@@ -31,11 +31,13 @@ public final class PacketPipelineAnchors {
 
     public static void installStandaloneBridge(ChannelPipeline pipeline, ChannelHandler handler) {
         requirePipelineAndHandler(pipeline, handler);
+        if (pipeline.get(FORGE_BRIDGE_HANDLER_NAME) != null) {
+            pipeline.remove(FORGE_BRIDGE_HANDLER_NAME);
+        }
         if (pipeline.get(STANDALONE_BRIDGE_HANDLER_NAME) == null) {
             requirePacketHandler(pipeline);
             pipeline.addBefore(PACKET_HANDLER_NAME, STANDALONE_BRIDGE_HANDLER_NAME, handler);
         }
-        normalizeDelayedHandlersBefore(pipeline, STANDALONE_BRIDGE_HANDLER_NAME);
     }
 
     public static void installDelayHandler(ChannelPipeline pipeline, String handlerName, ChannelHandler handler) {
@@ -43,34 +45,18 @@ public final class PacketPipelineAnchors {
         if (!isDelayHandler(handlerName)) {
             throw new IllegalArgumentException("Unknown packet delay handler: " + handlerName);
         }
-        String anchor = findBridgeAnchor(pipeline);
+        if (pipeline.get(handlerName) != null) {
+            return;
+        }
+        String anchor = findDelaySuccessor(pipeline, handlerName);
+        if (anchor == null) {
+            anchor = findBridgeAnchor(pipeline);
+        }
         if (anchor == null) {
             requirePacketHandler(pipeline);
             anchor = PACKET_HANDLER_NAME;
         }
-        if (pipeline.get(handlerName) == null) {
-            pipeline.addBefore(anchor, handlerName, handler);
-        }
-        normalizeDelayedHandlersBefore(pipeline, anchor);
-    }
-
-    static void normalizeDelayedHandlersBefore(ChannelPipeline pipeline, String anchor) {
-        if (pipeline.get(anchor) == null) {
-            throw new IllegalStateException("Packet pipeline anchor is unavailable: " + anchor);
-        }
-        String next = anchor;
-        for (int index = DELAY_HANDLER_ORDER.length - 1; index >= 0; index--) {
-            String handlerName = DELAY_HANDLER_ORDER[index];
-            ChannelHandler handler = pipeline.get(handlerName);
-            if (handler == null) {
-                continue;
-            }
-            if (!isImmediatelyBefore(pipeline, handlerName, next)) {
-                pipeline.remove(handlerName);
-                pipeline.addBefore(next, handlerName, handler);
-            }
-            next = handlerName;
-        }
+        pipeline.addBefore(anchor, handlerName, handler);
     }
 
     private static boolean isDelayHandler(String handlerName) {
@@ -92,11 +78,19 @@ public final class PacketPipelineAnchors {
         return standalone > forge ? STANDALONE_BRIDGE_HANDLER_NAME : FORGE_BRIDGE_HANDLER_NAME;
     }
 
-    private static boolean isImmediatelyBefore(ChannelPipeline pipeline, String handlerName, String next) {
-        List<String> names = pipeline.names();
-        int handlerIndex = names.indexOf(handlerName);
-        int nextIndex = names.indexOf(next);
-        return handlerIndex >= 0 && nextIndex == handlerIndex + 1;
+    private static String findDelaySuccessor(ChannelPipeline pipeline, String handlerName) {
+        for (int index = 0; index < DELAY_HANDLER_ORDER.length; index++) {
+            if (!DELAY_HANDLER_ORDER[index].equals(handlerName)) {
+                continue;
+            }
+            for (int successor = index + 1; successor < DELAY_HANDLER_ORDER.length; successor++) {
+                if (pipeline.get(DELAY_HANDLER_ORDER[successor]) != null) {
+                    return DELAY_HANDLER_ORDER[successor];
+                }
+            }
+            return null;
+        }
+        return null;
     }
 
     private static void requirePipelineAndHandler(ChannelPipeline pipeline, ChannelHandler handler) {

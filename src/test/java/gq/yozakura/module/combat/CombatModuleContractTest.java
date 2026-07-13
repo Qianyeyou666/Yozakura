@@ -77,6 +77,71 @@ public class CombatModuleContractTest {
     }
 
     @Test
+    public void killAuraDoesNotSendAnOrphanSwingBeforeAttackValidation() throws IOException {
+        String source = source("src/main/java/gq/yozakura/module/combat/KillAura.java");
+        int begin = source.indexOf("    private boolean performAttack(float yaw, float pitch) {");
+        int end = source.indexOf("    private boolean sendUseItem()", begin);
+        String attack = source.substring(begin, end);
+
+        int rayTraceValidation = attack.indexOf("RotationUtil.rayTrace(");
+        int attackEvent = attack.indexOf("AttackEvent event = new AttackEvent");
+        int swing = attack.indexOf("mc.thePlayer.swingItem();");
+        int attackPacket = attack.indexOf("new C02PacketUseEntity");
+
+        assertTrue("A failed silent-raytrace must not leave a C0A animation without an attack",
+                rayTraceValidation >= 0 && attackEvent > rayTraceValidation && swing > attackEvent);
+        assertTrue("Vanilla ordering still requires the swing immediately before the accepted C02 attack",
+                attackPacket > swing);
+    }
+
+    @Test
+    public void silentAimRefreshesItsTargetInTheMovementPrePhase() throws IOException {
+        String source = source("src/main/java/gq/yozakura/module/combat/Aimbot.java");
+        int updateBegin = source.indexOf("    public void onUpdate(UpdateEvent event) {");
+        int updateEnd = source.indexOf("    private void handleModeChange()", updateBegin);
+        String update = source.substring(updateBegin, updateEnd);
+
+        assertTrue("Lunar dispatches Update PRE before its delayed bridge Tick PRE, so silent aim needs its target here",
+                source.contains("private boolean refreshTargetForCurrentInput()"));
+        int silentMode = update.indexOf("if (!mode.getValue().isSilent()");
+        int targetRefresh = update.indexOf("if (!refreshTargetForCurrentInput())");
+        int rotation = update.indexOf("event.setRotation(");
+        assertTrue("The target refresh must happen after confirming silent mode and before publishing the C03 rotation",
+                silentMode >= 0 && targetRefresh > silentMode && rotation > targetRefresh);
+    }
+
+    @Test
+    public void silentAimClearsThePreviousScanDeadlineWhenAttackInputIsReleased() throws IOException {
+        String source = source("src/main/java/gq/yozakura/module/combat/Aimbot.java");
+        int begin = source.indexOf("    private boolean refreshTargetForCurrentInput() {");
+        int end = source.indexOf("    private void refreshTarget(long now) {", begin);
+        String refresh = source.substring(begin, end);
+
+        int clear = refresh.indexOf("clearTargetState(mode.getValue().isSilent());");
+        int resetDeadline = refresh.indexOf("nextTargetScanAt = 0L;", clear);
+        int returnFalse = refresh.indexOf("return false;", resetDeadline);
+        assertTrue("Releasing RequireMouse input must not leave the old UpdateRate deadline blocking the next press",
+                clear >= 0 && resetDeadline > clear && returnFalse > resetDeadline);
+    }
+
+    @Test
+    public void silentAimRepressReacquiresBeforeContinuingItsReturnRotation() throws IOException {
+        String source = source("src/main/java/gq/yozakura/module/combat/Aimbot.java");
+        int begin = source.indexOf("    public void onUpdate(UpdateEvent event) {");
+        int end = source.indexOf("    private void handleModeChange()", begin);
+        String update = source.substring(begin, end);
+
+        int returning = update.indexOf("if (silentReturning) {");
+        int silentMode = update.indexOf("if (!mode.getValue().isSilent()", returning);
+        String returnBlock = update.substring(returning, silentMode);
+        assertTrue("A valid re-press must refresh/reacquire a silent target before cancelling the return path",
+                returnBlock.contains("mode.getValue().isSilent() && refreshTargetForCurrentInput()")
+                        && returnBlock.contains("finishSilentReturn();"));
+        assertTrue("No valid target must retain the existing return packet instead of emitting a stale normal rotation",
+                returnBlock.contains("publishSilentReturn(event);") && returnBlock.contains("return;"));
+    }
+
+    @Test
     public void jumpResetDoesNotMutateVelocitysAttackWindowState() throws IOException {
         String source = source("src/main/java/gq/yozakura/module/combat/JumpReset.java");
 

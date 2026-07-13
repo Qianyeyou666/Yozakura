@@ -20,14 +20,15 @@ public class StandaloneRendererLifecycleContractTest {
         String living = source("src/main/java/gq/yozakura/bridge/StandaloneLivingRendererBridge.java");
         String bridge = source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java");
 
-        assertTrue("A runtime EntityRenderer subclass must not be replaced by the vanilla hook",
-                entityRenderer.contains("current.getClass() != EntityRenderer.class"));
-        assertTrue("Skipping an unsafe renderer replacement must be visible rather than silent",
-                entityRenderer.contains("Render2D/Render3D dispatch was not installed")
-                        && entityRenderer.contains("requires runtime verification"));
+        assertTrue("A runtime EntityRenderer subclass must be preserved by a generated direct subclass",
+                entityRenderer.contains("defineRuntimeEntityRendererHook(current.getClass())")
+                        && entityRenderer.contains("allocateInstance"));
+        assertTrue("An unavailable runtime subclass hook must fail explicitly rather than silently skip rendering",
+                entityRenderer.contains("throw reportInstallFailure(current, throwable)")
+                        && entityRenderer.contains("Render2D/Render3D bridge is unavailable"));
         assertTrue("The entity renderer hook must keep both sides of its reversible ownership pair",
                 entityRenderer.contains("private static EntityRenderer originalRenderer;")
-                        && entityRenderer.contains("private static StandaloneEntityRenderer installedRenderer;")
+                        && entityRenderer.contains("private static EntityRenderer installedRenderer;")
                         && entityRenderer.contains("public static void uninstall(Minecraft minecraft)"));
         assertTrue("Entity renderer teardown may restore only the hook installed by this loader",
                 entityRenderer.contains("minecraft.entityRenderer == installed"));

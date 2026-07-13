@@ -18,7 +18,15 @@ public final class YozakuraBootstrap {
 
     public static synchronized void start() {
         try {
-            if (ForgeEnvironment.isForgeAvailable()) {
+            if (isLunarClient()) {
+                log("Detected Lunar environment");
+                if (lunarStarted) {
+                    log("Lunar remapped client is already running");
+                    notifyRunningClient("gq.yozakura.core.StandaloneClient");
+                    return;
+                }
+                startMappedClass("gq.yozakura.core.StandaloneClient", true, "lunar");
+            } else if (ForgeEnvironment.isForgeAvailable()) {
                 log("Detected Forge environment");
                 if (ForgeEnvironment.isModernForgeAvailable() && !ForgeEnvironment.isLegacyForgeAvailable()) {
                     log("Detected modern Forge environment");
@@ -36,14 +44,6 @@ public final class YozakuraBootstrap {
                     }
                     startClass("gq.yozakura.core.Client");
                 }
-            } else if (isLunarClient()) {
-                log("Detected Lunar environment");
-                if (lunarStarted) {
-                    log("Lunar remapped client is already running");
-                    notifyRunningClient("gq.yozakura.core.StandaloneClient");
-                    return;
-                }
-                startMappedClass("gq.yozakura.core.StandaloneClient", true, "lunar");
             } else if (isVanillaObfuscated()) {
                 log("Detected vanilla obfuscated environment");
                 if (vanillaStarted) {

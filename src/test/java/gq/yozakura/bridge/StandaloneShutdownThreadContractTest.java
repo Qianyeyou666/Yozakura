@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class StandaloneShutdownThreadContractTest {
@@ -28,6 +29,62 @@ public class StandaloneShutdownThreadContractTest {
         assertTrue("The pump join budget must exceed the client-thread teardown budget",
                 client.contains("BRIDGE_SHUTDOWN_TIMEOUT_MS")
                         && client.contains("PREVIOUS_PUMP_JOIN_TIMEOUT_MS"));
+    }
+
+    @Test
+    public void tickSchedulingFailureNeverRunsTheBridgeFromThePumpThread() throws IOException {
+        String client = source("src/main/java/gq/yozakura/core/StandaloneClient.java");
+        int begin = client.indexOf("    private void queueTick() {");
+        int end = client.indexOf("    private void runTick() {", begin);
+
+        assertTrue("queueTick must remain a separately inspectable thread boundary", begin >= 0 && end > begin);
+        String queueTick = client.substring(begin, end);
+        int catchStart = queueTick.indexOf("        } catch (Throwable throwable) {");
+        int catchEnd = queueTick.indexOf("        }\n", catchStart + 1);
+        assertTrue("queueTick must handle scheduling failure explicitly", catchStart >= 0 && catchEnd > catchStart);
+        String schedulingFailure = queueTick.substring(catchStart, catchEnd);
+        assertFalse("A failed addScheduledTask must stop the standalone bridge rather than run it on the daemon pump",
+                schedulingFailure.contains("runTick();"));
+        assertTrue("The scheduling failure must be surfaced and stop both pump liveness flags",
+                queueTick.contains("stopForTickSchedulingFailure(throwable);")
+                        && client.contains("private void stopForTickSchedulingFailure(Throwable throwable)"));
+    }
+
+    @Test
+    public void mainThreadTickFailureStopsAndTearsDownTheBridgeInsteadOfRetrying() throws IOException {
+        String client = source("src/main/java/gq/yozakura/core/StandaloneClient.java");
+        int begin = client.indexOf("    private void runTick() {");
+        int end = client.indexOf("    private void handleKeys() {", begin);
+
+        assertTrue("runTick must remain a separately inspectable client-thread boundary", begin >= 0 && end > begin);
+        String runTick = client.substring(begin, end);
+        assertTrue("A runtime bridge failure must be terminal rather than retried by the pump",
+                runTick.contains("stopForTickFailure(throwable);"));
+        assertTrue("A terminal tick failure must restore hooks while still on the Minecraft thread",
+                client.contains("private void stopForTickFailure(Throwable throwable)")
+                        && client.contains("bridge.shutdown();"));
+    }
+
+    @Test
+    public void unschedulableMinecraftThreadWorkFailsClosedInsteadOfLeavingHooksForReinjection() throws IOException {
+        String client = source("src/main/java/gq/yozakura/core/StandaloneClient.java");
+
+        assertTrue("A scheduler failure must become a cross-loader terminal marker",
+                client.contains("FAILED_INSTANCE_PROPERTY")
+                        && client.contains("System.setProperty(FAILED_INSTANCE_PROPERTY, instanceId);"));
+        assertTrue("A later injection must reject an unsafe process that still owns standalone hooks",
+                client.contains("throwIfPreviousStandaloneBridgeFailed();"));
+        assertTrue("The pump must not retry addScheduledTask after the scheduling path already failed",
+                client.contains("if (!terminalBridgeFailure)")
+                        && client.contains("if (!shutdownCompleted)"));
+        assertTrue("A teardown error on the Minecraft thread must use the same fail-closed record",
+                client.contains("recordTerminalBridgeFailure(\"Standalone bridge emergency teardown failed\""));
+        int shutdownBegin = client.indexOf("    public static void shutdownForReinjection() {");
+        int shutdownEnd = client.indexOf("    public static boolean isShutdownComplete()", shutdownBegin);
+        assertTrue("Direct Minecraft-thread reinjection teardown must also record an unrecoverable cleanup failure",
+                shutdownBegin >= 0 && shutdownEnd > shutdownBegin
+                        && client.substring(shutdownBegin, shutdownEnd)
+                        .contains("recordTerminalBridgeFailure(\"Standalone direct teardown failed\""));
     }
 
     private static String source(String path) throws IOException {

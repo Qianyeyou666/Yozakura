@@ -435,7 +435,7 @@ static jobject createIsolatedClassLoader(JNIEnv* env, jobject parent, const std:
     return isolatedLoader;
 }
 
-static bool instantiateClient(JNIEnv* env, jobject loader) {
+static bool instantiateClient(JNIEnv* env, jobject loader, bool* constructorAttempted) {
     debug("loading client entry class");
     jclass threadClass = env->FindClass("java/lang/Thread");
     jmethodID currentThread = env->GetStaticMethodID(threadClass, "currentThread", "()Ljava/lang/Thread;");
@@ -454,6 +454,14 @@ static bool instantiateClient(JNIEnv* env, jobject loader) {
     }
 
     jmethodID ctor = env->GetMethodID(clientClass, "<init>", "()V");
+    if (env->ExceptionCheck() || !ctor) {
+        logJavaException(env, "failed to resolve client constructor");
+        debug("failed to resolve client constructor");
+        return false;
+    }
+    if (constructorAttempted) {
+        *constructorAttempted = true;
+    }
     jobject client = env->NewObject(clientClass, ctor);
     if (env->ExceptionCheck() || !client) {
         logJavaException(env, "failed to instantiate client exception");
@@ -518,6 +526,7 @@ static DWORD WINAPI loaderThread(LPVOID param) {
     }
 
     bool clientLoaded = false;
+    bool constructorAttempted = false;
     jobject loader = findClientThreadClassLoader(env);
     if (!loader) {
         debug("client thread classloader not found");
@@ -540,7 +549,7 @@ static DWORD WINAPI loaderThread(LPVOID param) {
                 entryLoader = createChildClassLoader(env, loader, jarPath);
             }
         }
-        if (entryLoader && instantiateClient(env, entryLoader)) {
+        if (entryLoader && instantiateClient(env, entryLoader, &constructorAttempted)) {
             debug("client loaded");
             clientLoaded = true;
         }
@@ -549,9 +558,12 @@ static DWORD WINAPI loaderThread(LPVOID param) {
     if (attached) {
         vm->DetachCurrentThread();
     }
-    if (clientLoaded) {
+    if (clientLoaded || constructorAttempted) {
+        if (!clientLoaded) {
+            debug("client constructor entered but did not complete; restart required before reinjection");
+        }
         injectionGuard.retainForProcessLifetime();
-        return 0;
+        return clientLoaded ? 0 : 1;
     }
     return 1;
 }

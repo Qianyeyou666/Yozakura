@@ -29,6 +29,7 @@ final class MovementInputBridge {
     private static float savedYaw;
     private static float savedPrevYaw;
     private static Runnable beforeMoveInputHook;
+    private static Runnable beforePlayerPacketHook;
 
     private MovementInputBridge() {
     }
@@ -56,9 +57,14 @@ final class MovementInputBridge {
         beforeMoveInputHook = hook;
     }
 
+    static void setBeforePlayerPacketHook(Runnable hook) {
+        beforePlayerPacketHook = hook;
+    }
+
     static void uninstall() {
         restoreRotation();
         RotationState.clear();
+        beforePlayerPacketHook = null;
         EntityPlayerSP player = mc.thePlayer;
         if (player != null && player.movementInput instanceof HookedMovementInput) {
             MovementInput delegate = unwrapMovementInput(player.movementInput);
@@ -177,6 +183,10 @@ final class MovementInputBridge {
         EventManager.call(livingUpdate);
         updateSprintState(input);
         applyRotationForPhysics(input);
+        Runnable playerPacketHook = beforePlayerPacketHook;
+        if (playerPacketHook != null) {
+            playerPacketHook.run();
+        }
     }
 
     private static void applyFakeRotationMoveFix() {
