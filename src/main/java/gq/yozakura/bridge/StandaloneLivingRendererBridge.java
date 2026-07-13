@@ -274,14 +274,22 @@ public final class StandaloneLivingRendererBridge {
             return null;
         }
         Object delegate = readDelegate(renderer);
-        return delegate instanceof Render ? (Render<? extends Entity>) delegate : null;
+        if (!(delegate instanceof Render)) {
+            logUninstallFailure("Unable to read owned standalone renderer delegate", null);
+            return null;
+        }
+        return (Render<? extends Entity>) delegate;
     }
 
     private static Object readOwnedDelegate(Object renderer) {
         if (!(renderer instanceof LivingRenderWrapper) && !(renderer instanceof PlayerRenderWrapper)) {
             return null;
         }
-        return readDelegate(renderer);
+        Object delegate = readDelegate(renderer);
+        if (delegate == null) {
+            logUninstallFailure("Unable to read owned standalone renderer delegate", null);
+        }
+        return delegate;
     }
 
     private static void logUninstallFailure(String message, Throwable throwable) {
