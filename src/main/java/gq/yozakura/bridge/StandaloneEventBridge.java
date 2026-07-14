@@ -2,7 +2,10 @@ package gq.yozakura.bridge;
 
 import gq.yozakura.auth.YozakuraAuthGate;
 import gq.yozakura.core.ConfigBridge;
+import gq.yozakura.event.bridge.PacketAcceptedEvent;
 import gq.yozakura.event.bridge.PacketEvent;
+import gq.yozakura.event.bridge.PacketWriteEvent;
+import gq.yozakura.event.bridge.RotationResolvedEvent;
 import gq.yozakura.event.bridge.SafeWalkEvent;
 import gq.yozakura.event.bridge.TickEvent;
 import gq.yozakura.event.bridge.UpdateEvent;
@@ -18,16 +21,14 @@ import gq.yozakura.manager.VisualRotationState;
 import gq.yozakura.runtime.YozakuraRuntime;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelDuplexHandler;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.Packet;
 import net.minecraft.network.play.client.C03PacketPlayer;
-import net.minecraft.network.play.client.C0BPacketEntityAction;
-import org.lwjgl.input.Keyboard;
-import org.lwjgl.input.Mouse;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -47,13 +48,13 @@ public final class StandaloneEventBridge {
     private volatile Channel terminatedPacketChannel;
     private volatile boolean packetBridgeTerminated;
     private volatile boolean terminatedPacketBridgeCleaned;
-    private boolean forcedSneak;
     private boolean packetHandlerLogged;
     private boolean packetHandlerFailureLogged;
     private volatile UpdateEvent pendingPostUpdate;
     private volatile UpdateEvent activePreUpdate;
     private volatile boolean waitingForRotationPacket;
     private int lastPreUpdateTick = Integer.MIN_VALUE;
+    private int lastPlayerPacketMarkerTick = Integer.MIN_VALUE;
     private boolean dispatchingPlayerPacketPreUpdate;
     private boolean wasInGame;
     private boolean standaloneModulesCleaned;
@@ -64,9 +65,9 @@ public final class StandaloneEventBridge {
             return;
         }
         if (!YozakuraAuthGate.allowRuntime("standalone-tick")) {
-            releaseForcedSneak();
+            MovementInputBridge.setSafeWalkRequested(false);
             MovementInputBridge.setBeforeMoveInputHook(null);
-            MovementInputBridge.setBeforePlayerPacketHook(null);
+            MovementInputBridge.setAfterMoveInputHook(null);
             MovementInputBridge.setDirectYawPhysics(true);
             MovementInputBridge.uninstall();
             uninstallRendererHooks();
@@ -81,9 +82,9 @@ public final class StandaloneEventBridge {
                 wasInGame = false;
                 dispatchDisconnected();
             }
-            releaseForcedSneak();
+            MovementInputBridge.setSafeWalkRequested(false);
             MovementInputBridge.setBeforeMoveInputHook(null);
-            MovementInputBridge.setBeforePlayerPacketHook(null);
+            MovementInputBridge.setAfterMoveInputHook(null);
             MovementInputBridge.setDirectYawPhysics(true);
             MovementInputBridge.uninstall();
             uninstallRendererHooks();
@@ -100,7 +101,7 @@ public final class StandaloneEventBridge {
                 dispatchPreUpdateBeforePlayerPacket();
             }
         });
-        MovementInputBridge.setBeforePlayerPacketHook(new Runnable() {
+        MovementInputBridge.setAfterMoveInputHook(new Runnable() {
             @Override
             public void run() {
                 markNextPlayerPacketTick();
@@ -134,9 +135,9 @@ public final class StandaloneEventBridge {
     }
 
     public void shutdown() {
-        releaseForcedSneak();
+        MovementInputBridge.setSafeWalkRequested(false);
         MovementInputBridge.setBeforeMoveInputHook(null);
-        MovementInputBridge.setBeforePlayerPacketHook(null);
+        MovementInputBridge.setAfterMoveInputHook(null);
         MovementInputBridge.setDirectYawPhysics(true);
         MovementInputBridge.uninstall();
         uninstallRendererHooks();
@@ -164,6 +165,7 @@ public final class StandaloneEventBridge {
         activePreUpdate = null;
         waitingForRotationPacket = false;
         lastPreUpdateTick = Integer.MIN_VALUE;
+        lastPlayerPacketMarkerTick = Integer.MIN_VALUE;
         dispatchingPlayerPacketPreUpdate = false;
     }
 
@@ -193,6 +195,7 @@ public final class StandaloneEventBridge {
     }
 
     private void dispatchPreUpdate() {
+        MovementInputBridge.restoreRotation();
         dispatchPendingPostUpdate();
         lastPreUpdateTick = mc.thePlayer == null ? Integer.MIN_VALUE : mc.thePlayer.ticksExisted;
         BridgeDebug.logState("standalone", "PRE_START", pendingPostUpdate != null);
@@ -203,6 +206,7 @@ public final class StandaloneEventBridge {
         try {
             EventManager.call(update);
             RotationExitState.apply(update);
+            EventManager.call(new RotationResolvedEvent(update));
             BridgeDebug.logUpdate("standalone", "PRE_AFTER_EVENT", update, pendingPostUpdate != null);
             RotationState.applyState(update.isRotated(), update.getNewYaw(), update.getNewPitch(),
                     update.getPreYaw(), update.isRotating(), update.isMoveFix());
@@ -212,7 +216,6 @@ public final class StandaloneEventBridge {
                     RotationState.getRotationPitch());
             applyLocalAimAssistRotation(update);
             VisualRotationState.finishTick();
-            syncVisibleRotation();
             RotationDebug.logUpdate("standalone", update);
             resetTransientPacketState();
             queuePostUpdate(update);
@@ -239,9 +242,17 @@ public final class StandaloneEventBridge {
     }
 
     private void markNextPlayerPacketTick() {
+        if (packetBridgeTerminated || mc.thePlayer == null) {
+            return;
+        }
+        int tick = mc.thePlayer.ticksExisted;
+        if (lastPreUpdateTick != tick || lastPlayerPacketMarkerTick == tick) {
+            return;
+        }
         PacketBridgeHandler handler = packetBridgeHandler;
         if (handler != null) {
             handler.markNextPlayerPacketTick(++nextPlayerPacketGeneration);
+            lastPlayerPacketMarkerTick = tick;
         }
     }
 
@@ -285,24 +296,7 @@ public final class StandaloneEventBridge {
 
     private void dispatchSafeWalk() {
         SafeWalkEvent safeWalk = EventManager.call(new SafeWalkEvent(false));
-        if (safeWalk.isSafeWalk()) {
-            KeyBinding.setKeyBindState(mc.gameSettings.keyBindSneak.getKeyCode(), true);
-            forcedSneak = true;
-        } else {
-            releaseForcedSneak();
-        }
-    }
-
-    private void releaseForcedSneak() {
-        if (!forcedSneak) {
-            return;
-        }
-        int key = mc.gameSettings.keyBindSneak.getKeyCode();
-        boolean physicallyDown = key < 0 ? Mouse.isButtonDown(key + 100) : Keyboard.isKeyDown(key);
-        if (!physicallyDown) {
-            KeyBinding.setKeyBindState(key, false);
-        }
-        forcedSneak = false;
+        MovementInputBridge.setSafeWalkRequested(safeWalk.isSafeWalk());
     }
 
     private void syncAuraTarget() {
@@ -311,16 +305,6 @@ public final class StandaloneEventBridge {
             gq.yozakura.module.combat.KillAura.target =
                     ((gq.yozakura.module.combat.KillAura) module).getTarget();
         }
-    }
-
-    private void syncVisibleRotation() {
-        if (!VisualRotationState.isActived()) {
-            return;
-        }
-        mc.thePlayer.prevRotationYawHead = VisualRotationState.getPrevRotationYawHead();
-        mc.thePlayer.rotationYawHead = VisualRotationState.getRotationYawHead();
-        mc.thePlayer.prevRenderYawOffset = VisualRotationState.getPrevRenderYawOffset();
-        mc.thePlayer.renderYawOffset = VisualRotationState.getRenderYawOffset();
     }
 
     private void injectPacketHandler() {
@@ -390,9 +374,9 @@ public final class StandaloneEventBridge {
                 wasInGame = false;
                 dispatchDisconnected();
             }
-            releaseForcedSneak();
+            MovementInputBridge.setSafeWalkRequested(false);
             MovementInputBridge.setBeforeMoveInputHook(null);
-            MovementInputBridge.setBeforePlayerPacketHook(null);
+            MovementInputBridge.setAfterMoveInputHook(null);
             MovementInputBridge.setDirectYawPhysics(true);
             MovementInputBridge.uninstall();
             uninstallRendererHooks();
@@ -502,6 +486,7 @@ public final class StandaloneEventBridge {
                 new OutboundActionBatchQueue<DelayedPacket>();
         private final PlayerPacketTickGate playerPacketTickGate = new PlayerPacketTickGate();
         private volatile ChannelHandlerContext handlerContext;
+        private long pendingPlayerPacketGeneration;
         private int currentClickWindowPackets;
         private int readyClickWindowPackets;
         private boolean hasSentSilentRotation;
@@ -512,6 +497,7 @@ public final class StandaloneEventBridge {
         public void handlerAdded(ChannelHandlerContext ctx) throws Exception {
             handlerContext = ctx;
             super.handlerAdded(ctx);
+            drainPendingPlayerPacketTick(ctx);
         }
 
         @Override
@@ -527,15 +513,17 @@ public final class StandaloneEventBridge {
             if (msg instanceof Packet<?>) {
                 Packet<?> packet = (Packet<?>) msg;
                 boolean packetPendingPost = pendingPostUpdate != null;
-                boolean skipPacketEvent = PacketBridgeSupport.consumeNoEvent(packet);
+                PacketBridgeSupport.NoEventMarker noEventMarker =
+                        PacketBridgeSupport.consumeNoEventMarker(packet);
+                if (noEventMarker.isAlreadyBridgeProcessed()) {
+                    super.write(ctx, msg, promise);
+                    return;
+                }
+                boolean skipPacketEvent = noEventMarker.isMarked();
+                long writeId = noEventMarker.getWriteId();
+                boolean preserveOriginalPacketOrder = false;
                 if (skipPacketEvent) {
                     BridgeDebug.logPacket("standalone", "SEND_NO_EVENT", packet, packetPendingPost);
-                }
-                if (packet instanceof C0BPacketEntityAction
-                        && MovementInputBridge.shouldBlockSprintPacket((C0BPacketEntityAction) packet)) {
-                    BridgeDebug.logPacket("standalone", "SEND_BLOCKED_SPRINT", packet, packetPendingPost);
-                    completeDroppedWrite(promise);
-                    return;
                 }
                 if (!skipPacketEvent) {
                     BridgeDebug.logPacket("standalone", "SEND_IN", packet, packetPendingPost);
@@ -545,18 +533,23 @@ public final class StandaloneEventBridge {
                         completeDroppedWrite(promise);
                         return;
                     }
+                    PacketAcceptedEvent accepted = new PacketAcceptedEvent(packet);
+                    EventManager.call(accepted);
+                    writeId = accepted.getWriteId();
+                    preserveOriginalPacketOrder = accepted.isOriginalPacketOrderRequired();
                 }
-                if (isPostSensitiveAction(packet)) {
-                    queueCurrentActionPacket(packet, promise, packetPendingPost);
+                observePacketWrite(ctx, packet, promise, writeId);
+                if (!skipPacketEvent && !preserveOriginalPacketOrder && isPostSensitiveAction(packet)) {
+                    queueCurrentActionPacket(packet, promise, packetPendingPost, writeId);
                     return;
                 }
-                if (packet instanceof net.minecraft.network.play.client.C0DPacketCloseWindow) {
+                if (!skipPacketEvent && packet instanceof net.minecraft.network.play.client.C0DPacketCloseWindow) {
                     if (currentClickWindowPackets > 0) {
-                        queueCurrentActionPacket(packet, promise, packetPendingPost);
+                        queueCurrentActionPacket(packet, promise, packetPendingPost, writeId);
                         return;
                     }
                     if (readyClickWindowPackets > 0) {
-                        queueReadyActionPacket(packet, promise, packetPendingPost);
+                        queueReadyActionPacket(packet, promise, packetPendingPost, writeId);
                         return;
                     }
                 }
@@ -565,20 +558,36 @@ public final class StandaloneEventBridge {
                 StandaloneRotationPublication.Snapshot rotation = rotationPublication.snapshot();
                 if (packet instanceof C03PacketPlayer) {
                     writePlayerPacket(ctx, (C03PacketPlayer) packet, promise, rotation,
-                            preUpdatePending, packetPendingPost);
+                            preUpdatePending, packetPendingPost, writeId);
                     return;
                 }
                 markSent(packet);
                 BridgeDebug.logPacket("standalone", "SEND_MARKED", packet, packetPendingPost);
                 if (YozakuraRuntime.blinkManager != null && YozakuraRuntime.blinkManager.isBlinking()
-                        && YozakuraRuntime.blinkManager.offerPacket(packet)) {
+                        && YozakuraRuntime.blinkManager.offerPacket(packet, promise, writeId)) {
                     BridgeDebug.logPacket("standalone", "SEND_BLINK_BUFFERED", packet, packetPendingPost);
-                    promise.trySuccess();
                     return;
                 }
                 BridgeDebug.logPacket("standalone", "SEND_OUT", packet, packetPendingPost);
             }
             super.write(ctx, msg, promise);
+        }
+
+        private void observePacketWrite(ChannelHandlerContext ctx, final Packet<?> packet,
+                                        ChannelPromise promise, final long writeId) {
+            if (ctx == null || packet == null || promise == null) {
+                return;
+            }
+            promise.addListener(new ChannelFutureListener() {
+                @Override
+                public void operationComplete(ChannelFuture future) {
+                    reportPacketWrite(packet, writeId, future.isSuccess());
+                }
+            });
+        }
+
+        private void reportPacketWrite(Packet<?> packet, long writeId, boolean success) {
+            EventManager.call(new PacketWriteEvent(packet, writeId, success));
         }
 
         @Override
@@ -621,7 +630,7 @@ public final class StandaloneEventBridge {
 
         private void writePlayerPacket(ChannelHandlerContext ctx, C03PacketPlayer packet, ChannelPromise promise,
                                        StandaloneRotationPublication.Snapshot rotation, boolean preUpdatePending,
-                                       boolean packetPendingPost) throws Exception {
+                                       boolean packetPendingPost, long writeId) throws Exception {
             boolean playerTickAdvanced = playerPacketTickGate.consumeNextPlayerPacket();
             if (playerTickAdvanced) {
                 flushReadyActionPackets(ctx);
@@ -638,9 +647,8 @@ public final class StandaloneEventBridge {
                 RotationDebug.logPacket("standalone", packet, true);
                 BridgeDebug.logPacketRewrite("standalone", packet, rewritten, packetPendingPost);
                 if (YozakuraRuntime.blinkManager != null && YozakuraRuntime.blinkManager.isBlinking()
-                        && YozakuraRuntime.blinkManager.offerPacket(rewritten)) {
+                        && YozakuraRuntime.blinkManager.offerPacket(rewritten, promise, writeId)) {
                     BridgeDebug.logPacket("standalone", "SEND_BLINK_BUFFERED", rewritten, packetPendingPost);
-                    promise.trySuccess();
                 } else {
                     super.write(ctx, rewritten, promise);
                 }
@@ -656,9 +664,8 @@ public final class StandaloneEventBridge {
             RotationDebug.logPacket("standalone", packet, false);
             hasSentSilentRotation = false;
             if (YozakuraRuntime.blinkManager != null && YozakuraRuntime.blinkManager.isBlinking()
-                    && YozakuraRuntime.blinkManager.offerPacket(packet)) {
+                    && YozakuraRuntime.blinkManager.offerPacket(packet, promise, writeId)) {
                 BridgeDebug.logPacket("standalone", "SEND_BLINK_BUFFERED", packet, packetPendingPost);
-                promise.trySuccess();
             } else {
                 super.write(ctx, packet, promise);
             }
@@ -666,22 +673,48 @@ public final class StandaloneEventBridge {
         }
 
         void markNextPlayerPacketTick(final long generation) {
-            final ChannelHandlerContext ctx = handlerContext;
-            if (ctx == null || generation <= 0L) {
+            if (generation <= 0L) {
                 return;
             }
+            storePendingPlayerPacketGeneration(generation);
+            ChannelHandlerContext current = handlerContext;
+            if (current == null) {
+                current = handlerContext;
+                if (current == null) {
+                    return;
+                }
+            }
+            final ChannelHandlerContext ctx = current;
             Runnable markerTask = new Runnable() {
                 @Override
                 public void run() {
-                    if (handlerContext == ctx && ctx.channel().isActive()) {
-                        playerPacketTickGate.markNextPlayerPacket(generation);
-                    }
+                    drainPendingPlayerPacketTick(ctx);
                 }
             };
             if (ctx.executor().inEventLoop()) {
                 markerTask.run();
             } else {
                 ctx.executor().execute(markerTask);
+            }
+        }
+
+        private synchronized void storePendingPlayerPacketGeneration(long generation) {
+            if (generation > pendingPlayerPacketGeneration) {
+                pendingPlayerPacketGeneration = generation;
+            }
+        }
+
+        private void drainPendingPlayerPacketTick(ChannelHandlerContext ctx) {
+            if (ctx == null || handlerContext != ctx || !ctx.channel().isActive()) {
+                return;
+            }
+            long generation;
+            synchronized (this) {
+                generation = pendingPlayerPacketGeneration;
+                pendingPlayerPacketGeneration = 0L;
+            }
+            if (generation > 0L) {
+                playerPacketTickGate.markNextPlayerPacket(generation);
             }
         }
 
@@ -724,21 +757,21 @@ public final class StandaloneEventBridge {
                     || packet instanceof net.minecraft.network.play.client.C08PacketPlayerBlockPlacement
                     || packet instanceof net.minecraft.network.play.client.C09PacketHeldItemChange
                     || packet instanceof net.minecraft.network.play.client.C0APacketAnimation
-                    || packet instanceof net.minecraft.network.play.client.C0BPacketEntityAction
-                    || packet instanceof net.minecraft.network.play.client.C0EPacketClickWindow
-                    || packet instanceof net.minecraft.network.play.client.C13PacketPlayerAbilities;
+                    || packet instanceof net.minecraft.network.play.client.C0EPacketClickWindow;
         }
 
-        private void queueCurrentActionPacket(Packet<?> packet, ChannelPromise promise, boolean pendingPost) {
-            delayedPackets.addCurrent(new DelayedPacket(packet, promise, pendingPost));
+        private void queueCurrentActionPacket(Packet<?> packet, ChannelPromise promise, boolean pendingPost,
+                                              long writeId) {
+            delayedPackets.addCurrent(new DelayedPacket(packet, promise, pendingPost, writeId));
             if (isClickWindowPacket(packet)) {
                 currentClickWindowPackets++;
             }
             BridgeDebug.logPacket("standalone", "SEND_ACTION_QUEUE", packet, pendingPost);
         }
 
-        private void queueReadyActionPacket(Packet<?> packet, ChannelPromise promise, boolean pendingPost) {
-            delayedPackets.addReady(new DelayedPacket(packet, promise, pendingPost));
+        private void queueReadyActionPacket(Packet<?> packet, ChannelPromise promise, boolean pendingPost,
+                                            long writeId) {
+            delayedPackets.addReady(new DelayedPacket(packet, promise, pendingPost, writeId));
             if (isClickWindowPacket(packet)) {
                 readyClickWindowPackets++;
             }
@@ -789,8 +822,8 @@ public final class StandaloneEventBridge {
             BridgeDebug.logPacketDetail("standalone", "SEND_ACTION_OUT", delayed.packet,
                     delayed.pendingPost, source);
             if (YozakuraRuntime.blinkManager != null && YozakuraRuntime.blinkManager.isBlinking()
-                    && YozakuraRuntime.blinkManager.offerPacket(delayed.packet)) {
-                delayed.promise.trySuccess();
+                    && YozakuraRuntime.blinkManager.offerPacket(delayed.packet, delayed.promise,
+                    delayed.writeId)) {
                 BridgeDebug.logPacketDetail("standalone", "SEND_ACTION_BLINK_BUFFERED", delayed.packet,
                         delayed.pendingPost, source);
                 return;
@@ -829,6 +862,9 @@ public final class StandaloneEventBridge {
 
         private void resetHandlerState() {
             handlerContext = null;
+            synchronized (this) {
+                pendingPlayerPacketGeneration = 0L;
+            }
             playerPacketTickGate.clear();
             currentClickWindowPackets = 0;
             readyClickWindowPackets = 0;
@@ -852,11 +888,14 @@ public final class StandaloneEventBridge {
             private final Packet<?> packet;
             private final ChannelPromise promise;
             private final boolean pendingPost;
+            private final long writeId;
 
-            private DelayedPacket(Packet<?> packet, ChannelPromise promise, boolean pendingPost) {
+            private DelayedPacket(Packet<?> packet, ChannelPromise promise, boolean pendingPost,
+                                  long writeId) {
                 this.packet = packet;
                 this.promise = promise;
                 this.pendingPost = pendingPost;
+                this.writeId = writeId;
             }
         }
     }

@@ -47,6 +47,17 @@ public class StandaloneEventBridgeStateContractTest {
     }
 
     @Test
+    public void aNewPreRestoresThePreviousTemporaryPhysicsYawBeforeCapturingCameraRotation() throws IOException {
+        String pre = method(source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java"),
+                "    private void dispatchPreUpdate() {", "    private void dispatchPreUpdateBeforePlayerPacket() {");
+        int restorePreviousPhysicsYaw = pre.indexOf("MovementInputBridge.restoreRotation();");
+        int captureUpdateRotation = pre.indexOf("UpdateEvent update = new UpdateEvent");
+
+        assertTrue("A stale physics yaw must not become the next silent rotation's camera baseline",
+                restorePreviousPhysicsYaw >= 0 && captureUpdateRotation > restorePreviousPhysicsYaw);
+    }
+
+    @Test
     public void lockViewUsesTheRotationManagerSignalInsteadOfAListenerPriority() throws IOException {
         String localRotation = method(source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java"),
                 "    private void applyLocalAimAssistRotation(UpdateEvent update) {",
@@ -62,16 +73,19 @@ public class StandaloneEventBridgeStateContractTest {
     public void noEventSkipsPacketEventButStillUsesTheRotationBridge() throws IOException {
         String write = packetBridgeWriteMethod(source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java"));
 
-        int skipFlag = write.indexOf("boolean skipPacketEvent = PacketBridgeSupport.consumeNoEvent(packet);");
+        int marker = write.indexOf("PacketBridgeSupport.consumeNoEventMarker(packet);");
+        int skipFlag = write.indexOf("boolean skipPacketEvent = noEventMarker.isMarked();", marker);
         int rotationSnapshot = write.indexOf(
                 "StandaloneRotationPublication.Snapshot rotation = rotationPublication.snapshot();");
         assertTrue("No-event must skip only PacketEvent and continue through C03 rewriting",
-                skipFlag >= 0 && write.contains("if (!skipPacketEvent)") && rotationSnapshot > skipFlag);
-        assertTrue("Blocked sprint writes must complete the caller promise",
-                write.contains("SEND_BLOCKED_SPRINT") && write.contains("completeDroppedWrite(promise);"));
+                marker >= 0 && skipFlag > marker && write.contains("if (!skipPacketEvent)")
+                        && rotationSnapshot > skipFlag);
+        assertTrue("Only replay packets already processed by the bridge may bypass its lifecycle",
+                write.contains("if (noEventMarker.isAlreadyBridgeProcessed())"));
+        assertFalse("Sprint state packets must retain their native C0B lifecycle",
+                write.contains("SEND_BLOCKED_SPRINT") || write.contains("shouldBlockSprintPacket"));
         assertTrue("Cancelled packet writes must complete the caller promise",
-                write.contains("SEND_CANCELLED")
-                        && count(write, "completeDroppedWrite(promise);") >= 2);
+                write.contains("SEND_CANCELLED") && write.contains("completeDroppedWrite(promise);"));
     }
 
     @Test

@@ -1,45 +1,86 @@
 package gq.yozakura.bridge;
 
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelPromise;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.Packet;
 
 import java.lang.reflect.Field;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.IdentityHashMap;
 import java.util.Map;
 
 public final class PacketBridgeSupport {
     private static final String FORGE_HANDLER_NAME = "yozakura_event_bridge";
     private static final String STANDALONE_HANDLER_NAME = "yozakura_standalone_event_bridge";
-    private static final Map<Packet<?>, Integer> NO_EVENT_PACKETS =
-            new IdentityHashMap<Packet<?>, Integer>();
+    private static final long NO_WRITE_ID = 0L;
+    private static final Map<Packet<?>, Deque<NoEventMarker>> NO_EVENT_PACKETS =
+            new IdentityHashMap<Packet<?>, Deque<NoEventMarker>>();
     private static volatile Field channelField;
 
     private PacketBridgeSupport() {
     }
 
     public static void markNoEvent(Packet<?> packet) {
+        markNoEvent(packet, NO_WRITE_ID, false);
+    }
+
+    public static void markNoEvent(Packet<?> packet, long writeId, boolean alreadyBridgeProcessed) {
+        storeNoEventMarker(packet, writeId, alreadyBridgeProcessed);
+    }
+
+    public static NoEventMarker consumeNoEventMarker(Packet<?> packet) {
         if (packet == null) {
-            return;
+            return NoEventMarker.NONE;
         }
         synchronized (NO_EVENT_PACKETS) {
-            Integer count = NO_EVENT_PACKETS.get(packet);
-            NO_EVENT_PACKETS.put(packet, Integer.valueOf(count == null ? 1 : count.intValue() + 1));
+            Deque<NoEventMarker> markers = NO_EVENT_PACKETS.get(packet);
+            if (markers == null) {
+                return NoEventMarker.NONE;
+            }
+            NoEventMarker marker = markers.pollFirst();
+            if (markers.isEmpty()) {
+                NO_EVENT_PACKETS.remove(packet);
+            }
+            return marker == null ? NoEventMarker.NONE : marker;
         }
     }
 
     public static boolean consumeNoEvent(Packet<?> packet) {
+        return consumeNoEventMarker(packet).isMarked();
+    }
+
+    private static NoEventMarker storeNoEventMarker(Packet<?> packet, long writeId,
+                                                     boolean alreadyBridgeProcessed) {
+        if (packet == null) {
+            return NoEventMarker.NONE;
+        }
         synchronized (NO_EVENT_PACKETS) {
-            Integer count = NO_EVENT_PACKETS.get(packet);
-            if (count == null) {
-                return false;
+            Deque<NoEventMarker> markers = NO_EVENT_PACKETS.get(packet);
+            if (markers == null) {
+                markers = new ArrayDeque<NoEventMarker>();
+                NO_EVENT_PACKETS.put(packet, markers);
             }
-            if (count.intValue() > 1) {
-                NO_EVENT_PACKETS.put(packet, Integer.valueOf(count.intValue() - 1));
-            } else {
+            NoEventMarker marker = new NoEventMarker(true, writeId, alreadyBridgeProcessed);
+            markers.offerLast(marker);
+            return marker;
+        }
+    }
+
+    private static void removeNoEventMarker(Packet<?> packet, NoEventMarker marker) {
+        if (packet == null || marker == null || !marker.isMarked()) {
+            return;
+        }
+        synchronized (NO_EVENT_PACKETS) {
+            Deque<NoEventMarker> markers = NO_EVENT_PACKETS.get(packet);
+            if (markers == null) {
+                return;
+            }
+            markers.removeLastOccurrence(marker);
+            if (markers.isEmpty()) {
                 NO_EVENT_PACKETS.remove(packet);
             }
-            return true;
         }
     }
 
@@ -50,27 +91,45 @@ public final class PacketBridgeSupport {
     }
 
     public static void sendNoEvent(final NetworkManager manager, final Packet<?> packet) {
+        sendNoEvent(manager, packet, null, NO_WRITE_ID, false);
+    }
+
+    public static void sendNoEvent(final NetworkManager manager, final Packet<?> packet,
+                                   final ChannelPromise promise, final long writeId,
+                                   final boolean alreadyBridgeProcessed) {
         if (manager == null || packet == null) {
             throw new IllegalArgumentException("Network manager and packet are required");
         }
         final Channel channel = getChannel(manager);
         if (channel == null || !channel.isOpen()) {
-            throw new IllegalStateException("Network channel is unavailable for a no-event send");
+            IllegalStateException failure = new IllegalStateException("Network channel is unavailable for a no-event send");
+            completeFailedWrite(promise, failure);
+            throw failure;
         }
         final Runnable sendTask = new Runnable() {
             @Override
             public void run() {
-                if (!channel.isOpen() || !hasPacketBridge(channel)) {
-                    throw new IllegalStateException("Packet bridge is unavailable for a no-event send");
-                }
-                markNoEvent(packet);
+                NoEventMarker marker = NoEventMarker.NONE;
                 boolean submitted = false;
+                if (!channel.isOpen() || !hasPacketBridge(channel)) {
+                    IllegalStateException failure =
+                            new IllegalStateException("Packet bridge is unavailable for a no-event send");
+                    completeFailedWrite(promise, failure);
+                    throw failure;
+                }
                 try {
-                    manager.sendPacket(packet, null);
+                    marker = storeNoEventMarker(packet, writeId, alreadyBridgeProcessed);
+                    if (promise == null) {
+                        manager.sendPacket(packet, null);
+                    } else {
+                        channel.writeAndFlush(packet, promise);
+                    }
                     submitted = true;
                 } finally {
                     if (!submitted) {
-                        consumeNoEvent(packet);
+                        removeNoEventMarker(packet, marker);
+                        completeFailedWrite(promise,
+                                new IllegalStateException("Unable to submit no-event packet write"));
                     }
                 }
             }
@@ -79,6 +138,38 @@ public final class PacketBridgeSupport {
             sendTask.run();
         } else {
             channel.eventLoop().execute(sendTask);
+        }
+    }
+
+    private static void completeFailedWrite(ChannelPromise promise, Throwable cause) {
+        if (promise != null) {
+            promise.tryFailure(cause);
+        }
+    }
+
+    public static final class NoEventMarker {
+        private static final NoEventMarker NONE = new NoEventMarker(false, NO_WRITE_ID, false);
+
+        private final boolean marked;
+        private final long writeId;
+        private final boolean alreadyBridgeProcessed;
+
+        private NoEventMarker(boolean marked, long writeId, boolean alreadyBridgeProcessed) {
+            this.marked = marked;
+            this.writeId = writeId;
+            this.alreadyBridgeProcessed = alreadyBridgeProcessed;
+        }
+
+        public boolean isMarked() {
+            return marked;
+        }
+
+        public long getWriteId() {
+            return writeId;
+        }
+
+        public boolean isAlreadyBridgeProcessed() {
+            return alreadyBridgeProcessed;
         }
     }
 

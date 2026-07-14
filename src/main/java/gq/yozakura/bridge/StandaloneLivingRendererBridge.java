@@ -15,6 +15,7 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.scoreboard.ScorePlayerTeam;
 import net.minecraft.scoreboard.Team;
+import net.minecraft.util.MathHelper;
 import net.minecraft.util.ResourceLocation;
 
 import java.io.File;
@@ -568,6 +569,7 @@ public final class StandaloneLivingRendererBridge {
         @Override
         public void doRender(AbstractClientPlayer entity, double x, double y, double z, float entityYaw, float partialTicks) {
             VisualRotationSnapshot rotationSnapshot = VisualRotationSnapshot.apply(entity);
+            float visualEntityYaw = rotationSnapshot.resolveEntityYaw(entityYaw, partialTicks);
             try {
                 if (dispatchPre(entity, delegate, x, y, z)) {
                     return;
@@ -576,7 +578,7 @@ public final class StandaloneLivingRendererBridge {
                 NameTagVisibilitySnapshot nameTagSnapshot = specialsCancelled
                         ? suppressNameTag(entity) : NameTagVisibilitySnapshot.NOOP;
                 try {
-                    delegate.doRender(entity, x, y, z, entityYaw, partialTicks);
+                    delegate.doRender(entity, x, y, z, visualEntityYaw, partialTicks);
                 } finally {
                     nameTagSnapshot.restore();
                     if (!specialsCancelled) {
@@ -666,9 +668,11 @@ public final class StandaloneLivingRendererBridge {
 
     private static final class VisualRotationSnapshot {
         private static final VisualRotationSnapshot NOOP = new VisualRotationSnapshot(false, 0.0F, 0.0F,
-                0.0F, 0.0F, 0.0F, 0.0F);
+                0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F);
 
         private final boolean active;
+        private final float prevYaw;
+        private final float yaw;
         private final float prevPitch;
         private final float pitch;
         private final float prevYawHead;
@@ -676,9 +680,12 @@ public final class StandaloneLivingRendererBridge {
         private final float prevRenderYawOffset;
         private final float renderYawOffset;
 
-        private VisualRotationSnapshot(boolean active, float prevPitch, float pitch, float prevYawHead,
-                                       float yawHead, float prevRenderYawOffset, float renderYawOffset) {
+        private VisualRotationSnapshot(boolean active, float prevYaw, float yaw, float prevPitch, float pitch,
+                                       float prevYawHead, float yawHead, float prevRenderYawOffset,
+                                       float renderYawOffset) {
             this.active = active;
+            this.prevYaw = prevYaw;
+            this.yaw = yaw;
             this.prevPitch = prevPitch;
             this.pitch = pitch;
             this.prevYawHead = prevYawHead;
@@ -693,12 +700,16 @@ public final class StandaloneLivingRendererBridge {
                 return NOOP;
             }
             VisualRotationSnapshot snapshot = new VisualRotationSnapshot(true,
+                    entity.prevRotationYaw,
+                    entity.rotationYaw,
                     entity.prevRotationPitch,
                     entity.rotationPitch,
                     entity.prevRotationYawHead,
                     entity.rotationYawHead,
                     entity.prevRenderYawOffset,
                     entity.renderYawOffset);
+            entity.prevRotationYaw = VisualRotationState.getPrevRotationYawHead();
+            entity.rotationYaw = VisualRotationState.getRotationYawHead();
             entity.prevRotationPitch = VisualRotationState.getPrevRotationPitch();
             entity.rotationPitch = VisualRotationState.getRotationPitch();
             entity.prevRotationYawHead = VisualRotationState.getPrevRotationYawHead();
@@ -708,10 +719,21 @@ public final class StandaloneLivingRendererBridge {
             return snapshot;
         }
 
+        float resolveEntityYaw(float originalYaw, float partialTicks) {
+            if (!active) {
+                return originalYaw;
+            }
+            float previousYaw = VisualRotationState.getPrevRotationYawHead();
+            float currentYaw = VisualRotationState.getRotationYawHead();
+            return previousYaw + MathHelper.wrapAngleTo180_float(currentYaw - previousYaw) * partialTicks;
+        }
+
         void restore(AbstractClientPlayer entity) {
             if (!active || entity == null) {
                 return;
             }
+            entity.prevRotationYaw = prevYaw;
+            entity.rotationYaw = yaw;
             entity.prevRotationPitch = prevPitch;
             entity.rotationPitch = pitch;
             entity.prevRotationYawHead = prevYawHead;

@@ -1,17 +1,18 @@
 package gq.yozakura.bridge;
 
 import gq.yozakura.auth.YozakuraAuthGate;
+import gq.yozakura.core.StandaloneClient;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelDuplexHandler;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
-import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.Packet;
 import net.minecraft.network.play.client.C03PacketPlayer;
-import net.minecraft.network.play.client.C0BPacketEntityAction;
 import net.minecraft.util.MovingObjectPosition;
 import net.minecraftforge.client.event.MouseEvent;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
@@ -22,8 +23,6 @@ import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
-import org.lwjgl.input.Keyboard;
-import org.lwjgl.input.Mouse;
 import gq.yozakura.runtime.YozakuraRuntime;
 import gq.yozakura.engine.render.ShaderRenderer;
 import gq.yozakura.engine.render.ui.RenderServices;
@@ -31,10 +30,14 @@ import gq.yozakura.event.bus.EventManager;
 import gq.yozakura.event.bus.types.EventType;
 import gq.yozakura.event.bridge.HitBlockEvent;
 import gq.yozakura.event.bridge.LeftClickMouseEvent;
+import gq.yozakura.event.bridge.PacketAcceptedEvent;
 import gq.yozakura.event.bridge.PacketEvent;
+import gq.yozakura.event.bridge.PacketWriteEvent;
 import gq.yozakura.event.bridge.Render2DEvent;
 import gq.yozakura.event.bridge.Render3DEvent;
 import gq.yozakura.event.bridge.RightClickMouseEvent;
+import gq.yozakura.event.bridge.RightClickResolvedEvent;
+import gq.yozakura.event.bridge.RotationResolvedEvent;
 import gq.yozakura.event.bridge.SafeWalkEvent;
 import gq.yozakura.event.bridge.SwapItemEvent;
 import gq.yozakura.event.bridge.UpdateEvent;
@@ -62,7 +65,6 @@ public final class YozakuraEventBridge {
     private Channel channel;
     private volatile PacketBridgeHandler packetBridgeHandler;
     private volatile UpdateEvent activePreUpdate;
-    private boolean forcedSneak;
     private final ArrayDeque<PlayerRenderRotationSnapshot> playerRenderRotationSnapshots =
             new ArrayDeque<PlayerRenderRotationSnapshot>();
 
@@ -118,10 +120,6 @@ public final class YozakuraEventBridge {
         INSTANCE.shutdownInternal();
     }
 
-    private static boolean consumeNoEvent(Packet<?> packet) {
-        return PacketBridgeSupport.consumeNoEvent(packet);
-    }
-
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event) {
         if (yieldToStandaloneBridge()) {
@@ -131,8 +129,9 @@ public final class YozakuraEventBridge {
             restoreDanglingPlayerRenderRotations();
         }
         if (!YozakuraAuthGate.allowRuntime("forge-client-tick")) {
-            releaseForcedSneak();
+            MovementInputBridge.setSafeWalkRequested(false);
             MovementInputBridge.setBeforeMoveInputHook(null);
+            MovementInputBridge.setAfterMoveInputHook(null);
             MovementInputBridge.setDirectYawPhysics(true);
             MovementInputBridge.uninstall();
             clearBridgeState();
@@ -140,8 +139,9 @@ public final class YozakuraEventBridge {
             return;
         }
         if (!isInGame()) {
-            releaseForcedSneak();
+            MovementInputBridge.setSafeWalkRequested(false);
             MovementInputBridge.setBeforeMoveInputHook(null);
+            MovementInputBridge.setAfterMoveInputHook(null);
             MovementInputBridge.setDirectYawPhysics(true);
             MovementInputBridge.uninstall();
             clearBridgeState();
@@ -150,6 +150,7 @@ public final class YozakuraEventBridge {
         }
         MovementInputBridge.install();
         MovementInputBridge.setBeforeMoveInputHook(null);
+        MovementInputBridge.setAfterMoveInputHook(null);
         injectPacketHandler();
         if (event.phase == TickEvent.Phase.START) {
             EventManager.call(new gq.yozakura.event.bridge.TickEvent(EventType.PRE));
@@ -271,6 +272,7 @@ public final class YozakuraEventBridge {
         }
         if (event.button == 1 && event.buttonstate) {
             RightClickMouseEvent right = EventManager.call(new RightClickMouseEvent());
+            EventManager.call(new RightClickResolvedEvent(right.isCancelled()));
             if (right.isCancelled()) {
                 event.setCanceled(true);
             }
@@ -332,8 +334,9 @@ public final class YozakuraEventBridge {
 
     private void shutdownInternal() {
         restoreDanglingPlayerRenderRotations();
-        releaseForcedSneak();
+        MovementInputBridge.setSafeWalkRequested(false);
         MovementInputBridge.setBeforeMoveInputHook(null);
+        MovementInputBridge.setAfterMoveInputHook(null);
         MovementInputBridge.setDirectYawPhysics(true);
         MovementInputBridge.uninstall();
         removePacketHandler();
@@ -371,6 +374,7 @@ public final class YozakuraEventBridge {
         try {
             EventManager.call(update);
             RotationExitState.apply(update);
+            EventManager.call(new RotationResolvedEvent(update));
             BridgeDebug.logUpdate("forge", "PRE_AFTER_EVENT", update, false);
             RotationState.applyState(update.isRotated(), update.getNewYaw(), update.getNewPitch(),
                     update.getPreYaw(), update.isRotating(), update.isMoveFix());
@@ -409,24 +413,7 @@ public final class YozakuraEventBridge {
 
     private void dispatchSafeWalk() {
         SafeWalkEvent safeWalk = EventManager.call(new SafeWalkEvent(false));
-        if (safeWalk.isSafeWalk()) {
-            KeyBinding.setKeyBindState(mc.gameSettings.keyBindSneak.getKeyCode(), true);
-            forcedSneak = true;
-        } else {
-            releaseForcedSneak();
-        }
-    }
-
-    private void releaseForcedSneak() {
-        if (!forcedSneak) {
-            return;
-        }
-        int key = mc.gameSettings.keyBindSneak.getKeyCode();
-        boolean physicallyDown = key < 0 ? Mouse.isButtonDown(key + 100) : Keyboard.isKeyDown(key);
-        if (!physicallyDown) {
-            KeyBinding.setKeyBindState(key, false);
-        }
-        forcedSneak = false;
+        MovementInputBridge.setSafeWalkRequested(safeWalk.isSafeWalk());
     }
 
     private void syncVisibleRotation() {
@@ -485,6 +472,11 @@ public final class YozakuraEventBridge {
     }
 
     private boolean yieldToStandaloneBridge() {
+        if (StandaloneClient.isBridgeOwnerActive()) {
+            removePacketHandler();
+            abandonStaleForgeBridge(null);
+            return true;
+        }
         if (mc.getNetHandler() == null) {
             return false;
         }
@@ -496,6 +488,7 @@ public final class YozakuraEventBridge {
         try {
             standalone = next.pipeline().get(PacketPipelineAnchors.STANDALONE_BRIDGE_HANDLER_NAME) != null;
         } catch (Throwable ignored) {
+            MovementInputBridge.setSafeWalkRequested(false);
             return true;
         }
         if (!standalone) {
@@ -511,12 +504,13 @@ public final class YozakuraEventBridge {
             abandonStaleForgeBridge(next);
             return true;
         } catch (Throwable ignored) {
+            MovementInputBridge.setSafeWalkRequested(false);
             return true;
         }
     }
 
     private void abandonStaleForgeBridge(Channel standaloneChannel) {
-        releaseForcedSneak();
+        MovementInputBridge.setSafeWalkRequested(false);
         if (channel == standaloneChannel) {
             channel = null;
         }
@@ -622,6 +616,7 @@ public final class YozakuraEventBridge {
         private final Queue<DelayedPlayerPacket> delayedPlayerPackets = new ArrayDeque<DelayedPlayerPacket>();
         private final PlayerPacketTickGate playerPacketTickGate = new PlayerPacketTickGate();
         private volatile ChannelHandlerContext handlerContext;
+        private long pendingPlayerPacketGeneration;
         private int currentClickWindowPackets;
         private int readyClickWindowPackets;
         private boolean hasSentSilentRotation;
@@ -633,6 +628,7 @@ public final class YozakuraEventBridge {
         public void handlerAdded(ChannelHandlerContext ctx) throws Exception {
             handlerContext = ctx;
             super.handlerAdded(ctx);
+            drainPendingPlayerPacketTick(ctx);
         }
 
         @Override
@@ -643,15 +639,17 @@ public final class YozakuraEventBridge {
             }
             if (msg instanceof Packet<?>) {
                 Packet<?> packet = (Packet<?>) msg;
-                boolean skipPacketEvent = consumeNoEvent(packet);
+                PacketBridgeSupport.NoEventMarker noEventMarker =
+                        PacketBridgeSupport.consumeNoEventMarker(packet);
+                if (noEventMarker.isAlreadyBridgeProcessed()) {
+                    super.write(ctx, msg, promise);
+                    return;
+                }
+                boolean skipPacketEvent = noEventMarker.isMarked();
+                long writeId = noEventMarker.getWriteId();
+                boolean preserveOriginalPacketOrder = false;
                 if (skipPacketEvent) {
                     BridgeDebug.logPacket("forge", "SEND_NO_EVENT", packet, false);
-                }
-                if (packet instanceof C0BPacketEntityAction
-                        && MovementInputBridge.shouldBlockSprintPacket((C0BPacketEntityAction) packet)) {
-                    BridgeDebug.logPacket("forge", "SEND_BLOCKED_SPRINT", packet, false);
-                    completeDroppedWrite(promise);
-                    return;
                 }
                 if (!skipPacketEvent) {
                     BridgeDebug.logPacket("forge", "SEND_IN", packet, false);
@@ -661,19 +659,24 @@ public final class YozakuraEventBridge {
                         completeDroppedWrite(promise);
                         return;
                     }
+                    PacketAcceptedEvent accepted = new PacketAcceptedEvent(packet);
+                    EventManager.call(accepted);
+                    writeId = accepted.getWriteId();
+                    preserveOriginalPacketOrder = accepted.isOriginalPacketOrderRequired();
                 }
 
-                if (isPostSensitiveAction(packet)) {
-                    queueCurrentActionPacket(packet, promise);
+                observePacketWrite(ctx, packet, promise, writeId);
+                if (!skipPacketEvent && !preserveOriginalPacketOrder && isPostSensitiveAction(packet)) {
+                    queueCurrentActionPacket(packet, promise, writeId);
                     return;
                 }
-                if (packet instanceof net.minecraft.network.play.client.C0DPacketCloseWindow) {
+                if (!skipPacketEvent && packet instanceof net.minecraft.network.play.client.C0DPacketCloseWindow) {
                     if (currentClickWindowPackets > 0) {
-                        queueCurrentActionPacket(packet, promise);
+                        queueCurrentActionPacket(packet, promise, writeId);
                         return;
                     }
                     if (readyClickWindowPackets > 0) {
-                        queueReadyActionPacket(packet, promise);
+                        queueReadyActionPacket(packet, promise, writeId);
                         return;
                     }
                 }
@@ -681,26 +684,42 @@ public final class YozakuraEventBridge {
                 if (packet instanceof C03PacketPlayer) {
                     if (rotation.isPreInProgress()) {
                         delayedPlayerPackets.add(new DelayedPlayerPacket((C03PacketPlayer) packet, promise,
-                                rotation.getGeneration()));
+                                rotation.getGeneration(), writeId));
                         BridgeDebug.logPacketDetail("forge", "SEND_PLAYER_DELAYED_QUEUE", packet, false,
                                 describeRotationState(rotation));
                         return;
                     }
-                    writePlayerPacket(ctx, (C03PacketPlayer) packet, promise, rotation);
+                    writePlayerPacket(ctx, (C03PacketPlayer) packet, promise, rotation, writeId);
                     return;
                 }
 
                 markSent(packet);
                 BridgeDebug.logPacket("forge", "SEND_MARKED", packet, false);
                 if (YozakuraRuntime.blinkManager != null && YozakuraRuntime.blinkManager.isBlinking()
-                        && YozakuraRuntime.blinkManager.offerPacket(packet)) {
+                        && YozakuraRuntime.blinkManager.offerPacket(packet, promise, writeId)) {
                     BridgeDebug.logPacket("forge", "SEND_BLINK_BUFFERED", packet, false);
-                    completeDroppedWrite(promise);
                     return;
                 }
                 BridgeDebug.logPacket("forge", "SEND_OUT", packet, false);
             }
             super.write(ctx, msg, promise);
+        }
+
+        private void observePacketWrite(ChannelHandlerContext ctx, final Packet<?> packet,
+                                        ChannelPromise promise, final long writeId) {
+            if (ctx == null || packet == null || promise == null) {
+                return;
+            }
+            promise.addListener(new ChannelFutureListener() {
+                @Override
+                public void operationComplete(ChannelFuture future) {
+                    reportPacketWrite(packet, writeId, future.isSuccess());
+                }
+            });
+        }
+
+        private void reportPacketWrite(Packet<?> packet, long writeId, boolean success) {
+            EventManager.call(new PacketWriteEvent(packet, writeId, success));
         }
 
         @Override
@@ -737,7 +756,7 @@ public final class YozakuraEventBridge {
         }
 
         private void writePlayerPacket(ChannelHandlerContext ctx, C03PacketPlayer packet, ChannelPromise promise,
-                                       ForgeRotationPublication.Snapshot rotation) throws Exception {
+                                       ForgeRotationPublication.Snapshot rotation, long writeId) throws Exception {
             boolean playerTickAdvanced = playerPacketTickGate.consumeNextPlayerPacket();
             if (playerTickAdvanced) {
                 flushReadyActionPackets(ctx);
@@ -752,9 +771,8 @@ public final class YozakuraEventBridge {
                 markSent(rewritten);
                 BridgeDebug.logPacket("forge", "SEND_MARKED", rewritten, false);
                 if (YozakuraRuntime.blinkManager != null && YozakuraRuntime.blinkManager.isBlinking()
-                        && YozakuraRuntime.blinkManager.offerPacket(rewritten)) {
+                        && YozakuraRuntime.blinkManager.offerPacket(rewritten, promise, writeId)) {
                     BridgeDebug.logPacket("forge", "SEND_BLINK_BUFFERED", rewritten, false);
-                    completeDroppedWrite(promise);
                 } else {
                     super.write(ctx, rewritten, promise);
                 }
@@ -764,9 +782,8 @@ public final class YozakuraEventBridge {
                 markSent(packet);
                 BridgeDebug.logPacket("forge", "SEND_MARKED", packet, false);
                 if (YozakuraRuntime.blinkManager != null && YozakuraRuntime.blinkManager.isBlinking()
-                        && YozakuraRuntime.blinkManager.offerPacket(packet)) {
+                        && YozakuraRuntime.blinkManager.offerPacket(packet, promise, writeId)) {
                     BridgeDebug.logPacket("forge", "SEND_BLINK_BUFFERED", packet, false);
-                    completeDroppedWrite(promise);
                 } else {
                     BridgeDebug.logPacket("forge", "SEND_OUT", packet, false);
                     super.write(ctx, packet, promise);
@@ -779,22 +796,48 @@ public final class YozakuraEventBridge {
         }
 
         void markNextPlayerPacketTick(final long generation) {
-            final ChannelHandlerContext ctx = handlerContext;
-            if (ctx == null || generation <= 0L) {
+            if (generation <= 0L) {
                 return;
             }
+            storePendingPlayerPacketGeneration(generation);
+            ChannelHandlerContext current = handlerContext;
+            if (current == null) {
+                current = handlerContext;
+                if (current == null) {
+                    return;
+                }
+            }
+            final ChannelHandlerContext ctx = current;
             Runnable markerTask = new Runnable() {
                 @Override
                 public void run() {
-                    if (handlerContext == ctx && ctx.channel().isActive()) {
-                        playerPacketTickGate.markNextPlayerPacket(generation);
-                    }
+                    drainPendingPlayerPacketTick(ctx);
                 }
             };
             if (ctx.executor().inEventLoop()) {
                 markerTask.run();
             } else {
                 ctx.executor().execute(markerTask);
+            }
+        }
+
+        private synchronized void storePendingPlayerPacketGeneration(long generation) {
+            if (generation > pendingPlayerPacketGeneration) {
+                pendingPlayerPacketGeneration = generation;
+            }
+        }
+
+        private void drainPendingPlayerPacketTick(ChannelHandlerContext ctx) {
+            if (ctx == null || handlerContext != ctx || !ctx.channel().isActive()) {
+                return;
+            }
+            long generation;
+            synchronized (this) {
+                generation = pendingPlayerPacketGeneration;
+                pendingPlayerPacketGeneration = 0L;
+            }
+            if (generation > 0L) {
+                playerPacketTickGate.markNextPlayerPacket(generation);
             }
         }
 
@@ -837,9 +880,7 @@ public final class YozakuraEventBridge {
                     || packet instanceof net.minecraft.network.play.client.C08PacketPlayerBlockPlacement
                     || packet instanceof net.minecraft.network.play.client.C09PacketHeldItemChange
                     || packet instanceof net.minecraft.network.play.client.C0APacketAnimation
-                    || packet instanceof net.minecraft.network.play.client.C0BPacketEntityAction
-                    || packet instanceof net.minecraft.network.play.client.C0EPacketClickWindow
-                    || packet instanceof net.minecraft.network.play.client.C13PacketPlayerAbilities;
+                    || packet instanceof net.minecraft.network.play.client.C0EPacketClickWindow;
         }
 
         private void onRotationPublished(final ForgeRotationPublication.Snapshot published) {
@@ -872,7 +913,7 @@ public final class YozakuraEventBridge {
                     && delayed.requiredGeneration <= published.getGeneration()) {
                 delayedPlayerPackets.poll();
                 try {
-                    writePlayerPacket(ctx, delayed.packet, delayed.promise, published);
+                    writePlayerPacket(ctx, delayed.packet, delayed.promise, published, delayed.writeId);
                 } catch (Throwable throwable) {
                     if (delayed.promise != null) {
                         delayed.promise.tryFailure(throwable);
@@ -890,16 +931,16 @@ public final class YozakuraEventBridge {
                     + " activePre=" + (activePreUpdate != null);
         }
 
-        private void queueCurrentActionPacket(Packet<?> packet, ChannelPromise promise) {
-            delayedPackets.addCurrent(new DelayedPacket(packet, promise));
+        private void queueCurrentActionPacket(Packet<?> packet, ChannelPromise promise, long writeId) {
+            delayedPackets.addCurrent(new DelayedPacket(packet, promise, writeId));
             if (isClickWindowPacket(packet)) {
                 currentClickWindowPackets++;
             }
             BridgeDebug.logPacket("forge", "SEND_ACTION_QUEUE", packet, false);
         }
 
-        private void queueReadyActionPacket(Packet<?> packet, ChannelPromise promise) {
-            delayedPackets.addReady(new DelayedPacket(packet, promise));
+        private void queueReadyActionPacket(Packet<?> packet, ChannelPromise promise, long writeId) {
+            delayedPackets.addReady(new DelayedPacket(packet, promise, writeId));
             if (isClickWindowPacket(packet)) {
                 readyClickWindowPackets++;
             }
@@ -949,8 +990,8 @@ public final class YozakuraEventBridge {
             markSent(delayed.packet);
             BridgeDebug.logPacketDetail("forge", "SEND_ACTION_OUT", delayed.packet, false, source);
             if (YozakuraRuntime.blinkManager != null && YozakuraRuntime.blinkManager.isBlinking()
-                    && YozakuraRuntime.blinkManager.offerPacket(delayed.packet)) {
-                completeDroppedWrite(delayed.promise);
+                    && YozakuraRuntime.blinkManager.offerPacket(delayed.packet, delayed.promise,
+                    delayed.writeId)) {
                 BridgeDebug.logPacketDetail("forge", "SEND_ACTION_BLINK_BUFFERED", delayed.packet, false,
                         source);
                 return;
@@ -988,6 +1029,9 @@ public final class YozakuraEventBridge {
 
         private void resetHandlerState() {
             handlerContext = null;
+            synchronized (this) {
+                pendingPlayerPacketGeneration = 0L;
+            }
             playerPacketTickGate.clear();
             currentClickWindowPackets = 0;
             readyClickWindowPackets = 0;
@@ -1009,10 +1053,12 @@ public final class YozakuraEventBridge {
         private final class DelayedPacket {
             private final Packet<?> packet;
             private final ChannelPromise promise;
+            private final long writeId;
 
-            private DelayedPacket(Packet<?> packet, ChannelPromise promise) {
+            private DelayedPacket(Packet<?> packet, ChannelPromise promise, long writeId) {
                 this.packet = packet;
                 this.promise = promise;
+                this.writeId = writeId;
             }
         }
 
@@ -1020,11 +1066,14 @@ public final class YozakuraEventBridge {
             private final C03PacketPlayer packet;
             private final ChannelPromise promise;
             private final long requiredGeneration;
+            private final long writeId;
 
-            private DelayedPlayerPacket(C03PacketPlayer packet, ChannelPromise promise, long requiredGeneration) {
+            private DelayedPlayerPacket(C03PacketPlayer packet, ChannelPromise promise, long requiredGeneration,
+                                        long writeId) {
                 this.packet = packet;
                 this.promise = promise;
                 this.requiredGeneration = requiredGeneration;
+                this.writeId = writeId;
             }
         }
     }

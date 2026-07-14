@@ -87,6 +87,41 @@ public class StandaloneShutdownThreadContractTest {
                         .contains("recordTerminalBridgeFailure(\"Standalone direct teardown failed\""));
     }
 
+    @Test
+    public void uninjectAndSameLoaderReinjectionWaitForThePriorBridgeToStop() throws IOException {
+        String client = source("src/main/java/gq/yozakura/core/StandaloneClient.java");
+        int uninjectBegin = client.indexOf("    public static void unInject() {");
+        int uninjectEnd = client.indexOf("    public static void shutdownForReinjection() {", uninjectBegin);
+        int requestBegin = client.indexOf("    private void requestStandaloneShutdown(ClassLoader loader) {");
+        int requestEnd = client.indexOf("    private boolean isStandaloneShutdownComplete", requestBegin);
+
+        assertTrue("unInject must begin the same owned teardown path instead of only clearing a liveness flag",
+                uninjectBegin >= 0 && uninjectEnd > uninjectBegin
+                        && client.substring(uninjectBegin, uninjectEnd).contains("shutdownForReinjection();"));
+        assertTrue("A same-loader pump must be asked to shut down and joined before another instance can take ownership",
+                requestBegin >= 0 && requestEnd > requestBegin
+                        && client.substring(requestBegin, requestEnd)
+                        .contains("if (loader == StandaloneClient.class.getClassLoader())")
+                        && client.substring(requestBegin, requestEnd).contains("shutdownForReinjection();"));
+    }
+
+    @Test
+    public void initializationRollbackKeepsOwnershipUntilTheStartedPumpHasTornDown() throws IOException {
+        String client = source("src/main/java/gq/yozakura/core/StandaloneClient.java");
+        int rollbackBegin = client.indexOf("    private void rollbackFailedInitialization() {");
+        int rollbackEnd = client.indexOf("    private void clearActiveInstanceIfOwner() {", rollbackBegin);
+
+        assertTrue("Rollback must distinguish work that has not started a pump from a live bridge that still owns hooks",
+                rollbackBegin >= 0 && rollbackEnd > rollbackBegin
+                        && client.substring(rollbackBegin, rollbackEnd).contains("if (!pumpStarted)"));
+        assertTrue("A rollback already on the Minecraft thread must tear down synchronously before releasing ownership",
+                client.substring(rollbackBegin, rollbackEnd).contains("mc.isCallingFromMinecraftThread()")
+                        && client.substring(rollbackBegin, rollbackEnd).contains("bridge.shutdown();"));
+        assertTrue("An unsuccessful synchronous rollback must preserve a process-wide terminal failure marker",
+                client.substring(rollbackBegin, rollbackEnd)
+                        .contains("recordTerminalBridgeFailure(\"Standalone initialization rollback failed\""));
+    }
+
     private static String source(String path) throws IOException {
         return new String(Files.readAllBytes(Paths.get(path)), StandardCharsets.UTF_8);
     }

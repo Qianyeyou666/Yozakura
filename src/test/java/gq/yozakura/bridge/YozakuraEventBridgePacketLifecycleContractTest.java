@@ -12,25 +12,32 @@ import static org.junit.Assert.assertTrue;
 
 public class YozakuraEventBridgePacketLifecycleContractTest {
     @Test
-    public void droppedOutboundPacketsAlwaysCompleteTheirPromise() throws IOException {
+    public void cancelledOutboundPacketsCompleteTheirPromiseWithoutDroppingSprintState() throws IOException {
         String source = source();
 
-        assertTrue("Blocked sprint packets must complete the caller promise",
-                source.contains("completeDroppedWrite(promise);"));
+        assertTrue("A cancelled packet must still complete its caller promise",
+                source.contains("if (event.isCancelled())") && source.contains("completeDroppedWrite(promise);"));
         assertTrue("The dropped-write helper must complete without throwing on an already-finished promise",
                 source.contains("promise.trySuccess();"));
+        assertFalse("Sprint state packets must retain their native C0B lifecycle",
+                source.contains("shouldBlockSprintPacket") || source.contains("SEND_BLOCKED_SPRINT"));
     }
 
     @Test
     public void noEventPlayerPacketsStillPassThroughSilentRotationRewrite() throws IOException {
         String write = writeMethod(source());
-        int noEventBranch = write.indexOf("consumeNoEvent(packet)");
+        int noEventBranch = write.indexOf("consumeNoEventMarker(packet)");
         int packetEventDispatch = write.indexOf("new PacketEvent(EventType.SEND, packet)");
-        String noEventSection = write.substring(noEventBranch, packetEventDispatch);
+
+        assertTrue("The bridge must consume structured no-event replay metadata", noEventBranch >= 0);
+        assertTrue("Packet-event dispatch must remain after no-event metadata is resolved",
+                packetEventDispatch > noEventBranch);
+        int regularNoEventBranch = write.indexOf("boolean skipPacketEvent", noEventBranch);
+        String noEventSection = write.substring(regularNoEventBranch, packetEventDispatch);
 
         assertTrue("The no-event marker must be tracked separately from packet processing",
                 noEventSection.contains("skipPacketEvent"));
-        assertFalse("No-event packets must not bypass rotation rewrite and packet lifecycle handling",
+        assertFalse("Ordinary no-event packets must not bypass rotation rewrite and packet lifecycle handling",
                 noEventSection.contains("super.write(ctx, msg, promise)"));
     }
 
@@ -98,9 +105,10 @@ public class YozakuraEventBridgePacketLifecycleContractTest {
         assertTrue("The final listener rotation must be published before PRE is released",
                 publish > dispatch && finishPre > publish);
 
-        assertTrue("Post-sensitive actions must enter a two-tick batch before Blink or raw Netty handling",
-                write.contains("if (isPostSensitiveAction(packet))")
-                        && write.contains("queueCurrentActionPacket(packet, promise);"));
+        assertTrue("Post-sensitive actions must enter a two-tick batch unless their accepted lifecycle explicitly preserves vanilla order",
+                write.contains("preserveOriginalPacketOrder = accepted.isOriginalPacketOrderRequired();")
+                        && write.contains("if (!skipPacketEvent && !preserveOriginalPacketOrder && isPostSensitiveAction(packet))")
+                        && write.contains("queueCurrentActionPacket(packet, promise, writeId);"));
         String actionClassifier = method(source,
                 "        private boolean isPostSensitiveAction(Packet<?> packet) {",
                 "        private void onRotationPublished(");
@@ -144,12 +152,28 @@ public class YozakuraEventBridgePacketLifecycleContractTest {
     }
 
     @Test
+    public void retainsTheFirstPlayerPacketMarkerUntilTheForgeHandlerIsInstalled() throws IOException {
+        String handler = source().substring(source().indexOf("    private final class PacketBridgeHandler"));
+        int markerStart = handler.indexOf("        void markNextPlayerPacketTick(final long generation) {");
+        String marker = handler.substring(markerStart);
+
+        assertTrue("The first Forge C03 must retain its PRE generation while Netty installs the handler",
+                handler.contains("pendingPlayerPacketGeneration"));
+        assertTrue("handlerAdded must drain a retained first-player marker",
+                handler.contains("drainPendingPlayerPacketTick(ctx);"));
+        assertTrue("The generation must be saved before handlerContext is consulted",
+                marker.indexOf("storePendingPlayerPacketGeneration(generation);") >= 0
+                        && marker.indexOf("ChannelHandlerContext current = handlerContext;")
+                        > marker.indexOf("storePendingPlayerPacketGeneration(generation);"));
+    }
+
+    @Test
     public void delayedPromisesAreFailedOnDisconnectAndBlinkBuffersRewrittenC03() throws IOException {
         String source = source();
         String handler = source.substring(source.indexOf("    private final class PacketBridgeHandler"));
 
         int rewrite = handler.indexOf("C03PacketPlayer rewritten = rewritePlayerPacket(");
-        int blinkRewritten = handler.indexOf("offerPacket(rewritten)", rewrite);
+        int blinkRewritten = handler.indexOf("offerPacket(rewritten, promise, writeId)", rewrite);
         assertTrue("Blink must buffer the silent-rotation C03, not the original packet",
                 rewrite >= 0 && blinkRewritten > rewrite);
         assertTrue("Handler removal must fail queued promises",

@@ -74,8 +74,8 @@ public class StandalonePacketPipelineLifecycleContractTest {
                         && sensitive.contains("C02PacketUseEntity")
                         && sensitive.contains("C09PacketHeldItemChange"));
         assertTrue("The batch gate must run before any action can leave the bridge",
-                bridge.contains("if (isPostSensitiveAction(packet))")
-                        && bridge.contains("queueCurrentActionPacket(packet, promise, packetPendingPost);"));
+                bridge.contains("if (!skipPacketEvent && !preserveOriginalPacketOrder && isPostSensitiveAction(packet))")
+                        && bridge.contains("queueCurrentActionPacket(packet, promise, packetPendingPost, writeId);"));
         assertTrue("The bridge must flush ready actions to preceding delay handlers before C03",
                 bridge.contains("super.write(ctx, delayed.packet, delayed.promise);"));
         assertTrue("A bridge installed after FakeLag must be placed at packet_handler's tail-side boundary",

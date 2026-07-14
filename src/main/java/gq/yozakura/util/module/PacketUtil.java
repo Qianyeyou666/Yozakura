@@ -4,6 +4,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.network.INetHandler;
 import net.minecraft.network.Packet;
 import net.minecraft.network.ThreadQuickExitException;
+import io.netty.channel.ChannelPromise;
 import net.minecraft.network.play.INetHandlerPlayClient;
 import gq.yozakura.bridge.PacketBridgeSupport;
 
@@ -16,6 +17,12 @@ public class PacketUtil {
 
     public static void sendPacketNoEvent(Packet<?> packet) {
         PacketBridgeSupport.sendNoEvent(mc.getNetHandler().getNetworkManager(), packet);
+    }
+
+    public static void sendPacketNoEvent(Packet<?> packet, ChannelPromise promise, long writeId,
+                                         boolean alreadyBridgeProcessed) {
+        PacketBridgeSupport.sendNoEvent(mc.getNetHandler().getNetworkManager(), packet, promise, writeId,
+                alreadyBridgeProcessed);
     }
     public static void receivePacketNoEvent(Packet<?> packet) {
         if (packet == null)

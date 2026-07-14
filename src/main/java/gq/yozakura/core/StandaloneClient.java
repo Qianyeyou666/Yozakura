@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public final class StandaloneClient {
     private static final String ACTIVE_INSTANCE_PROPERTY = "yozakura.standalone.activeInstance";
+    private static final String FAILED_INSTANCE_PROPERTY = "yozakura.standalone.failedInstance";
     private static final long BRIDGE_SHUTDOWN_TIMEOUT_MS = 2000L;
     private static final long PREVIOUS_PUMP_JOIN_TIMEOUT_MS = 5000L;
     private static final int KEYBOARD_SIZE = 256;
@@ -32,6 +33,7 @@ public final class StandaloneClient {
     private static volatile boolean state;
     private static volatile boolean shutdownCompleted;
     private static volatile StandaloneClient activeClient;
+    private static volatile boolean terminalBridgeFailure;
     private final StandaloneEventBridge bridge = new StandaloneEventBridge();
     private final TokenAuthStandaloneBridge tokenAuthBridge = new TokenAuthStandaloneBridge();
     private final AtomicBoolean tickQueued = new AtomicBoolean();
@@ -44,11 +46,12 @@ public final class StandaloneClient {
     private int skippedPlayerTicks;
 
     public StandaloneClient() {
-        stopExistingStandalonePumps();
+        throwIfPreviousStandaloneBridgeFailed();
         if (state) {
             showInjectionSuccessAnimation();
             return;
         }
+        stopExistingStandalonePumps();
         YozakuraAuthGate.verifyOrThrow("standalone");
         Client.username = YozakuraAuthGate.getVerifiedUsername();
         boolean initialized = false;
@@ -76,27 +79,43 @@ public final class StandaloneClient {
         return state;
     }
 
+    public static boolean isBridgeOwnerActive() {
+        String owner = System.getProperty(ACTIVE_INSTANCE_PROPERTY);
+        return owner != null && !owner.isEmpty();
+    }
+
     public static void unInject() {
-        state = false;
+        shutdownForReinjection();
     }
 
     public static void shutdownForReinjection() {
         state = false;
         StandaloneClient client = activeClient;
         if (client == null) {
-            shutdownCompleted = true;
+            if (isBridgeOwnerActive()) {
+                terminalBridgeFailure = true;
+                shutdownCompleted = false;
+                System.setProperty(FAILED_INSTANCE_PROPERTY, System.getProperty(ACTIVE_INSTANCE_PROPERTY));
+            } else {
+                shutdownCompleted = true;
+            }
             return;
         }
         client.running = false;
         if (mc.isCallingFromMinecraftThread()) {
-            client.bridge.shutdown();
-            shutdownCompleted = true;
-            activeClient = null;
+            if (!shutdownCompleted) {
+                try {
+                    client.bridge.shutdown();
+                    client.completeSuccessfulShutdown();
+                } catch (Throwable throwable) {
+                    client.recordTerminalBridgeFailure("Standalone direct teardown failed", throwable);
+                }
+            }
         }
     }
 
     public static boolean isShutdownComplete() {
-        return shutdownCompleted;
+        return shutdownCompleted && !hasTerminalBridgeFailure();
     }
 
     public static void showInjectionSuccessAnimation() {
@@ -147,13 +166,53 @@ public final class StandaloneClient {
     private void rollbackFailedInitialization() {
         running = false;
         state = false;
+        if (!pumpStarted) {
+            completeSuccessfulShutdown();
+            return;
+        }
+        if (!mc.isCallingFromMinecraftThread()) {
+            return;
+        }
+        try {
+            bridge.shutdown();
+            completeSuccessfulShutdown();
+        } catch (Throwable throwable) {
+            recordTerminalBridgeFailure("Standalone initialization rollback failed", throwable);
+        }
+    }
+
+    private void completeSuccessfulShutdown() {
+        shutdownCompleted = true;
         if (activeClient == this) {
             activeClient = null;
         }
+        clearActiveInstanceIfOwner();
+    }
+
+    private void recordTerminalBridgeFailure(String message, Throwable throwable) {
+        terminalBridgeFailure = true;
+        running = false;
+        state = false;
+        shutdownCompleted = false;
+        System.setProperty(FAILED_INSTANCE_PROPERTY, instanceId);
+        log(message, throwable);
+    }
+
+    private static boolean hasTerminalBridgeFailure() {
+        String failedInstance = System.getProperty(FAILED_INSTANCE_PROPERTY);
+        return terminalBridgeFailure || (failedInstance != null && !failedInstance.isEmpty());
+    }
+
+    private static void throwIfPreviousStandaloneBridgeFailed() {
+        if (hasTerminalBridgeFailure()) {
+            throw new IllegalStateException("A previous standalone bridge failed to tear down; restart Minecraft before reinjecting");
+        }
+    }
+
+    private void clearActiveInstanceIfOwner() {
         if (instanceId.equals(System.getProperty(ACTIVE_INSTANCE_PROPERTY))) {
             System.clearProperty(ACTIVE_INSTANCE_PROPERTY);
         }
-        shutdownCompleted = !pumpStarted;
     }
 
     private void startMainThreadPump() {
@@ -165,15 +224,14 @@ public final class StandaloneClient {
                         queueTick();
                         sleep(10L);
                     }
-                    if (!shutdownCompleted) {
-                        shutdownBridgeOnMainThread();
-                        shutdownCompleted = true;
-                    }
-                    if (activeClient == StandaloneClient.this) {
-                        activeClient = null;
+                    if (!terminalBridgeFailure) {
+                        if (!shutdownCompleted) {
+                            shutdownBridgeOnMainThread();
+                            completeSuccessfulShutdown();
+                        }
                     }
                 } catch (Throwable throwable) {
-                    log("Standalone bridge shutdown failed", throwable);
+                    recordTerminalBridgeFailure("Standalone bridge emergency teardown failed", throwable);
                 }
             }
         }, "Yozakura Standalone Pump");
@@ -184,14 +242,10 @@ public final class StandaloneClient {
     }
 
     private void stopExistingStandalonePumps() {
-        ClassLoader currentLoader = StandaloneClient.class.getClassLoader();
         Thread currentThread = Thread.currentThread();
         for (Thread thread : Thread.getAllStackTraces().keySet()) {
             if (thread == null || thread == currentThread || !thread.isAlive()
                     || !"Yozakura Standalone Pump".equals(thread.getName())) {
-                continue;
-            }
-            if (thread.getContextClassLoader() == currentLoader) {
                 continue;
             }
             requestStandaloneShutdown(thread.getContextClassLoader());
@@ -220,7 +274,11 @@ public final class StandaloneClient {
     }
 
     private void requestStandaloneShutdown(ClassLoader loader) {
-        if (loader == null || loader == StandaloneClient.class.getClassLoader()) {
+        if (loader == null) {
+            return;
+        }
+        if (loader == StandaloneClient.class.getClassLoader()) {
+            shutdownForReinjection();
             return;
         }
         try {
@@ -295,7 +353,7 @@ public final class StandaloneClient {
             });
         } catch (Throwable throwable) {
             tickQueued.set(false);
-            runTick();
+            stopForTickSchedulingFailure(throwable);
         }
     }
 
@@ -322,10 +380,26 @@ public final class StandaloneClient {
                 ConfigBridge.autoSaveTick();
             }
         } catch (Throwable throwable) {
-            if (!tickFailureLogged) {
-                tickFailureLogged = true;
-                log("Standalone tick failed", throwable);
-            }
+            stopForTickFailure(throwable);
+        }
+    }
+
+    private void stopForTickSchedulingFailure(Throwable throwable) {
+        recordTerminalBridgeFailure("Standalone tick scheduling failed", throwable);
+    }
+
+    private void stopForTickFailure(Throwable throwable) {
+        running = false;
+        state = false;
+        if (!tickFailureLogged) {
+            tickFailureLogged = true;
+            log("Standalone tick failed", throwable);
+        }
+        try {
+            bridge.shutdown();
+            completeSuccessfulShutdown();
+        } catch (Throwable teardownFailure) {
+            recordTerminalBridgeFailure("Standalone bridge emergency teardown failed", teardownFailure);
         }
     }
 

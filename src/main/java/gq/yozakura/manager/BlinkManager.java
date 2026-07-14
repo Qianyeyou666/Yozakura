@@ -17,31 +17,46 @@ import gq.yozakura.event.bus.types.EventType;
 import gq.yozakura.event.bridge.PacketEvent;
 import gq.yozakura.event.bridge.TickEvent;
 import gq.yozakura.util.module.PacketUtil;
+import io.netty.channel.ChannelPromise;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.nio.channels.ClosedChannelException;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
 public class BlinkManager {
     public static Minecraft mc = Minecraft.getMinecraft();
     private BlinkModules blinkModule = BlinkModules.NONE;
     private boolean blinking = false;
-    private final Deque<Packet<?>> blinkedPackets = new ConcurrentLinkedDeque<>();
+    private final Deque<BlinkEntry> blinkedPackets = new ConcurrentLinkedDeque<BlinkEntry>();
 
     public synchronized boolean offerPacket(Packet<?> packet) {
+        return offerPacket(packet, null, 0L, false);
+    }
+
+    public synchronized boolean offerPacket(Packet<?> packet, long writeId) {
+        return offerPacket(packet, null, writeId, false);
+    }
+
+    public synchronized boolean offerPacket(Packet<?> packet, ChannelPromise promise, long writeId) {
+        return offerPacket(packet, promise, writeId, true);
+    }
+
+    private boolean offerPacket(Packet<?> packet, ChannelPromise promise, long writeId,
+                                boolean alreadyBridgeProcessed) {
         if (!this.blinking || this.blinkModule == BlinkModules.NONE
                 || packet instanceof C00PacketKeepAlive || packet instanceof C01PacketChatMessage) {
             return false;
         } else if (this.blinkedPackets.isEmpty() && packet instanceof C0FPacketConfirmTransaction) {
             return false;
         } else {
-            this.blinkedPackets.offer(packet);
+            this.blinkedPackets.offer(new BlinkEntry(packet, promise, writeId, alreadyBridgeProcessed));
             return true;
         }
     }
 
     public boolean setBlinkState(boolean state, BlinkModules module) {
-        Deque<Packet<?>> pending = null;
+        Deque<BlinkEntry> pending = null;
         synchronized (this) {
             if (module == null || module == BlinkModules.NONE) {
                 return false;
@@ -63,18 +78,24 @@ public class BlinkManager {
             if (this.blinkedPackets.isEmpty()) {
                 return true;
             }
-            pending = new ArrayDeque<Packet<?>>();
-            Packet<?> packet;
+            pending = new ArrayDeque<BlinkEntry>();
+            BlinkEntry packet;
             while ((packet = this.blinkedPackets.poll()) != null) {
                 pending.offer(packet);
             }
         }
 
         if (Minecraft.getMinecraft().getNetHandler() == null) {
+            failBufferedPackets(pending, new ClosedChannelException());
             return true;
         }
-        for (Packet<?> blinkedPacket : pending) {
-            PacketUtil.sendPacketNoEvent(blinkedPacket);
+        for (BlinkEntry blinkedPacket : pending) {
+            try {
+                PacketUtil.sendPacketNoEvent(blinkedPacket.packet, blinkedPacket.promise,
+                        blinkedPacket.writeId, blinkedPacket.alreadyBridgeProcessed);
+            } catch (Throwable throwable) {
+                failBufferedPacket(blinkedPacket, throwable);
+            }
         }
         return true;
     }
@@ -94,13 +115,21 @@ public class BlinkManager {
         return blinking && blinkModule == module;
     }
 
-    public synchronized boolean discard(BlinkModules module) {
-        if (module == null || module == BlinkModules.NONE || blinkModule != module) {
-            return false;
+    public boolean discard(BlinkModules module) {
+        Deque<BlinkEntry> discarded;
+        synchronized (this) {
+            if (module == null || module == BlinkModules.NONE || blinkModule != module) {
+                return false;
+            }
+            blinking = false;
+            blinkModule = BlinkModules.NONE;
+            discarded = new ArrayDeque<BlinkEntry>();
+            BlinkEntry packet;
+            while ((packet = blinkedPackets.poll()) != null) {
+                discarded.offer(packet);
+            }
         }
-        blinking = false;
-        blinkModule = BlinkModules.NONE;
-        blinkedPackets.clear();
+        failBufferedPackets(discarded, new ClosedChannelException());
         return true;
     }
 
@@ -109,7 +138,7 @@ public class BlinkManager {
     }
 
     public synchronized long countMovement() {
-        return this.blinkedPackets.stream().filter(packet -> packet instanceof C03PacketPlayer).count();
+        return this.blinkedPackets.stream().filter(packet -> packet.packet instanceof C03PacketPlayer).count();
     }
 
     public synchronized boolean isBlinking() {
@@ -133,6 +162,37 @@ public class BlinkManager {
             if (mc.thePlayer != null && mc.thePlayer.isDead) {
                 this.setBlinkState(false, this.getBlinkingModule());
             }
+        }
+    }
+
+    private static void failBufferedPackets(Deque<BlinkEntry> packets, Throwable cause) {
+        if (packets == null) {
+            return;
+        }
+        BlinkEntry packet;
+        while ((packet = packets.poll()) != null) {
+            failBufferedPacket(packet, cause);
+        }
+    }
+
+    private static void failBufferedPacket(BlinkEntry packet, Throwable cause) {
+        if (packet != null && packet.promise != null) {
+            packet.promise.tryFailure(cause);
+        }
+    }
+
+    private static final class BlinkEntry {
+        private final Packet<?> packet;
+        private final ChannelPromise promise;
+        private final long writeId;
+        private final boolean alreadyBridgeProcessed;
+
+        private BlinkEntry(Packet<?> packet, ChannelPromise promise, long writeId,
+                           boolean alreadyBridgeProcessed) {
+            this.packet = packet;
+            this.promise = promise;
+            this.writeId = writeId;
+            this.alreadyBridgeProcessed = alreadyBridgeProcessed;
         }
     }
 }

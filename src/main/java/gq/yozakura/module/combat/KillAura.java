@@ -272,10 +272,7 @@ public class KillAura extends Module {
         this.spoofSlot = -1;
     }
 
-    private boolean startExpoBlock(boolean interact, float yaw, float pitch) {
-        if (interact && this.attackTarget != null) {
-            this.sendExpoInteractPackets(yaw, pitch);
-        }
+    private boolean startExpoBlock() {
         return this.sendUseItem();
     }
 
@@ -293,26 +290,6 @@ public class KillAura extends Module {
         this.blockTick = 0;
         this.autoBlockState = 0;
         this.clearBlockAnimationState();
-    }
-
-    private void sendExpoInteractPackets(float yaw, float pitch) {
-        if (this.attackTarget == null) {
-            return;
-        }
-        MovingObjectPosition mop = RotationUtil.rayTrace(this.attackTarget.getBox(), yaw, pitch, 6.0);
-        if (mop == null) {
-            return;
-        }
-        MinecraftAccessor.syncCurrentPlayItem(mc.playerController);
-        PacketUtil.sendPacket(
-                new C02PacketUseEntity(
-                        this.attackTarget.getEntity(),
-                        new Vec3(mop.hitVec.xCoord - this.attackTarget.getX(),
-                                mop.hitVec.yCoord - this.attackTarget.getY(),
-                                mop.hitVec.zCoord - this.attackTarget.getZ())
-                )
-        );
-        PacketUtil.sendPacket(new C02PacketUseEntity(this.attackTarget.getEntity(), Action.INTERACT));
     }
 
     private void refreshBlockAnimation(ItemStack itemStack, boolean resetRenderer) {
@@ -586,13 +563,6 @@ public class KillAura extends Module {
         return now - this.lastBlockAt > this.getBlockInterval();
     }
 
-    private boolean shouldInteractBeforeBlock(int mode, boolean attacked) {
-        return attacked && (this.manualAttackQueued
-                || mode == AUTOBLOCK_INTERACT
-                || mode == AUTOBLOCK_SWITCH
-                || mode == AUTOBLOCK_BLINK);
-    }
-
     private boolean shouldSpoofAutoBlockSlot(int mode, boolean attackReady) {
         return attackReady && (mode == AUTOBLOCK_SWITCH || mode == AUTOBLOCK_BLINK);
     }
@@ -621,7 +591,7 @@ public class KillAura extends Module {
             this.autoBlockState = 2;
         }
         if (attacked || !this.isPlayerBlocking()) {
-            boolean started = this.startExpoBlock(this.shouldInteractBeforeBlock(mode, attacked), yaw, pitch);
+            boolean started = this.startExpoBlock();
             if (started) {
                 this.autoBlockState = attacked ? 3 : 1;
             }
@@ -640,7 +610,7 @@ public class KillAura extends Module {
             if (mode == AUTOBLOCK_SWITCH) {
                 spoofed = this.spoofSlot(false);
             }
-            if (this.startExpoBlock(false, yaw, pitch)) {
+            if (this.startExpoBlock()) {
                 this.autoBlockState = 1;
             }
             if (spoofed || this.spoofSlot >= 0) {

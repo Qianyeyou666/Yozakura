@@ -35,7 +35,7 @@ public class StandaloneEventBridgeDelayedPacketOrderContractTest {
     }
 
     @Test
-    public void marksOnlyTheNativePlayerTickBeforeMovementProcessingInsteadOfEveryInputRefresh()
+    public void marksOnlyTheNativePlayerTickAfterMovementProcessingInsteadOfDuringPreDispatch()
             throws IOException {
         String bridge = source();
         String preDispatch = method(bridge,
@@ -43,15 +43,34 @@ public class StandaloneEventBridgeDelayedPacketOrderContractTest {
                 "    private void markNextPlayerPacketTick() {");
         String input = new String(Files.readAllBytes(Paths.get(
                 "src/main/java/gq/yozakura/bridge/MovementInputBridge.java")), StandardCharsets.UTF_8);
-        int dispatchPre = preDispatch.indexOf("dispatchPreUpdate();");
-        int markPlayerPacket = preDispatch.indexOf("markNextPlayerPacketTick();");
+        int physicsRotation = input.indexOf("applyRotationForPhysics(input);");
+        int nativeBoundaryMarker = input.indexOf("Runnable postInputHook = afterMoveInputHook;");
 
-        assertTrue("The one tick marker must be emitted immediately after the one PRE dispatch for that tick",
-                dispatchPre >= 0 && markPlayerPacket > dispatchPre);
-        assertFalse("A generic movement-input callback also runs for bridge-side input resets and cannot mark C03",
-                bridge.contains("MovementInputBridge.setBeforePlayerPacketHook("));
-        assertFalse("MovementInputBridge must remain input-only and must not own packet-tick callbacks",
+        assertFalse("PRE runs before MoveInput/Strafe/LivingUpdate listeners; it cannot consume the native C03 boundary",
+                preDispatch.contains("markNextPlayerPacketTick();"));
+        assertTrue("The native C03 marker must run after all bridge-side input events and physics preparation",
+                physicsRotation >= 0 && nativeBoundaryMarker > physicsRotation);
+        assertTrue("Standalone must own the post-input native-packet boundary explicitly",
+                bridge.contains("MovementInputBridge.setAfterMoveInputHook("));
+        assertFalse("The obsolete packet hook name must not return because it misdescribes the input boundary",
                 input.contains("beforePlayerPacketHook") || input.contains("setBeforePlayerPacketHook("));
+    }
+
+    @Test
+    public void replaysAnEarlyPlayerTickMarkerWhenTheNettyHandlerContextArrives() throws IOException {
+        String source = source();
+        String handler = source.substring(source.indexOf("    private final class PacketBridgeHandler"));
+        String marker = method(handler,
+                "        void markNextPlayerPacketTick(final long generation) {",
+                "        private synchronized void storePendingPlayerPacketGeneration(long generation) {");
+
+        assertTrue("A marker emitted while Netty is installing the handler must be retained",
+                handler.contains("pendingPlayerPacketGeneration"));
+        assertTrue("handlerAdded must replay a retained marker before the first native C03 can pass",
+                handler.contains("drainPendingPlayerPacketTick(ctx);"));
+        assertTrue("A new marker must be retained before it attempts to access the handler context",
+                marker.indexOf("storePendingPlayerPacketGeneration(generation);")
+                        < marker.indexOf("final ChannelHandlerContext ctx = current;"));
     }
 
     @Test
@@ -75,10 +94,13 @@ public class StandaloneEventBridgeDelayedPacketOrderContractTest {
                 actionClassifier.contains("C0BPacketEntityAction"));
         assertFalse("Ability state changes must not be delayed behind a movement packet",
                 actionClassifier.contains("C13PacketPlayerAbilities"));
-        assertTrue("Every Post-sensitive packet must enter the current tick batch before it can reach Netty",
-                packetBridgeWriteMethod(source).contains("if (isPostSensitiveAction(packet))")
+        assertTrue("Every Post-sensitive packet must enter the current tick batch unless its accepted lifecycle explicitly preserves vanilla order",
+                packetBridgeWriteMethod(source).contains(
+                                "preserveOriginalPacketOrder = accepted.isOriginalPacketOrderRequired();")
                         && packetBridgeWriteMethod(source).contains(
-                                "queueCurrentActionPacket(packet, promise, packetPendingPost);"));
+                                "if (!skipPacketEvent && !preserveOriginalPacketOrder && isPostSensitiveAction(packet))")
+                        && packetBridgeWriteMethod(source).contains(
+                                "queueCurrentActionPacket(packet, promise, packetPendingPost, writeId);"));
         assertTrue("Closing an inventory must follow an already queued click-window packet without batching alone",
                 packetBridgeWriteMethod(source).contains("packet instanceof net.minecraft.network.play.client.C0DPacketCloseWindow")
                         && source.contains("currentClickWindowPackets > 0")

@@ -202,7 +202,7 @@ public class Aimbot extends Module {
         }
         handleModeChange();
         if (silentReturning) {
-            if (mode.getValue().isSilent() && refreshTargetForCurrentInput()) {
+            if (mode.getValue().isSilent() && refreshTargetForCurrentInput(true)) {
                 finishSilentReturn();
             } else {
                 publishSilentReturn(event);
@@ -255,21 +255,29 @@ public class Aimbot extends Module {
     }
 
     private boolean refreshTargetForCurrentInput() {
+        return refreshTargetForCurrentInput(false);
+    }
+
+    private boolean refreshTargetForCurrentInput(boolean forceScan) {
         if (!conditionsMet()) {
             clearTargetState(mode.getValue().isSilent());
             nextTargetScanAt = 0L;
             return false;
         }
-        refreshTarget(System.currentTimeMillis());
+        refreshTarget(System.currentTimeMillis(), forceScan);
         return hasActiveTarget();
     }
 
     private void refreshTarget(long now) {
+        refreshTarget(now, false);
+    }
+
+    private void refreshTarget(long now, boolean forceScan) {
         if (target != null && !isTargetStillEligible()) {
             clearTargetState(mode.getValue().isSilent());
             nextTargetScanAt = now;
         }
-        if (now < nextTargetScanAt) {
+        if (!forceScan && now < nextTargetScanAt) {
             return;
         }
         nextTargetScanAt = now + sampleIntervalMillis();

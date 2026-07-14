@@ -1,6 +1,7 @@
 package gq.yozakura.module.world;
 
 import gq.yozakura.event.bridge.UpdateEvent;
+import gq.yozakura.event.bridge.RotationResolvedEvent;
 import gq.yozakura.manager.VisualRotationState;
 import gq.yozakura.util.module.BlockUtil;
 import gq.yozakura.util.module.ItemUtil;
@@ -13,6 +14,7 @@ import net.minecraft.util.EnumFacing;
 import net.minecraft.util.MathHelper;
 import net.minecraft.util.MovementInput;
 import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.world.World;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,8 +27,9 @@ final class BridgeAssistPrePlaceController {
     private static final String ROTATION_SOURCE = "BridgeAssist";
     private static final int ROTATION_PRIORITY = 1;
     private static final float MIN_LOOK_DOWN_PITCH = 70.0F;
-    private static final float MIN_PRE_PLACE_PITCH = 60.0F;
+    private static final float MIN_PRE_PLACE_PITCH = 61.0F;
     private static final float MAX_PRE_PLACE_PITCH = 90.0F;
+    private static final float PITCH_SAMPLE_STEP = 1.0F;
     private static final float MAX_YAW_STEP = 15.0F;
     private static final float MAX_PITCH_STEP = 20.0F;
 
@@ -35,7 +38,10 @@ final class BridgeAssistPrePlaceController {
     private final Option<Boolean> lookingDown;
     private final Option<Boolean> notMovingForward;
 
-    private MovingObjectPosition prePlaceMouseOver;
+    private PendingTarget pendingTarget;
+    private PreparedTarget preparedTarget;
+    private MovingObjectPosition injectedMouseOver;
+    private MovingObjectPosition previousMouseOver;
 
     BridgeAssistPrePlaceController(Minecraft mc, Option<Boolean> prePlace, Option<Boolean> lookingDown,
                                    Option<Boolean> notMovingForward) {
@@ -46,8 +52,8 @@ final class BridgeAssistPrePlaceController {
     }
 
     void onUpdate(UpdateEvent event) {
+        reset();
         if (!canPrepareTarget()) {
-            reset();
             return;
         }
 
@@ -55,32 +61,63 @@ final class BridgeAssistPrePlaceController {
         float basePitch = event.getNewPitch();
         TargetResult target = findTarget(baseYaw, basePitch, mc.playerController.getBlockReachDistance());
         if (target == null) {
-            reset();
             return;
         }
 
         float[] smoothed = smoothRotation(baseYaw, basePitch, target.yaw, target.pitch,
                 MAX_YAW_STEP, MAX_PITCH_STEP);
-        event.setRotation(smoothed[0], smoothed[1], ROTATION_PRIORITY);
-        VisualRotationState.publish(ROTATION_SOURCE, smoothed[0], smoothed[1], ROTATION_PRIORITY);
-
         MovingObjectPosition hit = RotationUtil.rayTrace(smoothed[0], smoothed[1],
                 mc.playerController.getBlockReachDistance(), 1.0F);
-        prePlaceMouseOver = isPrePlaceHit(hit, target) ? hit : null;
-        if (prePlaceMouseOver != null) {
-            mc.objectMouseOver = prePlaceMouseOver;
+        if (!isPrePlaceHit(hit, target)) {
+            return;
         }
+        if (!event.trySetRotation(smoothed[0], smoothed[1], ROTATION_PRIORITY)) {
+            return;
+        }
+        pendingTarget = new PendingTarget(mc.theWorld, mc.thePlayer.ticksExisted,
+                target.support, target.face, smoothed[0], smoothed[1]);
+    }
+
+    void onRotationResolved(RotationResolvedEvent event) {
+        PendingTarget target = pendingTarget;
+        pendingTarget = null;
+        if (target == null || !matchesResolvedRotation(target, event)) {
+            reset();
+            return;
+        }
+
+        MovingObjectPosition hit = resolveTargetHit(target.world, target.tick, target.support, target.face,
+                target.yaw, target.pitch);
+        if (hit == null) {
+            reset();
+            return;
+        }
+
+        VisualRotationState.publish(ROTATION_SOURCE, target.yaw, target.pitch, ROTATION_PRIORITY);
+        preparedTarget = new PreparedTarget(target.world, target.tick,
+                target.support, target.face, target.yaw, target.pitch);
+        installMouseOver(hit);
     }
 
     void onRightClick() {
-        if (ItemUtil.isBlock(mc.thePlayer.getHeldItem()) && prePlaceMouseOver != null) {
-            mc.objectMouseOver = prePlaceMouseOver;
+        PreparedTarget target = preparedTarget;
+        if (target == null) {
+            return;
         }
+        MovingObjectPosition hit = resolveTargetHit(target.world, target.tick, target.support, target.face,
+                target.yaw, target.pitch);
+        if (hit == null) {
+            reset();
+            return;
+        }
+        installMouseOver(hit);
     }
 
     void reset() {
-        prePlaceMouseOver = null;
+        pendingTarget = null;
+        preparedTarget = null;
         VisualRotationState.clearSource(ROTATION_SOURCE);
+        clearInjectedMouseOver();
     }
 
     private boolean canPrepareTarget() {
@@ -100,6 +137,50 @@ final class BridgeAssistPrePlaceController {
                 || input.moveForward <= 0.0F;
     }
 
+    private boolean matchesResolvedRotation(PendingTarget target, RotationResolvedEvent event) {
+        return event.isRotated()
+                && Float.compare(target.yaw, event.getYaw()) == 0
+                && Float.compare(target.pitch, event.getPitch()) == 0;
+    }
+
+    private MovingObjectPosition resolveTargetHit(World world, int tick, BlockPos support, EnumFacing face,
+                                                   float yaw, float pitch) {
+        if (mc.theWorld != world || mc.thePlayer.ticksExisted != tick || !canPrepareTarget()) {
+            return null;
+        }
+        if (BlockUtil.isReplaceable(support) || !BlockUtil.isReplaceable(support.offset(face))) {
+            return null;
+        }
+        MovingObjectPosition hit = RotationUtil.rayTrace(yaw, pitch,
+                mc.playerController.getBlockReachDistance(), 1.0F);
+        if (hit == null
+                || hit.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK
+                || !support.equals(hit.getBlockPos())
+                || face != hit.sideHit) {
+            return null;
+        }
+        return hit;
+    }
+
+    private void installMouseOver(MovingObjectPosition hit) {
+        if (injectedMouseOver == hit) {
+            mc.objectMouseOver = hit;
+            return;
+        }
+        clearInjectedMouseOver();
+        previousMouseOver = mc.objectMouseOver;
+        injectedMouseOver = hit;
+        mc.objectMouseOver = hit;
+    }
+
+    private void clearInjectedMouseOver() {
+        if (injectedMouseOver != null && mc.objectMouseOver == injectedMouseOver) {
+            mc.objectMouseOver = previousMouseOver;
+        }
+        injectedMouseOver = null;
+        previousMouseOver = null;
+    }
+
     private TargetResult findTarget(float yaw, float currentPitch, double reach) {
         AxisAlignedBB box = mc.thePlayer.getEntityBoundingBox();
         int standY = MathHelper.floor_double(box.minY) - 1;
@@ -117,15 +198,11 @@ final class BridgeAssistPrePlaceController {
         float bestPitch = Float.NaN;
         BlockPos bestSupport = null;
         EnumFacing bestFace = null;
-        for (float pitch = MIN_PRE_PLACE_PITCH; pitch <= MAX_PRE_PLACE_PITCH; ) {
-            float step = 1.0F + (float) (Math.random() * 2.0D - 1.0D) * 0.38F;
-            pitch += MathHelper.clamp_float(step, 0.4F, 1.8F);
-            float samplePitch = Math.min(pitch, MAX_PRE_PLACE_PITCH);
+        for (float samplePitch = MIN_PRE_PLACE_PITCH;
+             samplePitch <= MAX_PRE_PLACE_PITCH;
+             samplePitch += PITCH_SAMPLE_STEP) {
             MovingObjectPosition mop = RotationUtil.rayTrace(yaw, samplePitch, reach, 1.0F);
             if (mop == null || mop.sideHit == EnumFacing.UP || mop.sideHit == EnumFacing.DOWN) {
-                if (pitch >= MAX_PRE_PLACE_PITCH) {
-                    break;
-                }
                 continue;
             }
             BlockPos hitBlock = mop.getBlockPos();
@@ -140,9 +217,6 @@ final class BridgeAssistPrePlaceController {
                     }
                     break;
                 }
-            }
-            if (pitch >= MAX_PRE_PLACE_PITCH) {
-                break;
             }
         }
 
@@ -218,6 +292,43 @@ final class BridgeAssistPrePlaceController {
             this.pitch = pitch;
             this.support = support;
             this.face = face;
+        }
+    }
+
+    private static final class PreparedTarget {
+        final World world;
+        final int tick;
+        final BlockPos support;
+        final EnumFacing face;
+        final float yaw;
+        final float pitch;
+
+        PreparedTarget(World world, int tick, BlockPos support, EnumFacing face,
+                       float yaw, float pitch) {
+            this.world = world;
+            this.tick = tick;
+            this.support = support;
+            this.face = face;
+            this.yaw = yaw;
+            this.pitch = pitch;
+        }
+    }
+
+    private static final class PendingTarget {
+        final World world;
+        final int tick;
+        final BlockPos support;
+        final EnumFacing face;
+        final float yaw;
+        final float pitch;
+
+        PendingTarget(World world, int tick, BlockPos support, EnumFacing face, float yaw, float pitch) {
+            this.world = world;
+            this.tick = tick;
+            this.support = support;
+            this.face = face;
+            this.yaw = yaw;
+            this.pitch = pitch;
         }
     }
 }

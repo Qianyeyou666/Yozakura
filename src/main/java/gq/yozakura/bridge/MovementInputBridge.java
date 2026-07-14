@@ -4,13 +4,12 @@ import gq.yozakura.auth.YozakuraAuthGate;
 import gq.yozakura.event.bus.EventManager;
 import gq.yozakura.event.bridge.LivingUpdateEvent;
 import gq.yozakura.event.bridge.MoveInputEvent;
+import gq.yozakura.event.bridge.SneakInputEvent;
 import gq.yozakura.event.bridge.StrafeEvent;
 import gq.yozakura.manager.RotationState;
 import gq.yozakura.util.module.MoveUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
-import net.minecraft.client.settings.KeyBinding;
-import net.minecraft.network.play.client.C0BPacketEntityAction;
 import net.minecraft.util.MovementInput;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
@@ -20,16 +19,13 @@ import java.lang.reflect.Field;
 final class MovementInputBridge {
     private static final String HOOKED_INPUT_CLASS_SUFFIX = "MovementInputBridge$HookedMovementInput";
     private static final Minecraft mc = Minecraft.getMinecraft();
-    private static Field sprintToggleTimerField;
     private static boolean rotationApplied;
-    private static volatile boolean blockSprintStartThisTick;
-    private static boolean sprintKeySuppressed;
     private static boolean directYawPhysics = true;
-    private static int suppressedSprintKey = Integer.MIN_VALUE;
     private static float savedYaw;
     private static float savedPrevYaw;
     private static Runnable beforeMoveInputHook;
-    private static Runnable beforePlayerPacketHook;
+    private static Runnable afterMoveInputHook;
+    private static final SneakInputCoordinator sneakInputCoordinator = new SneakInputCoordinator();
 
     private MovementInputBridge() {
     }
@@ -57,14 +53,20 @@ final class MovementInputBridge {
         beforeMoveInputHook = hook;
     }
 
-    static void setBeforePlayerPacketHook(Runnable hook) {
-        beforePlayerPacketHook = hook;
+    static void setAfterMoveInputHook(Runnable hook) {
+        afterMoveInputHook = hook;
+    }
+
+    static void setSafeWalkRequested(boolean requested) {
+        sneakInputCoordinator.setSafeWalkRequested(requested);
     }
 
     static void uninstall() {
         restoreRotation();
         RotationState.clear();
-        beforePlayerPacketHook = null;
+        sneakInputCoordinator.clear();
+        beforeMoveInputHook = null;
+        afterMoveInputHook = null;
         EntityPlayerSP player = mc.thePlayer;
         if (player != null && player.movementInput instanceof HookedMovementInput) {
             MovementInput delegate = unwrapMovementInput(player.movementInput);
@@ -111,11 +113,8 @@ final class MovementInputBridge {
         EntityPlayerSP player = mc.thePlayer;
         if (player == null) {
             rotationApplied = false;
-            resetSprintState();
             return;
         }
-        enforceSprintState(player);
-        restoreSprintKey();
         restoreAppliedRotation(player);
     }
 
@@ -148,29 +147,19 @@ final class MovementInputBridge {
     }
 
     static void finishTick() {
-        restoreSprintKey();
-        resetSprintState();
-    }
-
-    static boolean shouldBlockSprintPacket(C0BPacketEntityAction packet) {
-        return packet != null
-                && blockSprintStartThisTick
-                && packet.getAction() == C0BPacketEntityAction.Action.START_SPRINTING;
-    }
-
-    private static void resetSprintState() {
-        blockSprintStartThisTick = false;
     }
 
     private static void afterVanillaInput(HookedMovementInput input) {
         if (!YozakuraAuthGate.allowRuntime("movement-input")) {
             restoreRotation();
+            sneakInputCoordinator.clear();
             return;
         }
         Runnable hook = beforeMoveInputHook;
         if (hook != null) {
             hook.run();
         }
+        resolveSneakInput(input);
         EventManager.call(new MoveInputEvent());
         applyFakeRotationMoveFix();
 
@@ -181,12 +170,29 @@ final class MovementInputBridge {
 
         LivingUpdateEvent livingUpdate = new LivingUpdateEvent();
         EventManager.call(livingUpdate);
-        updateSprintState(input);
         applyRotationForPhysics(input);
-        Runnable playerPacketHook = beforePlayerPacketHook;
-        if (playerPacketHook != null) {
-            playerPacketHook.run();
+        Runnable postInputHook = afterMoveInputHook;
+        if (postInputHook != null) {
+            postInputHook.run();
         }
+    }
+
+    private static void resolveSneakInput(HookedMovementInput input) {
+        boolean sampledSneak = input.sneak;
+        float rawForward = SneakInputCoordinator.toRawAxis(input.moveForward, sampledSneak);
+        float rawStrafe = SneakInputCoordinator.toRawAxis(input.moveStrafe, sampledSneak);
+        int tick = mc.thePlayer == null ? Integer.MIN_VALUE : mc.thePlayer.ticksExisted;
+        boolean physicalSneak = mc.gameSettings != null
+                && isPhysicalKeyDown(mc.gameSettings.keyBindSneak.getKeyCode());
+        SneakInputEvent event = new SneakInputEvent(tick, rawForward, rawStrafe, input.jump,
+                sampledSneak, physicalSneak);
+        EventManager.call(event);
+
+        SneakInputCoordinator.ResolvedInput resolved = sneakInputCoordinator.resolve(sampledSneak,
+                rawForward, rawStrafe, event.getIntent());
+        input.sneak = resolved.isSneaking();
+        input.moveForward = resolved.getForward();
+        input.moveStrafe = resolved.getStrafe();
     }
 
     private static void applyFakeRotationMoveFix() {
@@ -198,29 +204,6 @@ final class MovementInputBridge {
             return;
         }
         MoveUtil.fixStrafe(RotationState.getSmoothedYaw());
-    }
-
-    private static void updateSprintState(MovementInput input) {
-        EntityPlayerSP player = mc.thePlayer;
-        blockSprintStartThisTick = hasMovementRotation() && RotationState.getPriority() >= 0;
-        if (player != null && blockSprintStartThisTick) {
-            stopSprint(player);
-            suppressSprintKey();
-        }
-    }
-
-    private static void enforceSprintState(EntityPlayerSP player) {
-        if (blockSprintStartThisTick) {
-            stopSprint(player);
-        }
-    }
-
-    private static void stopSprint(EntityPlayerSP player) {
-        try {
-            player.setSprinting(false);
-            resetSprintToggleTimer(player);
-        } catch (Throwable ignored) {
-        }
     }
 
     private static void applyRotationForPhysics(MovementInput input) {
@@ -255,58 +238,12 @@ final class MovementInputBridge {
         rotationApplied = false;
     }
 
-    private static void suppressSprintKey() {
-        if (mc.gameSettings == null || mc.gameSettings.keyBindSprint == null) {
-            return;
-        }
-        int key = mc.gameSettings.keyBindSprint.getKeyCode();
-        sprintKeySuppressed = true;
-        suppressedSprintKey = key;
-        KeyBinding.setKeyBindState(key, false);
-    }
-
-    private static void restoreSprintKey() {
-        if (!sprintKeySuppressed) {
-            return;
-        }
-        int key = suppressedSprintKey;
-        sprintKeySuppressed = false;
-        suppressedSprintKey = Integer.MIN_VALUE;
-        if (key == Integer.MIN_VALUE) {
-            return;
-        }
+    private static boolean isPhysicalKeyDown(int key) {
         try {
-            boolean physicallyDown = key < 0 ? Mouse.isButtonDown(key + 100) : Keyboard.isKeyDown(key);
-            KeyBinding.setKeyBindState(key, physicallyDown);
+            return key < 0 ? Mouse.isCreated() && Mouse.isButtonDown(key + 100) : Keyboard.isKeyDown(key);
         } catch (Throwable ignored) {
-            KeyBinding.setKeyBindState(key, false);
+            return false;
         }
-    }
-
-    private static void resetSprintToggleTimer(EntityPlayerSP player) {
-        try {
-            Field field = getSprintToggleTimerField();
-            if (field != null) {
-                field.setInt(player, 0);
-            }
-        } catch (Throwable ignored) {
-        }
-    }
-
-    private static Field getSprintToggleTimerField() {
-        if (sprintToggleTimerField != null) {
-            return sprintToggleTimerField;
-        }
-        for (String name : new String[]{"sprintToggleTimer", "field_71156_d"}) {
-            try {
-                Field field = EntityPlayerSP.class.getDeclaredField(name);
-                field.setAccessible(true);
-                sprintToggleTimerField = field;
-                return sprintToggleTimerField;
-            } catch (Throwable ignored) {
-            }
-        }
-        return null;
     }
 
     private static final class HookedMovementInput extends MovementInput {

@@ -135,10 +135,22 @@ public class CombatModuleContractTest {
         int silentMode = update.indexOf("if (!mode.getValue().isSilent()", returning);
         String returnBlock = update.substring(returning, silentMode);
         assertTrue("A valid re-press must refresh/reacquire a silent target before cancelling the return path",
-                returnBlock.contains("mode.getValue().isSilent() && refreshTargetForCurrentInput()")
+                returnBlock.contains("mode.getValue().isSilent() && refreshTargetForCurrentInput(true)")
                         && returnBlock.contains("finishSilentReturn();"));
         assertTrue("No valid target must retain the existing return packet instead of emitting a stale normal rotation",
                 returnBlock.contains("publishSilentReturn(event);") && returnBlock.contains("return;"));
+    }
+
+    @Test
+    public void silentAimRechecksRangeImmediatelyWhileReturningToTheCamera() throws IOException {
+        String source = source("src/main/java/gq/yozakura/module/combat/Aimbot.java");
+        int begin = source.indexOf("    private void refreshTarget(long now");
+        int end = source.indexOf("    private void updateTickTarget(long now)", begin);
+        String refresh = source.substring(begin, end);
+
+        assertTrue("A target that re-enters range during the short silent return must bypass UpdateRate cooldown",
+                source.contains("private boolean refreshTargetForCurrentInput(boolean forceScan)")
+                        && refresh.contains("if (!forceScan && now < nextTargetScanAt)"));
     }
 
     @Test

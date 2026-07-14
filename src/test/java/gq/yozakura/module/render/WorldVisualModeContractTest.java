@@ -19,7 +19,7 @@ public class WorldVisualModeContractTest {
         assertTrue(source.contains("renderer.collect(entity);"));
         assertTrue(source.contains("renderer.renderMask(partialTicks);"));
         assertTrue(source.contains("renderer.composite();"));
-        assertTrue(source.contains("VisualPalette.nightBloom()"));
+        assertTrue(source.contains("ClickGUI.currentPalette()"));
     }
 
     @Test
@@ -32,7 +32,7 @@ public class WorldVisualModeContractTest {
         assertTrue(source.contains("renderer.collect(te.getPos());"));
         assertTrue(source.contains("renderer.renderMask(partialTicks);"));
         assertTrue(source.contains("renderer.composite();"));
-        assertTrue(source.contains("VisualPalette.nightBloom()"));
+        assertTrue(source.contains("ClickGUI.currentPalette()"));
     }
 
     private static String source(String path) throws IOException {

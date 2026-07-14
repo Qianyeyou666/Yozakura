@@ -17,7 +17,7 @@ public class TargetEspNightBloomContractTest {
 
         assertTrue(source.contains("NIGHT_BLOOM"));
         assertTrue(source.contains("drawNightBloom("));
-        assertTrue(source.contains("VisualPalette.nightBloom()"));
+        assertTrue(source.contains("ClickGUI.currentPalette()"));
         assertTrue("Night Bloom must not inherit the legacy shader's hard-coded tints",
                 source.contains("current != EspMode.NIGHT_BLOOM"));
     }

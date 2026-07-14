@@ -46,21 +46,49 @@ public class LunarRendererInputBridgeContractTest {
         String renderer = source("src/main/java/gq/yozakura/bridge/StandaloneLivingRendererBridge.java");
 
         int apply = renderer.indexOf("VisualRotationSnapshot.apply(entity)");
-        int render = renderer.indexOf("delegate.doRender(entity, x, y, z, entityYaw, partialTicks)", apply);
+        int visualYaw = renderer.indexOf("rotationSnapshot.resolveEntityYaw(entityYaw, partialTicks)", apply);
+        int render = renderer.indexOf("delegate.doRender(entity, x, y, z, visualEntityYaw, partialTicks)", apply);
         int restore = renderer.indexOf("rotationSnapshot.restore(entity)", render);
-        assertTrue("Lunar's player renderer must see the published visual head/body rotation only while rendering",
-                apply >= 0 && render > apply && restore > render);
+        assertTrue("Lunar's player renderer must see one coherent temporary yaw/head/body rotation only while rendering",
+                apply >= 0 && visualYaw > apply && render > visualYaw && restore > render);
     }
 
     @Test
-    public void sprintPacketGatePublishesOneAtomicCrossThreadDecision() throws IOException {
+    public void playerVisualSnapshotIncludesTheYawFieldsUsedByLunarRenderers() throws IOException {
+        String renderer = source("src/main/java/gq/yozakura/bridge/StandaloneLivingRendererBridge.java");
+        int snapshotBegin = renderer.indexOf("    private static final class VisualRotationSnapshot {");
+        String snapshot = renderer.substring(snapshotBegin);
+
+        assertTrue("The snapshot must save and restore the local player's camera-yaw pair",
+                snapshot.contains("entity.prevRotationYaw") && snapshot.contains("entity.rotationYaw"));
+        assertTrue("While the delegate renders, camera yaw must match the visual rotation rather than the silent camera",
+                snapshot.contains("entity.prevRotationYaw = VisualRotationState.getPrevRotationYawHead();")
+                        && snapshot.contains("entity.rotationYaw = VisualRotationState.getRotationYawHead();"));
+        assertTrue("The render argument must interpolate the same temporary yaw pair",
+                snapshot.contains("MathHelper.wrapAngleTo180_float"));
+    }
+
+    @Test
+    public void standaloneTickDoesNotPersistVisualHeadOrBodyRotationOutsideTheRendererScope() throws IOException {
+        String bridge = source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java");
+        int preBegin = bridge.indexOf("    private void dispatchPreUpdate() {");
+        int preEnd = bridge.indexOf("    private void dispatchPreUpdateBeforePlayerPacket() {", preBegin);
+        String pre = bridge.substring(preBegin, preEnd);
+
+        assertFalse("The Lunar renderer owns temporary visual rotation; the tick bridge must not overwrite it persistently",
+                pre.contains("syncVisibleRotation();"));
+        assertFalse("A permanent head/body synchronization path races the renderer's snapshot restore",
+                bridge.contains("private void syncVisibleRotation()"));
+    }
+
+    @Test
+    public void movementCorrectionDoesNotSuppressVanillaSprintState() throws IOException {
         String movement = source("src/main/java/gq/yozakura/bridge/MovementInputBridge.java");
 
-        assertTrue("The client thread must publish one sprint-block decision to Netty",
-                movement.contains("private static volatile boolean blockSprintStartThisTick;"));
-        assertFalse("Netty must not combine independently published movement flags",
-                movement.contains("silentMovementThisTick")
-                        || movement.contains("sprintAllowedThisTick"));
+        assertFalse("Silent movement correction must leave the vanilla sprint key and state machine intact",
+                movement.contains("shouldBlockSprintPacket")
+                        || movement.contains("suppressSprintKey")
+                        || movement.contains("setSprinting(false)"));
     }
 
     private static String source(String path) throws IOException {

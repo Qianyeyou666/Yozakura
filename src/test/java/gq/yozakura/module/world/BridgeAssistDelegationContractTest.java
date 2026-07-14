@@ -13,7 +13,7 @@ import static org.junit.Assert.assertTrue;
 /**
  * Guards the event boundary of BridgeAssist.
  *
- * <p>Sneak decisions must remain driven by the real movement input event,
+ * <p>Sneak decisions must remain driven by the pre-legacy input frame,
  * while pre-place rotation remains a PRE-update concern. Neither controller
  * may reintroduce direct block placement or right-click cancellation.</p>
  */
@@ -26,9 +26,10 @@ public class BridgeAssistDelegationContractTest {
 
         assertTrue(bridgeAssist.contains("BridgeAssistSneakController"));
         assertTrue(bridgeAssist.contains("BridgeAssistPrePlaceController"));
-        assertTrue(bridgeAssist.contains("sneakController.onMoveInput()"));
+        assertTrue(bridgeAssist.contains("SneakInputEvent"));
+        assertTrue(bridgeAssist.contains("sneakController.onSneakInput(event)"));
         assertTrue(bridgeAssist.contains("prePlaceController.onUpdate(event)"));
-        assertTrue(sneakController.contains("MovementInput input"));
+        assertTrue(sneakController.contains("SneakInputEvent event"));
         assertTrue(prePlaceController.contains("UpdateEvent event"));
     }
 
@@ -50,14 +51,34 @@ public class BridgeAssistDelegationContractTest {
 
         assertTrue(bridgeAssist.contains("event.getType() != EventType.PRE"));
         assertTrue(bridgeAssist.contains("packet.getPlacedBlockDirection() != 255"));
-        assertTrue(bridgeAssist.contains("sneakController.onPlacementPacket();"));
+        assertTrue(bridgeAssist.contains("sneakController.onPlacementPacketAccepted(event.getWriteId());"));
+        assertTrue(bridgeAssist.contains("sneakController.onPlacementPacketCompleted(event.getWriteId(), event.isSuccess());"));
         assertTrue(bridgeAssist.contains("prePlaceController.onRightClick();"));
-        assertTrue(sneakController.contains("input.moveForward"));
-        assertTrue(sneakController.contains("input.jump"));
+        assertTrue(sneakController.contains("event.getRawForward"));
+        assertTrue(sneakController.contains("event.isJump"));
         assertFalse(sneakController.contains("keyBindForward"));
         assertFalse(sneakController.contains("keyBindJump"));
+        assertFalse(sneakController.contains("KeyBinding.setKeyBindState"));
+        assertFalse(sneakController.contains("Math.random()"));
+        assertTrue(prePlaceController.contains("event.trySetRotation"));
+        assertTrue(prePlaceController.contains("PreparedTarget"));
+        assertFalse(prePlaceController.contains("Math.random()"));
         assertTrue(prePlaceController.contains("VisualRotationState.publish"));
         assertTrue(prePlaceController.contains("VisualRotationState.clearSource"));
+    }
+
+    @Test
+    public void acceptedPlacementsCanBeClaimedByTheFirstSneakSession() throws IOException {
+        String bridgeAssist = source("src/main/java/gq/yozakura/module/world/BridgeAssist.java");
+        String sneakController = source("src/main/java/gq/yozakura/module/world/BridgeAssistSneakController.java");
+        int acceptedBegin = bridgeAssist.indexOf("public void onPacketAccepted(PacketAcceptedEvent event)");
+        int acceptedEnd = bridgeAssist.indexOf("public void onPacketWritten(PacketWriteEvent event)", acceptedBegin);
+        String acceptedHandler = bridgeAssist.substring(acceptedBegin, acceptedEnd);
+
+        assertTrue(acceptedHandler.contains("if (!getState() || !canAssist())"));
+        assertTrue(sneakController.contains("unclaimedPlacementWriteIds"));
+        assertTrue(sneakController.contains("claimUnclaimedPlacementSessions"));
+        assertTrue(sneakController.contains("hasPendingPlacementForActiveSession"));
     }
 
     @Test

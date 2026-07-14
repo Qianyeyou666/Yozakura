@@ -1,8 +1,11 @@
 package gq.yozakura.module.world;
 
-import gq.yozakura.event.bridge.MoveInputEvent;
-import gq.yozakura.event.bridge.PacketEvent;
+import gq.yozakura.event.bridge.PacketAcceptedEvent;
+import gq.yozakura.event.bridge.PacketWriteEvent;
 import gq.yozakura.event.bridge.RightClickMouseEvent;
+import gq.yozakura.event.bridge.RightClickResolvedEvent;
+import gq.yozakura.event.bridge.RotationResolvedEvent;
+import gq.yozakura.event.bridge.SneakInputEvent;
 import gq.yozakura.event.bridge.UpdateEvent;
 import gq.yozakura.event.bus.EventTarget;
 import gq.yozakura.event.bus.types.EventType;
@@ -45,13 +48,19 @@ public class BridgeAssist extends Module {
     }
 
     @Override
+    public void enable() {
+        sneakController.clearUnavailableState();
+        prePlaceController.reset();
+    }
+
+    @Override
     public void disable() {
         sneakController.disable();
         prePlaceController.reset();
     }
 
-    @EventTarget(Priority.LOW)
-    public void onMoveInput(MoveInputEvent event) {
+    @EventTarget(Priority.HIGH)
+    public void onSneakInput(SneakInputEvent event) {
         if (!getState()) {
             return;
         }
@@ -59,7 +68,7 @@ public class BridgeAssist extends Module {
             sneakController.clearUnavailableState();
             return;
         }
-        sneakController.onMoveInput();
+        sneakController.onSneakInput(event);
     }
 
     @EventTarget(Priority.LOW)
@@ -68,6 +77,7 @@ public class BridgeAssist extends Module {
             return;
         }
         if (!canAssist()) {
+            sneakController.clearUnavailableState();
             prePlaceController.reset();
             return;
         }
@@ -75,20 +85,55 @@ public class BridgeAssist extends Module {
     }
 
     @EventTarget(Priority.LOWEST)
+    public void onRotationResolved(RotationResolvedEvent event) {
+        if (!getState() || !canAssist()) {
+            prePlaceController.reset();
+            return;
+        }
+        prePlaceController.onRotationResolved(event);
+    }
+
+    @EventTarget(Priority.LOWEST)
     public void onRightClick(RightClickMouseEvent event) {
-        if (Boolean.TRUE.equals(prePlace.getValue()) && canAssist()) {
+        if (event.isCancelled()) {
+            prePlaceController.reset();
+            return;
+        }
+        if (getState() && Boolean.TRUE.equals(prePlace.getValue()) && canAssist()) {
             prePlaceController.onRightClick();
         }
     }
 
+    @EventTarget(Priority.LOWEST)
+    public void onRightClickResolved(RightClickResolvedEvent event) {
+        if (event.isCancelled()) {
+            prePlaceController.reset();
+        }
+    }
+
     @EventTarget
-    public void onPacket(PacketEvent event) {
-        if (event.getType() != EventType.SEND || !(event.getPacket() instanceof C08PacketPlayerBlockPlacement)) {
+    public void onPacketAccepted(PacketAcceptedEvent event) {
+        if (!getState() || !canAssist()) {
+            return;
+        }
+        if (!(event.getPacket() instanceof C08PacketPlayerBlockPlacement)) {
+            return;
+        }
+        C08PacketPlayerBlockPlacement packet = (C08PacketPlayerBlockPlacement) event.getPacket();
+        event.requestOriginalPacketOrder();
+        if (packet.getPlacedBlockDirection() != 255) {
+            sneakController.onPlacementPacketAccepted(event.getWriteId());
+        }
+    }
+
+    @EventTarget
+    public void onPacketWritten(PacketWriteEvent event) {
+        if (!(event.getPacket() instanceof C08PacketPlayerBlockPlacement)) {
             return;
         }
         C08PacketPlayerBlockPlacement packet = (C08PacketPlayerBlockPlacement) event.getPacket();
         if (packet.getPlacedBlockDirection() != 255) {
-            sneakController.onPlacementPacket();
+            sneakController.onPlacementPacketCompleted(event.getWriteId(), event.isSuccess());
         }
     }
 

@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 public class ForgeBridgeLifecycleContractTest {
@@ -145,6 +146,27 @@ public class ForgeBridgeLifecycleContractTest {
     }
 
     @Test
+    public void standaloneOwnershipClaimYieldsBeforeThePacketPipelineIsInstalled() throws IOException {
+        String bridge = source("src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java");
+        String client = source("src/main/java/gq/yozakura/core/StandaloneClient.java");
+        String ownership = method(bridge, "    private boolean yieldToStandaloneBridge() {",
+                "    private void abandonStaleForgeBridge(");
+        String pump = method(client, "    private void startMainThreadPump() {", "    private void stopExistingStandalonePumps()");
+        int standaloneClaim = ownership.indexOf("StandaloneClient.isBridgeOwnerActive()");
+        int channelLookup = ownership.indexOf("mc.getNetHandler()");
+
+        assertTrue("Lunar ownership must win even while its packet handler is between remove and install",
+                standaloneClaim >= 0 && channelLookup > standaloneClaim);
+        assertTrue("The standalone owner marker must be process-wide so remapped classloaders agree on it",
+                client.contains("public static boolean isBridgeOwnerActive()")
+                        && client.contains("System.getProperty(ACTIVE_INSTANCE_PROPERTY)"));
+        assertTrue("A completed standalone shutdown must release its ownership claim for a later Forge session",
+                pump.contains("completeSuccessfulShutdown();")
+                        && client.contains("private void completeSuccessfulShutdown()")
+                        && client.contains("clearActiveInstanceIfOwner();"));
+    }
+
+    @Test
     public void everyForgeCallbackYieldsAndConvergesToTheStandalonePacketOwner() throws IOException {
         String bridge = source("src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java");
         String playerTick = method(bridge,
@@ -185,10 +207,10 @@ public class ForgeBridgeLifecycleContractTest {
                 ownership.contains("next.pipeline().remove(HANDLER_NAME);"));
         assertTrue("The stale Forge bridge must release its cached Netty handler reference",
                 ownership.contains("packetBridgeHandler = null;"));
-        assertTrue("Standalone ownership must release an old Forge-forced sneak key before discarding its state",
-                ownership.contains("releaseForcedSneak();"));
-        assertFalse("Dropping the flag directly can leave a Forge-forced sneak key stuck down",
-                ownership.contains("forcedSneak = false;"));
+        assertTrue("Standalone ownership must release the old Forge safe-walk request before discarding its state",
+                ownership.contains("MovementInputBridge.setSafeWalkRequested(false);"));
+        assertFalse("Forge ownership handoff must not write raw key state directly",
+                ownership.contains("KeyBinding.setKeyBindState"));
     }
 
     @Test
@@ -206,10 +228,34 @@ public class ForgeBridgeLifecycleContractTest {
                 afterStandaloneCheck.contains("catch (Throwable ignored) {\n            return false;"));
     }
 
+    @Test
+    public void failedStandalonePipelineInspectionClearsTheSharedSafeWalkRequest() throws IOException {
+        String bridge = source("src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java");
+        String ownership = method(bridge, "    private boolean yieldToStandaloneBridge() {",
+                "    private void abandonStaleForgeBridge(");
+        String failureCleanup = "catch (Throwable ignored) {\n"
+                + "            MovementInputBridge.setSafeWalkRequested(false);\n"
+                + "            return true;\n"
+                + "        }";
+
+        assertEquals("Every fail-closed standalone handoff path must release SafeWalk",
+                2, occurrences(ownership, failureCleanup));
+    }
+
     private static boolean yieldsBefore(String callback, String sideEffect) {
         int yield = callback.indexOf("if (yieldToStandaloneBridge())");
         int effect = callback.indexOf(sideEffect);
         return yield >= 0 && effect > yield && callback.substring(yield, effect).contains("return;");
+    }
+
+    private static int occurrences(String text, String needle) {
+        int count = 0;
+        int index = 0;
+        while ((index = text.indexOf(needle, index)) >= 0) {
+            count++;
+            index += needle.length();
+        }
+        return count;
     }
 
     private static String method(String source, String beginMarker, String endMarker) {

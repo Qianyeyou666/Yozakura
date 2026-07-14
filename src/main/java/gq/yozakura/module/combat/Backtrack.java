@@ -1,6 +1,8 @@
 package gq.yozakura.module.combat;
 
 import gq.yozakura.bridge.PacketPipelineAnchors;
+import gq.yozakura.event.bridge.MouseOverEvent;
+import gq.yozakura.event.bus.EventTarget;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.Module;
 import gq.yozakura.util.render.RenderUtil;
@@ -123,6 +125,17 @@ public class Backtrack extends Module {
         }
     }
 
+    @EventTarget
+    public void onMouseOver(MouseOverEvent event) {
+        if (event == null || !isInGame() || mode.getValue() == BacktrackMode.PACKET) {
+            return;
+        }
+        if (Boolean.TRUE.equals(attackOnly.getValue()) && !mc.gameSettings.keyBindAttack.isKeyDown()) {
+            return;
+        }
+        applyHistoricalHit(event.getPartialTicks());
+    }
+
     public static boolean applyBacktrackHit() {
         return INSTANCE != null && INSTANCE.getState() && INSTANCE.applyHistoricalHit();
     }
@@ -176,10 +189,14 @@ public class Backtrack extends Module {
     }
 
     private boolean applyHistoricalHit() {
+        return applyHistoricalHit(1.0F);
+    }
+
+    private boolean applyHistoricalHit(float partialTicks) {
         if (!isInGame() || mode.getValue() == BacktrackMode.PACKET) {
             return false;
         }
-        MovingObjectPosition hit = findHistoricalHit(range.getValue(), expand.getValue(), 1.0f);
+        MovingObjectPosition hit = findHistoricalHit(range.getValue(), expand.getValue(), partialTicks);
         if (hit == null || hit.entityHit == null) {
             return false;
         }
