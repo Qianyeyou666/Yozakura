@@ -81,7 +81,7 @@ public final class AimAssistTargetSelector {
         Candidate selected = best;
         if (locked != null && locked.target.getEntityId() != best.target.getEntityId()) {
             long lockedFor = Math.max(0L, nowMillis - lockedAtMillis);
-            if (!AimAssistTargetLock.shouldSwitch(locked.score, best.score, switchMargin(settings.sort), lockedFor,
+            if (!shouldSwitch(locked.score, best.score, switchMargin(settings.sort), lockedFor,
                     MINIMUM_LOCK_MILLIS)) {
                 selected = locked;
             }
@@ -102,6 +102,16 @@ public final class AimAssistTargetSelector {
 
     public int getLockedTargetId() {
         return lockedTargetId;
+    }
+
+    /**
+     * Keep the lock decision next to the target-selection state machine. The
+     * standalone Lunar loader can then resolve target refresh even when an old
+     * injected class path is missing the optional test/helper facade.
+     */
+    static boolean shouldSwitch(double currentScore, double challengerScore, double margin,
+                                long lockedForMillis, long minimumLockMillis) {
+        return lockedForMillis >= minimumLockMillis && challengerScore + margin < currentScore;
     }
 
     public boolean isStillEligible(Minecraft minecraft, EntityLivingBase target, float viewYaw, Settings settings) {
