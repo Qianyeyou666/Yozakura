@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -45,6 +46,24 @@ public class NotificationNightBloomVisualContractTest {
     }
 
     @Test
+    public void nightBloomFusesOnlyEachNotificationsIconAndContentTiles() throws IOException {
+        String source = source();
+        String nightBloom = between(source, "private void drawNightBloom(", "private void drawSakura(");
+
+        assertTrue(nightBloom.contains("NightBloomNotificationLayout.createLiquidPair("));
+        assertTrue(nightBloom.contains("drawNightBloomFusedShadows("));
+        assertTrue(nightBloom.contains("drawNightBloomFusedSurfaces("));
+        assertTrue(source.contains("RenderServices.shapes().joinedRounded("));
+        assertTrue("the icon and body receive their own local bridge geometry",
+                source.contains("LiquidPair pair"));
+        assertFalse("notifications must not be collected into a shared cross-notification surface",
+                nightBloom.contains("List<Notification>"));
+        assertTrue("a globally docked notification stack must yield its outer surface to the shared docking pass",
+                nightBloom.contains("NightBloomHudDockRenderer.hasLink(\"hud_notifications\")"));
+        assertTrue(nightBloom.contains("if (!stackDocked)"));
+    }
+
+    @Test
     public void nightBloomDrawsOnlyTheBlackOuterShadow() throws IOException {
         String source = source();
         String nightBloom = between(source, "private void drawNightBloom(", "private void drawSakura(");
@@ -60,8 +79,37 @@ public class NotificationNightBloomVisualContractTest {
         assertTrue(source.contains("GlowProfile.ACCENT"));
     }
 
+    @Test
+    public void compositeAlphaStaysContinuousWhileTheNotificationEntersOrLeaves() {
+        float panelAlpha = 0.5F;
+        float compositeProgress = 0.5F;
+        float baseOpacity = 220.0F / 255.0F;
+        float individual = baseOpacity * panelAlpha * (1.0F - compositeProgress);
+        float composite = baseOpacity
+                * NightBloomNotificationLayout.fusedCompositeSurfaceOpacity(baseOpacity, panelAlpha,
+                        compositeProgress);
+        float resolved = individual + (1.0F - individual) * composite;
+
+        assertEquals(baseOpacity * panelAlpha, resolved, 0.0001F);
+    }
+
+    @Test
+    public void notificationAutoThemeInheritsThePrimaryNightBloomSelection() throws IOException {
+        String hud = source("src/main/java/gq/yozakura/module/render/HUD.java");
+
+        assertTrue(hud.contains("AUTO,"));
+        assertTrue(hud.contains("NotificationTheme.AUTO"));
+        assertTrue(hud.contains("selected == NotificationTheme.NIGHT_BLOOM"));
+        assertTrue(hud.contains("selected == NotificationTheme.AUTO"));
+        assertTrue(hud.contains("getActiveStyle() == HudStyle.NIGHT_BLOOM"));
+    }
+
     private static String source() throws IOException {
-        return new String(Files.readAllBytes(Paths.get(SOURCE_PATH)), StandardCharsets.UTF_8);
+        return source(SOURCE_PATH);
+    }
+
+    private static String source(String path) throws IOException {
+        return new String(Files.readAllBytes(Paths.get(path)), StandardCharsets.UTF_8);
     }
 
     private static String between(String source, String start, String end) {

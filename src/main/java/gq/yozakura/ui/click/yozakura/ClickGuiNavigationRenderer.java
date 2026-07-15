@@ -31,7 +31,7 @@ final class ClickGuiNavigationRenderer {
                 gui.withAlpha(gui.guiColors().glassFillSoft, gui.getAlpha(gui.guiColors().glassFillSoft) * gui.guiAlpha),
                 gui.withAlpha(gui.guiColors().glassBorder, gui.getAlpha(gui.guiColors().glassBorder) * gui.guiAlpha));
 
-        float tabW = gui.navW / GuiTab.values().length;
+        float tabW = gui.navigationTabsWidth() / GuiTab.values().length;
         float targetX = gui.navX + YozakuraClickGui.currentTab.ordinal() * tabW + 2.0f;
         gui.navIndicatorX = gui.animate(gui.navIndicatorX, targetX, 0.18f);
 
@@ -60,7 +60,7 @@ final class ClickGuiNavigationRenderer {
         int textColor = tab == YozakuraClickGui.currentTab ? gui.guiColors().text : gui.guiColors().muted;
         int color = gui.withAlpha(textColor, 245.0f * gui.guiAlpha);
         CFontRenderer navIconFont = FontLoaders.I16;
-        String title = gui.trim(tab.title, FontLoaders.F14, Math.max(18.0f, tabW - 42.0f));
+        String title = gui.trim(tab.getTitle(), FontLoaders.F14, Math.max(18.0f, tabW - 42.0f));
         float iconW = navIconFont.getStringWidth(tab.icon);
         float titleW = FontLoaders.F14.getStringWidth(title);
         float gap = 10.0f;

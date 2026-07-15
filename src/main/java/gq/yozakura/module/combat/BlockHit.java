@@ -1,17 +1,17 @@
 package gq.yozakura.module.combat;
 
 import com.google.common.base.CaseFormat;
-import gq.yozakura.event.bridge.LeftClickMouseEvent;
-import gq.yozakura.event.bridge.PacketEvent;
+import gq.yozakura.event.bridge.PacketAcceptedEvent;
+import gq.yozakura.event.bridge.PacketWriteEvent;
+import gq.yozakura.event.bridge.PlayerPacketBoundaryEvent;
 import gq.yozakura.event.bridge.UpdateEvent;
 import gq.yozakura.event.bus.EventTarget;
 import gq.yozakura.event.bus.types.EventType;
 import gq.yozakura.event.bus.types.Priority;
-import gq.yozakura.manager.BlinkModules;
+import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.runtime.Module;
 import gq.yozakura.runtime.YozakuraRuntime;
-import gq.yozakura.util.module.KeyBindUtil;
 import gq.yozakura.util.module.RotationUtil;
 import gq.yozakura.value.properties.ModeProperty;
 import net.minecraft.entity.Entity;
@@ -22,32 +22,51 @@ import net.minecraft.network.Packet;
 import net.minecraft.network.play.client.C02PacketUseEntity;
 import net.minecraft.network.play.client.C03PacketPlayer;
 import net.minecraft.network.play.client.C07PacketPlayerDigging;
+import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
+import net.minecraft.network.play.client.C0APacketAnimation;
+import net.minecraft.network.play.client.C09PacketHeldItemChange;
+
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Vape-style block hit driven exclusively through Minecraft's normal use-key
- * pipeline. The module never creates, reorders, or cancels combat/use packets.
+ * Automatic sword blocking driven through one bounded vanilla input cycle.
+ * The module never constructs, cancels, queues, or reorders combat packets.
  */
 public class BlockHit extends Module {
     private static final int MODE_MANUAL = 0;
     private static final int MODE_PREDICT = 1;
     private static final int MODE_AUTO = 2;
     private static final int MODE_LAG = 3;
-
-    private static final long MANUAL_USE_MS = 50L;
-    private static final long PREDICT_USE_MS = 50L;
-    private static final long AUTO_USE_MS = 50L;
+    private static final long NO_BRIDGE_GENERATION = -1L;
 
     private static BlockHit instance;
 
     private final BlockHitSettings settings = new BlockHitSettings();
     public final ModeProperty mode = settings.mode;
     private final BlockHitController controller = new BlockHitController();
-    private final BlockHitUseKeyGuard useKeyGuard = new BlockHitUseKeyGuard(mc);
-
+    private final BlockHitVanillaUseAction useAction = new BlockHitVanillaUseAction(mc);
+    private final ConcurrentLinkedQueue<SuccessfulAttack> successfulAttacks =
+            new ConcurrentLinkedQueue<SuccessfulAttack>();
+    private final ConcurrentLinkedQueue<OwnedUseWrite> successfulUseWrites =
+            new ConcurrentLinkedQueue<OwnedUseWrite>();
+    private final ConcurrentLinkedQueue<AcceptedPacketKind> acceptedPacketKinds =
+            new ConcurrentLinkedQueue<AcceptedPacketKind>();
+    private final ConcurrentLinkedQueue<MovementBoundary> successfulMovementBoundaries =
+            new ConcurrentLinkedQueue<MovementBoundary>();
+    private final ConcurrentHashMap<Long, Long> acceptedWriteGenerations =
+            new ConcurrentHashMap<Long, Long>();
+    private final AtomicReference<AcceptedMovementWrite> latestAcceptedMovementWrite =
+            new AtomicReference<AcceptedMovementWrite>();
+    private final AtomicLong acceptedAttackSequence = new AtomicLong();
+    private volatile boolean acceptingBridgeEvents;
+    private volatile long bridgeGeneration;
+    private long releaseAfterInputCycle = BlockHitController.NO_CYCLE;
+    private long releaseWhenUseWriteConfirmsCycle = BlockHitController.NO_CYCLE;
+    private long lastPostAcceptedAttackSequence;
     private int activeMode = -1;
-    private volatile EntityLivingBase autoTarget;
-    private volatile boolean lagBlinking;
-    private volatile long lagReleaseAt;
 
     public BlockHit() {
         super("BlockHit", false);
@@ -61,261 +80,444 @@ public class BlockHit extends Module {
 
     @Override
     public void onEnabled() {
+        bridgeGeneration++;
         activeMode = mode.getValue();
         resetState();
+        lastPostAcceptedAttackSequence = acceptedAttackSequence.get();
+        acceptingBridgeEvents = true;
     }
 
     @Override
     public void onDisabled() {
-        stopLagBlink();
-        resetState();
-    }
-
-    /**
-     * Manual matches Vape's input hook: a real left-button press briefly holds
-     * use, letting vanilla choose the normal C08/C07 timing.
-     */
-    @EventTarget(Priority.LOWEST)
-    public void onAttackInput(LeftClickMouseEvent event) {
-        if (event == null || event.isCancelled() || !isEnabled() || mode.getValue() != MODE_MANUAL
-                || !isGameplayReady() || isManualBlocking() || !passesManualChance()) {
+        long cycleId = useAction.getActiveUseCycleId();
+        acceptingBridgeEvents = false;
+        bridgeGeneration++;
+        controller.reset();
+        discardPendingPackets();
+        releaseAfterInputCycle = BlockHitController.NO_CYCLE;
+        releaseWhenUseWriteConfirmsCycle = BlockHitController.NO_CYCLE;
+        if (cycleId == BlockHitController.NO_CYCLE) {
             return;
         }
-        beginUse(BlockHitController.UseOwner.MANUAL, System.currentTimeMillis(), MANUAL_USE_MS);
+        if (useAction.isUseWriteSucceeded(cycleId)) {
+            useAction.releaseUse(cycleId);
+        } else {
+            new BlockHitDisabledUseRelease(useAction, cycleId, acceptedAttackSequence).register();
+        }
     }
 
-    @EventTarget
+    @EventTarget(Priority.HIGHEST)
     public void onUpdate(UpdateEvent event) {
-        if (!isEnabled() || event == null || event.getType() != EventType.PRE) {
+        if (event == null) {
             return;
         }
-        if (!isInGame() || mc.thePlayer.isDead) {
-            clearDisconnectedState();
+        if (event.getType() == EventType.POST) {
+            finishPostInputCycle();
             return;
         }
-
-        if (activeMode != mode.getValue()) {
-            stopLagBlink();
+        if (!isEnabled() || event.getType() != EventType.PRE) {
+            return;
+        }
+        if (!isGameplayReady()) {
             resetState();
+            return;
+        }
+        if (activeMode != mode.getValue()) {
+            cancelCycle();
+            discardPendingPackets();
             activeMode = mode.getValue();
         }
-
-        long now = System.currentTimeMillis();
-        if (!isGameplayReady()) {
-            controller.reset();
-            autoTarget = null;
-            stopLagBlink();
-            syncUseKey(now);
+        if (hasExternalUseOwner() || useAction.isPhysicalUseDown()) {
+            cancelCycle();
+            discardPendingPackets();
             return;
         }
 
-        switch (mode.getValue()) {
-            case MODE_PREDICT:
-                updatePredict(now);
-                break;
-            case MODE_AUTO:
-                updateAuto(now);
-                break;
-            case MODE_LAG:
-                updateLag(now);
-                break;
-            case MODE_MANUAL:
-            default:
-                break;
-        }
-        syncUseKey(now);
+        drainSuccessfulMovementBoundaries();
+        drainAcceptedPackets();
+        drainSuccessfulUseWrites();
+        drainSuccessfulAttacks();
     }
 
     @EventTarget(Priority.LOWEST)
-    public void onPacket(PacketEvent event) {
-        if (!isEnabled() || event == null || event.getType() != EventType.SEND || event.isCancelled()) {
+    public void onPacketAccepted(PacketAcceptedEvent event) {
+        long generation = bridgeGeneration;
+        if (!acceptingBridgeEvents || event == null) {
+            return;
+        }
+
+        Packet<?> packet = event.getPacket();
+        if (packet instanceof C02PacketUseEntity
+                && ((C02PacketUseEntity) packet).getAction() == C02PacketUseEntity.Action.ATTACK) {
+            acceptedAttackSequence.incrementAndGet();
+            rememberAcceptedWrite(event.getWriteId(), generation);
+        }
+        BlockHitController.PacketKind kind = classify(packet);
+        if (kind == BlockHitController.PacketKind.USE_ITEM) {
+            rememberAcceptedWrite(event.getWriteId(), generation);
+            useAction.claimOwnedUseWrite(event.getWriteId());
+        } else if (kind == BlockHitController.PacketKind.RELEASE_USE_ITEM) {
+            useAction.observeRelease();
+        }
+        if (packet instanceof C03PacketPlayer) {
+            rememberAcceptedMovementWrite(event.getWriteId(), generation);
+        }
+        if (kind != BlockHitController.PacketKind.OTHER) {
+            acceptedPacketKinds.offer(new AcceptedPacketKind(kind, generation));
+        }
+    }
+
+    @EventTarget(Priority.LOWEST)
+    public void onPacketWritten(PacketWriteEvent event) {
+        if (event == null || !event.isPacketAccepted()) {
             return;
         }
         Packet<?> packet = event.getPacket();
         if (packet instanceof C03PacketPlayer) {
-            controller.advanceMovementEpoch();
+            if (!event.isSuccess()) {
+                clearAcceptedMovementWrite(event.getWriteId());
+            }
             return;
         }
-        if (packet instanceof C02PacketUseEntity) {
-            handleAttackPacket((C02PacketUseEntity) packet);
+        long generation = consumeAcceptedWriteGeneration(event.getWriteId());
+        if (!acceptingBridgeEvents) {
             return;
         }
-        if (packet instanceof C07PacketPlayerDigging
-                && ((C07PacketPlayerDigging) packet).getStatus()
-                == C07PacketPlayerDigging.Action.RELEASE_USE_ITEM) {
-            handleVanillaRelease();
+        if (packet instanceof C08PacketPlayerBlockPlacement
+                && ((C08PacketPlayerBlockPlacement) packet).getPlacedBlockDirection() == 255) {
+            long cycleId = useAction.completeOwnedUseWrite(event.getWriteId(), event.isSuccess());
+            if (cycleId != BlockHitController.NO_CYCLE && generation != NO_BRIDGE_GENERATION) {
+                successfulUseWrites.offer(new OwnedUseWrite(cycleId, event.isSuccess(), generation));
+            }
+            return;
+        }
+        if (!event.isSuccess()) {
+            return;
+        }
+        if (packet instanceof C02PacketUseEntity
+                && ((C02PacketUseEntity) packet).getAction() == C02PacketUseEntity.Action.ATTACK) {
+            if (generation != NO_BRIDGE_GENERATION) {
+                successfulAttacks.offer(new SuccessfulAttack((C02PacketUseEntity) packet, generation));
+            }
+            return;
         }
     }
 
+    @EventTarget(Priority.LOWEST)
+    public void onPlayerPacketBoundary(PlayerPacketBoundaryEvent event) {
+        if (event == null || !event.isPacketAccepted()) {
+            return;
+        }
+        AcceptedMovementWrite acceptedMovementWrite = consumeAcceptedMovementWrite(event.getWriteId());
+        if (!acceptingBridgeEvents || acceptedMovementWrite == null) {
+            return;
+        }
+        successfulMovementBoundaries.offer(new MovementBoundary(acceptedMovementWrite.generation));
+    }
+
     public static boolean isBlockingActive() {
-        return instance != null && instance.isEnabled() && instance.useKeyGuard.isHoldingUse()
-                && instance.controller.isUseActive(System.currentTimeMillis());
+        if (instance == null || !instance.isEnabled() || !instance.isGameplayReady()) {
+            return false;
+        }
+        return instance.mc.thePlayer.isBlocking()
+                && (instance.useAction.isUsing() || instance.useAction.isPhysicalUseDown());
     }
 
     @Override
     public String[] getSuffix() {
-        return new String[]{CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.UPPER_CAMEL, mode.getModeString())};
+        String modeSuffix = CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.UPPER_CAMEL, mode.getModeString());
+        return hasExternalUseOwner() ? new String[]{modeSuffix, "Paused"} : new String[]{modeSuffix};
     }
 
-    private void handleAttackPacket(C02PacketUseEntity packet) {
-        if (packet.getAction() != C02PacketUseEntity.Action.ATTACK || mode.getValue() != MODE_AUTO
-                || !isGameplayReady()) {
+    private void armUseForAttack(C02PacketUseEntity packet) {
+        if (!isGameplayReady() || hasExternalUseOwner() || useAction.isPhysicalUseDown()
+                || mode.getValue() == MODE_LAG) {
             return;
         }
+        if (mode.getValue() == MODE_MANUAL) {
+            if (!passesManualChance()) {
+                return;
+            }
+        } else if (!matchesAutomaticTarget(packet)) {
+            return;
+        }
+        controller.armUseAfterMovementBoundary();
+    }
+
+    private void drainSuccessfulAttacks() {
+        SuccessfulAttack attack;
+        while ((attack = successfulAttacks.poll()) != null) {
+            if (attack.generation != bridgeGeneration) {
+                continue;
+            }
+            controller.observe(BlockHitController.PacketKind.ATTACK);
+            armUseForAttack(attack.packet);
+        }
+    }
+
+    private void drainSuccessfulUseWrites() {
+        OwnedUseWrite write;
+        while ((write = successfulUseWrites.poll()) != null) {
+            if (write.generation != bridgeGeneration) {
+                continue;
+            }
+            if (!write.success) {
+                controller.cancelRequestedUseCycle(write.cycleId);
+                if (releaseWhenUseWriteConfirmsCycle == write.cycleId) {
+                    releaseWhenUseWriteConfirmsCycle = BlockHitController.NO_CYCLE;
+                }
+                continue;
+            }
+            controller.confirmUseWritten(write.cycleId);
+            if (releaseWhenUseWriteConfirmsCycle == write.cycleId) {
+                releaseWhenUseWriteConfirmsCycle = BlockHitController.NO_CYCLE;
+                releaseAfterInputCycle = write.cycleId;
+            }
+        }
+    }
+
+    private void drainAcceptedPackets() {
+        AcceptedPacketKind accepted;
+        while ((accepted = acceptedPacketKinds.poll()) != null) {
+            if (accepted.generation != bridgeGeneration) {
+                continue;
+            }
+            BlockHitController.PacketKind kind = accepted.kind;
+            controller.observe(kind);
+            if (kind == BlockHitController.PacketKind.CONTEXT_CHANGED
+                    || kind == BlockHitController.PacketKind.USE_ITEM && !useAction.isUsing()
+                    || kind == BlockHitController.PacketKind.RELEASE_USE_ITEM) {
+                cancelCycle();
+            }
+        }
+    }
+
+    private void drainSuccessfulMovementBoundaries() {
+        MovementBoundary boundary;
+        while ((boundary = successfulMovementBoundaries.poll()) != null) {
+            if (boundary.generation == bridgeGeneration) {
+                controller.confirmMovementBoundary();
+            }
+        }
+    }
+
+    private boolean matchesAutomaticTarget(C02PacketUseEntity packet) {
         Entity entity = packet.getEntityFromWorld(mc.theWorld);
         if (!(entity instanceof EntityLivingBase)) {
-            return;
+            return false;
+        }
+        if (Boolean.TRUE.equals(settings.requireMouseDown.getValue()) && !isPhysicalAttackDown()) {
+            return false;
         }
         EntityLivingBase target = (EntityLivingBase) entity;
-        if (!isValidTarget(target) || shouldIgnoreManualBlock()) {
-            return;
+        if (Boolean.TRUE.equals(settings.ignoreManualBlock.getValue()) && mc.thePlayer.isBlocking()) {
+            return false;
         }
-
-        autoTarget = target;
-        controller.armAuto();
+        return target != mc.thePlayer && !target.isDead && target.getHealth() > 0.0F
+                && mc.thePlayer.getDistanceToEntity(target) <= settings.distance.getValue()
+                && RotationUtil.angleToEntity(target) <= settings.angle.getValue();
     }
 
-    private void handleVanillaRelease() {
-        if (mode.getValue() != MODE_LAG || !isGameplayReady() || lagBlinking) {
-            return;
+    private BlockHitController.PacketKind classify(Packet<?> packet) {
+        if (packet instanceof C08PacketPlayerBlockPlacement) {
+            C08PacketPlayerBlockPlacement placement = (C08PacketPlayerBlockPlacement) packet;
+            return placement.getPlacedBlockDirection() == 255
+                    ? BlockHitController.PacketKind.USE_ITEM
+                    : BlockHitController.PacketKind.CONTEXT_CHANGED;
         }
-        if (YozakuraRuntime.blinkManager.tryAcquire(BlinkModules.BLOCK_HIT)) {
-            lagBlinking = true;
-            lagReleaseAt = System.currentTimeMillis() + Math.max(50L, settings.lagDelay.getValue().longValue());
+        if (packet instanceof C07PacketPlayerDigging
+                && ((C07PacketPlayerDigging) packet).getStatus()
+                == C07PacketPlayerDigging.Action.RELEASE_USE_ITEM) {
+            return BlockHitController.PacketKind.RELEASE_USE_ITEM;
         }
+        if (packet instanceof C0APacketAnimation) {
+            return BlockHitController.PacketKind.ANIMATION;
+        }
+        if (packet instanceof C09PacketHeldItemChange) {
+            return BlockHitController.PacketKind.CONTEXT_CHANGED;
+        }
+        return BlockHitController.PacketKind.OTHER;
     }
 
-    private void updatePredict(long now) {
-        if (Boolean.TRUE.equals(settings.requireMouseDown.getValue()) && !isPhysicalAttackDown()) {
-            return;
-        }
-        if (shouldIgnoreManualBlock()) {
-            return;
-        }
-        EntityLivingBase target = findPredictTarget();
-        if (target != null && target.swingProgress > 0.0F) {
-            beginUse(BlockHitController.UseOwner.PREDICT, now, PREDICT_USE_MS);
-        }
-    }
-
-    private void updateAuto(long now) {
-        if (!controller.isAutoReadyAfterMovement()) {
-            return;
-        }
-
-        controller.consumeAutoArm();
-        EntityLivingBase target = autoTarget;
-        autoTarget = null;
-        if (target == null || !isValidTarget(target) || shouldIgnoreManualBlock()) {
-            return;
-        }
-        if (Boolean.TRUE.equals(settings.requireMouseDown.getValue()) && !isPhysicalAttackDown()) {
-            return;
-        }
-        beginUse(BlockHitController.UseOwner.AUTO, now, AUTO_USE_MS);
-    }
-
-    private void updateLag(long now) {
-        if (lagBlinking && now >= lagReleaseAt) {
-            stopLagBlink();
-        }
-    }
-
-    private void beginUse(BlockHitController.UseOwner owner, long now, long durationMs) {
-        if (controller.beginUse(owner, now, durationMs)) {
-            useKeyGuard.holdUse();
-        }
-    }
-
-    private void syncUseKey(long now) {
-        if (controller.isUseActive(now)) {
-            useKeyGuard.holdUse();
-        } else {
-            useKeyGuard.releaseUse();
-        }
+    private void cancelCycle() {
+        controller.cancelCycle();
+        requestPostInputRelease();
     }
 
     private void resetState() {
         controller.reset();
-        autoTarget = null;
-        useKeyGuard.reset();
+        requestPostInputRelease();
+        discardPendingPackets();
     }
 
-    private void clearDisconnectedState() {
-        if (YozakuraRuntime.blinkManager.owns(BlinkModules.BLOCK_HIT)) {
-            YozakuraRuntime.blinkManager.discard(BlinkModules.BLOCK_HIT);
+    private void requestPostInputRelease() {
+        long cycleId = useAction.getActiveUseCycleId();
+        if (cycleId == BlockHitController.NO_CYCLE) {
+            releaseAfterInputCycle = BlockHitController.NO_CYCLE;
+            releaseWhenUseWriteConfirmsCycle = BlockHitController.NO_CYCLE;
+            return;
         }
-        lagBlinking = false;
-        lagReleaseAt = 0L;
-        resetState();
+        if (useAction.isUseWriteSucceeded(cycleId)) {
+            releaseAfterInputCycle = cycleId;
+        } else {
+            releaseWhenUseWriteConfirmsCycle = cycleId;
+        }
     }
 
-    private void stopLagBlink() {
-        if (lagBlinking && YozakuraRuntime.blinkManager.owns(BlinkModules.BLOCK_HIT)) {
-            YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.BLOCK_HIT);
+    private void discardPendingPackets() {
+        successfulAttacks.clear();
+        successfulUseWrites.clear();
+        acceptedPacketKinds.clear();
+        successfulMovementBoundaries.clear();
+    }
+
+    private void rememberAcceptedWrite(long writeId, long generation) {
+        if (writeId != PacketAcceptedEvent.NO_WRITE_ID) {
+            acceptedWriteGenerations.put(writeId, generation);
         }
-        lagBlinking = false;
-        lagReleaseAt = 0L;
+    }
+
+    private long consumeAcceptedWriteGeneration(long writeId) {
+        Long generation = acceptedWriteGenerations.remove(writeId);
+        return generation == null ? NO_BRIDGE_GENERATION : generation.longValue();
+    }
+
+    private void rememberAcceptedMovementWrite(long writeId, long generation) {
+        if (writeId != PacketAcceptedEvent.NO_WRITE_ID) {
+            latestAcceptedMovementWrite.set(new AcceptedMovementWrite(writeId, generation));
+        }
+    }
+
+    private void clearAcceptedMovementWrite(long writeId) {
+        while (true) {
+            AcceptedMovementWrite accepted = latestAcceptedMovementWrite.get();
+            if (accepted == null || accepted.writeId != writeId) {
+                return;
+            }
+            if (latestAcceptedMovementWrite.compareAndSet(accepted, null)) {
+                return;
+            }
+        }
+    }
+
+    private AcceptedMovementWrite consumeAcceptedMovementWrite(long writeId) {
+        while (true) {
+            AcceptedMovementWrite accepted = latestAcceptedMovementWrite.get();
+            if (accepted == null || accepted.writeId != writeId) {
+                return null;
+            }
+            if (latestAcceptedMovementWrite.compareAndSet(accepted, null)) {
+                return accepted;
+            }
+        }
+    }
+
+    private void finishPostInputCycle() {
+        long acceptedAttacks = acceptedAttackSequence.get();
+        boolean attackAcceptedInCurrentInputWindow = acceptedAttacks != lastPostAcceptedAttackSequence;
+        lastPostAcceptedAttackSequence = acceptedAttacks;
+        if (!isEnabled() || !isGameplayReady() || hasExternalUseOwner() || useAction.isPhysicalUseDown()) {
+            cancelCycle();
+        }
+        long requestedUseCycle = controller.getRequestedUseCycleId();
+        long releaseCycle = releaseAfterInputCycle;
+        if (releaseCycle == BlockHitController.NO_CYCLE && !attackAcceptedInCurrentInputWindow
+                && controller.hasReleaseRequest() && useAction.isUseWriteSucceeded(requestedUseCycle)
+                && controller.consumeReleaseRequest()) {
+            releaseCycle = requestedUseCycle;
+        }
+        if (releaseCycle != BlockHitController.NO_CYCLE) {
+            if (!useAction.isUseWriteSucceeded(releaseCycle)) {
+                releaseAfterInputCycle = BlockHitController.NO_CYCLE;
+            } else if (attackAcceptedInCurrentInputWindow) {
+                return;
+            } else {
+                releaseAfterInputCycle = BlockHitController.NO_CYCLE;
+                useAction.releaseUse(releaseCycle);
+                return;
+            }
+        }
+        if (isEnabled() && isGameplayReady() && controller.consumeUseRequest()) {
+            long useCycle = controller.getRequestedUseCycleId();
+            if (!useAction.startUse(useCycle)) {
+                controller.cancelCycle();
+            }
+        }
+    }
+
+    private static final class OwnedUseWrite {
+        private final long cycleId;
+        private final boolean success;
+        private final long generation;
+
+        private OwnedUseWrite(long cycleId, boolean success, long generation) {
+            this.cycleId = cycleId;
+            this.success = success;
+            this.generation = generation;
+        }
+    }
+
+    private static final class SuccessfulAttack {
+        private final C02PacketUseEntity packet;
+        private final long generation;
+
+        private SuccessfulAttack(C02PacketUseEntity packet, long generation) {
+            this.packet = packet;
+            this.generation = generation;
+        }
+    }
+
+    private static final class AcceptedPacketKind {
+        private final BlockHitController.PacketKind kind;
+        private final long generation;
+
+        private AcceptedPacketKind(BlockHitController.PacketKind kind, long generation) {
+            this.kind = kind;
+            this.generation = generation;
+        }
+    }
+
+    private static final class MovementBoundary {
+        private final long generation;
+
+        private MovementBoundary(long generation) {
+            this.generation = generation;
+        }
+    }
+
+    /** Latest C03 accepted by this module lifecycle; older boundaries are ignored conservatively. */
+    private static final class AcceptedMovementWrite {
+        private final long writeId;
+        private final long generation;
+
+        private AcceptedMovementWrite(long writeId, long generation) {
+            this.writeId = writeId;
+            this.generation = generation;
+        }
+    }
+
+    private boolean hasExternalUseOwner() {
+        return isModuleEnabled("KillAura") || isModuleEnabled("FakeLag") || isModuleEnabled("LagRange")
+                || YozakuraRuntime.blinkManager != null && YozakuraRuntime.blinkManager.isBlinking();
+    }
+
+    private boolean isModuleEnabled(String name) {
+        gq.yozakura.module.Module module = ModuleManager.getModule(name);
+        return module != null && module.getState();
     }
 
     private boolean isGameplayReady() {
-        return isInGame() && mc.currentScreen == null && mc.inGameHasFocus && isHoldingSword();
-    }
-
-    private boolean shouldIgnoreManualBlock() {
-        return Boolean.TRUE.equals(settings.ignoreManualBlock.getValue()) && isManualBlocking();
-    }
-
-    private boolean isManualBlocking() {
-        return mc.thePlayer != null && mc.thePlayer.isBlocking()
-                && !controller.isUseActive(System.currentTimeMillis());
+        return isInGame() && !mc.thePlayer.isDead && mc.currentScreen == null && mc.inGameHasFocus && isHoldingSword();
     }
 
     private boolean passesManualChance() {
         int chance = Math.max(0, Math.min(100, settings.chance.getValue()));
-        return chance >= 100 || (chance > 0 && Math.random() * 100.0D < chance);
-    }
-
-    private boolean isValidTarget(EntityLivingBase target) {
-        if (target == null || target == mc.thePlayer || target.isDead || target.getHealth() <= 0.0F) {
-            return false;
-        }
-        return mc.thePlayer.getDistanceToEntity(target) <= settings.distance.getValue()
-                && RotationUtil.angleToEntity(target) <= settings.angle.getValue();
-    }
-
-    private EntityLivingBase findPredictTarget() {
-        if (mc.objectMouseOver != null && mc.objectMouseOver.entityHit instanceof EntityLivingBase) {
-            EntityLivingBase direct = (EntityLivingBase) mc.objectMouseOver.entityHit;
-            if (isValidTarget(direct)) {
-                return direct;
-            }
-        }
-        if (mc.theWorld == null) {
-            return null;
-        }
-        EntityLivingBase closest = null;
-        double closestDistance = Double.MAX_VALUE;
-        for (Object object : mc.theWorld.loadedEntityList) {
-            if (!(object instanceof EntityLivingBase)) {
-                continue;
-            }
-            EntityLivingBase candidate = (EntityLivingBase) object;
-            if (!isValidTarget(candidate)) {
-                continue;
-            }
-            double distance = mc.thePlayer.getDistanceSqToEntity(candidate);
-            if (distance < closestDistance) {
-                closest = candidate;
-                closestDistance = distance;
-            }
-        }
-        return closest;
+        return chance >= 100 || chance > 0 && Math.random() * 100.0D < chance;
     }
 
     private boolean isPhysicalAttackDown() {
         return mc.gameSettings != null && mc.gameSettings.keyBindAttack != null
-                && KeyBindUtil.isKeyDown(mc.gameSettings.keyBindAttack.getKeyCode());
+                && gq.yozakura.util.module.KeyBindUtil.isKeyDown(mc.gameSettings.keyBindAttack.getKeyCode());
     }
 
     private boolean isHoldingSword() {
@@ -325,4 +527,5 @@ public class BlockHit extends Module {
         ItemStack stack = mc.thePlayer.getHeldItem();
         return stack != null && stack.getItem() instanceof ItemSword;
     }
+
 }

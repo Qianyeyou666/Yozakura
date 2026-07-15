@@ -89,6 +89,22 @@ public final class ShapeRenderer {
                 topJoinStart, topJoinEnd, bottomJoinStart, bottomJoinEnd, color);
     }
 
+    /**
+     * Uses exact join intervals on every edge, avoiding translucent overlap at T and L junctions.
+     */
+    public void joinedRounded(float x, float y, float x2, float y2,
+                              float topLeftRadius, float topRightRadius,
+                              float bottomRightRadius, float bottomLeftRadius,
+                              float topJoinStart, float topJoinEnd,
+                              float bottomJoinStart, float bottomJoinEnd,
+                              float leftJoinStart, float leftJoinEnd,
+                              float rightJoinStart, float rightJoinEnd, int color) {
+        RenderUtil.drawJoinedRoundedRect(x, y, x2, y2,
+                topLeftRadius, topRightRadius, bottomRightRadius, bottomLeftRadius,
+                topJoinStart, topJoinEnd, bottomJoinStart, bottomJoinEnd,
+                leftJoinStart, leftJoinEnd, rightJoinStart, rightJoinEnd, color);
+    }
+
     public void roundedWH(float x, float y, float width, float height, float radius, int color) {
         rounded(x, y, x + width, y + height, radius, color);
     }

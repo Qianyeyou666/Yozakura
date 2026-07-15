@@ -44,7 +44,7 @@ public class BridgeAssist extends Module {
         sneakController = new BridgeAssistSneakController(mc, edgeOffset, unsneakDelay, sneakOnJump,
                 sneakKeyPressed, holdingBlocks, lookingDown, notMovingForward);
         prePlaceController = new BridgeAssistPrePlaceController(mc, prePlace, lookingDown, notMovingForward);
-        Chinese = "鎼ˉ杈呭姪";
+        Chinese = "搭路辅助";
     }
 
     @Override

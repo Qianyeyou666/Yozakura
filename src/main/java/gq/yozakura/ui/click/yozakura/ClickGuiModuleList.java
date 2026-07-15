@@ -285,7 +285,7 @@ final class ClickGuiModuleList {
                 enabled ? gui.guiColors().text : gui.guiColors().muted,
                 gui.guiColors().accent,
                 selectAnim * 0.7f);
-        String name = gui.trim(module.getName(), FontLoaders.F14, 66.0f);
+        String name = gui.trim(gui.getModuleDisplayName(module), FontLoaders.F14, 66.0f);
         gui.drawFont(name, x + 42.0f, y + 15.0f,
                 gui.withAlpha(nameColor, 255.0f * alpha * gui.guiAlpha));
         // 模块描述

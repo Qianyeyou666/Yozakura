@@ -105,8 +105,10 @@ public class YozakuraEventBridgePacketLifecycleContractTest {
         assertTrue("The final listener rotation must be published before PRE is released",
                 publish > dispatch && finishPre > publish);
 
-        assertTrue("Post-sensitive actions must enter a two-tick batch unless their accepted lifecycle explicitly preserves vanilla order",
-                write.contains("preserveOriginalPacketOrder = accepted.isOriginalPacketOrderRequired();")
+        assertTrue("Vanilla actions must preserve their source order even when a silent rotation is active",
+                write.contains("boolean preserveOriginalPacketOrder = true;")
+                        && write.contains("preserveOriginalPacketOrder = preserveOriginalPacketOrder")
+                        && write.contains("|| accepted.isOriginalPacketOrderRequired();")
                         && write.contains("if (!skipPacketEvent && !preserveOriginalPacketOrder && isPostSensitiveAction(packet))")
                         && write.contains("queueCurrentActionPacket(packet, promise, writeId);"));
         String actionClassifier = method(source,
@@ -131,7 +133,8 @@ public class YozakuraEventBridgePacketLifecycleContractTest {
                 handler.contains("OutboundActionBatchQueue<DelayedPacket>"));
 
         int readyFlush = playerPacket.indexOf("flushReadyActionPackets(ctx);");
-        int tickAdvance = playerPacket.indexOf("boolean playerTickAdvanced = playerPacketTickGate.consumeNextPlayerPacket();");
+        int tickAdvance = playerPacket.indexOf(
+                "boolean playerTickAdvanced = playerPacketTickGate.consumeNextCanonicalPlayerPacket(");
         int silentWrite = playerPacket.indexOf("super.write(ctx, rewritten, promise);");
         int markSent = playerPacket.indexOf("rotationPublication.markSent(rotation);");
         int promoteCurrent = playerPacket.indexOf("promoteCurrentActionPackets();");
@@ -145,7 +148,8 @@ public class YozakuraEventBridgePacketLifecycleContractTest {
         assertTrue("Non-silent AutoClicker actions must be emitted before the native C03",
                 currentFlush >= 0 && normalWrite > currentFlush);
         assertTrue("Extra same-tick C03 packets must not release actions after an earlier movement packet",
-                playerPacket.contains("boolean playerTickAdvanced = playerPacketTickGate.consumeNextPlayerPacket()")
+                playerPacket.contains(
+                                "boolean playerTickAdvanced = playerPacketTickGate.consumeNextCanonicalPlayerPacket(")
                         && playerPacket.contains("if (playerTickAdvanced && !rotation.isActive())"));
         assertTrue("Forge PRE must enqueue the exact published generation before the native player packet is sent",
                 source.contains("handler.markNextPlayerPacketTick(published.getGeneration());"));

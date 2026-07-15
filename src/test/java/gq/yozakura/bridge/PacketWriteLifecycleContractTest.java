@@ -137,8 +137,10 @@ public class PacketWriteLifecycleContractTest {
     private static void assertOriginalOrderRequestBypassesOnlyTheRotationActionQueue(String source) {
         assertTrue("The bridge must retain the accepted packet's explicit source-order request",
                 source.contains("accepted.isOriginalPacketOrderRequired()"));
-        assertTrue("Only an explicit request may keep a post-sensitive action out of the rotation queue",
-                source.contains("!preserveOriginalPacketOrder && isPostSensitiveAction(packet)"));
+        assertTrue("The bridge must keep vanilla actions in their source position by default",
+                source.contains("boolean preserveOriginalPacketOrder = true;")
+                        && source.contains("preserveOriginalPacketOrder = preserveOriginalPacketOrder")
+                        && source.contains("|| accepted.isOriginalPacketOrderRequired();"));
         assertFalse("The bridge must not special-case or construct a movement-state C0B packet",
                 source.contains("new C0BPacketEntityAction"));
     }

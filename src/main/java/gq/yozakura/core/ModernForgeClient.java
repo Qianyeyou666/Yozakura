@@ -1,5 +1,6 @@
 package gq.yozakura.core;
 
+import gq.yozakura.auth.YozakuraAuthGate;
 import gq.yozakura.core.modern.ModernForgeEventBridge;
 import gq.yozakura.ui.click.web.ModernWebClickGuiService;
 
@@ -17,6 +18,8 @@ public final class ModernForgeClient {
             ModernWebClickGuiService.open();
             return;
         }
+        YozakuraAuthGate.verifyOrThrow("modern-forge");
+        Client.username = YozakuraAuthGate.getVerifiedUsername();
         state = true;
         log("Modern Forge attach initialized: minecraft=" + minecraftVersion()
                 + ", forge=" + forgeVersion()

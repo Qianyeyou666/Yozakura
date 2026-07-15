@@ -17,6 +17,8 @@ public final class PacketBridgeSupport {
     private static final long NO_WRITE_ID = 0L;
     private static final Map<Packet<?>, Deque<NoEventMarker>> NO_EVENT_PACKETS =
             new IdentityHashMap<Packet<?>, Deque<NoEventMarker>>();
+    private static final Map<Packet<?>, Boolean> NON_CANONICAL_PLAYER_PACKETS =
+            new IdentityHashMap<Packet<?>, Boolean>();
     private static volatile Field channelField;
 
     private PacketBridgeSupport() {
@@ -49,6 +51,25 @@ public final class PacketBridgeSupport {
 
     public static boolean consumeNoEvent(Packet<?> packet) {
         return consumeNoEventMarker(packet).isMarked();
+    }
+
+    /** Marks a module-created movement packet so it cannot advance the vanilla tick boundary. */
+    public static void markNonCanonicalPlayerPacket(Packet<?> packet) {
+        if (packet == null) {
+            return;
+        }
+        synchronized (NO_EVENT_PACKETS) {
+            NON_CANONICAL_PLAYER_PACKETS.put(packet, Boolean.TRUE);
+        }
+    }
+
+    static boolean consumeNonCanonicalPlayerPacket(Packet<?> packet) {
+        if (packet == null) {
+            return false;
+        }
+        synchronized (NO_EVENT_PACKETS) {
+            return NON_CANONICAL_PLAYER_PACKETS.remove(packet) != null;
+        }
     }
 
     private static NoEventMarker storeNoEventMarker(Packet<?> packet, long writeId,
@@ -87,6 +108,7 @@ public final class PacketBridgeSupport {
     public static void clearNoEventPackets() {
         synchronized (NO_EVENT_PACKETS) {
             NO_EVENT_PACKETS.clear();
+            NON_CANONICAL_PLAYER_PACKETS.clear();
         }
     }
 

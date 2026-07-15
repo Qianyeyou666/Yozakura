@@ -36,7 +36,7 @@ public class WTap extends Module {
     public WTap() {
         super("WTap", Keyboard.KEY_NONE, ModuleType.Combat, "Reset sprint after landing attacks");
         this.addValues(mode, chance, waitTicks, actionTicks, jitterTicks, onlyPlayers);
-        Chinese = "自动WTap";
+        Chinese = "自动急停";
         INSTANCE = this;
     }
 

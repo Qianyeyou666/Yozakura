@@ -94,9 +94,14 @@ tasks.withType(xyz.wagyourtail.unimined.api.runs.RunConfig).configureEach {
 processResources {
     inputs.property 'version', project.version
     inputs.property 'mcversion', project.minecraft_version
+    inputs.property 'authBaseUrl', providers.gradleProperty('yozakura_auth_base_url').orElse('https://auth.yozakura.wtf/')
 
     filesMatching('mcmod.info') {
         expand 'version': project.version, 'mcversion': project.minecraft_version
+    }
+
+    filesMatching('yozakura-auth.properties') {
+        expand 'authBaseUrl': providers.gradleProperty('yozakura_auth_base_url').orElse('https://auth.yozakura.wtf/').get()
     }
 
     def srgToMcp = file('.gradle/unimined/local/mappings/srg2mcp.srg')

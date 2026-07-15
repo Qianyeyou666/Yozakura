@@ -21,6 +21,7 @@ import gq.yozakura.ui.UiTextField;
 import gq.yozakura.ui.UiTheme;
 import gq.yozakura.ui.UiToggle;
 import gq.yozakura.util.animation.AnimUtil;
+import gq.yozakura.util.math.NumberPrecision;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
 import org.lwjgl.input.Keyboard;
@@ -405,6 +406,7 @@ public class YozakuraClickGui extends GuiScreen {
     final ClickGuiDetailPanel detailPanel = new ClickGuiDetailPanel(this); // 详情面板组件
     final ClickGuiSidePanel sidePanel = new ClickGuiSidePanel(this);      // 侧边面板组件
     final ClickGuiBottomBar bottomBar = new ClickGuiBottomBar(this);      // 底部栏组件
+    final ClickGuiLanguagePanel languagePanel = new ClickGuiLanguagePanel(this);
 
     /**
      * 初始化 GUI 界面。
@@ -447,6 +449,7 @@ public class YozakuraClickGui extends GuiScreen {
         lastPalette = ClickGUI.palette.getValue();
         themeFadeProgress = 0.0f;
         themeRenderer.resetGlassAnimation();
+        languagePanel.reset();
     }
 
     /**
@@ -481,21 +484,25 @@ public class YozakuraClickGui extends GuiScreen {
         themeRenderer.updateGlassAnimation();
         drawBackdrop(sr);
         ShaderRenderer.invalidateFrostedGlass();
-        // 更新交互状态
+        // 语言浮层打开时不更新底层拖拽或滚动状态。
         if (!closing) {
-            moduleList.updateScrollbarDrag(mouseY);
-            sidePanel.updateDrag(mouseX, mouseY);
-            updatePanelDrag(mouseX, mouseY);
-            updateScroll(mouseX, mouseY);
+            if (languagePanel.isOpen()) {
+                Mouse.getDWheel();
+            } else {
+                moduleList.updateScrollbarDrag(mouseY);
+                sidePanel.updateDrag(mouseX, mouseY);
+                updatePanelDrag(mouseX, mouseY);
+                updateScroll(mouseX, mouseY);
+            }
         }
         // 颜色拖拽持续更新
-        if (!closing && draggingColorRed != null && Mouse.isButtonDown(0)) {
+        if (!closing && !languagePanel.isOpen() && draggingColorRed != null && Mouse.isButtonDown(0)) {
             detailPanel.updateColorValue(mouseX, mouseY);
         } else if (!Mouse.isButtonDown(0)) {
             clearDraggingColor();
         }
         // 数字拖拽持续更新
-        if (!closing && draggingNumber instanceof Numbers && Mouse.isButtonDown(0)) {
+        if (!closing && !languagePanel.isOpen() && draggingNumber instanceof Numbers && Mouse.isButtonDown(0)) {
             detailPanel.updateNumberValue((Numbers) draggingNumber, mouseX, draggingNumberX, draggingNumberW);
         } else {
             draggingNumber = null;
@@ -512,6 +519,7 @@ public class YozakuraClickGui extends GuiScreen {
         sidePanel.render(sr, mouseX, mouseY, introY);
         drawThemeFade(sr);
         super.drawScreen(mouseX, mouseY, partialTicks);
+        languagePanel.render(sr, mouseX, mouseY);
         drawKeybindOverlay(sr);
         drawToast(sr);
     }
@@ -591,6 +599,11 @@ public class YozakuraClickGui extends GuiScreen {
      */
     void drawNavigation(int mouseX, int mouseY, float introY) {
         navigationRenderer.drawNavigation(mouseX, mouseY, introY);
+        languagePanel.drawNavigationButton(mouseX, mouseY, introY);
+    }
+
+    float navigationTabsWidth() {
+        return languagePanel.navigationTabsWidth();
     }
 
     /**
@@ -726,7 +739,8 @@ public class YozakuraClickGui extends GuiScreen {
             return formatModeLabel(((ModeProperty) value).getModeString());
         }
         if (value instanceof Numbers) {
-            return formatNumber(((Number) value.getValue()).doubleValue());
+            Numbers number = (Numbers) value;
+            return formatNumber(number, ((Number) value.getValue()).doubleValue());
         }
         if (value instanceof Mode) {
             return formatModeLabel(((Mode) value).getModeAsString());
@@ -833,6 +847,9 @@ public class YozakuraClickGui extends GuiScreen {
     }
 
     void updateScroll(int mouseX, int mouseY) {
+        if (languagePanel.isOpen()) {
+            return;
+        }
         int wheel = Mouse.getDWheel();
         if (draggingScrollbar || draggingSidePanel != null || wheel == 0) {
             return;
@@ -854,6 +871,10 @@ public class YozakuraClickGui extends GuiScreen {
             return;
         }
         ScaledResolution sr = new ScaledResolution(mc);
+        if (languagePanel.isOpen()) {
+            languagePanel.mouseClicked(sr, mouseX, mouseY, mouseButton);
+            return;
+        }
         // 面板拖拽检测（在正常点击之前，不影响纯点击行为）
         if (!closing && mouseButton == 0) {
             startPanelDrag(mouseX, mouseY);
@@ -879,7 +900,12 @@ public class YozakuraClickGui extends GuiScreen {
         if (!isHovered(navX, navY, navX + navW, navY + NAV_H, mouseX, mouseY)) {
             return false;
         }
-        float tabW = navW / GuiTab.values().length;
+        if (languagePanel.handleNavigationClick(mouseX, mouseY)) {
+            searchFocused = false;
+            searchField.focused(false);
+            return true;
+        }
+        float tabW = navigationTabsWidth() / GuiTab.values().length;
         int index = (int) ((mouseX - navX) / tabW);
         if (index < 0 || index >= GuiTab.values().length) {
             return true;
@@ -961,10 +987,20 @@ public class YozakuraClickGui extends GuiScreen {
         if (module.getName().toLowerCase(Locale.ROOT).contains(query)) {
             return true;
         }
+        if (module.getChinese().toLowerCase(Locale.ROOT).contains(query)) {
+            return true;
+        }
         if (module.Descript != null && module.Descript.toLowerCase(Locale.ROOT).contains(query)) {
             return true;
         }
         return module.getCategory() != null && module.getCategory().name().toLowerCase(Locale.ROOT).contains(query);
+    }
+
+    String getModuleDisplayName(Module module) {
+        if (module == null) {
+            return "";
+        }
+        return Client.CHINESE ? module.getChinese() : module.getName();
     }
 
     /** @return 模块卡片高度（固定） */
@@ -1377,12 +1413,8 @@ public class YozakuraClickGui extends GuiScreen {
         return keyName == null ? "NONE" : keyName;
     }
 
-    /** 格式化数字（整数不带小数，浮点数保留两位） */
-    String formatNumber(double value) {
-        if (Math.abs(value - Math.round(value)) < 0.0001D) {
-            return String.valueOf((long) Math.round(value));
-        }
-        return String.format(Locale.ROOT, "%.2f", value);
+    String formatNumber(Numbers number, double value) {
+        return NumberPrecision.format(value, number.getIncrement());
     }
 
     /**
@@ -1667,6 +1699,12 @@ public class YozakuraClickGui extends GuiScreen {
     protected void keyTyped(char typedChar, int keyCode) throws IOException {
         if (bindingModule != null) {
             finishBinding(keyCode);
+            return;
+        }
+        if (languagePanel.isOpen()) {
+            if (keyCode == Keyboard.KEY_ESCAPE) {
+                languagePanel.close();
+            }
             return;
         }
         if (searchBar.keyTyped(typedChar, keyCode)) {

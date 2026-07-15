@@ -79,6 +79,37 @@ public class BacktrackPacketOrderContractTest {
                 changedChannel >= 0 && release > changedChannel && remove > release && install > remove);
     }
 
+    @Test
+    public void nettyDelayAdmissionUsesOnlyTheImmutableTargetSnapshot() throws IOException {
+        String source = source();
+        String delayable = method(source, "    private boolean isDelayablePacket(Packet packet) {",
+                "    private boolean usesPacketDelay()");
+        String history = method(source, "    private void recordHistory() {",
+                "    private boolean applyHistoricalHit()");
+
+        assertTrue("The client thread must publish target IDs for the Netty handler",
+                source.contains("private volatile Set<Integer> delayableEntityIds")
+                        && history.contains("delayableEntityIds = Collections.unmodifiableSet"));
+        assertTrue("Netty admission must use the published ID snapshot", delayable.contains("delayableEntityIds.contains"));
+        assertFalse("Netty must not traverse the Minecraft world or ray trace entities",
+                delayable.contains("mc.theWorld") || delayable.contains("getEntity(mc")
+                        || delayable.contains("CombatUtil.isValidTarget"));
+    }
+
+    @Test
+    public void lunarHybridUsesHistoryWithoutInstallingAnInboundDelayHandler() throws IOException {
+        String source = source();
+        String delayMode = method(source, "    private boolean usesPacketDelay() {",
+                "    private boolean queuePacketIfDelayable");
+        String mouseOver = method(source, "    public void onMouseOver(MouseOverEvent event) {",
+                "    public static boolean applyBacktrackHit()");
+
+        assertTrue("The standalone bridge must not attach Backtrack's cross-thread packet delay handler",
+                delayMode.contains("!StandaloneClient.isBridgeOwnerActive()"));
+        assertTrue("HYBRID must still use the real mouse-over history path in Lunar",
+                mouseOver.contains("mode.getValue() == BacktrackMode.PACKET"));
+    }
+
     private static String method(String source, String beginMarker, String endMarker) {
         int begin = source.indexOf(beginMarker);
         int end = source.indexOf(endMarker, begin + beginMarker.length());

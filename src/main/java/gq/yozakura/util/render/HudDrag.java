@@ -8,12 +8,25 @@ import net.minecraft.client.gui.ScaledResolution;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 public final class HudDrag {
     private static final Minecraft MC = Minecraft.getMinecraft();
     private static final HudDragSession SESSION = new HudDragSession();
     private static final VisualPalette PALETTE = VisualPalette.nightBloom();
+    private static final HudDockingCoordinator DOCKING = new HudDockingCoordinator();
+    private static final Map<String, DockBinding> DOCK_BINDINGS = new LinkedHashMap<String, DockBinding>();
+    private static final long DOCK_STALE_NANOS = 180000000L;
     private static String selectedId;
     private static ActiveBinding activeBinding;
+    private static HudDockingCoordinator.Snapshot dockingSnapshot;
+    private static long lastDockUpdateNanos;
 
     private HudDrag() {
     }
@@ -68,6 +81,129 @@ public final class HudDrag {
         return asArray(position);
     }
 
+    /**
+     * Updates a Night Bloom HUD node through the shared docking graph.  Width, height and radius
+     * are already in logical screen pixels, so callers must pass their scaled bounds.
+     */
+    public static float[] updateDocked(String id, Numbers<Double> xValue, Numbers<Double> yValue,
+                                       Numbers<Double> scaleValue, float defaultX, float defaultY,
+                                       float width, float height, float radius,
+                                       Set<HudDockingCoordinator.Side> sides, ScaledResolution sr) {
+        return updateDocked(id, xValue, yValue, scaleValue, defaultX, defaultY, width, height, radius,
+                sides, true, sr);
+    }
+
+    public static float[] updateDocked(String id, Numbers<Double> xValue, Numbers<Double> yValue,
+                                       Numbers<Double> scaleValue, float defaultX, float defaultY,
+                                       float width, float height, float radius,
+                                       Set<HudDockingCoordinator.Side> sides, boolean compositeEligible,
+                                       ScaledResolution sr) {
+        if (id == null || id.length() == 0 || sr == null) {
+            return update(id, xValue, yValue, scaleValue, defaultX, defaultY, width, height, sr);
+        }
+        long now = System.nanoTime();
+        DockBinding binding = DOCK_BINDINGS.get(id);
+        if (binding == null) {
+            binding = new DockBinding(id, xValue, yValue);
+            DOCK_BINDINGS.put(id, binding);
+        } else {
+            binding.xValue = xValue;
+            binding.yValue = yValue;
+        }
+        binding.inputX = resolvePosition(xValue, defaultX);
+        binding.inputY = resolvePosition(yValue, defaultY);
+        binding.width = Math.max(0.0F, width);
+        binding.height = Math.max(0.0F, height);
+        binding.radius = Math.max(0.0F, radius);
+        binding.sides = sides == null || sides.isEmpty()
+                ? EnumSet.noneOf(HudDockingCoordinator.Side.class) : EnumSet.copyOf(sides);
+        binding.compositeEligible = compositeEligible;
+        binding.lastSeenNanos = now;
+
+        binding.movable = true;
+        advanceDocking(sr, now, true);
+        HudDockingCoordinator.NodeView node = dockingSnapshot.getNode(id);
+        return node == null ? new float[]{binding.inputX, binding.inputY}
+                : new float[]{node.getX(), node.getY()};
+    }
+
+    public static float[] updateDocked(String id, Numbers<Double> xValue, Numbers<Double> yValue,
+                                       Numbers<Double> scaleValue, float defaultX, float defaultY,
+                                       float width, float height, float radius, ScaledResolution sr) {
+        return updateDocked(id, xValue, yValue, scaleValue, defaultX, defaultY, width, height, radius,
+                HudDockingCoordinator.Side.all(), sr);
+    }
+
+    /**
+     * Adds a renderer-owned node (currently the independently draggable Watermark tiles) to the
+     * global graph without competing for its mouse input. Other HUD widgets can snap to it.
+     */
+    public static float[] registerDockedPassive(String id, float x, float y, float width, float height,
+                                                float radius, Set<HudDockingCoordinator.Side> sides,
+                                                ScaledResolution sr) {
+        if (id == null || id.length() == 0 || sr == null) {
+            return new float[]{x, y};
+        }
+        long now = System.nanoTime();
+        DockBinding binding = DOCK_BINDINGS.get(id);
+        if (binding == null) {
+            binding = new DockBinding(id, null, null);
+            DOCK_BINDINGS.put(id, binding);
+        }
+        binding.inputX = x;
+        binding.inputY = y;
+        binding.width = Math.max(0.0F, width);
+        binding.height = Math.max(0.0F, height);
+        binding.radius = Math.max(0.0F, radius);
+        binding.sides = sides == null || sides.isEmpty()
+                ? EnumSet.noneOf(HudDockingCoordinator.Side.class) : EnumSet.copyOf(sides);
+        binding.movable = false;
+        binding.compositeEligible = false;
+        binding.lastSeenNanos = now;
+        advanceDocking(sr, now, false);
+        HudDockingCoordinator.NodeView node = dockingSnapshot == null ? null : dockingSnapshot.getNode(id);
+        return node == null ? new float[]{x, y} : new float[]{node.getX(), node.getY()};
+    }
+
+    /** Completes a local renderer-owned drag by snapping its proxy into the shared HUD graph. */
+    public static float[] snapDockedPassive(String id, float fallbackX, float fallbackY) {
+        if (id == null || id.length() == 0 || dockingSnapshot == null) {
+            return new float[]{fallbackX, fallbackY};
+        }
+        dockingSnapshot = DOCKING.attachNearest(id);
+        persistDockedPositions(dockingSnapshot);
+        HudDockingCoordinator.NodeView node = dockingSnapshot.getNode(id);
+        return node == null ? new float[]{fallbackX, fallbackY} : new float[]{node.getX(), node.getY()};
+    }
+
+    /** Detaches a renderer-owned proxy before its local drag takes over its tile geometry. */
+    public static void detachDocked(String id) {
+        if (id == null || id.length() == 0 || dockingSnapshot == null || !dockingSnapshot.hasLink(id)) {
+            return;
+        }
+        dockingSnapshot = DOCKING.detach(id);
+        persistDockedPositions(dockingSnapshot);
+    }
+
+    public static HudDockingCoordinator.Snapshot getDockingSnapshot() {
+        return dockingSnapshot;
+    }
+
+    public static void resetDocking() {
+        DOCKING.reset();
+        DOCK_BINDINGS.clear();
+        dockingSnapshot = null;
+        lastDockUpdateNanos = 0L;
+    }
+
+    /** Removes a permanently disabled widget while allowing transiently hidden widgets to retain links. */
+    public static void unregisterDocked(String id) {
+        if (id == null || id.length() == 0) {
+            return;
+        }
+        DOCK_BINDINGS.remove(id);
+    }
+
     public static void drawHint(String id, float x, float y, float width, float height, float radius) {
         if (!isEditMode()) {
             return;
@@ -93,6 +229,29 @@ public final class HudDrag {
                 Math.max(2.0f, radius + 1.0f), 1.0f, 0x00000000, color);
         RenderUtil.drawRoundedRect(x + width / 2.0f - 12.0f, y + 4.0f,
                 x + width / 2.0f + 12.0f, y + 6.0f, 1.0f, color);
+    }
+
+    /** Draws the stronger edit-mode state for a shared docking node without changing panel rendering. */
+    public static void drawDockHint(String id, float x, float y, float width, float height, float radius) {
+        if (!isEditMode() || dockingSnapshot == null) {
+            return;
+        }
+        ScaledResolution sr = new ScaledResolution(MC);
+        boolean hovered = isHovered(logicalMouseX(sr), logicalMouseY(sr), x, y, width, height);
+        boolean active = dockingSnapshot.isDragging(id);
+        boolean selected = dockingSnapshot.isSelected(id);
+        if (!hovered && !active && !selected) {
+            return;
+        }
+        int color = active ? withAlpha(PALETTE.getAccentPrimary(), 0xD4)
+                : selected ? withAlpha(PALETTE.getAccentAlt(), 0xB8)
+                : withAlpha(PALETTE.getAccentPrimary(), 0x7A);
+        RenderUtil.drawRoundedBorderedRect(x - 1.0F, y - 1.0F, x + width + 1.0F, y + height + 1.0F,
+                Math.max(2.0F, radius + 1.0F), 1.0F, 0x00000000, color);
+        if (active || selected) {
+            RenderUtil.drawRoundedRect(x + width * 0.5F - 9.0F, y + 3.0F,
+                    x + width * 0.5F + 9.0F, y + 4.5F, 0.75F, color);
+        }
     }
 
     public static int mouseX(ScaledResolution sr) {
@@ -175,6 +334,54 @@ public final class HudDrag {
         activeBinding = null;
     }
 
+    private static void persistDockedPositions(HudDockingCoordinator.Snapshot snapshot) {
+        if (snapshot == null) {
+            return;
+        }
+        for (HudDockingCoordinator.NodeView node : snapshot.getNodes()) {
+            DockBinding binding = DOCK_BINDINGS.get(node.getId());
+            if (binding == null || !shouldPersistDockedPosition(snapshot, binding, node.getId())) {
+                continue;
+            }
+            setNumber(binding.xValue, node.getTargetX());
+            setNumber(binding.yValue, node.getTargetY());
+        }
+    }
+
+    private static void advanceDocking(ScaledResolution sr, long now, boolean processInput) {
+        List<HudDockingCoordinator.NodeInput> nodes = new ArrayList<HudDockingCoordinator.NodeInput>();
+        Iterator<DockBinding> iterator = DOCK_BINDINGS.values().iterator();
+        while (iterator.hasNext()) {
+            DockBinding candidate = iterator.next();
+            boolean visible = now - candidate.lastSeenNanos <= DOCK_STALE_NANOS;
+            boolean linked = dockingSnapshot != null && dockingSnapshot.hasLink(candidate.id);
+            if (!visible && !linked) {
+                iterator.remove();
+                continue;
+            }
+            nodes.add(new HudDockingCoordinator.NodeInput(candidate.id, candidate.inputX, candidate.inputY,
+                    candidate.width, candidate.height, candidate.radius, candidate.sides, candidate.movable,
+                    candidate.compositeEligible, visible));
+        }
+        float deltaSeconds = lastDockUpdateNanos == 0L ? 0.0F
+                : Math.min(0.05F, Math.max(0.0F, (now - lastDockUpdateNanos) / 1000000000.0F));
+        lastDockUpdateNanos = now;
+        boolean editMode = isEditMode();
+        dockingSnapshot = DOCKING.update(new HudDockingCoordinator.Frame(sr.getScaledWidth(), sr.getScaledHeight(),
+                deltaSeconds, editMode, logicalMouseX(sr), logicalMouseY(sr), Mouse.isButtonDown(0),
+                Mouse.isButtonDown(1), Keyboard.isKeyDown(Keyboard.KEY_ESCAPE), processInput, nodes));
+        persistDockedPositions(dockingSnapshot);
+    }
+
+    private static boolean shouldPersistDockedPosition(HudDockingCoordinator.Snapshot snapshot,
+                                                       DockBinding binding, String id) {
+        boolean configured = binding.xValue != null && binding.yValue != null
+                && binding.xValue.getValue() != null && binding.yValue.getValue() != null
+                && binding.xValue.getValue() >= 0.0D && binding.yValue.getValue() >= 0.0D;
+        return configured || snapshot.hasLink(id)
+                || snapshot.isDirty() && snapshot.isSelected(id);
+    }
+
     private static void settleReleasedSession() {
         if (SESSION.getState() != HudDragSession.DragState.RELEASE) {
             return;
@@ -237,6 +444,27 @@ public final class HudDrag {
         private final Numbers<Double> yValue;
 
         private ActiveBinding(String id, Numbers<Double> xValue, Numbers<Double> yValue) {
+            this.id = id;
+            this.xValue = xValue;
+            this.yValue = yValue;
+        }
+    }
+
+    private static final class DockBinding {
+        private final String id;
+        private Numbers<Double> xValue;
+        private Numbers<Double> yValue;
+        private float inputX;
+        private float inputY;
+        private float width;
+        private float height;
+        private float radius;
+        private Set<HudDockingCoordinator.Side> sides = HudDockingCoordinator.Side.all();
+        private boolean movable = true;
+        private boolean compositeEligible = true;
+        private long lastSeenNanos;
+
+        private DockBinding(String id, Numbers<Double> xValue, Numbers<Double> yValue) {
             this.id = id;
             this.xValue = xValue;
             this.yValue = yValue;

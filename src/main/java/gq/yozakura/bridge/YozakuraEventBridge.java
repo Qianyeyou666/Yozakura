@@ -33,6 +33,7 @@ import gq.yozakura.event.bridge.LeftClickMouseEvent;
 import gq.yozakura.event.bridge.PacketAcceptedEvent;
 import gq.yozakura.event.bridge.PacketEvent;
 import gq.yozakura.event.bridge.PacketWriteEvent;
+import gq.yozakura.event.bridge.PlayerPacketBoundaryEvent;
 import gq.yozakura.event.bridge.Render2DEvent;
 import gq.yozakura.event.bridge.Render3DEvent;
 import gq.yozakura.event.bridge.RightClickMouseEvent;
@@ -639,6 +640,8 @@ public final class YozakuraEventBridge {
             }
             if (msg instanceof Packet<?>) {
                 Packet<?> packet = (Packet<?>) msg;
+                boolean nonCanonicalPlayerPacket = packet instanceof C03PacketPlayer
+                        && PacketBridgeSupport.consumeNonCanonicalPlayerPacket(packet);
                 PacketBridgeSupport.NoEventMarker noEventMarker =
                         PacketBridgeSupport.consumeNoEventMarker(packet);
                 if (noEventMarker.isAlreadyBridgeProcessed()) {
@@ -647,7 +650,7 @@ public final class YozakuraEventBridge {
                 }
                 boolean skipPacketEvent = noEventMarker.isMarked();
                 long writeId = noEventMarker.getWriteId();
-                boolean preserveOriginalPacketOrder = false;
+                boolean preserveOriginalPacketOrder = true;
                 if (skipPacketEvent) {
                     BridgeDebug.logPacket("forge", "SEND_NO_EVENT", packet, false);
                 }
@@ -662,7 +665,8 @@ public final class YozakuraEventBridge {
                     PacketAcceptedEvent accepted = new PacketAcceptedEvent(packet);
                     EventManager.call(accepted);
                     writeId = accepted.getWriteId();
-                    preserveOriginalPacketOrder = accepted.isOriginalPacketOrderRequired();
+                    preserveOriginalPacketOrder = preserveOriginalPacketOrder
+                            || accepted.isOriginalPacketOrderRequired();
                 }
 
                 observePacketWrite(ctx, packet, promise, writeId);
@@ -684,12 +688,13 @@ public final class YozakuraEventBridge {
                 if (packet instanceof C03PacketPlayer) {
                     if (rotation.isPreInProgress()) {
                         delayedPlayerPackets.add(new DelayedPlayerPacket((C03PacketPlayer) packet, promise,
-                                rotation.getGeneration(), writeId));
+                                rotation.getGeneration(), writeId, nonCanonicalPlayerPacket));
                         BridgeDebug.logPacketDetail("forge", "SEND_PLAYER_DELAYED_QUEUE", packet, false,
                                 describeRotationState(rotation));
                         return;
                     }
-                    writePlayerPacket(ctx, (C03PacketPlayer) packet, promise, rotation, writeId);
+                    writePlayerPacket(ctx, (C03PacketPlayer) packet, promise, rotation, writeId,
+                            !nonCanonicalPlayerPacket);
                     return;
                 }
 
@@ -720,6 +725,22 @@ public final class YozakuraEventBridge {
 
         private void reportPacketWrite(Packet<?> packet, long writeId, boolean success) {
             EventManager.call(new PacketWriteEvent(packet, writeId, success));
+        }
+
+        private void reportPlayerPacketBoundary(ChannelPromise promise, final long writeId,
+                                                final boolean playerTickAdvanced) {
+            if (!playerTickAdvanced || promise == null) {
+                return;
+            }
+            promise.addListener(new ChannelFutureListener() {
+                @Override
+                public void operationComplete(ChannelFuture future) {
+                    if (!future.isSuccess() || writeId == PacketAcceptedEvent.NO_WRITE_ID) {
+                        return;
+                    }
+                    EventManager.call(new PlayerPacketBoundaryEvent(writeId));
+                }
+            });
         }
 
         @Override
@@ -756,8 +777,10 @@ public final class YozakuraEventBridge {
         }
 
         private void writePlayerPacket(ChannelHandlerContext ctx, C03PacketPlayer packet, ChannelPromise promise,
-                                       ForgeRotationPublication.Snapshot rotation, long writeId) throws Exception {
-            boolean playerTickAdvanced = playerPacketTickGate.consumeNextPlayerPacket();
+                                       ForgeRotationPublication.Snapshot rotation, long writeId,
+                                       boolean canonicalPlayerPacket) throws Exception {
+            boolean playerTickAdvanced = playerPacketTickGate.consumeNextCanonicalPlayerPacket(canonicalPlayerPacket);
+            reportPlayerPacketBoundary(promise, writeId, playerTickAdvanced);
             if (playerTickAdvanced) {
                 flushReadyActionPackets(ctx);
             }
@@ -913,7 +936,8 @@ public final class YozakuraEventBridge {
                     && delayed.requiredGeneration <= published.getGeneration()) {
                 delayedPlayerPackets.poll();
                 try {
-                    writePlayerPacket(ctx, delayed.packet, delayed.promise, published, delayed.writeId);
+                    writePlayerPacket(ctx, delayed.packet, delayed.promise, published, delayed.writeId,
+                            !delayed.nonCanonicalPlayerPacket);
                 } catch (Throwable throwable) {
                     if (delayed.promise != null) {
                         delayed.promise.tryFailure(throwable);
@@ -1067,13 +1091,15 @@ public final class YozakuraEventBridge {
             private final ChannelPromise promise;
             private final long requiredGeneration;
             private final long writeId;
+            private final boolean nonCanonicalPlayerPacket;
 
             private DelayedPlayerPacket(C03PacketPlayer packet, ChannelPromise promise, long requiredGeneration,
-                                        long writeId) {
+                                        long writeId, boolean nonCanonicalPlayerPacket) {
                 this.packet = packet;
                 this.promise = promise;
                 this.requiredGeneration = requiredGeneration;
                 this.writeId = writeId;
+                this.nonCanonicalPlayerPacket = nonCanonicalPlayerPacket;
             }
         }
     }

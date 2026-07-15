@@ -34,6 +34,7 @@ import javax.swing.JTextField;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import gq.yozakura.auth.vendor.tech.skidonion.obfuscator.inline.Wrapper;
+import gq.yozakura.auth.NativeAuthBridge;
 
 public class VerificationPanel extends JPanel {
     private static final String CACHE_DIR = "yozakura";
@@ -98,13 +99,13 @@ public class VerificationPanel extends JPanel {
 
     private void performLogin() {
         int code = 0;
-        String password = new String(passwordField.getPassword());
+        char[] passwordChars = passwordField.getPassword();
         try {
-            int rawResult = Wrapper.login(usernameField.getText(), password, true);
-            code = (byte) ((rawResult >>> 8) & 0xff);
+            code = NativeAuthBridge.login(usernameField.getText(), passwordChars);
 
             if (code == 0) {
                 saveCredentials(usernameField.getText());
+                showVerifiedEntitlement();
                 writeResult(1);
                 SwingUtilities.invokeLater(frame::dispose);
             } else {
@@ -113,6 +114,8 @@ public class VerificationPanel extends JPanel {
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this, text("VerificationPanel.login.exception", "JVM Occurs a Error"));
         } finally {
+            java.util.Arrays.fill(passwordChars, '\0');
+            passwordField.setText("");
             if (loginButton != null) {
                 loginButton.setEnabled(true);
             }
@@ -148,7 +151,7 @@ public class VerificationPanel extends JPanel {
     }
 
     private void openTerms(MouseEvent event) {
-        browse("http://49.235.166.227:8080/");
+        browseService();
     }
 
     private void hoverTerms(MouseEvent event) {
@@ -160,7 +163,7 @@ public class VerificationPanel extends JPanel {
     }
 
     private void openPrivacy(MouseEvent event) {
-        browse("http://49.235.166.227:8080/");
+        browseService();
     }
 
     private void hoverPrivacy(MouseEvent event) {
@@ -172,7 +175,7 @@ public class VerificationPanel extends JPanel {
     }
 
     private void openRegister(MouseEvent event) {
-        browse("http://49.235.166.227:8080/");
+        browseService();
     }
 
     private void hoverRegister(MouseEvent event) {
@@ -326,10 +329,27 @@ public class VerificationPanel extends JPanel {
         JOptionPane.showMessageDialog(this, text(key, key), "Yozakura", JOptionPane.ERROR_MESSAGE);
     }
 
+    private void showVerifiedEntitlement() {
+        String role = NativeAuthBridge.getVerifiedRole();
+        String expiry = NativeAuthBridge.getVerifiedExpiry();
+        String message = text("VerificationPanel.login.success", "Verification successful")
+                + "\n" + text("VerificationPanel.login.role", "Role") + ": " + role
+                + "\n" + text("VerificationPanel.login.expires", "Expires") + ": " + expiry;
+        JOptionPane.showMessageDialog(this, message, "Yozakura", JOptionPane.INFORMATION_MESSAGE);
+    }
+
     private void browse(String uri) {
         try {
             Desktop.getDesktop().browse(URI.create(uri));
         } catch (Exception ignored) {
+        }
+    }
+
+    private void browseService() {
+        try {
+            browse(Wrapper.getServiceBaseUrl());
+        } catch (RuntimeException exception) {
+            JOptionPane.showMessageDialog(this, exception.getMessage(), "Yozakura", JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -364,4 +384,3 @@ public class VerificationPanel extends JPanel {
         }
     }
 }
-

@@ -1,6 +1,7 @@
 package gq.yozakura.module.combat;
 
 import gq.yozakura.bridge.PacketPipelineAnchors;
+import gq.yozakura.core.StandaloneClient;
 import gq.yozakura.event.bridge.MouseOverEvent;
 import gq.yozakura.event.bus.EventTarget;
 import gq.yozakura.module.ModuleType;
@@ -30,9 +31,12 @@ import org.lwjgl.opengl.GL11;
 
 import java.lang.reflect.Field;
 import java.util.ArrayDeque;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class Backtrack extends Module {
@@ -45,6 +49,9 @@ public class Backtrack extends Module {
     private static final String HANDLER_NAME = PacketPipelineAnchors.BACKTRACK_HANDLER_NAME;
     private static final int MAX_HISTORY = 40;
     private static final int MAX_QUEUED_PACKETS = 128;
+    private static final int UNKNOWN_ENTITY_ID = Integer.MIN_VALUE;
+    private static volatile Field s14EntityIdField;
+    private static volatile boolean s14EntityIdFieldResolved;
     private static Backtrack INSTANCE;
 
     private final Mode<BacktrackMode> mode =
@@ -64,6 +71,7 @@ public class Backtrack extends Module {
     private final Map<Integer, ArrayDeque<TrackedBox>> history = new ConcurrentHashMap<Integer, ArrayDeque<TrackedBox>>();
     private final Queue<QueuedPacket> queuedPackets = new ArrayDeque<QueuedPacket>();
     private final Object deliveryLock = new Object();
+    private volatile Set<Integer> delayableEntityIds = Collections.emptySet();
     private int pendingDeliveryTasks;
     private volatile boolean acceptingPackets;
     private Channel channel;
@@ -79,6 +87,7 @@ public class Backtrack extends Module {
     @Override
     public void enable() {
         history.clear();
+        delayableEntityIds = Collections.emptySet();
         synchronized (deliveryLock) {
             queuedPackets.clear();
             acceptingPackets = true;
@@ -91,6 +100,7 @@ public class Backtrack extends Module {
         stopPacketAdmissionAndRelease();
         removeHandler();
         history.clear();
+        delayableEntityIds = Collections.emptySet();
     }
 
     @SubscribeEvent
@@ -100,6 +110,7 @@ public class Backtrack extends Module {
         }
         if (!isInGame()) {
             history.clear();
+            delayableEntityIds = Collections.emptySet();
             stopPacketAdmissionAndRelease();
             removeHandler();
             return;
@@ -158,6 +169,7 @@ public class Backtrack extends Module {
 
     private void recordHistory() {
         long now = System.currentTimeMillis();
+        Set<Integer> currentDelayableIds = new HashSet<Integer>();
         for (Entity entity : mc.theWorld.loadedEntityList) {
             if (!(entity instanceof EntityLivingBase)) {
                 continue;
@@ -167,6 +179,7 @@ public class Backtrack extends Module {
                     players.getValue(), mobs.getValue(), animals.getValue(), throughWalls.getValue())) {
                 continue;
             }
+            currentDelayableIds.add(living.getEntityId());
             ArrayDeque<TrackedBox> boxes = history.get(living.getEntityId());
             if (boxes == null) {
                 boxes = new ArrayDeque<TrackedBox>();
@@ -186,6 +199,7 @@ public class Backtrack extends Module {
                 iterator.remove();
             }
         }
+        delayableEntityIds = Collections.unmodifiableSet(currentDelayableIds);
     }
 
     private boolean applyHistoricalHit() {
@@ -382,25 +396,57 @@ public class Backtrack extends Module {
     }
 
     private boolean isDelayablePacket(Packet packet) {
-        if (!acceptingPackets || !getState() || !usesPacketDelay() || !isInGame()
+        if (!acceptingPackets || !getState() || !usesPacketDelay()
                 || packetDelay.getValue() <= 0.0D) {
             return false;
         }
-        Entity entity = null;
-        if (packet instanceof S14PacketEntity) {
-            entity = ((S14PacketEntity) packet).getEntity(mc.theWorld);
-        } else if (packet instanceof S18PacketEntityTeleport) {
-            entity = mc.theWorld.getEntityByID(((S18PacketEntityTeleport) packet).getEntityId());
+        int entityId = packetEntityId(packet);
+        return entityId != UNKNOWN_ENTITY_ID && delayableEntityIds.contains(entityId);
+    }
+
+    private int packetEntityId(Packet packet) {
+        if (packet instanceof S18PacketEntityTeleport) {
+            return ((S18PacketEntityTeleport) packet).getEntityId();
         }
-        if (!(entity instanceof EntityLivingBase)) {
-            return false;
+        if (!(packet instanceof S14PacketEntity)) {
+            return UNKNOWN_ENTITY_ID;
         }
-        return CombatUtil.isValidTarget((EntityLivingBase) entity, range.getValue() + 1.0D, 180.0D,
-                players.getValue(), mobs.getValue(), animals.getValue(), throughWalls.getValue());
+        Field field = resolveS14EntityIdField();
+        if (field == null) {
+            return UNKNOWN_ENTITY_ID;
+        }
+        try {
+            return field.getInt(packet);
+        } catch (Throwable ignored) {
+            return UNKNOWN_ENTITY_ID;
+        }
+    }
+
+    private static Field resolveS14EntityIdField() {
+        if (s14EntityIdFieldResolved) {
+            return s14EntityIdField;
+        }
+        synchronized (Backtrack.class) {
+            if (s14EntityIdFieldResolved) {
+                return s14EntityIdField;
+            }
+            for (String name : new String[]{"entityId", "field_149074_a", "a"}) {
+                try {
+                    Field field = S14PacketEntity.class.getDeclaredField(name);
+                    field.setAccessible(true);
+                    s14EntityIdField = field;
+                    break;
+                } catch (Throwable ignored) {
+                }
+            }
+            s14EntityIdFieldResolved = true;
+            return s14EntityIdField;
+        }
     }
 
     private boolean usesPacketDelay() {
-        return mode.getValue() == BacktrackMode.PACKET || mode.getValue() == BacktrackMode.HYBRID;
+        return !StandaloneClient.isBridgeOwnerActive()
+                && (mode.getValue() == BacktrackMode.PACKET || mode.getValue() == BacktrackMode.HYBRID);
     }
 
     private boolean queuePacketIfDelayable(ChannelHandlerContext ctx, Object packet) {

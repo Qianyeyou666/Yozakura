@@ -111,9 +111,12 @@ public class Health extends Module {
         String valueText = Math.round(current) + "/" + Math.round(maximum);
         float boxW = Math.max(88.0F, FontLoaders.C14.getStringWidth(valueText) + 48.0F);
         float boxH = 26.0F;
-        float[] pos = HudDrag.update("health_display", xPosition, yPosition, scale,
+        float[] pos = HudDrag.updateDocked("health_display", xPosition, yPosition, scale,
                 sr.getScaledWidth() / 2.0F - this.width, sr.getScaledHeight() / 2.0F - 15.0F,
-                boxW * uiScale, boxH * uiScale, sr);
+                boxW * uiScale, boxH * uiScale, NIGHT_BLOOM_RADIUS * uiScale, sr);
+
+        NightBloomHudDockRenderer.drawPanel("health_display", pos[0], pos[1], boxW * uiScale, boxH * uiScale,
+                NIGHT_BLOOM_RADIUS * uiScale, 1.0F, NIGHT_BLOOM_SURFACE);
 
         GlStateManager.pushMatrix();
         try {
@@ -123,10 +126,7 @@ public class Health extends Module {
 
             float x = pos[0];
             float y = pos[1];
-            float radius = NIGHT_BLOOM_RADIUS;
             int healthColor = NightBloomHealthMotion.colorFor(motion.getHealth(), NIGHT_BLOOM);
-            HUD.drawNightBloomShadow(x, y, x + boxW, y + boxH, radius, 1.0F);
-            RenderServices.shapes().rounded(x, y, x + boxW, y + boxH, radius, NIGHT_BLOOM_SURFACE);
 
             float iconSize = 18.0F;
             float iconX = x + 6.0F;
@@ -160,7 +160,7 @@ public class Health extends Module {
         } finally {
             GlStateManager.popMatrix();
         }
-        HudDrag.drawHint("health_display", pos[0], pos[1], boxW * uiScale, boxH * uiScale,
+        HudDrag.drawDockHint("health_display", pos[0], pos[1], boxW * uiScale, boxH * uiScale,
                 NIGHT_BLOOM_RADIUS * uiScale);
         HudDrag.handleScroll("health_display", scale, pos[0], pos[1], boxW * uiScale, boxH * uiScale, 0.65F, 2.0F);
     }
@@ -201,6 +201,11 @@ public class Health extends Module {
         }
         HudDrag.drawHint("health_display", pos[0], pos[1], boxW * uiScale, boxH * uiScale, 2.0f * uiScale);
         HudDrag.handleScroll("health_display", scale, pos[0], pos[1], boxW * uiScale, boxH * uiScale, 0.65f, 2.0f);
+    }
+
+    @Override
+    public void disable() {
+        HudDrag.unregisterDocked("health_display");
     }
 
     private static int multiplyAlpha(int color, float alpha) {

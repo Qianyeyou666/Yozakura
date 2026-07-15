@@ -3,6 +3,8 @@ package gq.yozakura.engine.font;
 import gq.yozakura.engine.render.GLStateManager;
 import gq.yozakura.engine.render.glow.GlowProfile;
 import gq.yozakura.engine.render.ui.RenderServices;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import org.lwjgl.BufferUtils;
@@ -95,6 +97,9 @@ public class CFontRenderer extends CFont {
      */
     public float drawGlowString(String text, double x, double y, int glowColor,
                                 float strength, GlowProfile profile) {
+        if (requiresUnicodeFallback(text)) {
+            return (float) (x + getStringWidth(text));
+        }
         RenderServices.glow().queueText(this, text, x, y, glowColor, strength, profile);
         return (float) (x + getStringWidth(text));
     }
@@ -139,6 +144,9 @@ public class CFontRenderer extends CFont {
                                      boolean allowScaleCompensation, boolean maskPass) {
         if (text == null || text.length() == 0) {
             return 0.0f;
+        }
+        if (!maskPass && requiresUnicodeFallback(text)) {
+            return drawUnicodeFallback(text, x, y, color, shadow);
         }
         if (allowScaleCompensation && scaleCompensationEnabled) {
             ParentScale parentScale = getParentScale();
@@ -318,6 +326,51 @@ public class CFontRenderer extends CFont {
         return (float) x / 2.0f;
     }
 
+    private static boolean requiresUnicodeFallback(String text) {
+        if (text == null) {
+            return false;
+        }
+        for (int index = 0; index < text.length(); index++) {
+            if (text.charAt(index) >= 256) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private float drawUnicodeFallback(String text, double x, double y, int color, boolean shadow) {
+        FontRenderer renderer = Minecraft.getMinecraft().fontRendererObj;
+        if (renderer == null) {
+            return 0.0f;
+        }
+        int resolvedColor = color == 553648127 ? 16777215 : color;
+        if ((resolvedColor & 0xFF000000) == 0) {
+            resolvedColor |= 0xFF000000;
+        }
+        boolean unicode = renderer.getUnicodeFlag();
+        try {
+            renderer.setUnicodeFlag(true);
+            renderer.drawString(text, (float) x, (float) y, resolvedColor, shadow);
+            return (float) (x + renderer.getStringWidth(text));
+        } finally {
+            renderer.setUnicodeFlag(unicode);
+        }
+    }
+
+    private int getUnicodeWidth(String text) {
+        FontRenderer renderer = Minecraft.getMinecraft().fontRendererObj;
+        if (renderer == null) {
+            return 0;
+        }
+        boolean unicode = renderer.getUnicodeFlag();
+        try {
+            renderer.setUnicodeFlag(true);
+            return renderer.getStringWidth(text);
+        } finally {
+            renderer.setUnicodeFlag(unicode);
+        }
+    }
+
     private double snapToTextGrid(double value) {
         return Math.round(value * 2.0) / 2.0;
     }
@@ -383,6 +436,9 @@ public class CFontRenderer extends CFont {
     public int getStringWidth(String text) {
         if (text == null) {
             return 0;
+        }
+        if (requiresUnicodeFallback(text)) {
+            return getUnicodeWidth(text);
         }
         String cacheKey = charOffset + "\u0000" + text;
         Integer cachedWidth = widthCache.get(cacheKey);

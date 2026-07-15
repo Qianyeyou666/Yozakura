@@ -9,6 +9,7 @@ import gq.yozakura.module.Module;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.render.ClickGUI;
 import gq.yozakura.engine.render.ui.VisualPalette;
+import gq.yozakura.util.math.NumberPrecision;
 import gq.yozakura.value.Mode;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
@@ -280,7 +281,7 @@ final class WebClickGuiController {
             builder.append(',');
             appendProperty(builder, "max", number.getMaximum() == null ? 1.0D : number.getMaximum().doubleValue());
             builder.append(',');
-            appendProperty(builder, "step", number.getIncrement() == null ? 1.0D : number.getIncrement().doubleValue());
+            appendProperty(builder, "step", NumberPrecision.uiIncrement(number.getIncrement()));
             builder.append(',');
             appendProperty(builder, "integer", isIntegerNumber(number));
         } else {
@@ -308,7 +309,9 @@ final class WebClickGuiController {
             } else if (value instanceof Option && value.getValue() instanceof Boolean) {
                 value.setValue(next.getAsBoolean());
             } else if (value instanceof Numbers) {
-                ((Numbers) value).setNumberValue(next.getAsDouble());
+                Numbers number = (Numbers) value;
+                number.setNumberValue(NumberPrecision.snap(next.getAsDouble(),
+                        number.getMinimum().doubleValue(), number.getMaximum().doubleValue(), number.getIncrement()));
             }
             try {
                 if (module instanceof gq.yozakura.module.runtime.Module) {

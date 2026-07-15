@@ -41,11 +41,22 @@ powershell -ExecutionPolicy Bypass -File tools\download-mc-assets.ps1
 
 ## Native DLL
 
-Build native loaders after the jar exists:
+Build native loaders with the production HTTPS authentication endpoint:
 
 ```bat
 build-native.bat
 ```
+
+The default endpoint is `https://auth.yozakura.wtf/`. A command-line URL or
+`YOZAKURA_AUTH_BASE_URL` can override it for controlled builds. Remote HTTP
+endpoints are rejected at runtime; loopback HTTP remains available for local
+tests.
+
+The DLL registers the JNI authentication bridge before starting the embedded
+client. Login, session token storage, entitlement expiry parsing and heartbeat
+verification run through WinHTTP in the native layer. Running the extracted JAR
+without the native loader fails closed. After login, the customer sees the
+verified role and expiry returned by the server.
 
 Outputs:
 

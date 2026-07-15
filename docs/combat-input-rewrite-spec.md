@@ -10,8 +10,8 @@ OpenMyau Plus, LeaderClient, and Raven BS references.
 - BlockHit exposes Helper, Auto, and Lag behavior without globally cancelling right clicks.
 - Velocity exposes only Attack and Reduce. Attack opens a short post-S12 window and consumes one
   existing real attack event (custom or Forge); it never manufactures an animation or attack
-  packet. Reduce scales the local S12 packet in place and leaves vanilla responsible for applying
-  it.
+  packet. Reduce preserves the local S12 packet unchanged so vanilla and the server simulate the
+  same knockback.
 
 ## Tech Stack
 
@@ -59,9 +59,9 @@ Use four-space indentation, explicit Java 8 types, focused helpers, and no silen
 - BlockHit has Helper, Auto, and Lag modes and no unconditional right-click cancellation listener.
 - Velocity has exactly Attack and Reduce modes.
 - Attack mode accepts at most one valid real attack inside its timeout and applies the configured
-  retained-horizontal percentage through the existing local attack-sprint hook.
-- Reduce mode scales only the local player's configured horizontal/vertical S12 motion without
-  cancelling or asynchronously replaying the packet.
+  vanilla sprint slowdown through the existing local attack-sprint hook.
+- Reduce mode preserves the local player's server-sent S12 motion without cancelling, scaling, or
+  asynchronously replaying the packet.
 - Targeted combat tests pass and the project compiles; pre-existing unrelated test failures are reported.
 
 ## Open Questions

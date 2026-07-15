@@ -1,6 +1,7 @@
 package gq.yozakura.ui.click.sakura;
 
 import gq.yozakura.core.Client;
+import gq.yozakura.core.ClientLanguage;
 import gq.yozakura.engine.font.FontLoaders;
 import gq.yozakura.engine.render.ShaderRenderer;
 import gq.yozakura.engine.render.glow.GlowProfile;
@@ -14,6 +15,7 @@ import gq.yozakura.module.render.ClickGUI;
 import gq.yozakura.ui.click.ClickGuiIcons;
 import gq.yozakura.util.animation.AnimationUtil;
 import gq.yozakura.util.animation.UiClock;
+import gq.yozakura.util.math.NumberPrecision;
 import gq.yozakura.value.Mode;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
@@ -37,6 +39,8 @@ public final class SakuraClickGui extends GuiScreen {
     private static final float BASE_HEIGHT = 430.0f;
     private static final float MINIMUM_SCALE = 0.70f;
     private static final float MAXIMUM_SCALE = 1.35f;
+    private static final float SETTINGS_PANEL_WIDTH = 278.0f;
+    private static final float SETTINGS_PANEL_HEIGHT = 164.0f;
     private static VisualPalette PALETTE = VisualPalette.nightBloom();
     private static ClickGUI.Palette appliedPalette;
     private static int TEXT = PALETTE.getTextPrimary();
@@ -80,6 +84,8 @@ public final class SakuraClickGui extends GuiScreen {
     private final Map<String, Float> modeRowHoverProgress = new HashMap<String, Float>();
     private final Map<String, Float> modeRowSelectProgress = new HashMap<String, Float>();
     private final Map<Option, SwitchAnim> optionSwitchProgress = new HashMap<Option, SwitchAnim>();
+    private final Map<ClientLanguage, Float> languageOptionHoverProgress = new HashMap<ClientLanguage, Float>();
+    private final Map<ClientLanguage, Float> languageOptionSelectProgress = new HashMap<ClientLanguage, Float>();
 
     private float x;
     private float y;
@@ -120,6 +126,9 @@ public final class SakuraClickGui extends GuiScreen {
     private float detailProgress;
     private float listTransitionProgress = 1.0f;
     private float bindingOverlayProgress;
+    private float settingsOverlayProgress;
+    private float settingsButtonHoverProgress;
+    private boolean settingsOpen;
     private boolean closing;
     private final UiClock uiClock = new UiClock();
     private float uiDeltaSeconds;
@@ -142,6 +151,9 @@ public final class SakuraClickGui extends GuiScreen {
         closing = false;
         listTransitionProgress = 1.0f;
         bindingOverlayProgress = bindingModule == null ? 0.0f : 1.0f;
+        settingsOverlayProgress = 0.0f;
+        settingsButtonHoverProgress = 0.0f;
+        settingsOpen = false;
         listScroll = scrollForType(currentType);
         listScrollDisplay = listScroll;
         detailScroll = scrollForModule(selectedModule);
@@ -173,6 +185,7 @@ public final class SakuraClickGui extends GuiScreen {
         }
         listTransitionProgress = animate(listTransitionProgress, 1.0f, 0.20f);
         bindingOverlayProgress = animate(bindingOverlayProgress, bindingModule == null ? 0.0f : 1.0f, 0.20f);
+        settingsOverlayProgress = animate(settingsOverlayProgress, settingsOpen ? 1.0f : 0.0f, 0.20f);
         guiAlpha = easeOut(openProgress) * ClickGUI.clickGuiAlpha.getValue().floatValue();
 
         RenderServices.glow().beginFrame();
@@ -185,6 +198,7 @@ public final class SakuraClickGui extends GuiScreen {
             drawModuleList(mouseX, mouseY);
             drawDetail(mouseX, mouseY);
             drawFlyingPetals(sr);
+            drawSettingsOverlay(sr, mouseX, mouseY);
             drawBindingOverlay(sr);
             super.drawScreen(mouseX, mouseY, partialTicks);
         } finally {
@@ -232,9 +246,36 @@ public final class SakuraClickGui extends GuiScreen {
                     alpha(MUTED, 210.0f * guiAlpha), 0.46f);
             drawChip(ModuleManager.getEnabledModules().size() + "/" + ModuleManager.getModules().size(),
                     sx + sw - 76.0f, sy + 18.0f, 58.0f);
+            drawSettingsButton(sx, sy, sw, mouseX, mouseY);
         } finally {
             popScale();
         }
+    }
+
+    private void drawSettingsButton(float sx, float sy, float sw, int mouseX, int mouseY) {
+        float buttonX = sx + sw - 108.0f;
+        float buttonY = sy + 15.0f;
+        float buttonSize = 24.0f;
+        boolean hovered = !settingsOpen && isHovered(buttonX, buttonY, buttonX + buttonSize, buttonY + buttonSize,
+                mouseX, mouseY);
+        float hover = easeSmooth(settingsButtonHoverProgress = animate(settingsButtonHoverProgress,
+                hovered ? 1.0f : 0.0f, 0.18f));
+        float active = settingsOpen ? 1.0f : 0.0f;
+        float intensity = Math.max(hover, active);
+        if (intensity > 0.02f) {
+            RenderServices.shapes().shadow(buttonX, buttonY, buttonX + buttonSize, buttonY + buttonSize, 7.0f,
+                    alpha(SAKURA, (20.0f + 38.0f * intensity) * guiAlpha), 4, 1.7f);
+        }
+        drawMiniGlass(buttonX, buttonY, buttonX + buttonSize, buttonY + buttonSize, 7.0f,
+                alpha(active > 0.5f ? SURFACE_OVERLAY : GLASS_SOFT,
+                        (138.0f + 48.0f * hover + 36.0f * active) * guiAlpha),
+                alpha(active > 0.5f ? SAKURA_STRONG : SAKURA,
+                        (34.0f + 36.0f * hover + 46.0f * active) * guiAlpha));
+        String icon = FontLoaders.ICON_SETTINGS;
+        drawGlowIcon(FontLoaders.I16, icon,
+                buttonX + (buttonSize - FontLoaders.I16.getStringWidth(icon)) * 0.5f,
+                buttonY + 7.0f, alpha(active > 0.5f ? SAKURA_STRONG : blend(MUTED, SAKURA, hover),
+                        (196.0f + 42.0f * intensity) * guiAlpha), 0.30f + 0.42f * intensity);
     }
 
     private void drawSidebar(int mouseX, int mouseY) {
@@ -273,7 +314,8 @@ public final class SakuraClickGui extends GuiScreen {
                         0.36f + 0.42f * active + 0.28f * hover);
                 rowY += 34.0f;
             }
-            drawGlowText(FontLoaders.C12, "Right click module to bind", sx + 16.0f, sy + h / scale - 22.0f,
+            drawGlowText(FontLoaders.C12, ClickGUI.languageText("Right click module to bind", "右键模块以设置按键"),
+                    sx + 16.0f, sy + h / scale - 22.0f,
                     alpha(FAINT, 180.0f * guiAlpha), 0.25f);
         } finally {
             popScale();
@@ -365,7 +407,8 @@ public final class SakuraClickGui extends GuiScreen {
             drawSakuraPanel(dx, dy, dx + dw, dy + dh, 8.0f, 0.92f);
             if (selectedModule == null) {
                 drawSakuraFlower(dx + dw * 0.5f, dy + dh * 0.5f - 15.0f, 8.0f, 0.82f);
-                drawGlowCentered(FontLoaders.C16, "Select a module", dx + dw * 0.5f, dy + dh * 0.5f + 9.0f,
+                drawGlowCentered(FontLoaders.C16, ClickGUI.languageText("Select a module", "选择一个模块"),
+                        dx + dw * 0.5f, dy + dh * 0.5f + 9.0f,
                         alpha(MUTED, 210.0f * guiAlpha), 0.38f);
                 return;
             }
@@ -384,7 +427,7 @@ public final class SakuraClickGui extends GuiScreen {
             float valueY = dy + 78.0f - detailScrollDisplay;
             List<Value> values = selectedModule.getValues();
             if (values.isEmpty()) {
-                drawGlowText(FontLoaders.C14, "No settings", dx + 16.0f, valueY,
+                drawGlowText(FontLoaders.C14, ClickGUI.languageText("No settings", "暂无设置"), dx + 16.0f, valueY,
                         alpha(MUTED, 205.0f * guiAlpha), 0.3f);
             }
             int visibleIndex = 0;
@@ -438,7 +481,10 @@ public final class SakuraClickGui extends GuiScreen {
                 alpha(TEXT, 244.0f * guiAlpha), 0.72f);
         drawGlowText(FontLoaders.C14, trim(selectedModule.getDescription(), FontLoaders.C14, dw - 130.0f),
                 dx + 56.0f, dy + 36.0f, alpha(MUTED, 196.0f * guiAlpha), 0.34f);
-        drawChip(selectedModule.getState() ? "Enabled" : "Disabled", dx + dw - 82.0f, dy + 22.0f, 66.0f);
+        drawChip(selectedModule.getState()
+                        ? ClickGUI.languageText("Enabled", "已启用")
+                        : ClickGUI.languageText("Disabled", "已禁用"),
+                dx + dw - 82.0f, dy + 22.0f, 66.0f);
     }
 
     private void drawValue(Value value, float vx, float vy, float vw, int mouseX, int mouseY) {
@@ -487,7 +533,7 @@ public final class SakuraClickGui extends GuiScreen {
         }
         drawGlowText(FontLoaders.C14, displayName(value), vx, vy,
                 alpha(TEXT, (218.0f + 22.0f * hover) * guiAlpha), 0.34f + 0.3f * hover);
-        String text = formatNumber(current);
+        String text = NumberPrecision.format(current, value.getIncrement());
         drawGlowText(FontLoaders.C14, text, vx + vw - FontLoaders.C14.getStringWidth(text), vy,
                 alpha(hover > 0.1f ? SAKURA : MUTED, (205.0f + 26.0f * hover) * guiAlpha), 0.3f + 0.38f * hover);
         float sliderY = vy + 24.0f;
@@ -509,7 +555,7 @@ public final class SakuraClickGui extends GuiScreen {
 
     private void drawColorPicker(Numbers red, Numbers green, Numbers blue, float vx, float vy, float vw) {
         String label = displayName(red).replaceFirst("(?i)\\s*red$", "");
-        drawGlowText(FontLoaders.C14, label.length() == 0 ? "Color" : label, vx, vy,
+        drawGlowText(FontLoaders.C14, label.length() == 0 ? ClickGUI.languageText("Color", "颜色") : label, vx, vy,
                 alpha(TEXT, 228.0f * guiAlpha), 0.36f);
         float paletteY = vy + 16.0f;
         float paletteH = 66.0f;
@@ -667,6 +713,135 @@ public final class SakuraClickGui extends GuiScreen {
         }
     }
 
+    private void drawSettingsOverlay(ScaledResolution sr, int mouseX, int mouseY) {
+        float progress = easeSmooth(settingsOverlayProgress);
+        if (!settingsOpen && progress <= 0.02f) {
+            return;
+        }
+        float oldAlpha = guiAlpha;
+        guiAlpha *= progress;
+        try {
+            RenderServices.shapes().rect(0.0f, 0.0f, sr.getScaledWidth(), sr.getScaledHeight(),
+                    alpha(SHADOW, 122.0f * guiAlpha));
+            SettingsPanelBounds bounds = settingsPanelBounds(sr, progress);
+            drawSakuraPanel(bounds.x, bounds.y, bounds.x + bounds.w, bounds.y + bounds.h, 11.0f, 1.0f);
+
+            drawMiniGlass(bounds.x + 14.0f, bounds.y + 14.0f, bounds.x + 46.0f, bounds.y + 46.0f, 8.0f,
+                    alpha(GLASS_SOFT, 168.0f * guiAlpha), alpha(SAKURA, 44.0f * guiAlpha));
+            RenderServices.shapes().shadow(bounds.x + 14.0f, bounds.y + 14.0f, bounds.x + 46.0f, bounds.y + 46.0f,
+                    8.0f, alpha(SAKURA, 26.0f * guiAlpha), 4, 1.8f);
+            String icon = FontLoaders.ICON_SETTINGS;
+            drawGlowIcon(FontLoaders.I18, icon,
+                    bounds.x + 30.0f - FontLoaders.I18.getStringWidth(icon) * 0.5f, bounds.y + 23.0f,
+                    alpha(SAKURA_STRONG, 236.0f * guiAlpha), 0.56f);
+            drawGlowText(FontLoaders.C20, ClickGUI.languageText("Settings", "设置"), bounds.x + 56.0f, bounds.y + 16.0f,
+                    alpha(TEXT, 246.0f * guiAlpha), 0.74f);
+            drawGlowText(FontLoaders.C12, ClickGUI.languageText("Interface language", "界面语言"),
+                    bounds.x + 56.0f, bounds.y + 37.0f, alpha(MUTED, 210.0f * guiAlpha), 0.34f);
+
+            float contentX = bounds.x + 16.0f;
+            float contentW = bounds.w - 32.0f;
+            RenderServices.shapes().line(contentX, bounds.y + 62.0f, contentX + contentW, bounds.y + 62.0f,
+                    0.6f, alpha(SAKURA, 36.0f * guiAlpha));
+            drawGlowText(FontLoaders.C14, ClickGUI.languageText("Mode", "模式"), contentX, bounds.y + 73.0f,
+                    alpha(MUTED, 220.0f * guiAlpha), 0.34f);
+
+            float optionY = bounds.y + 88.0f;
+            drawLanguageOption(ClientLanguage.ENGLISH, contentX, optionY, contentW, 24.0f, mouseX, mouseY);
+            drawLanguageOption(ClientLanguage.CHINESE, contentX, optionY + 30.0f, contentW, 24.0f, mouseX, mouseY);
+            drawGlowText(FontLoaders.C12, ClickGUI.languageText("Changes apply immediately", "切换后立即生效"),
+                    contentX, bounds.y + 148.0f, alpha(FAINT, 190.0f * guiAlpha), 0.25f);
+        } finally {
+            guiAlpha = oldAlpha;
+        }
+    }
+
+    private void drawLanguageOption(ClientLanguage language, float x, float y, float w, float h,
+                                    int mouseX, int mouseY) {
+        boolean selected = ClickGUI.getLanguage() == language;
+        boolean hovered = settingsOpen && isScreenHovered(x, y, x + w, y + h, mouseX, mouseY);
+        float hover = easeSmooth(animateMap(languageOptionHoverProgress, language, hovered ? 1.0f : 0.0f, 0.18f));
+        float active = easeSmooth(animateStateMap(languageOptionSelectProgress, language, selected ? 1.0f : 0.0f, 0.18f));
+        float intensity = Math.max(active, hover);
+        if (intensity > 0.02f) {
+            RenderServices.shapes().shadow(x, y, x + w, y + h, 7.0f,
+                    alpha(SAKURA, (16.0f + 34.0f * active + 18.0f * hover) * guiAlpha), 4, 1.6f);
+        }
+        drawMiniGlass(x, y, x + w, y + h, 7.0f,
+                alpha(selected ? SURFACE_OVERLAY : GLASS_SOFT,
+                        (126.0f + 62.0f * active + 28.0f * hover) * guiAlpha),
+                alpha(selected ? SAKURA_STRONG : SAKURA,
+                        (30.0f + 48.0f * active + 28.0f * hover) * guiAlpha));
+        drawGlowText(FontLoaders.C14, language.getDisplayName(), x + 11.0f, y + 7.0f,
+                alpha(selected ? TEXT : blend(MUTED, TEXT, hover * 0.55f),
+                        (202.0f + 38.0f * intensity) * guiAlpha), 0.30f + 0.36f * intensity);
+        if (active > 0.02f) {
+            drawSakuraFlower(x + w - 15.0f, y + h * 0.5f, 2.15f, 0.80f * active);
+        }
+    }
+
+    private SettingsPanelBounds settingsPanelBounds(ScaledResolution sr, float progress) {
+        float panelW = Math.max(1.0f, Math.min(SETTINGS_PANEL_WIDTH, sr.getScaledWidth() - 28.0f));
+        float panelH = Math.max(1.0f, Math.min(SETTINGS_PANEL_HEIGHT, sr.getScaledHeight() - 28.0f));
+        return new SettingsPanelBounds((sr.getScaledWidth() - panelW) * 0.5f,
+                (sr.getScaledHeight() - panelH) * 0.5f + (1.0f - progress) * 9.0f, panelW, panelH);
+    }
+
+    private void openSettings() {
+        settingsOpen = true;
+        draggingWindow = false;
+        resizingWindow = false;
+        draggingNumber = null;
+        clearColorDrag();
+        expandedMode = null;
+        expandedModeProperty = null;
+    }
+
+    private void closeSettings() {
+        settingsOpen = false;
+    }
+
+    private boolean isSettingsOverlayActive() {
+        return settingsOpen || settingsOverlayProgress > 0.02f;
+    }
+
+    private boolean handleSettingsClick(int mouseX, int mouseY, int mouseButton) {
+        if (isSettingsOverlayActive()) {
+            if (!settingsOpen || mouseButton != 0) {
+                return true;
+            }
+            SettingsPanelBounds bounds = settingsPanelBounds(new ScaledResolution(mc), easeSmooth(settingsOverlayProgress));
+            if (!isScreenHovered(bounds.x, bounds.y, bounds.x + bounds.w, bounds.y + bounds.h, mouseX, mouseY)) {
+                closeSettings();
+                return true;
+            }
+            float optionX = bounds.x + 16.0f;
+            float optionW = bounds.w - 32.0f;
+            float optionY = bounds.y + 88.0f;
+            if (isScreenHovered(optionX, optionY, optionX + optionW, optionY + 24.0f, mouseX, mouseY)) {
+                ClickGUI.setLanguage(ClientLanguage.ENGLISH);
+                return true;
+            }
+            if (isScreenHovered(optionX, optionY + 30.0f, optionX + optionW, optionY + 54.0f, mouseX, mouseY)) {
+                ClickGUI.setLanguage(ClientLanguage.CHINESE);
+                return true;
+            }
+            return true;
+        }
+        if (mouseButton != 0) {
+            return false;
+        }
+        float sx = unscaleX(x);
+        float sy = unscaleY(y + introOffset());
+        float buttonX = sx + w / scale - 108.0f;
+        float buttonY = sy + 15.0f;
+        if (isHovered(buttonX, buttonY, buttonX + 24.0f, buttonY + 24.0f, mouseX, mouseY)) {
+            openSettings();
+            return true;
+        }
+        return false;
+    }
+
     private void drawBindingOverlay(ScaledResolution sr) {
         Module target = bindingModule == null ? bindingAnimationModule : bindingModule;
         float progress = easeSmooth(bindingOverlayProgress);
@@ -681,9 +856,9 @@ public final class SakuraClickGui extends GuiScreen {
         float bx = (sr.getScaledWidth() - bw) * 0.5f;
         float by = (sr.getScaledHeight() - bh) * 0.5f + (1.0f - progress) * 8.0f;
         drawSakuraPanel(bx, by, bx + bw, by + bh, 10.0f, 1.0f);
-        drawGlowCentered(FontLoaders.C20, "Press a key", bx + bw * 0.5f, by + 20.0f,
+        drawGlowCentered(FontLoaders.C20, ClickGUI.languageText("Press a key", "请按下按键"), bx + bw * 0.5f, by + 20.0f,
                 alpha(TEXT, 245.0f * guiAlpha), 0.72f);
-        drawGlowCentered(FontLoaders.C14, displayName(target) + " / DEL clear",
+        drawGlowCentered(FontLoaders.C14, displayName(target) + ClickGUI.languageText(" / DEL clear", " / DEL 清除"),
                 bx + bw * 0.5f, by + 50.0f, alpha(MUTED, 220.0f * guiAlpha), 0.42f);
         guiAlpha = oldAlpha;
     }
@@ -694,6 +869,9 @@ public final class SakuraClickGui extends GuiScreen {
             return;
         }
         if (bindingModule != null) {
+            return;
+        }
+        if (handleSettingsClick(mouseX, mouseY, mouseButton)) {
             return;
         }
         if (mouseButton == 0 && isResizeHandleHovered(mouseX, mouseY)) {
@@ -849,7 +1027,7 @@ public final class SakuraClickGui extends GuiScreen {
     @Override
     public void handleMouseInput() throws IOException {
         int wheel = Mouse.getEventDWheel();
-        if (wheel != 0) {
+        if (wheel != 0 && !isSettingsOverlayActive()) {
             ScaledResolution sr = new ScaledResolution(mc);
             int mx = Mouse.getEventX() * sr.getScaledWidth() / Math.max(1, mc.displayWidth);
             int my = sr.getScaledHeight() - Mouse.getEventY() * sr.getScaledHeight() / Math.max(1, mc.displayHeight) - 1;
@@ -859,6 +1037,9 @@ public final class SakuraClickGui extends GuiScreen {
     }
 
     private void handleWheel(int mouseX, int mouseY, int wheel) {
+        if (isSettingsOverlayActive()) {
+            return;
+        }
         float sx = unscaleX(x);
         float sy = unscaleY(y + introOffset());
         if (isHovered(sx + 144.0f, sy + 64.0f, sx + 358.0f, sy + h / scale - 22.0f, mouseX, mouseY)) {
@@ -877,6 +1058,10 @@ public final class SakuraClickGui extends GuiScreen {
         if (bindingModule != null) {
             bindingModule.setKey(keyCode == Keyboard.KEY_DELETE || keyCode == Keyboard.KEY_BACK ? 0 : keyCode);
             bindingModule = null;
+            return;
+        }
+        if (settingsOpen && keyCode == Keyboard.KEY_ESCAPE) {
+            closeSettings();
             return;
         }
         if (keyCode == Keyboard.KEY_ESCAPE || keyCode == Keyboard.KEY_RSHIFT) {
@@ -973,9 +1158,7 @@ public final class SakuraClickGui extends GuiScreen {
         }
         double pct = clamp((mouseX / scale - draggingX) / Math.max(1.0f, draggingW), 0.0f, 1.0f);
         double raw = draggingMin + (draggingMax - draggingMin) * pct;
-        double inc = draggingNumber.getIncrement().doubleValue();
-        double next = inc > 0.0D ? Math.round(raw / inc) * inc : raw;
-        next = Math.max(draggingMin, Math.min(draggingMax, next));
+        double next = NumberPrecision.snap(raw, draggingMin, draggingMax, draggingNumber.getIncrement());
         draggingNumber.setNumberValue(next);
     }
 
@@ -1456,6 +1639,7 @@ public final class SakuraClickGui extends GuiScreen {
             return;
         }
         closing = true;
+        settingsOpen = false;
         draggingWindow = false;
         draggingNumber = null;
         clearColorDrag();
@@ -1486,7 +1670,7 @@ public final class SakuraClickGui extends GuiScreen {
     }
 
     private String displayName(Module module) {
-        return module == null ? "" : Client.CHINESE ? module.getChinese() : module.getName();
+        return module == null ? "" : ClickGUI.getLanguage().isChinese() ? module.getChinese() : module.getName();
     }
 
     private String displayName(Value value) {
@@ -1499,7 +1683,7 @@ public final class SakuraClickGui extends GuiScreen {
 
     private String keyName(int key) {
         if (key == 0 || key == Keyboard.KEY_NONE) {
-            return "NONE";
+            return ClickGUI.languageText("NONE", "未设置");
         }
         String name = Keyboard.getKeyName(key);
         return name == null ? String.valueOf(key) : name;
@@ -1535,17 +1719,6 @@ public final class SakuraClickGui extends GuiScreen {
         return clamp((float) ((value - min) / (max - min)), 0.0f, 1.0f);
     }
 
-    private String formatNumber(double value) {
-        if (Math.abs(value - Math.round(value)) < 0.05D) {
-            return String.valueOf(Math.round(value));
-        }
-        String text = String.format(java.util.Locale.US, "%.2f", value);
-        while (text.endsWith("0") && text.indexOf('.') >= 0) {
-            text = text.substring(0, text.length() - 1);
-        }
-        return text.endsWith(".") ? text.substring(0, text.length() - 1) : text;
-    }
-
     private String trim(String text, gq.yozakura.engine.font.CFontRenderer font, float maxWidth) {
         if (text == null) {
             return "";
@@ -1575,6 +1748,24 @@ public final class SakuraClickGui extends GuiScreen {
         float mx = mouseX / scale;
         float my = mouseY / scale;
         return mx >= x1 && mx <= x2 && my >= y1 && my <= y2;
+    }
+
+    private boolean isScreenHovered(float x1, float y1, float x2, float y2, int mouseX, int mouseY) {
+        return mouseX >= x1 && mouseX <= x2 && mouseY >= y1 && mouseY <= y2;
+    }
+
+    private static final class SettingsPanelBounds {
+        private final float x;
+        private final float y;
+        private final float w;
+        private final float h;
+
+        private SettingsPanelBounds(float x, float y, float w, float h) {
+            this.x = x;
+            this.y = y;
+            this.w = w;
+            this.h = h;
+        }
     }
 
     private float clamp(float value, float min, float max) {

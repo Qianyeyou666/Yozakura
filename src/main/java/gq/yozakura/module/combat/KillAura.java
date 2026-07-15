@@ -768,16 +768,17 @@ public class KillAura extends Module {
                 if (this.isBoxInSwingRange(this.attackTarget.getBox())) {
                     if (this.rotations.getValue() == 2 || this.rotations.getValue() == 3) {
                         float[] rotations = this.calculateTargetRotations(event);
-                        event.setRotation(rotations[0], rotations[1], 1);
-                        VisualRotationState.publish("KillAura", rotations[0], rotations[1], 1);
-                        if (this.rotations.getValue() == 3) {
-                            YozakuraRuntime.rotationManager.setRotation(rotations[0], rotations[1], 1, true);
+                        if (event.trySetRotation(rotations[0], rotations[1], 1)) {
+                            VisualRotationState.publish("KillAura", rotations[0], rotations[1], 1);
+                            if (this.rotations.getValue() == 3) {
+                                YozakuraRuntime.rotationManager.setRotation(rotations[0], rotations[1], 1, true);
+                            }
+                            if (this.moveFix.getValue() != 0 || this.rotations.getValue() == 3) {
+                                event.setPervRotation(rotations[0], 1);
+                            }
+                            yaw = rotations[0];
+                            pitch = rotations[1];
                         }
-                        if (this.moveFix.getValue() != 0 || this.rotations.getValue() == 3) {
-                            event.setPervRotation(rotations[0], 1);
-                        }
-                        yaw = rotations[0];
-                        pitch = rotations[1];
                     }
 
                     if (block) {
@@ -852,15 +853,6 @@ public class KillAura extends Module {
                     this.clearUseAnimation();
                 }
                 this.clearBlockAnimationState();
-            }
-        }
-    }
-
-    @EventTarget
-    public void onMove(MoveInputEvent event) {
-        if (this.isEnabled() && mc.thePlayer != null) {
-            if (this.shouldAutoBlock()) {
-                mc.thePlayer.movementInput.jump = false;
             }
         }
     }

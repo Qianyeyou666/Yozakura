@@ -16,6 +16,7 @@ import org.lwjgl.opengl.GL11;
 import gq.yozakura.ui.click.ClickGuiIcons;
 import gq.yozakura.ui.UiTheme;
 import gq.yozakura.util.animation.AnimUtil;
+import gq.yozakura.util.math.NumberPrecision;
 import net.minecraft.util.ResourceLocation;
 
 import java.awt.Color;
@@ -155,7 +156,7 @@ final class ClickGuiDetailPanel {
         float headerY = y + 20.0f;
         drawAnimeGirl(headerX + 200f, headerY - 12f);
         drawModuleIcon(gui.selectedModule, headerX + 13.0f, headerY + 11.0f);
-        FontLoaders.F16.drawString(gui.trim(gui.selectedModule.getName(), FontLoaders.F16, gui.detailW - 116.0f),
+        FontLoaders.F16.drawString(gui.trim(gui.getModuleDisplayName(gui.selectedModule), FontLoaders.F16, gui.detailW - 116.0f),
                 headerX + 38.0f, headerY + 1.0f, gui.withAlpha(gui.guiColors().text, 255.0f * gui.guiAlpha));
         gui.drawFont(gui.trim(gui.getDescription(gui.selectedModule), FontLoaders.F14, gui.detailW - 150.0f),
                 headerX + 38.0f, headerY + 18.0f, gui.withAlpha(gui.guiColors().muted, 206.0f * gui.guiAlpha));
@@ -298,14 +299,9 @@ final class ClickGuiDetailPanel {
     void updateNumberValue(Numbers value, int mouseX, float x, float w) {
         double min = gui.draggingNumberCustomRange ? gui.draggingNumberMin : value.getMinimum().doubleValue();
         double max = gui.draggingNumberCustomRange ? gui.draggingNumberMax : value.getMaximum().doubleValue();
-        double inc = value.getIncrement().doubleValue();
-        if (inc <= 0.0D) {
-            inc = 0.1D;
-        }
         double pct = gui.clamp((mouseX - x) / w, 0.0D, 1.0D);
         double result = min + (max - min) * pct;
-        result = Math.round(result / inc) * inc;
-        result = Math.max(min, Math.min(max, result));
+        result = NumberPrecision.snap(result, min, max, value.getIncrement());
         // 双滑块联动：确保下界不超过上界
         if (gui.draggingNumberCustomRange && gui.draggingNumberPair != null
                 && gui.draggingNumberPair.getValue() instanceof Number) {
@@ -930,7 +926,7 @@ final class ClickGuiDetailPanel {
         gui.drawFont(gui.trim(gui.getDisplayName(value), FontLoaders.F14, labelW - 8.0f), x, y + 12.0f,
                 gui.withAlpha(gui.guiColors().text, 245.0f * alpha * gui.guiAlpha));
         // 数值标签
-        drawValuePill(gui.formatNumber(current), pillX, y + 3.0f, pillW, alpha);
+        drawValuePill(gui.formatNumber(value, current), pillX, y + 3.0f, pillW, alpha);
         gui.drawSoftRect(barX, barY, barX + barW, barY + 2.5f, 1.25f,
                 gui.withAlpha(gui.guiColors().valueTrack, 175.0f * alpha * gui.guiAlpha));
         gui.drawSoftRect(barX, barY, barX + barW * value.animX, barY + 2.5f, 1.25f,
@@ -961,7 +957,8 @@ final class ClickGuiDetailPanel {
         float barY = y + 13.0f;
         float pillW = gui.getDetailValuePillWidth();
         float pillX = x + w - pillW;
-        String rangeText = gui.formatNumber(Math.min(first, second)) + " - " + gui.formatNumber(Math.max(first, second));
+        String rangeText = gui.formatNumber(minValue, Math.min(first, second)) + " - "
+                + gui.formatNumber(maxValue, Math.max(first, second));
 
         // 标签和数值
         gui.drawFont(gui.trim(gui.getRangeDisplayName(minValue), FontLoaders.F14, labelW - 8.0f),

@@ -26,7 +26,12 @@ public class PacketBridgeSupportContractTest {
 
         assertTrue("Disconnect and shutdown paths need an explicit marker clear operation",
                 source.contains("public static void clearNoEventPackets()")
-                        && source.contains("NO_EVENT_PACKETS.clear();"));
+                        && source.contains("NO_EVENT_PACKETS.clear();")
+                        && source.contains("NON_CANONICAL_PLAYER_PACKETS.clear();"));
+        assertTrue("Synthetic player packets must be tracked by identity until the bridge consumes them",
+                source.contains("IdentityHashMap<Packet<?>, Boolean>")
+                        && source.contains("markNonCanonicalPlayerPacket")
+                        && source.contains("consumeNonCanonicalPlayerPacket"));
     }
 
     @Test

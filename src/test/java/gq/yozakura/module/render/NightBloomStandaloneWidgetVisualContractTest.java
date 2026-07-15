@@ -30,7 +30,10 @@ public class NightBloomStandaloneWidgetVisualContractTest {
         assertTrue(renderer.contains("HUD.drawNightBloomCenteredIcon("));
 
         assertFalse(renderer.contains("shadowOffset("));
-        assertTrue(renderer.contains("HUD.drawNightBloomShadow("));
+        assertTrue("the shared dock renderer owns the panel shadow and joined surface",
+                renderer.contains("NightBloomHudDockRenderer.drawPanel("));
+        assertFalse("Health must not stack a second shadow over its fused surface",
+                renderer.contains("HUD.drawNightBloomShadow("));
         assertFalse(renderer.contains("ACCENT_SHADOW"));
 
         assertFalse(renderer.contains("roundedBorder"));
@@ -53,6 +56,8 @@ public class NightBloomStandaloneWidgetVisualContractTest {
 
         assertFalse(renderer.contains("shadowOffset("));
         assertTrue(renderer.contains("HUD.drawNightBloomShadow("));
+        assertTrue(source.contains("NightBloomHudDockRenderer.hasLink(\"keyboard_display\")"));
+        assertTrue(renderer.contains("if (!NightBloomHudDockRenderer.hasLink(\"keyboard_display\"))"));
         assertFalse(renderer.contains("ACCENT_SHADOW"));
 
         assertFalse(renderer.contains("roundedBorder"));

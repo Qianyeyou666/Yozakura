@@ -3,6 +3,7 @@ package gq.yozakura.ui.click.material;
 import gq.yozakura.engine.font.FontLoaders;
 import gq.yozakura.engine.render.ui.RenderServices;
 import gq.yozakura.module.ModuleType;
+import gq.yozakura.module.render.ClickGUI;
 import gq.yozakura.util.animation.AnimationUtil;
 
 /**
@@ -41,6 +42,7 @@ final class MaterialClickSidebar {
             drawTab(type, navX, itemY, itemW, 44.0f * s, mouseX, mouseY);
             itemY += 50.0f * s;
         }
+        drawLanguageButton(navX, layout.y + layout.h - 64.0f * s, itemW, 44.0f * s, mouseX, mouseY);
     }
 
     private void drawActiveIndicator(float x, float firstY, float w, float h) {
@@ -72,7 +74,7 @@ final class MaterialClickSidebar {
                     theme.withAlpha(0xFFFFFFFF, 12.0f * theme.alpha() * hover));
         }
 
-        String label = type.toString();
+        String label = type.getName();
         int inactiveColor = theme.blend(MaterialClickTheme.TEXT, MaterialClickTheme.PRIMARY, hover);
         int color = theme.withAlpha(theme.blend(inactiveColor, MaterialClickTheme.ON_PRIMARY_CONTAINER, activeProgress),
                 255.0f * theme.alpha());
@@ -95,6 +97,31 @@ final class MaterialClickSidebar {
         return -1;
     }
 
+    private void drawLanguageButton(float x, float y, float w, float h, int mouseX, int mouseY) {
+        MaterialClickLayout layout = gui.layout();
+        MaterialClickTheme theme = gui.theme();
+        boolean open = gui.isLanguagePanelOpen();
+        boolean hovered = MaterialClickLayout.contains(x, y, x + w, y + h, mouseX, mouseY);
+        float hover = gui.easedAnimation("sidebar.language.hover", hovered && !open ? 1.0f : 0.0f,
+                0.28f, 0.0f, AnimationUtil.Ease.OUT_CUBIC);
+        float active = gui.easedAnimation("sidebar.language.active", open ? 1.0f : 0.0f,
+                0.24f, 0.0f, AnimationUtil.Ease.OUT_CUBIC);
+        if (active > 0.01f || hover > 0.01f) {
+            int fill = theme.blend(0xFFFFFFFF, MaterialClickTheme.PRIMARY_CONTAINER, active);
+            float alpha = (12.0f * hover + 255.0f * active) * theme.alpha();
+            RenderServices.shapes().rounded(x, y, x + w, y + h, h / 2.0f, theme.withAlpha(fill, alpha));
+        }
+
+        String label = ClickGUI.languageText("Settings", "设置");
+        int color = theme.withAlpha(theme.blend(MaterialClickTheme.TEXT, MaterialClickTheme.ON_PRIMARY_CONTAINER, active),
+                255.0f * theme.alpha());
+        String icon = FontLoaders.ICON_SETTINGS;
+        float iconY = y + Math.max(0.0f, h - FontLoaders.I16.getStringHeight(icon)) / 2.0f + 0.5f * layout.scale;
+        FontLoaders.I16.drawString(icon, x + 18.0f * layout.scale, iconY, color);
+        float textY = y + Math.max(0.0f, h - FontLoaders.F18.getStringHeight(label)) / 2.0f + 1.0f * layout.scale;
+        FontLoaders.F18.drawString(label, x + 42.0f * layout.scale, textY, color);
+    }
+
     boolean mouseClicked(int mouseX, int mouseY, int button) {
         if (button != 0) {
             return false;
@@ -110,6 +137,11 @@ final class MaterialClickSidebar {
                 return true;
             }
             y += 50.0f * s;
+        }
+        float languageY = layout.y + layout.h - 64.0f * s;
+        if (MaterialClickLayout.contains(x, languageY, x + w, languageY + 44.0f * s, mouseX, mouseY)) {
+            gui.openLanguagePanel();
+            return true;
         }
         return false;
     }

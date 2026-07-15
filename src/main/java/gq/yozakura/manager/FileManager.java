@@ -6,6 +6,7 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import gq.yozakura.core.YozakuraClientState;
+import gq.yozakura.module.combat.VelocityConfigMigration;
 import gq.yozakura.module.combat.aim.AimAssistConfigMigration;
 import gq.yozakura.ui.click.yozakura.YozakuraClickGui;
 import gq.yozakura.module.Module;
@@ -106,6 +107,7 @@ public class FileManager {
 
                     final JsonObject moduleJson = (JsonObject) moduleElement;
                     migrateLegacyAimAssistValues(module, moduleJson);
+                    migrateLegacyVelocityValues(module, moduleJson);
 
                     if (moduleJson.has("key")) {
                         module.setKey(moduleJson.get("key").getAsInt());
@@ -230,12 +232,35 @@ public class FileManager {
         }
     }
 
+    private void migrateLegacyVelocityValues(Module module, JsonObject moduleJson) {
+        if (!"Velocity".equalsIgnoreCase(module.getName())) {
+            return;
+        }
+        JsonElement mode = moduleJson.get("Mode");
+        JsonElement legacyReduceToggle = moduleJson.get("Reduce");
+        JsonElement horizontal = moduleJson.get("Horizontal");
+        if (!isStringPrimitive(mode)
+                || !isBooleanPrimitive(legacyReduceToggle)
+                || !isNumberPrimitive(horizontal)) {
+            return;
+        }
+        Integer migratedHorizontal = VelocityConfigMigration.migrateLegacyReduceHorizontal(
+                mode.getAsString(), horizontal.getAsDouble());
+        if (migratedHorizontal != null) {
+            moduleJson.addProperty("Horizontal", migratedHorizontal);
+        }
+    }
+
     private boolean isStringPrimitive(JsonElement element) {
         return element != null && element.isJsonPrimitive() && element.getAsJsonPrimitive().isString();
     }
 
     private boolean isBooleanPrimitive(JsonElement element) {
         return element != null && element.isJsonPrimitive() && element.getAsJsonPrimitive().isBoolean();
+    }
+
+    private boolean isNumberPrimitive(JsonElement element) {
+        return element != null && element.isJsonPrimitive() && element.getAsJsonPrimitive().isNumber();
     }
 
     private String createSnapshot() {

@@ -4,14 +4,11 @@ import gq.yozakura.bridge.MinecraftAccessor;
 import gq.yozakura.event.bus.EventTarget;
 import gq.yozakura.event.bus.types.EventType;
 import gq.yozakura.event.bus.types.Priority;
-import gq.yozakura.event.bridge.MoveInputEvent;
 import gq.yozakura.event.bridge.UpdateEvent;
-import gq.yozakura.manager.RotationState;
 import gq.yozakura.manager.VisualRotationState;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.Module;
 import gq.yozakura.util.module.BlockUtil;
-import gq.yozakura.util.module.MoveUtil;
 import gq.yozakura.util.module.RotationUtil;
 import gq.yozakura.value.Mode;
 import gq.yozakura.value.Numbers;
@@ -139,7 +136,11 @@ public class Clutch extends Module {
 
         target = new PlaceTarget(target.target, target.support, target.side, aim.hitVec, target.score);
         rememberTarget(target);
-        applySilentRotation(event, aim);
+        if (!applySilentRotation(event, aim)) {
+            restoreSlot(originalSlot);
+            resetTarget();
+            return;
+        }
         slowHorizontalMotion(upward);
 
         if (!Boolean.TRUE.equals(autoPlace.getValue())) {
@@ -510,8 +511,8 @@ public class Clutch extends Module {
         double dx = hitVec.xCoord - mc.thePlayer.posX;
         double dy = hitVec.yCoord - mc.thePlayer.posY - (double) mc.thePlayer.getEyeHeight();
         double dz = hitVec.zCoord - mc.thePlayer.posZ;
-        float baseYaw = hasRotation ? yaw : event.getYaw();
-        float basePitch = hasRotation ? pitch : event.getPitch();
+        float baseYaw = hasRotation ? yaw : event.getNewYaw();
+        float basePitch = hasRotation ? pitch : event.getNewPitch();
         float[] rotations = RotationUtil.getRotationsTo(dx, dy, dz, baseYaw, basePitch);
         float yawSpeed = getAimSpeed(upward);
         float pitchSpeed = getPitchAimSpeed(yawSpeed, upward);
@@ -545,8 +546,8 @@ public class Clutch extends Module {
                 break;
         }
 
-        float baseYaw = hasRotation ? yaw : event.getYaw();
-        float basePitch = hasRotation ? pitch : event.getPitch();
+        float baseYaw = hasRotation ? yaw : event.getNewYaw();
+        float basePitch = hasRotation ? pitch : event.getNewPitch();
         AimData best = null;
         float bestDiff = 0.0F;
         for (double dx : xOffsets) {
@@ -592,15 +593,20 @@ public class Clutch extends Module {
         return current + MathHelper.clamp_float(diff, -speed, speed);
     }
 
-    private void applySilentRotation(UpdateEvent event, AimData aim) {
-        yaw = aim.yaw;
-        pitch = MathHelper.clamp_float(aim.pitch, -90.0F, 90.0F);
-        hasRotation = true;
-        event.setRotation(yaw, pitch, ROTATION_PRIORITY);
-        if (Boolean.TRUE.equals(moveFix.getValue())) {
-            event.setPervRotation(yaw, ROTATION_PRIORITY);
+    private boolean applySilentRotation(UpdateEvent event, AimData aim) {
+        float nextYaw = RotationUtil.quantizeAngle(aim.yaw);
+        float nextPitch = MathHelper.clamp_float(aim.pitch, -90.0F, 90.0F);
+        if (!event.trySetRotation(nextYaw, nextPitch, ROTATION_PRIORITY)) {
+            return false;
         }
-        VisualRotationState.publish("Clutch", yaw, pitch, ROTATION_PRIORITY);
+        yaw = nextYaw;
+        pitch = nextPitch;
+        hasRotation = true;
+        if (Boolean.TRUE.equals(moveFix.getValue())) {
+            event.setPervRotation(nextYaw, ROTATION_PRIORITY);
+        }
+        VisualRotationState.publish("Clutch", nextYaw, nextPitch, ROTATION_PRIORITY);
+        return true;
     }
 
     private boolean canPlaceNow(PlaceTarget target, boolean upward, boolean exactHit) {

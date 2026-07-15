@@ -136,6 +136,7 @@ public final class VanillaRemapClassLoader extends URLClassLoader {
     private static boolean shouldLoadChildFirst(String name) {
         return name.startsWith("gq.yozakura.")
                 && !name.equals("gq.yozakura.YozakuraBootstrap")
+                && !name.equals("gq.yozakura.auth.NativeAuthBridge")
                 && !name.startsWith("gq.yozakura.bridge.VanillaRemapClassLoader");
     }
 

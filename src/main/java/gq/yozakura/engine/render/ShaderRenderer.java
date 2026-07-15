@@ -147,7 +147,7 @@ public final class ShaderRenderer {
             warmUniforms(solid, "color");
             warmUniforms(gradient, "color1", "color2", "color3", "color4");
             warmUniforms(rounded, "rectSize", "color", "radius", "padding", "softness");
-            warmUniforms(joinedRounded, "rectSize", "cornerRadii", "joinRanges", "color");
+            warmUniforms(joinedRounded, "rectSize", "cornerRadii", "joinRanges", "sideJoinRanges", "color");
             warmUniforms(roundedGradient, "rectSize", "color1", "color2", "color3", "color4",
                     "radius", "padding", "softness");
             warmUniforms(roundedHue, "rectSize", "radius", "padding", "softness", "alpha");
@@ -252,19 +252,33 @@ public final class ShaderRenderer {
     }
 
     public static boolean drawJoinedRoundedRect(float left, float top, float right, float bottom,
-                                                float topLeftRadius, float topRightRadius,
-                                                float bottomRightRadius, float bottomLeftRadius,
-                                                int color) {
+                                                 float topLeftRadius, float topRightRadius,
+                                                 float bottomRightRadius, float bottomLeftRadius,
+                                                 int color) {
         return drawJoinedRoundedRect(left, top, right, bottom,
                 topLeftRadius, topRightRadius, bottomRightRadius, bottomLeftRadius,
+                1.0F, 0.0F, 1.0F, 0.0F,
                 1.0F, 0.0F, 1.0F, 0.0F, color);
     }
 
     public static boolean drawJoinedRoundedRect(float left, float top, float right, float bottom,
-                                                float topLeftRadius, float topRightRadius,
-                                                float bottomRightRadius, float bottomLeftRadius,
-                                                float topJoinStart, float topJoinEnd,
-                                                float bottomJoinStart, float bottomJoinEnd, int color) {
+                                                 float topLeftRadius, float topRightRadius,
+                                                 float bottomRightRadius, float bottomLeftRadius,
+                                                 float topJoinStart, float topJoinEnd,
+                                                 float bottomJoinStart, float bottomJoinEnd, int color) {
+        return drawJoinedRoundedRect(left, top, right, bottom,
+                topLeftRadius, topRightRadius, bottomRightRadius, bottomLeftRadius,
+                topJoinStart, topJoinEnd, bottomJoinStart, bottomJoinEnd,
+                1.0F, 0.0F, 1.0F, 0.0F, color);
+    }
+
+    public static boolean drawJoinedRoundedRect(float left, float top, float right, float bottom,
+                                                 float topLeftRadius, float topRightRadius,
+                                                 float bottomRightRadius, float bottomLeftRadius,
+                                                 float topJoinStart, float topJoinEnd,
+                                                 float bottomJoinStart, float bottomJoinEnd,
+                                                 float leftJoinStart, float leftJoinEnd,
+                                                 float rightJoinStart, float rightJoinEnd, int color) {
         Program program = getJoinedRoundedProgram();
         if (program == null || right <= left || bottom <= top) {
             return false;
@@ -282,6 +296,7 @@ public final class ShaderRenderer {
                     clampCornerRadius(bottomRightRadius, maximumRadius),
                     clampCornerRadius(bottomLeftRadius, maximumRadius));
             program.set4f("joinRanges", topJoinStart, topJoinEnd, bottomJoinStart, bottomJoinEnd);
+            program.set4f("sideJoinRanges", leftJoinStart, leftJoinEnd, rightJoinStart, rightJoinEnd);
             setColor(program, "color", color);
             drawQuad(left, top, right, bottom, 0.0f);
         } finally {
@@ -1606,6 +1621,7 @@ public final class ShaderRenderer {
             "uniform vec2 rectSize;\n" +
             "uniform vec4 cornerRadii;\n" +
             "uniform vec4 joinRanges;\n" +
+            "uniform vec4 sideJoinRanges;\n" +
             "uniform vec4 color;\n" +
             "float cornerRadius(vec2 point) {\n" +
             "    float rightSide = step(0.0, point.x);\n" +
@@ -1632,10 +1648,15 @@ public final class ShaderRenderer {
             "    float coverage = 1.0 - smoothstep(-antialias, antialias, distance);\n" +
             "    float topBand = step(coord.y, antialias);\n" +
             "    float bottomBand = step(size.y - coord.y, antialias);\n" +
+            "    float leftBand = step(coord.x, antialias);\n" +
+            "    float rightBand = step(size.x - coord.x, antialias);\n" +
             "    float joinedCoverage = max(topBand\n" +
             "            * intervalCoverage(coord.x, joinRanges.xy, antialias),\n" +
             "            bottomBand * intervalCoverage(coord.x, joinRanges.zw, antialias));\n" +
-            "    coverage = max(coverage, joinedCoverage);\n" +
+            "    float sideCoverage = max(leftBand\n" +
+            "            * intervalCoverage(coord.y, sideJoinRanges.xy, antialias),\n" +
+            "            rightBand * intervalCoverage(coord.y, sideJoinRanges.zw, antialias));\n" +
+            "    coverage = max(coverage, max(joinedCoverage, sideCoverage));\n" +
             "    if (coverage <= 0.0) discard;\n" +
             "    gl_FragColor = vec4(color.rgb, color.a * coverage);\n" +
             "}\n";

@@ -1,5 +1,7 @@
 package gq.yozakura.module.render;
 
+import gq.yozakura.core.Client;
+import gq.yozakura.core.ClientLanguage;
 import gq.yozakura.ui.click.material.MaterialClickGui;
 import gq.yozakura.ui.click.sakura.SakuraClickGui;
 import gq.yozakura.ui.click.web.WebClickGuiService;
@@ -29,8 +31,22 @@ public class ClickGUI extends Module {
 		CUSTOM
 	}
 
+	private static final class LanguageMode extends Mode<ClientLanguage> {
+		private LanguageMode() {
+			super("Language", "Language", ClientLanguage.values(), ClientLanguage.ENGLISH);
+		}
+
+		@Override
+		public void setValue(ClientLanguage value) {
+			ClientLanguage resolved = value == null ? ClientLanguage.ENGLISH : value;
+			super.setValue(resolved);
+			Client.CHINESE = resolved.isChinese();
+		}
+	}
+
 	public static final Mode<GuiStyle> guiStyle = new Mode<GuiStyle>("Style", "Style", GuiStyle.values(), GuiStyle.MATERIAL);
 	public static final Mode<Palette> palette = new Mode<Palette>("Palette", "Palette", Palette.values(), Palette.NIGHT_BLOOM);
+	public static final Mode<ClientLanguage> language = new LanguageMode();
 	public static final Numbers<Double> canvasRed = color("UI Canvas [all GUIs] Red", "CanvasRed", 13.0);
 	public static final Numbers<Double> canvasGreen = color("UI Canvas [all GUIs] Green", "CanvasGreen", 9.0);
 	public static final Numbers<Double> canvasBlue = color("UI Canvas [all GUIs] Blue", "CanvasBlue", 20.0);
@@ -86,8 +102,9 @@ public class ClickGUI extends Module {
 		super("ClickGUI", Keyboard.KEY_RSHIFT, ModuleType.Render,"Open ClickGui");
 		Chinese="点击GUI";
 		setCustomPaletteVisibility();
+		language.visibleWhen(() -> false);
 		sakuraScale.visibleWhen(() -> guiStyle.getValue() == GuiStyle.SAKURA);
-		this.addValues(guiStyle, palette,
+		this.addValues(guiStyle, palette, language,
 				canvasRed, canvasGreen, canvasBlue, surfaceRed, surfaceGreen, surfaceBlue,
 				accentRed, accentGreen, accentBlue, accentAltRed, accentAltGreen, accentAltBlue,
 				dangerRed, dangerGreen, dangerBlue, playerRed, playerGreen, playerBlue,
@@ -99,6 +116,19 @@ public class ClickGUI extends Module {
 				sideOffsetX, sideOffsetY, userPanelOffsetX, userPanelOffsetY,
 				clickGuiAlpha, glassBackground, webPort);
 		// TODO Auto-generated constructor stub
+	}
+
+	public static ClientLanguage getLanguage() {
+		ClientLanguage value = language.getValue();
+		return value == null ? ClientLanguage.ENGLISH : value;
+	}
+
+	public static void setLanguage(ClientLanguage language) {
+		ClickGUI.language.setValue(language == null ? ClientLanguage.ENGLISH : language);
+	}
+
+	public static String languageText(String english, String chinese) {
+		return getLanguage().select(english, chinese);
 	}
 
 	public static VisualPalette currentPalette() {

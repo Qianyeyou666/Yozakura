@@ -2,6 +2,7 @@ package gq.yozakura.engine.render.ui;
 
 import gq.yozakura.engine.render.glow.GlowRenderer;
 import gq.yozakura.engine.render.glow.GlowProfile;
+import gq.yozakura.module.render.NightBloomHudDockRenderer;
 
 public final class RenderServices {
     private static final RenderContext CONTEXT = new RenderContext();
@@ -57,6 +58,7 @@ public final class RenderServices {
         SHADOWS.beginFrame();
         try {
             GLOW.beginFrame();
+            NightBloomHudDockRenderer.drawSharedSurfaces();
         } catch (RuntimeException exception) {
             SHADOWS.flush();
             throw exception;

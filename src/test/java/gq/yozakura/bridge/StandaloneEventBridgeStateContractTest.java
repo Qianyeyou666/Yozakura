@@ -100,7 +100,8 @@ public class StandaloneEventBridgeStateContractTest {
         assertTrue("When no silent rotation is active, the native C0A/C02 batch must leave before C03",
                 currentActionFlush >= 0 && normalC03Write > currentActionFlush);
         assertTrue("A second C03 in the same tick must not flush actions after the first one",
-                playerPacket.contains("boolean playerTickAdvanced = playerPacketTickGate.consumeNextPlayerPacket();")
+                playerPacket.contains(
+                                "boolean playerTickAdvanced = playerPacketTickGate.consumeNextCanonicalPlayerPacket(")
                         && playerPacket.contains(
                                 "if (playerTickAdvanced && !preUpdatePending && !rotation.isActive())"));
         assertTrue("C03 handling must be centralized so both rewritten and normal paths use the same batch boundary",

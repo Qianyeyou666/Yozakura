@@ -13,36 +13,58 @@ public class NightBloomHudLayoutTest {
 
     @Test
     public void keepsTheCompactNightBloomRhythm() {
-        assertEquals(22.0F, NightBloomHudLayout.WATERMARK_HEIGHT, EPSILON);
+        assertEquals(18.0F, NightBloomHudLayout.WATERMARK_HEIGHT, EPSILON);
         assertEquals(16.0F, NightBloomHudLayout.MODULE_ROW_HEIGHT, EPSILON);
         assertEquals(2.0F, NightBloomHudLayout.MODULE_ROW_GAP, EPSILON);
     }
 
     @Test
-    public void watermarkWidthReservesSeparateVersionAndFpsChips() {
-        assertEquals(166.0F, NightBloomHudLayout.watermarkWidth(48.0F, 28.0F, 24.0F), EPSILON);
-        assertEquals(120.0F, NightBloomHudLayout.watermarkWidth(12.0F, 10.0F, 10.0F), EPSILON);
+    public void watermarkUsesSeparatedArrayListStyleTiles() {
+        assertEquals(2.0F, NightBloomHudLayout.WATERMARK_SEGMENT_GAP, EPSILON);
+        assertEquals(68.0F, NightBloomHudLayout.watermarkBrandWidth(48.0F), EPSILON);
+        assertEquals(33.0F, NightBloomHudLayout.watermarkMetadataWidth(28.0F), EPSILON);
+        assertEquals(29.0F, NightBloomHudLayout.watermarkMetadataWidth(24.0F), EPSILON);
+        assertEquals(134.0F, NightBloomHudLayout.watermarkWidth(48.0F, 28.0F, 24.0F), EPSILON);
+    }
+
+    @Test
+    public void watermarkBrandLogoAndTextShareTheTilesGeometricCenter() {
+        assertEquals(9.7F, NightBloomHudLayout.watermarkBrandIconCenterY(0.0F), EPSILON);
+        assertEquals(41.7F, NightBloomHudLayout.watermarkBrandIconCenterY(32.0F), EPSILON);
+        assertEquals(6.0F, NightBloomHudLayout.watermarkBrandTextY(0.0F, 18.0F, 8.0F), EPSILON);
+        assertEquals(8.0F, NightBloomHudLayout.watermarkMetadataTextY(0.0F, 18.0F, 6.0F), EPSILON);
+        assertEquals(38.0F, NightBloomHudLayout.watermarkBrandTextY(32.0F, 18.0F, 8.0F), EPSILON);
+        assertEquals(40.0F, NightBloomHudLayout.watermarkMetadataTextY(32.0F, 18.0F, 6.0F), EPSILON);
     }
 
     @Test
     public void moduleRowsShareOneRightAnchorAtEveryVisibility() {
         assertEquals(15.0F, NightBloomHudLayout.moduleRowWidth(10.0F, 0.0F), EPSILON);
-        assertEquals(85.0F, NightBloomHudLayout.moduleRowWidth(44.0F, 33.0F), EPSILON);
-        assertEquals(141.0F, NightBloomHudLayout.moduleRowWidth(100.0F, 33.0F), EPSILON);
+        assertEquals(83.0F, NightBloomHudLayout.moduleRowWidth(44.0F, 33.0F), EPSILON);
+        assertEquals(139.0F, NightBloomHudLayout.moduleRowWidth(100.0F, 33.0F), EPSILON);
         assertEquals(200.0F, NightBloomHudLayout.moduleRowX(300.0F, 100.0F, 0.0F), EPSILON);
         assertEquals(200.0F, NightBloomHudLayout.moduleRowX(300.0F, 100.0F, 0.5F), EPSILON);
         assertEquals(200.0F, NightBloomHudLayout.moduleRowX(300.0F, 100.0F, 1.0F), EPSILON);
-        assertEquals(159.0F, NightBloomHudLayout.moduleRowX(300.0F, 141.0F, 1.0F), EPSILON);
+        assertEquals(161.0F, NightBloomHudLayout.moduleRowX(300.0F, 139.0F, 1.0F), EPSILON);
     }
 
     @Test
     public void moduleOrderingUsesTheFinalNightBloomNameAndMetadataWidths() {
-        assertEquals(54.0F, NightBloomHudLayout.moduleRowWidth(38.0F, 8.0F), EPSILON);
+        assertEquals(52.0F, NightBloomHudLayout.moduleRowWidth(38.0F, 8.0F), EPSILON);
         assertEquals(56.0F, NightBloomHudLayout.moduleRowWidth(51.0F, 0.0F), EPSILON);
         assertTrue("JumpReset must sort before the visually narrower BlockHit 6r row",
-                NightBloomHudLayout.compareModuleRowsByRenderedWidth(54.0F, 56.0F) > 0);
-        assertTrue(NightBloomHudLayout.compareModuleRowsByRenderedWidth(56.0F, 54.0F) < 0);
+                NightBloomHudLayout.compareModuleRowsByRenderedWidth(52.0F, 56.0F) > 0);
+        assertTrue(NightBloomHudLayout.compareModuleRowsByRenderedWidth(56.0F, 52.0F) < 0);
         assertEquals(0, NightBloomHudLayout.compareModuleRowsByRenderedWidth(56.0F, 56.0F));
+    }
+
+    @Test
+    public void moduleNameAndMetadataUseCompactOpticalAlignment() {
+        assertEquals(1.0F, NightBloomHudLayout.MODULE_TEXT_GAP, EPSILON);
+        assertEquals(4.0F, NightBloomHudLayout.moduleNameY(0.0F, 10.0F), EPSILON);
+        assertEquals(6.0F, NightBloomHudLayout.moduleMetadataY(0.0F, 8.0F), EPSILON);
+        assertEquals(36.0F, NightBloomHudLayout.moduleNameY(32.0F, 10.0F), EPSILON);
+        assertEquals(38.0F, NightBloomHudLayout.moduleMetadataY(32.0F, 8.0F), EPSILON);
     }
 
     @Test
@@ -107,6 +129,7 @@ public class NightBloomHudLayoutTest {
     public void potionAndInventoryKeepStableDragBoundsWithCompactContent() {
         assertEquals(166.0F, NightBloomHudLayout.POTION_WIDTH, EPSILON);
         assertEquals(53.0F, NightBloomHudLayout.potionHeight(1), EPSILON);
+        assertEquals(64.5F, NightBloomHudLayout.potionHeight(1.5F), EPSILON);
         assertEquals(168.0F, NightBloomHudLayout.inventoryGridRight(8.0F), EPSILON);
     }
 }

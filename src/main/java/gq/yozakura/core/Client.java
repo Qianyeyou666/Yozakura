@@ -28,7 +28,6 @@ import net.minecraftforge.fml.common.gameevent.InputEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.common.network.FMLNetworkEvent;
 import org.lwjgl.input.Keyboard;
-import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
 
 import java.awt.*;
@@ -41,7 +40,7 @@ import java.util.Random;
 import static gq.yozakura.util.minecraft.Helper.mc;
 
 public class Client {
-    public static final boolean DebugMode = true;
+    public static final boolean DebugMode = false;
     // 调试时可以启用，注入成功会修改标题
 
     public static String name = "Yozakura";
@@ -84,12 +83,8 @@ public class Client {
             showInjectionSuccessAnimation();
             return;
         }
-        if (!DebugMode) {
-            YozakuraAuthGate.verifyOrThrow("forge");
-            username = YozakuraAuthGate.getVerifiedUsername();
-        } else {
-            username = "DebugUser";
-        }
+        YozakuraAuthGate.verifyOrThrow("forge");
+        username = YozakuraAuthGate.getVerifiedUsername();
         state = true;
         MinecraftForge.EVENT_BUS.register(this);
         tokenAuthGuiHandler = new TokenAuthGuiHandler();
@@ -104,17 +99,8 @@ public class Client {
 //        FontLoaders.C20.drawStringWithShadow(Client.name,114514,114514, -1);
 //        FontLoaders.F14.drawStringWithShadow(Client.name,114514,114514, -1);
 //        FontLoaders.Logo.drawStringWithShadow(Client.name,114514,114514, -1);
-        if(!DebugMode){
-            if(mc.isIntegratedServerRunning() || mc.isSingleplayer()){
-                Helper.sendMessageWithoutPrefix("Yozakura Load done! Press RSHIFT open ClickGui, Press H Open HUD");
-            }
-        } else {
-            mc.addScheduledTask(new Runnable() {
-                @Override
-                public void run() {
-                    Display.setTitle(Display.getTitle() + " | Client Load Succeeded");
-                }
-            });
+        if(mc.isIntegratedServerRunning() || mc.isSingleplayer()){
+            Helper.sendMessageWithoutPrefix("Yozakura Load done! Press RSHIFT open ClickGui, Press H Open HUD");
         }
     }
 

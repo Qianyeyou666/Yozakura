@@ -287,7 +287,7 @@ public class IQBooster extends Module {
 
     public IQBooster(){
         super("LTap", Keyboard.KEY_L, ModuleType.Player,"send obscenities when you press P (L mean Love)");
-        Chinese="嘴臭模式";
+        Chinese="智商增强";
     }
 
     @Override

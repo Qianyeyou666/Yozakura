@@ -165,6 +165,7 @@ public class ModuleManager {
         addModule("HitBoxes", new ModuleFactory() { public Module create() { return new HitBoxes(); } });
         addModule("GhostHand", new ModuleFactory() { public Module create() { return new GhostHand(); } });
         addModule("StorageESP", new ModuleFactory() { public Module create() { return new StorageESP(); } });
+        addModule("BedESP", new ModuleFactory() { public Module create() { return new BedESP(); } });
         addModule("Chams", new ModuleFactory() { public Module create() { return new Chams(); } });
         addModule("ESP", new ModuleFactory() { public Module create() { return new ESP(); } });
 //        addModule("Test", new ModuleFactory() {

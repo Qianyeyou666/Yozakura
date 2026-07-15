@@ -189,7 +189,8 @@ public class MusicPlayer extends Module {
         } finally {
             GlStateManager.popMatrix();
         }
-        HudDrag.drawHint("music_player", pos[0], pos[1], layout.width * uiScale, layout.height * uiScale, 9.0f * uiScale);
+        HudDrag.drawHint("music_player", pos[0], pos[1], layout.width * uiScale, layout.height * uiScale,
+                9.0f * uiScale);
         HudDrag.handleScroll("music_player", scale, pos[0], pos[1], layout.width * uiScale, layout.height * uiScale, 0.65f, 1.6f);
         handleHudClicks(pos[0], pos[1], layout.width * uiScale, layout.height * uiScale, sr);
     }

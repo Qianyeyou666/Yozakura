@@ -267,7 +267,7 @@ final class ClickGuiSidePanel {
         gui.drawCenteredIcon(ClickGuiIcons.forModule(gui.selectedModule), FontLoaders.I18,
                 gui.sideX + 23.0f, y + 42.0f, gui.withAlpha(gui.guiColors().accent, 220.0f * gui.guiAlpha));
         // 模块名称和收藏星标
-        gui.drawFont(gui.trim(gui.selectedModule.getName(), FontLoaders.F16, gui.sideW - 62.0f),
+        gui.drawFont(gui.trim(gui.getModuleDisplayName(gui.selectedModule), FontLoaders.F16, gui.sideW - 62.0f),
                 gui.sideX + 38.0f, y + 37.0f, gui.withAlpha(gui.guiColors().text, 245.0f * gui.guiAlpha));
         gui.drawCenteredIcon(FontLoaders.ICON_STAR_OUTLINE, FontLoaders.I18,
                 gui.sideX + gui.sideW - 24.0f, y + 41.0f,

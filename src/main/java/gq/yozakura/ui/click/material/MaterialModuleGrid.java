@@ -80,7 +80,7 @@ final class MaterialModuleGrid {
     private void drawHeader() {
         MaterialClickLayout layout = gui.layout();
         MaterialClickTheme theme = gui.theme();
-        String title = gui.currentType().toString();
+        String title = gui.currentType().getName();
         float headerTop = layout.y;
         float headerBottom = clipTop(layout);
         float titleHeight = FontLoaders.getFontRender(28).getStringHeight(title);

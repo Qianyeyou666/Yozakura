@@ -38,6 +38,12 @@ public class CombatPacketStateBoundaryContractTest {
     }
 
     @Test
+    public void vanillaActionsKeepTheirOriginalOutboundPositionUnlessASeparateModuleDelaysThem() throws IOException {
+        assertNativeActionOrder(source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java"));
+        assertNativeActionOrder(source("src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java"));
+    }
+
+    @Test
     public void lunarBacktrackUsesTheRealMouseOverBoundaryBeforeVanillaClickHandling() throws IOException {
         String backtrack = source("src/main/java/gq/yozakura/module/combat/Backtrack.java");
         String standalone = source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java");
@@ -51,5 +57,15 @@ public class CombatPacketStateBoundaryContractTest {
 
     private static String source(String path) throws IOException {
         return new String(Files.readAllBytes(Paths.get(path)), StandardCharsets.UTF_8);
+    }
+
+    private static void assertNativeActionOrder(String source) {
+        assertTrue("The bridge must preserve vanilla action ordering by default",
+                source.contains("boolean preserveOriginalPacketOrder = true;"));
+        assertTrue("Packet listeners may strengthen but never clear the default ordering guarantee",
+                source.contains("preserveOriginalPacketOrder = preserveOriginalPacketOrder")
+                        && source.contains("|| accepted.isOriginalPacketOrderRequired();"));
+        assertTrue("Any retained legacy queue gate must remain behind the source-order guard",
+                source.contains("if (!skipPacketEvent && !preserveOriginalPacketOrder && isPostSensitiveAction(packet))"));
     }
 }

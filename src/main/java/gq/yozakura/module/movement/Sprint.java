@@ -13,7 +13,7 @@ import org.lwjgl.input.Mouse;
 public class Sprint extends Module {
     public Sprint() {
         super("Sprint", Keyboard.KEY_R, ModuleType.Movement,"Force sprint when you moving");
-        Chinese="强制疾跑";
+        Chinese="疾跑";
     }
 
     @EventTarget(Priority.LOWEST)

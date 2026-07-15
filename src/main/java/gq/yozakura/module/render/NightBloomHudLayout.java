@@ -4,9 +4,11 @@ package gq.yozakura.module.render;
  * Pure dimensions for the compact Night Bloom HUD components.
  */
 final class NightBloomHudLayout {
-    static final float WATERMARK_HEIGHT = 22.0F;
+    static final float WATERMARK_HEIGHT = 18.0F;
+    static final float WATERMARK_SEGMENT_GAP = 2.0F;
     static final float MODULE_ROW_HEIGHT = 16.0F;
     static final float MODULE_ROW_GAP = 2.0F;
+    static final float MODULE_TEXT_GAP = 1.0F;
     static final float POTION_WIDTH = 166.0F;
     static final float POTION_ROW_HEIGHT = 23.0F;
     static final float INVENTORY_WIDTH = 178.0F;
@@ -26,26 +28,60 @@ final class NightBloomHudLayout {
     static final int MAX_VISIBLE_MODULE_ROWS = 18;
     static final int MAX_VISIBLE_POTION_ROWS = 6;
     static final int INVENTORY_COLUMNS = 9;
-    private static final float MIN_WATERMARK_WIDTH = 120.0F;
     static final float MIN_MODULE_ROW_WIDTH = 48.0F;
     private static final float BRAND_ICON_WIDTH = 12.0F;
+    private static final float BRAND_ICON_CENTER_OFFSET_Y = 0.70F;
+    private static final float MODULE_NAME_OPTICAL_OFFSET_Y = 1.0F;
+    private static final float MODULE_METADATA_OPTICAL_OFFSET_Y = 2.0F;
     private static final float POTION_VERTICAL_CHROME = 30.0F;
 
     private NightBloomHudLayout() {
     }
 
     static float watermarkWidth(float brandWidth, float versionWidth, float fpsWidth) {
-        float width = 7.0F + BRAND_ICON_WIDTH + 5.0F + nonNegative(brandWidth)
-                + 7.0F + chipWidth(versionWidth) + 4.0F + chipWidth(fpsWidth) + 7.0F;
-        return Math.max(MIN_WATERMARK_WIDTH, width);
+        return watermarkBrandWidth(brandWidth) + WATERMARK_SEGMENT_GAP
+                + watermarkMetadataWidth(versionWidth) + WATERMARK_SEGMENT_GAP
+                + watermarkMetadataWidth(fpsWidth);
+    }
+
+    static float watermarkBrandWidth(float brandWidth) {
+        return 2.0F + BRAND_ICON_WIDTH + 3.0F + nonNegative(brandWidth) + 3.0F;
+    }
+
+    static float watermarkMetadataWidth(float textWidth) {
+        return moduleRowWidth(textWidth, 0.0F);
+    }
+
+    static float watermarkBrandIconCenterY(float watermarkY) {
+        return watermarkY + WATERMARK_HEIGHT * 0.5F + BRAND_ICON_CENTER_OFFSET_Y;
+    }
+
+    static float watermarkTextY(float watermarkY, float watermarkHeight, float fontHeight) {
+        return watermarkY + (nonNegative(watermarkHeight) - nonNegative(fontHeight)) * 0.5F;
+    }
+
+    static float watermarkBrandTextY(float watermarkY, float watermarkHeight, float fontHeight) {
+        return watermarkTextY(watermarkY, watermarkHeight, fontHeight) + 1.0F;
+    }
+
+    static float watermarkMetadataTextY(float watermarkY, float watermarkHeight, float fontHeight) {
+        return watermarkTextY(watermarkY, watermarkHeight, fontHeight) + 2.0F;
     }
 
     static float moduleRowWidth(float nameWidth, float metaWidth) {
         float width = 2.0F + nonNegative(nameWidth) + 3.0F;
         if (metaWidth > 0.0F) {
-            width += 3.0F + metaWidth;
+            width += MODULE_TEXT_GAP + metaWidth;
         }
         return width;
+    }
+
+    static float moduleNameY(float rowY, float fontHeight) {
+        return centeredModuleTextY(rowY, fontHeight, MODULE_NAME_OPTICAL_OFFSET_Y);
+    }
+
+    static float moduleMetadataY(float rowY, float fontHeight) {
+        return centeredModuleTextY(rowY, fontHeight, MODULE_METADATA_OPTICAL_OFFSET_Y);
     }
 
     static int compareModuleRowsByRenderedWidth(float firstWidth, float secondWidth) {
@@ -88,7 +124,12 @@ final class NightBloomHudLayout {
     }
 
     static float potionHeight(int effectCount) {
-        return POTION_VERTICAL_CHROME + visiblePotionRows(effectCount) * POTION_ROW_HEIGHT;
+        return potionHeight((float) visiblePotionRows(effectCount));
+    }
+
+    static float potionHeight(float visibleRows) {
+        float rows = Math.max(1.0F, Math.min(MAX_VISIBLE_POTION_ROWS, visibleRows));
+        return POTION_VERTICAL_CHROME + rows * POTION_ROW_HEIGHT;
     }
 
     static float inventoryGridRight(float gridLeft) {
@@ -100,8 +141,8 @@ final class NightBloomHudLayout {
         return Math.max(1, Math.min(MAX_VISIBLE_POTION_ROWS, effectCount));
     }
 
-    private static float chipWidth(float textWidth) {
-        return nonNegative(textWidth) + 12.0F;
+    private static float centeredModuleTextY(float rowY, float fontHeight, float opticalOffsetY) {
+        return rowY + (MODULE_ROW_HEIGHT - nonNegative(fontHeight)) * 0.5F + opticalOffsetY;
     }
 
     private static float nonNegative(float value) {

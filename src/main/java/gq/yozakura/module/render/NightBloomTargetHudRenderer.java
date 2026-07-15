@@ -4,6 +4,8 @@ import gq.yozakura.engine.font.CFontRenderer;
 import gq.yozakura.engine.font.FontLoaders;
 import gq.yozakura.engine.render.ui.RenderServices;
 import gq.yozakura.engine.render.ui.VisualPalette;
+import gq.yozakura.util.render.HudDockingCoordinator;
+import gq.yozakura.util.render.HudDrag;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.AbstractClientPlayer;
 import net.minecraft.client.gui.Gui;
@@ -18,9 +20,14 @@ import net.minecraft.entity.passive.EntityWaterMob;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.ResourceLocation;
 
+import java.util.ArrayList;
+import java.util.List;
+
 final class NightBloomTargetHudRenderer {
     static final float WIDTH = 190.0F;
     static final float HEIGHT = 48.0F;
+    private static final float AVATAR_TILE_WIDTH = 46.0F;
+    private static final float FUSION_GAP = 6.0F;
 
     private static final VisualPalette PALETTE = VisualPalette.nightBloom();
     private final Minecraft minecraft = Minecraft.getMinecraft();
@@ -34,9 +41,16 @@ final class NightBloomTargetHudRenderer {
 
         float width = WIDTH * uiScale;
         float height = HEIGHT * uiScale;
-        float drawY = y + (editMode ? 0.0F : motion.getPanelYOffset() * uiScale);
-        float panelScale = editMode ? 1.0F : motion.getPanelScale();
+        boolean dockGeometryLocked = hasDockingLink("target_hud");
+        float drawY = dockGeometryLocked || editMode ? y : y + motion.getPanelYOffset() * uiScale;
+        float panelScale = dockGeometryLocked || editMode ? 1.0F : motion.getPanelScale();
         float radius = NightBloomHudLayout.PANEL_RADIUS * uiScale;
+        boolean externallyDocked = dockGeometryLocked;
+
+        if (externallyDocked) {
+            NightBloomHudDockRenderer.drawPanel("target_hud", x, drawY, width, height, radius, panelAlpha,
+                    multiplyAlpha(NightBloomHudLayout.SURFACE_COLOR, 0.86F));
+        }
 
         GlStateManager.pushMatrix();
         try {
@@ -48,21 +62,49 @@ final class NightBloomTargetHudRenderer {
                 GlStateManager.translate(-centerX, -centerY, 0.0F);
             }
 
-            drawPanel(x, drawY, width, height, radius, uiScale, panelAlpha);
-            drawHealth(x, drawY, width, uiScale, motion, panelAlpha, showAvatar);
+            float fusionProgress = editMode ? 1.0F : smoothStep(motion.getVisibility());
+            float joinGap = showAvatar ? FUSION_GAP * uiScale * (1.0F - fusionProgress) : 0.0F;
+            if (externallyDocked) {
+                drawDockedAvatarWell(x, drawY, width, height, radius, uiScale, panelAlpha, showAvatar);
+            } else if (showAvatar) {
+                drawFusedPanel(x, drawY, width, height, radius, uiScale, panelAlpha, fusionProgress, joinGap);
+            } else {
+                drawPanel(x, drawY, width, height, radius, uiScale, panelAlpha);
+            }
+            drawHealth(x, drawY, width, uiScale, motion, panelAlpha, showAvatar, joinGap);
 
             float previousAlpha = editMode ? 0.0F : motion.getPreviousContentAlpha();
             if (previous != null && previousAlpha > 0.001F) {
-                drawContent(previous, x, drawY, width, uiScale, previousAlpha, showAvatar);
+                drawContent(previous, x, drawY, width, uiScale, previousAlpha, showAvatar, joinGap);
             }
             float currentAlpha = editMode ? 1.0F : motion.getCurrentContentAlpha();
             if (currentAlpha > 0.001F) {
-                drawContent(current, x, drawY, width, uiScale, currentAlpha, showAvatar);
+                drawContent(current, x, drawY, width, uiScale, currentAlpha, showAvatar, joinGap);
             }
         } finally {
             GlStateManager.popMatrix();
             resetRenderState();
         }
+    }
+
+    private static boolean hasDockingLink(String id) {
+        HudDockingCoordinator.Snapshot snapshot = HudDrag.getDockingSnapshot();
+        return snapshot != null && snapshot.hasLink(id);
+    }
+
+    private void drawDockedAvatarWell(float x, float y, float width, float height, float radius,
+                                      float uiScale, float alpha, boolean showAvatar) {
+        if (!showAvatar) {
+            return;
+        }
+        float avatarWidth = Math.min(width * 0.45F, AVATAR_TILE_WIDTH * uiScale);
+        float inset = Math.max(2.0F * uiScale, radius * 0.5F);
+        if (avatarWidth <= inset * 2.0F || height <= inset * 2.0F) {
+            return;
+        }
+        RenderServices.shapes().rounded(x + inset, y + inset, x + avatarWidth - inset, y + height - inset,
+                Math.max(2.0F * uiScale, radius * 0.72F),
+                multiplyAlpha(NightBloomHudLayout.SURFACE_RAISED_COLOR, 0.54F * alpha));
     }
 
     private void drawPanel(float x, float y, float width, float height, float radius,
@@ -72,8 +114,124 @@ final class NightBloomTargetHudRenderer {
                 multiplyAlpha(NightBloomHudLayout.SURFACE_COLOR, 0.86F * alpha));
     }
 
+    private void drawFusedPanel(float x, float y, float width, float height, float radius, float uiScale,
+                                float alpha, float fusionProgress, float joinGap) {
+        float avatarWidth = Math.min(width * 0.45F, AVATAR_TILE_WIDTH * uiScale);
+        float bodyWidth = width - avatarWidth - joinGap;
+        if (avatarWidth <= 0.01F || bodyWidth <= 0.01F) {
+            drawPanel(x, y, width, height, radius, uiScale, alpha);
+            return;
+        }
+
+        NightBloomWatermarkLayout.TileView avatar = new NightBloomWatermarkLayout.TileView(
+                NightBloomWatermarkLayout.Tile.BRAND, x, y, x, y, avatarWidth, height);
+        NightBloomWatermarkLayout.TileView body = new NightBloomWatermarkLayout.TileView(
+                NightBloomWatermarkLayout.Tile.VERSION, x + avatarWidth + joinGap, y,
+                x + avatarWidth + joinGap, y, bodyWidth, height);
+        NightBloomWatermarkLayout.LinkView link = new NightBloomWatermarkLayout.LinkView(
+                NightBloomWatermarkLayout.Tile.BRAND, NightBloomWatermarkLayout.Tile.VERSION,
+                NightBloomWatermarkLayout.Placement.RIGHT_OF,
+                NightBloomWatermarkLayout.CrossAlignment.START, fusionProgress, false);
+        NightBloomWatermarkLiquid.Bridge bridge = NightBloomWatermarkLiquid.bridge(avatar, body, link);
+        List<NightBloomWatermarkLiquid.Bridge> bridges = new ArrayList<NightBloomWatermarkLiquid.Bridge>();
+        if (bridge.getProgress() > 0.01F) {
+            bridges.add(bridge);
+        }
+        List<NightBloomWatermarkLayout.TileView> tiles = new ArrayList<NightBloomWatermarkLayout.TileView>();
+        tiles.add(avatar);
+        tiles.add(body);
+        List<NightBloomWatermarkLiquid.Composite> composites = NightBloomWatermarkLiquid.composites(tiles, bridges);
+
+        drawFusedShadows(tiles, bridges, composites, radius, alpha);
+        drawFusedSurfaces(tiles, bridges, composites, radius, alpha);
+    }
+
+    private void drawFusedShadows(List<NightBloomWatermarkLayout.TileView> tiles,
+                                  List<NightBloomWatermarkLiquid.Bridge> bridges,
+                                  List<NightBloomWatermarkLiquid.Composite> composites,
+                                  float radius, float alpha) {
+        for (NightBloomWatermarkLayout.TileView tile : tiles) {
+            float opacity = 1.0F - fusedCompositeProgress(tile.getTile(), composites);
+            if (opacity > 0.01F) {
+                HUD.drawNightBloomShadow(tile.getX(), tile.getY(), tile.getRight(), tile.getBottom(), radius,
+                        alpha * opacity);
+            }
+        }
+        for (NightBloomWatermarkLiquid.Bridge bridge : bridges) {
+            if (bridge.isVisible()) {
+                HUD.drawNightBloomShadow(bridge.getX(), bridge.getY(), bridge.getRight(), bridge.getBottom(),
+                        bridge.getRadius(), alpha * bridge.getOpacity() * (1.0F - bridge.getCompositeProgress()));
+            }
+        }
+        for (NightBloomWatermarkLiquid.Composite composite : composites) {
+            if (composite.getProgress() > 0.01F) {
+                HUD.drawNightBloomShadow(composite.getX(), composite.getY(), composite.getRight(),
+                        composite.getBottom(), radius, alpha * composite.getProgress());
+            }
+        }
+    }
+
+    private void drawFusedSurfaces(List<NightBloomWatermarkLayout.TileView> tiles,
+                                   List<NightBloomWatermarkLiquid.Bridge> bridges,
+                                   List<NightBloomWatermarkLiquid.Composite> composites,
+                                   float radius, float alpha) {
+        for (NightBloomWatermarkLiquid.Bridge bridge : bridges) {
+            float opacity = alpha * bridge.getOpacity() * (1.0F - bridge.getCompositeProgress());
+            if (bridge.isVisible() && opacity > 0.01F) {
+                RenderServices.shapes().joinedRounded(bridge.getX(), bridge.getY(), bridge.getRight(),
+                        bridge.getBottom(), bridge.getRadius(), bridge.getRadius(), bridge.getRadius(),
+                        bridge.getRadius(), multiplyAlpha(NightBloomHudLayout.SURFACE_COLOR, 0.86F * opacity));
+            }
+        }
+        for (NightBloomWatermarkLayout.TileView tile : tiles) {
+            float opacity = 1.0F - fusedCompositeProgress(tile.getTile(), composites);
+            if (opacity <= 0.01F) {
+                continue;
+            }
+            NightBloomWatermarkLiquid.Surface surface = NightBloomWatermarkLiquid.surfaceFor(tile, bridges, radius);
+            RenderServices.shapes().joinedRounded(tile.getX(), tile.getY(), tile.getRight(), tile.getBottom(),
+                    surface.getTopLeft(), surface.getTopRight(), surface.getBottomRight(), surface.getBottomLeft(),
+                    surface.getTopJoinStart(), surface.getTopJoinEnd(),
+                    surface.getBottomJoinStart(), surface.getBottomJoinEnd(),
+                    surface.getLeftJoinStart(), surface.getLeftJoinEnd(),
+                    surface.getRightJoinStart(), surface.getRightJoinEnd(),
+                    multiplyAlpha(NightBloomHudLayout.SURFACE_COLOR, 0.86F * alpha * opacity));
+        }
+        for (NightBloomWatermarkLiquid.Composite composite : composites) {
+            float opacity = fusedCompositeSurfaceOpacity(alpha, composite.getProgress());
+            if (opacity > 0.01F) {
+                RenderServices.shapes().joinedRounded(composite.getX(), composite.getY(), composite.getRight(),
+                        composite.getBottom(), radius, radius, radius, radius,
+                        multiplyAlpha(NightBloomHudLayout.SURFACE_COLOR, 0.86F * alpha * opacity));
+            }
+        }
+    }
+
+    private static float fusedCompositeProgress(NightBloomWatermarkLayout.Tile tile,
+                                                List<NightBloomWatermarkLiquid.Composite> composites) {
+        float progress = 0.0F;
+        for (NightBloomWatermarkLiquid.Composite composite : composites) {
+            if (composite.contains(tile)) {
+                progress = Math.max(progress, composite.getProgress());
+            }
+        }
+        return progress;
+    }
+
+    static float fusedCompositeSurfaceOpacity(float alpha, float progress) {
+        float baseOpacity = 0.86F;
+        float desiredOpacity = baseOpacity * clamp01(alpha);
+        if (desiredOpacity <= 0.0001F) {
+            return 0.0F;
+        }
+        float individualOpacity = desiredOpacity * (1.0F - clamp01(progress));
+        float compositeOpacity = (desiredOpacity - individualOpacity)
+                / Math.max(0.0001F, 1.0F - individualOpacity);
+        return compositeOpacity / desiredOpacity;
+    }
+
     private void drawContent(Content content, float x, float y, float width, float uiScale,
-                             float alpha, boolean showAvatar) {
+                             float alpha, boolean showAvatar, float joinGap) {
         if (showAvatar) {
             drawPortrait(content, x + 10.0F * uiScale, y + 10.0F * uiScale,
                     28.0F * uiScale, uiScale, alpha);
@@ -82,7 +240,7 @@ final class NightBloomTargetHudRenderer {
         CFontRenderer nameFont = FontLoaders.tenacityBold(Math.max(12, Math.round(15.0F * uiScale)));
         CFontRenderer metaFont = FontLoaders.regular(Math.max(9, Math.round(10.0F * uiScale)));
         CFontRenderer valueFont = FontLoaders.regular(Math.max(9, Math.round(10.0F * uiScale)));
-        float textX = x + (showAvatar ? 46.0F : 10.0F) * uiScale;
+        float textX = x + (showAvatar ? AVATAR_TILE_WIDTH : 10.0F) * uiScale + joinGap;
         float right = x + width - 10.0F * uiScale;
         String healthText = Math.round(content.healthRatio * 100.0F) + "%";
         float healthWidth = valueFont.getStringWidth(healthText);
@@ -103,10 +261,10 @@ final class NightBloomTargetHudRenderer {
     }
 
     private void drawHealth(float x, float y, float width, float uiScale,
-                            TargetHudMotion motion, float alpha, boolean showAvatar) {
-        float barX = x + (showAvatar ? 46.0F : 10.0F) * uiScale;
+                            TargetHudMotion motion, float alpha, boolean showAvatar, float joinGap) {
+        float barX = x + (showAvatar ? AVATAR_TILE_WIDTH : 10.0F) * uiScale + joinGap;
         float barY = y + 37.0F * uiScale;
-        float barWidth = width - (showAvatar ? 56.0F : 20.0F) * uiScale;
+        float barWidth = width - (showAvatar ? 56.0F : 20.0F) * uiScale - joinGap;
         float barHeight = Math.max(2.5F, 3.0F * uiScale);
         float radius = barHeight * 0.5F;
 

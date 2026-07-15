@@ -37,4 +37,15 @@ public class PlayerPacketTickGateTest {
         assertTrue(gate.consumeNextPlayerPacket());
         assertFalse(gate.consumeNextPlayerPacket());
     }
+
+    @Test
+    public void nonCanonicalPlayerPacketsCannotConsumeTheVanillaTickBoundary() {
+        PlayerPacketTickGate gate = new PlayerPacketTickGate();
+
+        gate.markNextPlayerPacket(41L);
+
+        assertFalse(gate.consumeNextCanonicalPlayerPacket(false));
+        assertTrue(gate.consumeNextCanonicalPlayerPacket(true));
+        assertFalse(gate.consumeNextCanonicalPlayerPacket(true));
+    }
 }

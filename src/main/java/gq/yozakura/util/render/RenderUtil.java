@@ -168,6 +168,7 @@ public class RenderUtil {
                                              int color) {
         drawJoinedRoundedRect(x, y, x2, y2,
                 topLeftRadius, topRightRadius, bottomRightRadius, bottomLeftRadius,
+                1.0F, 0.0F, 1.0F, 0.0F,
                 1.0F, 0.0F, 1.0F, 0.0F, color);
     }
 
@@ -176,6 +177,23 @@ public class RenderUtil {
                                              float bottomRightRadius, float bottomLeftRadius,
                                              float topJoinStart, float topJoinEnd,
                                              float bottomJoinStart, float bottomJoinEnd, int color) {
+        drawJoinedRoundedRect(x, y, x2, y2,
+                topLeftRadius, topRightRadius, bottomRightRadius, bottomLeftRadius,
+                topJoinStart, topJoinEnd, bottomJoinStart, bottomJoinEnd,
+                1.0F, 0.0F, 1.0F, 0.0F, color);
+    }
+
+    /**
+     * Draws an antialiased rounded surface with independently joined intervals on all four sides.
+     * Horizontal ranges are measured from the left edge; vertical ranges are measured from the top.
+     */
+    public static void drawJoinedRoundedRect(float x, float y, float x2, float y2,
+                                             float topLeftRadius, float topRightRadius,
+                                             float bottomRightRadius, float bottomLeftRadius,
+                                             float topJoinStart, float topJoinEnd,
+                                             float bottomJoinStart, float bottomJoinEnd,
+                                             float leftJoinStart, float leftJoinEnd,
+                                             float rightJoinStart, float rightJoinEnd, int color) {
         if (getAlpha(color) <= 0) {
             return;
         }
@@ -190,7 +208,8 @@ public class RenderUtil {
             if (!ShaderRenderer.drawJoinedRoundedRect(
                     Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
                     topLeft, topRight, bottomRight, bottomLeft,
-                    topJoinStart, topJoinEnd, bottomJoinStart, bottomJoinEnd, color)) {
+                    topJoinStart, topJoinEnd, bottomJoinStart, bottomJoinEnd,
+                    leftJoinStart, leftJoinEnd, rightJoinStart, rightJoinEnd, color)) {
                 joinedRoundedRectRaw(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
                         topLeft, topRight, bottomRight, bottomLeft, color);
             }

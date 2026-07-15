@@ -5,6 +5,7 @@ import gq.yozakura.engine.render.ui.RenderServices;
 import gq.yozakura.module.Module;
 import gq.yozakura.module.render.ClickGUI;
 import gq.yozakura.util.animation.AnimationUtil;
+import gq.yozakura.util.math.NumberPrecision;
 import gq.yozakura.value.Mode;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
@@ -143,7 +144,7 @@ final class MaterialValueRenderer {
     private void prepareNumber(Numbers value) {
         String key = gui.animationKey(value);
         double current = numberValue(value);
-        String text = formatNumber(current);
+        String text = NumberPrecision.format(current, value.getIncrement());
         gui.prepareAnimation("value.number." + key, pct(value));
         gui.prepareAnimation("value.slider." + key + ".focus", 0.0f);
         prepareValueText(value, text, current);
@@ -157,7 +158,8 @@ final class MaterialValueRenderer {
         String maxKey = gui.animationKey(max);
         double minValue = numberValue(min);
         double maxValue = numberValue(max);
-        String values = formatNumber(minValue) + " - " + formatNumber(maxValue);
+        String values = NumberPrecision.format(minValue, min.getIncrement()) + " - "
+                + NumberPrecision.format(maxValue, max.getIncrement());
         gui.prepareAnimation("value.range.min." + minKey, pct(min, rangeMin, rangeMax));
         gui.prepareAnimation("value.range.max." + maxKey, pct(max, rangeMin, rangeMax));
         gui.prepareAnimation("value.slider." + minKey + ".focus", 0.0f);
@@ -192,7 +194,7 @@ final class MaterialValueRenderer {
         if (alpha != null) {
             double alphaValue = numberValue(alpha);
             gui.prepareAnimation("value.color.alpha." + key, colorAlphaPct(alpha));
-            prepareValueText(alpha, formatNumber(alphaValue), alphaValue);
+            prepareValueText(alpha, NumberPrecision.format(alphaValue, alpha.getIncrement()), alphaValue);
             FontLoaders.C14.getStringWidth(gui.displayName(alpha));
         }
         preparePlainValue(red);
@@ -405,7 +407,7 @@ final class MaterialValueRenderer {
         MaterialClickTheme theme = gui.theme();
         float s = gui.layout().scale;
         double current = numberValue(value);
-        String text = formatNumber(current);
+        String text = NumberPrecision.format(current, value.getIncrement());
         FontLoaders.C14.drawString(gui.displayName(value), x, y, theme.muted());
         drawAnimatedValueText(value, text, current, x + width, y, theme.muted());
         String key = gui.animationKey(value);
@@ -429,7 +431,8 @@ final class MaterialValueRenderer {
         String label = rangeLabel(min);
         double minValue = numberValue(min);
         double maxValue = numberValue(max);
-        String values = formatNumber(minValue) + " - " + formatNumber(maxValue);
+        String values = NumberPrecision.format(minValue, min.getIncrement()) + " - "
+                + NumberPrecision.format(maxValue, max.getIncrement());
         FontLoaders.C14.drawString(label, x, y, theme.muted());
         drawAnimatedValueText(min, values, (minValue + maxValue) * 0.5D, x + width, y, theme.muted());
 
@@ -510,7 +513,7 @@ final class MaterialValueRenderer {
                 float alphaY = colorAlphaY(controlY);
                 FontLoaders.C14.drawString(gui.displayName(alpha), x, alphaLabelY,
                         theme.withAlpha(MaterialClickTheme.MUTED, 255.0f * controlsAlpha));
-                drawAnimatedValueText(alpha, formatNumber(numberValue(alpha)), numberValue(alpha),
+                drawAnimatedValueText(alpha, NumberPrecision.format(numberValue(alpha), alpha.getIncrement()), numberValue(alpha),
                         x + width, alphaLabelY, theme.withAlpha(MaterialClickTheme.MUTED, 255.0f * controlsAlpha));
                 RenderServices.shapes().rounded(x, alphaY, x + width, alphaY + railH, railH / 2.0f,
                         theme.withAlpha(MaterialClickTheme.SURFACE_VARIANT, 76.0f * controlsAlpha));
@@ -970,14 +973,9 @@ final class MaterialValueRenderer {
 
     private void updateNumber(Numbers value, int mouseX, float x, float w, double min, double max,
                               Numbers pair, boolean lowerBound) {
-        double inc = value.getIncrement().doubleValue();
-        if (inc <= 0.0D) {
-            inc = 0.1D;
-        }
         double pct = MaterialClickLayout.clamp((mouseX - x) / w, 0.0f, 1.0f);
         double result = min + (max - min) * pct;
-        result = Math.round(result / inc) * inc;
-        result = Math.max(min, Math.min(max, result));
+        result = NumberPrecision.snap(result, min, max, value.getIncrement());
         if (pair != null) {
             double pairValue = numberValue(pair);
             result = lowerBound ? Math.min(result, pairValue) : Math.max(result, pairValue);
@@ -1169,11 +1167,7 @@ final class MaterialValueRenderer {
     private void setRoundedNumber(Numbers value, double result) {
         double min = value.getMinimum().doubleValue();
         double max = value.getMaximum().doubleValue();
-        double inc = value.getIncrement().doubleValue();
-        result = Math.max(min, Math.min(max, result));
-        if (inc > 0.0D) {
-            result = Math.round(result / inc) * inc;
-        }
+        result = NumberPrecision.snap(result, min, max, value.getIncrement());
         setNumberValue(value, result);
     }
 
@@ -1282,17 +1276,4 @@ final class MaterialValueRenderer {
         return label == null ? "" : label.replace("_", " ");
     }
 
-    private String formatNumber(double value) {
-        if (Math.abs(value - Math.round(value)) < 0.005D) {
-            return String.valueOf((long) Math.round(value));
-        }
-        String text = String.format(Locale.ROOT, "%.2f", value);
-        while (text.endsWith("0")) {
-            text = text.substring(0, text.length() - 1);
-        }
-        if (text.endsWith(".")) {
-            text = text.substring(0, text.length() - 1);
-        }
-        return text;
-    }
 }

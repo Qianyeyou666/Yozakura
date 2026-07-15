@@ -77,7 +77,7 @@ public class TargetESP extends Module {
         auroraBloom.visibleWhen(() -> mode.getValue() == EspMode.AURORA);
         this.addValues(mode, alpha, radius, height, pulseSpeed, lineWidth, shader, auroraBloom, throughWalls, auraTarget,
                 crosshairTarget, backtrackTarget, players, mobs, animals);
-        Chinese = "目标ESP";
+        Chinese = "目标瞄准效果";
     }
 
     @Override

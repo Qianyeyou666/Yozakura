@@ -48,16 +48,5 @@ public class VelocityControllerTest {
         assertEquals(0.6D, VelocityController.scale(1.0D, 60), 0.00001D);
         assertEquals(0.0D, VelocityController.scale(1.0D, -20), 0.00001D);
         assertEquals(1.0D, VelocityController.scale(1.0D, 140), 0.00001D);
-        assertEquals(-600, VelocityController.scalePacketMotion(-1000, 60));
-    }
-
-    @Test
-    public void deterministicChanceDoesNotProduceLongRandomStreaks() {
-        VelocityController controller = new VelocityController();
-
-        assertFalse(controller.shouldApplyReduction(50));
-        assertTrue(controller.shouldApplyReduction(50));
-        assertFalse(controller.shouldApplyReduction(50));
-        assertTrue(controller.shouldApplyReduction(50));
     }
 }

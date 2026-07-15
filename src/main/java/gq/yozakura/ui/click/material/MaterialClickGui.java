@@ -54,6 +54,7 @@ public final class MaterialClickGui extends GuiScreen {
     private final MaterialClickTheme theme = new MaterialClickTheme();
     private final MaterialClickSidebar sidebar = new MaterialClickSidebar(this);
     private final MaterialModuleGrid grid = new MaterialModuleGrid(this);
+    private final MaterialLanguagePanel languagePanel = new MaterialLanguagePanel(this);
     private final Set<Module> expandedModules = new HashSet<Module>();
     private final AnimationState animations = new AnimationState();
     private final Map<Module, String> moduleAnimationKeys = new IdentityHashMap<Module, String>();
@@ -106,6 +107,7 @@ public final class MaterialClickGui extends GuiScreen {
         savedOnClose = false;
         bindingModule = null;
         bindingDisplayModule = null;
+        languagePanel.close();
         expandedModules.clear();
         grid.resetScroll();
         super.initGui();
@@ -130,6 +132,7 @@ public final class MaterialClickGui extends GuiScreen {
         grid.render(mouseX, mouseY);
 
         super.drawScreen(mouseX, mouseY, partialTicks);
+        languagePanel.render(mouseX, mouseY);
         drawBindingOverlay(sr);
     }
 
@@ -163,6 +166,10 @@ public final class MaterialClickGui extends GuiScreen {
 
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int mouseButton) throws IOException {
+        if (languagePanel.isOpen()) {
+            languagePanel.mouseClicked(mouseX, mouseY, mouseButton);
+            return;
+        }
         if (bindingModule != null) {
             return;
         }
@@ -191,7 +198,7 @@ public final class MaterialClickGui extends GuiScreen {
     @Override
     public void handleMouseInput() throws IOException {
         int wheel = Mouse.getEventDWheel();
-        if (wheel != 0 && layout != null) {
+        if (wheel != 0 && layout != null && !languagePanel.isOpen()) {
             ScaledResolution sr = new ScaledResolution(mc);
             int mouseX = Mouse.getEventX() * sr.getScaledWidth() / mc.displayWidth;
             int mouseY = sr.getScaledHeight() - Mouse.getEventY() * sr.getScaledHeight() / mc.displayHeight - 1;
@@ -202,6 +209,12 @@ public final class MaterialClickGui extends GuiScreen {
 
     @Override
     protected void keyTyped(char typedChar, int keyCode) throws IOException {
+        if (languagePanel.isOpen()) {
+            if (keyCode == Keyboard.KEY_ESCAPE) {
+                languagePanel.close();
+            }
+            return;
+        }
         if (bindingModule != null) {
             finishBinding(keyCode);
             return;
@@ -215,6 +228,7 @@ public final class MaterialClickGui extends GuiScreen {
 
     @Override
     public void onGuiClosed() {
+        languagePanel.close();
         saveConfigOnClose();
         super.onGuiClosed();
     }
@@ -245,6 +259,14 @@ public final class MaterialClickGui extends GuiScreen {
 
     boolean hasBindingOverlay() {
         return bindingModule != null || bindingDisplayModule != null;
+    }
+
+    void openLanguagePanel() {
+        languagePanel.open();
+    }
+
+    boolean isLanguagePanelOpen() {
+        return languagePanel.isOpen();
     }
 
     boolean isBinding(Module module) {

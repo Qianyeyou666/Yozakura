@@ -25,19 +25,19 @@ import net.minecraftforge.event.entity.player.AttackEntityEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
-import java.lang.reflect.Field;
-
 public class Velocity extends Module {
     private static final Minecraft mc = Minecraft.getMinecraft();
 
     private static final int MODE_ATTACK = 0;
     private static final int MODE_REDUCE = 1;
+    private static final int VANILLA_SPRINT_SLOWDOWN = 60;
 
     public final ModeProperty mode =
             new ModeProperty("Mode", MODE_REDUCE, new String[]{"Attack", "Reduce"});
-    public final PercentProperty horizontal = new PercentProperty("Horizontal", 60);
-    public final PercentProperty vertical = new PercentProperty("Vertical", 100,
-            () -> mode.getValue() == MODE_REDUCE);
+    // Retained for existing configuration files; Reduce no longer changes server-owned motion.
+    public final PercentProperty horizontal = new PercentProperty("Horizontal",
+            VelocityConfigMigration.DEFAULT_REDUCE_HORIZONTAL, () -> false);
+    public final PercentProperty vertical = new PercentProperty("Vertical", 100, () -> false);
 
     private final IntProperty attackTimeout =
             new IntProperty("Attack Timeout", 2, 1, 6, () -> mode.getValue() == MODE_ATTACK);
@@ -49,15 +49,10 @@ public class Velocity extends Module {
             new BooleanProperty("Require KillAura", false, () -> mode.getValue() == MODE_ATTACK);
     private final BooleanProperty playersOnly =
             new BooleanProperty("Players Only", true, () -> mode.getValue() == MODE_ATTACK);
-    private final PercentProperty chance =
-            new PercentProperty("Chance", 100, () -> mode.getValue() == MODE_REDUCE);
+    private final PercentProperty chance = new PercentProperty("Chance", 100, () -> false);
 
     public volatile boolean knockback;
     public static volatile boolean hasReceivedVelocity;
-
-    private static Field s12MotionXField;
-    private static Field s12MotionYField;
-    private static Field s12MotionZField;
 
     private final Object attackStateLock = new Object();
     private final VelocityController controller = new VelocityController();
@@ -68,7 +63,7 @@ public class Velocity extends Module {
         super("Velocity", false);
         setCategory(ModuleType.Combat);
         Chinese = "击退控制";
-        Descript = "Real-attack slowdown or packet-based knockback reduction";
+        Descript = "Attack slowdown or server-physics-compatible knockback handling";
         About = Descript;
     }
 
@@ -89,33 +84,24 @@ public class Velocity extends Module {
         }
 
         int currentMode = mode.getValue();
-        if (currentMode == MODE_ATTACK) {
-            if (mc.thePlayer.isInWater() || mc.thePlayer.isInLava() || mc.thePlayer.isOnLadder()) {
-                clearAttackState();
-                return;
-            }
+        if (currentMode != MODE_ATTACK) {
             synchronized (attackStateLock) {
                 synchronizeModeLocked(currentMode);
-                controller.armAttackWindow(attackTimeout.getValue());
-                pendingAttackTarget = null;
-                updateAttackFlagsLocked();
+                knockback = false;
+                hasReceivedVelocity = false;
             }
             return;
         }
 
-        boolean shouldScale;
-        int horizontalPercent;
-        int verticalPercent;
+        if (mc.thePlayer.isInWater() || mc.thePlayer.isInLava() || mc.thePlayer.isOnLadder()) {
+            clearAttackState();
+            return;
+        }
         synchronized (attackStateLock) {
             synchronizeModeLocked(currentMode);
-            knockback = false;
-            hasReceivedVelocity = false;
-            shouldScale = controller.shouldApplyReduction(chance.getValue());
-            horizontalPercent = horizontal.getValue();
-            verticalPercent = vertical.getValue();
-        }
-        if (shouldScale) {
-            scaleVelocityPacket(velocity, horizontalPercent, verticalPercent);
+            controller.armAttackWindow(attackTimeout.getValue());
+            pendingAttackTarget = null;
+            updateAttackFlagsLocked();
         }
     }
 
@@ -186,7 +172,7 @@ public class Velocity extends Module {
     @Override
     public String[] getSuffix() {
         if (mode.getValue() == MODE_REDUCE) {
-            return new String[]{horizontal.getValue() + "%", vertical.getValue() + "%"};
+            return new String[]{"Compatibility"};
         }
         return new String[]{CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.UPPER_CAMEL, mode.getModeString())};
     }
@@ -222,8 +208,8 @@ public class Velocity extends Module {
     }
 
     private void applyAttackSlowdownMotion() {
-        mc.thePlayer.motionX = VelocityController.scale(mc.thePlayer.motionX, horizontal.getValue());
-        mc.thePlayer.motionZ = VelocityController.scale(mc.thePlayer.motionZ, horizontal.getValue());
+        mc.thePlayer.motionX = VelocityController.scale(mc.thePlayer.motionX, VANILLA_SPRINT_SLOWDOWN);
+        mc.thePlayer.motionZ = VelocityController.scale(mc.thePlayer.motionZ, VANILLA_SPRINT_SLOWDOWN);
         mc.thePlayer.setSprinting(false);
     }
 
@@ -244,7 +230,6 @@ public class Velocity extends Module {
         if (!canAcceptAttack(target)) {
             return;
         }
-        boolean shouldApply = false;
         synchronized (attackStateLock) {
             synchronizeModeLocked(mode.getValue());
             if (target == pendingAttackTarget && controller.hasPendingAttackSlowdown()) {
@@ -252,13 +237,8 @@ public class Velocity extends Module {
             }
             if (controller.acceptRealAttack(true, mc.thePlayer.isSprinting(), Boolean.TRUE.equals(onlySprinting.getValue()))) {
                 pendingAttackTarget = target;
-                shouldApply = controller.consumePendingAttackSlowdown();
-                pendingAttackTarget = null;
                 updateAttackFlagsLocked();
             }
-        }
-        if (shouldApply) {
-            applyAttackSlowdownMotion();
         }
     }
 
@@ -289,45 +269,6 @@ public class Velocity extends Module {
             return false;
         }
         return mc.thePlayer.getDistanceToEntity(target) <= attackRange.getValue();
-    }
-
-    private void scaleVelocityPacket(S12PacketEntityVelocity packet, int horizontalPercent, int verticalPercent) {
-        setS12Motion(packet,
-                VelocityController.scalePacketMotion(packet.getMotionX(), horizontalPercent),
-                VelocityController.scalePacketMotion(packet.getMotionY(), verticalPercent),
-                VelocityController.scalePacketMotion(packet.getMotionZ(), horizontalPercent));
-    }
-
-    private static void setS12Motion(S12PacketEntityVelocity packet, int motionX, int motionY, int motionZ) {
-        try {
-            initializeS12MotionFields();
-            s12MotionXField.setInt(packet, motionX);
-            s12MotionYField.setInt(packet, motionY);
-            s12MotionZField.setInt(packet, motionZ);
-        } catch (ReflectiveOperationException exception) {
-            throw new IllegalStateException("Unable to scale S12PacketEntityVelocity", exception);
-        }
-    }
-
-    private static synchronized void initializeS12MotionFields() throws NoSuchFieldException {
-        if (s12MotionXField != null && s12MotionYField != null && s12MotionZField != null) {
-            return;
-        }
-        s12MotionXField = findField("motionX", "field_149415_b", "b");
-        s12MotionYField = findField("motionY", "field_149416_c", "c");
-        s12MotionZField = findField("motionZ", "field_149414_d", "d");
-    }
-
-    private static Field findField(String... names) throws NoSuchFieldException {
-        for (String name : names) {
-            try {
-                Field field = S12PacketEntityVelocity.class.getDeclaredField(name);
-                field.setAccessible(true);
-                return field;
-            } catch (NoSuchFieldException ignored) {
-            }
-        }
-        throw new NoSuchFieldException("S12PacketEntityVelocity motion field");
     }
 
     private void clearAttackState() {

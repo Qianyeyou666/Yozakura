@@ -211,7 +211,6 @@ public class PlayerUtil {
                         }
                         mc.thePlayer.addExhaustion(0.3F);
                     } else {
-                        applyAttackMotion(target, knockbackLevel > 0);
                         if (isFireAspectApplied) {
                             target.extinguish();
                         }
@@ -222,7 +221,10 @@ public class PlayerUtil {
     }
 
     private static void applyAttackMotion(Entity target, boolean applySprintSlowdown) {
-        if (Velocity.applyAttackSlowdown(target) || !applySprintSlowdown) {
+        if (!applySprintSlowdown) {
+            return;
+        }
+        if (Velocity.applyAttackSlowdown(target)) {
             return;
         }
         applyAttackSprint(target);

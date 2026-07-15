@@ -1,8 +1,6 @@
 package gq.yozakura.auth;
 
 import gq.yozakura.auth.vendor.skidonion.sWdSl.VerificationPanel;
-import gq.yozakura.auth.vendor.tech.skidonion.obfuscator.inline.Wrapper;
-import gq.yozakura.core.Client;
 
 import java.awt.GraphicsEnvironment;
 import java.awt.event.WindowAdapter;
@@ -23,10 +21,7 @@ public final class YozakuraAuthGate {
     }
 
     public static synchronized void verifyOrThrow(String environment) {
-        if (Client.DebugMode) {
-            return;
-        }
-        if (Wrapper.isVerifiedSession()) {
+        if (NativeAuthBridge.isVerifiedSession()) {
             return;
         }
         if (!showVerification(environment)) {
@@ -35,18 +30,11 @@ public final class YozakuraAuthGate {
     }
 
     public static String getVerifiedUsername() {
-        if (Client.DebugMode) {
-            return "DebugUser";
-        }
-        return Wrapper.isVerifiedSession() ? Wrapper.getUsername().orElse(null) : null;
+        return NativeAuthBridge.getVerifiedUsername();
     }
 
     public static boolean allowRuntime(String surface) {
-        if (Client.DebugMode) {
-            runtimeBlockedLogged.set(false);
-            return true;
-        }
-        if (Wrapper.isVerifiedSession()) {
+        if (NativeAuthBridge.isVerifiedSession()) {
             runtimeBlockedLogged.set(false);
             return true;
         }
@@ -106,7 +94,7 @@ public final class YozakuraAuthGate {
             }
             int result = panel.waitForResult();
             dispose(frameRef.get());
-            return result == 1 && Wrapper.isVerifiedSession();
+            return result == 1 && NativeAuthBridge.isVerifiedSession();
         } catch (Throwable throwable) {
             log("Verification failed: " + environment, throwable);
             dispose(frameRef.get());

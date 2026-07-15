@@ -3,7 +3,6 @@ package gq.yozakura.module.combat;
 final class VelocityController {
     private int attackWindowTicks;
     private boolean pendingAttackSlowdown;
-    private int reductionChanceAccumulator;
 
     synchronized void armAttackWindow(int timeoutTicks) {
         attackWindowTicks = Math.max(1, Math.min(6, timeoutTicks));
@@ -35,22 +34,6 @@ final class VelocityController {
         pendingAttackSlowdown = false;
     }
 
-    synchronized boolean shouldApplyReduction(int chance) {
-        int safeChance = Math.max(0, Math.min(100, chance));
-        if (safeChance == 0) {
-            return false;
-        }
-        if (safeChance == 100) {
-            return true;
-        }
-        reductionChanceAccumulator += safeChance;
-        if (reductionChanceAccumulator < 100) {
-            return false;
-        }
-        reductionChanceAccumulator -= 100;
-        return true;
-    }
-
     synchronized boolean isAttackWindowActive() {
         return attackWindowTicks > 0;
     }
@@ -62,15 +45,10 @@ final class VelocityController {
     synchronized void reset() {
         attackWindowTicks = 0;
         pendingAttackSlowdown = false;
-        reductionChanceAccumulator = 0;
     }
 
     static double scale(double value, int retainedPercent) {
         int safePercent = Math.max(0, Math.min(100, retainedPercent));
         return value * safePercent / 100.0D;
-    }
-
-    static int scalePacketMotion(int value, int retainedPercent) {
-        return (int) Math.round(scale(value, retainedPercent));
     }
 }

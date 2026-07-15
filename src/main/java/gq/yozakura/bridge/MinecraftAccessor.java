@@ -11,6 +11,8 @@ public final class MinecraftAccessor {
     private static Method clickMouse;
     private static Field leftClickCounter;
     private static Field isHittingBlock;
+    private static Field rightClickDelayTimer;
+    private static IllegalStateException rightClickDelayTimerFailure;
 
     private MinecraftAccessor() {
     }
@@ -79,6 +81,49 @@ public final class MinecraftAccessor {
         } catch (Throwable ignored) {
             leftClickCounter = null;
         }
+    }
+
+    public static void capRightClickDelayTimer(Minecraft minecraft, int maximumDelay) {
+        if (minecraft == null) {
+            throw new IllegalArgumentException("minecraft");
+        }
+        if (maximumDelay < 0) {
+            throw new IllegalArgumentException("maximumDelay");
+        }
+        try {
+            Field field = getRightClickDelayTimer();
+            if (field.getInt(minecraft) > maximumDelay) {
+                field.setInt(minecraft, maximumDelay);
+            }
+        } catch (IllegalAccessException exception) {
+            throw rememberRightClickDelayTimerFailure(exception);
+        }
+    }
+
+    private static Field getRightClickDelayTimer() {
+        if (rightClickDelayTimer != null) {
+            return rightClickDelayTimer;
+        }
+        if (rightClickDelayTimerFailure != null) {
+            throw rightClickDelayTimerFailure;
+        }
+
+        Field field = findField(Minecraft.class, "rightClickDelayTimer", "field_71467_ac", "ap");
+        if (field == null || field.getType() != Integer.TYPE) {
+            rightClickDelayTimerFailure = new IllegalStateException(
+                    "Unable to resolve Minecraft right-click delay on " + Minecraft.class.getName());
+            throw rightClickDelayTimerFailure;
+        }
+        rightClickDelayTimer = field;
+        return field;
+    }
+
+    private static IllegalStateException rememberRightClickDelayTimerFailure(IllegalAccessException exception) {
+        if (rightClickDelayTimerFailure == null) {
+            rightClickDelayTimerFailure = new IllegalStateException(
+                    "Unable to update Minecraft right-click delay", exception);
+        }
+        return rightClickDelayTimerFailure;
     }
 
     private static Method findMethod(Class<?> owner, String... names) {

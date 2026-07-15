@@ -18,7 +18,6 @@ import java.net.NetworkInterface;
 import java.net.Proxy;
 import java.net.SocketException;
 import java.net.URL;
-import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,6 +33,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -41,6 +41,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
 import gq.yozakura.auth.vendor.skidonion.sWdSl.JsonObject;
@@ -52,37 +53,20 @@ import gq.yozakura.auth.vendor.skidonion.sWdSl.FormUrlEncoder;
 import gq.yozakura.auth.vendor.skidonion.sWdSl.ChaChaStream;
 
 public class Wrapper {
-    private static final String BASE_URL = "http://49.235.166.227:8080/";
-    private static final String HEARTBEAT_API = BASE_URL + "api/v2/verify/heartbeat";
-    private static final String LOGIN_API = BASE_URL + "api/v2/verify/login";
-    private static final String CLIENT_BUILD_ID = "local-20260615-anti-patch-1";
+    private static final String AUTH_BASE_URL_PROPERTY = "yozakura.auth.baseUrl";
+    private static final String AUTH_BASE_URL_ENV = "YOZAKURA_AUTH_BASE_URL";
+    private static final String CLIENT_BUILD_ID = "local-20260615-secure-auth-2";
     private static final long VERIFY_GRACE_MILLIS = TimeUnit.MINUTES.toMillis(6L);
     private static final byte[] ENVIRONMENT_XOR_KEY =
             new byte[] { 82, -7, -93, -53, -113, 107, -127, 8 };
     private static final byte[] ENVIRONMENT_MARKER = new byte[] { -1, 4 };
-    private static final BigInteger CURVE_P = BigInteger.ONE.shiftLeft(255).subtract(BigInteger.valueOf(19));
-    private static final BigInteger EDWARDS_D = BigInteger.valueOf(-121665)
-            .multiply(BigInteger.valueOf(121666).modInverse(CURVE_P)).mod(CURVE_P);
-    private static final BigInteger EDWARDS_SQRT_M1 =
-            BigInteger.valueOf(2).modPow(CURVE_P.subtract(BigInteger.ONE).shiftRight(2), CURVE_P);
-    private static final BigInteger ED25519_L = BigInteger.ONE.shiftLeft(252)
-            .add(new BigInteger("27742317777372353535851937790883648493"));
-    private static final BigInteger EDWARDS_BASE_X = new BigInteger(
-            "15112221349535400772501151409588531511454012693041857206046113283949847762202");
-    private static final BigInteger EDWARDS_BASE_Y = new BigInteger(
-            "46316835694926478169428394003475163141307993866256225615783033603165251855960");
-    private static final byte[] LOGIN_SERVER_PUBLIC_KEY = new byte[] {
-            -102, -110, -78, -103, -1, -80, 115, 48,
-            71, 94, 5, -58, -126, -117, 61, -99,
-            123, -1, 6, 6, 105, 41, -99, -73,
-            -4, 16, -100, 89, 120, 51, 62, -70
-    };
     private static final Map<Integer, List<String>> DEFAULT_CONSTANT_POOL = new HashMap<>();
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final Map<Integer, byte[]> CLOUD_CONSTANT_MAP = new HashMap<>();
     private static final Map<String, LocalDateTime> EXPIRED_DATE = new HashMap<>();
     private static final Map<String, String> HEADERS = new HashMap<>();
     private static final AtomicInteger THREAD_COUNTER = new AtomicInteger();
+    private static final AtomicLong HEARTBEAT_SEQUENCE = new AtomicLong();
     private static final Pattern QQ_UIN_PATTERN = Pattern.compile("^[1-9][0-9]{4,10}$");
     private static volatile ScheduledExecutorService heartbeatExecutor;
     private static volatile long userId;
@@ -92,7 +76,6 @@ public class Wrapper {
     private static volatile byte[] magicKey;
     private static volatile byte[] key;
     private static volatile byte[] nonce;
-    private static volatile ChaChaStream sessionCrypto;
     private static volatile long lastVerifiedAt;
     private static volatile String clientFingerprint;
     private static volatile String machineFingerprint;
@@ -128,6 +111,7 @@ public class Wrapper {
         int code = -1;
         verifyToken = null;
         lastVerifiedAt = 0L;
+        HEARTBEAT_SEQUENCE.set(0L);
         EXPIRED_DATE.clear();
         Map<String, String> verifyHeaders = new HashMap<>();
         if (verifyToken != null) {
@@ -135,29 +119,29 @@ public class Wrapper {
         }
 
         try {
-            LoginHandshake handshake = createLoginHandshake();
             Map<String, String> body = new HashMap<>();
             body.put("username", FormUrlEncoder.encode(username));
             body.put("password", FormUrlEncoder.encode(password));
             body.put("software_id", Long.toString(183L));
-            body.put("s", FormUrlEncoder.encode(Base64Codec.encodeToString(handshake.publicKey)));
             body.put("e", FormUrlEncoder.encode(Boolean.toString(remember)));
             body.put("build", FormUrlEncoder.encode(CLIENT_BUILD_ID));
             body.put("fp", clientFingerprint());
             body.put("hw", machineFingerprint());
 
-            String response = post(LOGIN_API, body, verifyHeaders);
+            String response = post(authApi("api/v2/verify/login"), body, verifyHeaders);
             if (response != null) {
                 JsonObject root = Json.parse(response).asObject();
                 code = (byte) root.getInt("code", -1);
                 if (code == 0) {
                     JsonObject entity = root.get("entity").asObject();
-                    JsonObject data = entity.get("data").asObject();
-                    userId = data.getLong("uid", -1L);
+                    userId = entity.getLong("uid", -1L);
                     Wrapper.username = username;
-                    verifyToken = data.getString("jwt", "");
-                    nickname = data.getString("nickname", "");
-                    configureLoginCrypto(data, entity.getString("signature", ""), handshake);
+                    verifyToken = entity.getString("jwt", "");
+                    nickname = entity.getString("nickname", "");
+                    JsonValue loginRoles = entity.get("roles");
+                    if (loginRoles != null) {
+                        parseRoleExpiry(loginRoles.asArray());
+                    }
                     Optional<Byte> firstHeartbeat = getVerifyTokenOptional().isPresent()
                             ? initialHeartbeat()
                             : Optional.empty();
@@ -182,24 +166,8 @@ public class Wrapper {
     }
 
     public static void setAsSuspected(String reason) {
-        ensureRuntime();
-        Map<String, String> headers = new HashMap<>();
-        if (verifyToken != null) {
-            headers.put("verify-token", verifyToken);
-        }
-        try {
-            JsonObject payload = Json.object();
-            payload.addLong("t", System.currentTimeMillis());
-            payload.add("-", JsonValue.NULL);
-            payload.addString("r", reason == null ? "unknown" : reason);
-
-            Map<String, String> body = new HashMap<>();
-            body.put("data", FormUrlEncoder.encode(encryptPayload(payload)));
-            post(HEARTBEAT_API, body, headers);
-        } catch (Exception ignored) {
-        } finally {
-            terminateProcess();
-        }
+        logAuth("Runtime marked as suspected: " + (reason == null ? "unknown" : reason), null);
+        terminateProcess();
     }
 
     public static Optional<String> getCloudConstant(int id, int index) {
@@ -362,7 +330,8 @@ public class Wrapper {
             return null;
         }
         method = method.toUpperCase();
-        HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection(Proxy.NO_PROXY);
+        URL target = requireSecureAuthUrl(url);
+        HttpURLConnection connection = (HttpURLConnection) target.openConnection(Proxy.NO_PROXY);
         try {
             connection.setRequestMethod(method);
             connection.setUseCaches(false);
@@ -387,11 +356,14 @@ public class Wrapper {
                 }
             }
             int responseCode = connection.getResponseCode();
-            if (responseCode >= 300) {
-                throw new RuntimeException("HTTP Request is not success, Response code is " + responseCode);
-            }
             StringBuilder response = new StringBuilder();
-            try (InputStream in = connection.getInputStream();
+            InputStream responseStream = responseCode >= 400
+                    ? connection.getErrorStream()
+                    : connection.getInputStream();
+            if (responseStream == null) {
+                throw new IOException("Authentication server returned HTTP " + responseCode + " without a body");
+            }
+            try (InputStream in = responseStream;
                  BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
@@ -420,6 +392,71 @@ public class Wrapper {
         }
     }
 
+    public static String getServiceBaseUrl() {
+        String configured = System.getProperty(AUTH_BASE_URL_PROPERTY);
+        if (configured == null || configured.trim().isEmpty()) {
+            configured = System.getenv(AUTH_BASE_URL_ENV);
+        }
+        if (configured == null || configured.trim().isEmpty()) {
+            configured = loadBundledAuthBaseUrl();
+        }
+        if (configured == null || configured.trim().isEmpty()) {
+            throw new IllegalStateException("Authentication endpoint is not configured. Set "
+                    + AUTH_BASE_URL_PROPERTY + " or " + AUTH_BASE_URL_ENV + '.');
+        }
+        String normalized = configured.trim();
+        return normalized.endsWith("/") ? normalized : normalized + '/';
+    }
+
+    public static String getClientBuildId() {
+        return CLIENT_BUILD_ID;
+    }
+
+    public static String getClientFingerprintForNative() {
+        return clientFingerprint();
+    }
+
+    public static String getMachineFingerprintForNative() {
+        return machineFingerprint();
+    }
+
+    private static String loadBundledAuthBaseUrl() {
+        try (InputStream input = Wrapper.class.getResourceAsStream("/yozakura-auth.properties")) {
+            if (input == null) {
+                return null;
+            }
+            Properties properties = new Properties();
+            properties.load(input);
+            return properties.getProperty("baseUrl");
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to load bundled authentication endpoint", exception);
+        }
+    }
+
+    private static String authApi(String path) throws IOException {
+        URL base = requireSecureAuthUrl(getServiceBaseUrl());
+        return new URL(base, path).toString();
+    }
+
+    private static URL requireSecureAuthUrl(String value) throws IOException {
+        URL target = new URL(value);
+        if (target.getUserInfo() != null) {
+            throw new IOException("Authentication URL must not contain user information");
+        }
+        if ("https".equalsIgnoreCase(target.getProtocol())) {
+            return target;
+        }
+        String host = target.getHost();
+        boolean loopback = "localhost".equalsIgnoreCase(host)
+                || "127.0.0.1".equals(host)
+                || "::1".equals(host)
+                || "0:0:0:0:0:0:0:1".equals(host);
+        if ("http".equalsIgnoreCase(target.getProtocol()) && loopback) {
+            return target;
+        }
+        throw new IOException("Remote authentication requires HTTPS");
+    }
+
     private static void ensureRuntime() {
         disableSystemProxyForLocalAuth();
         initializeQQHeadersOnly();
@@ -434,9 +471,6 @@ public class Wrapper {
         if (key == null) {
             key = new byte[32];
             RANDOM.nextBytes(key);
-        }
-        if (sessionCrypto == null && key != null && nonce != null) {
-            sessionCrypto = new ChaChaStream(key, nonce, 0L);
         }
         if (CLOUD_CONSTANT_MAP.isEmpty()) {
             for (Map.Entry<Integer, List<String>> entry : DEFAULT_CONSTANT_POOL.entrySet()) {
@@ -531,10 +565,10 @@ public class Wrapper {
         }, 4L, 4L, TimeUnit.MINUTES);
     }
 
-    private static void addClientProof(JsonObject payload) {
-        payload.addString("cb", CLIENT_BUILD_ID);
-        payload.addString("cf", clientFingerprint());
-        payload.addString("hw", machineFingerprint());
+    private static void addClientProof(Map<String, String> body) {
+        body.put("build", CLIENT_BUILD_ID);
+        body.put("fp", clientFingerprint());
+        body.put("hw", machineFingerprint());
     }
 
     private static String machineFingerprint() {
@@ -686,22 +720,14 @@ public class Wrapper {
             headers.put("verify-token", verifyToken);
         }
         long now = System.currentTimeMillis();
-        Object[] environment = new Object[] { null, RANDOM.nextInt(), null, null };
-        buildEnvironmentPacket(environment);
-
-        JsonObject payload = Json.object();
-        payload.addLong("t", now);
-        payload.add("+", JsonValue.NULL);
-        payload.add("q", Json.arrayOfStrings(getAllQQ().toArray(new String[0])));
-        payload.addString("v", "1");
-        payload.addString("h", String.valueOf(environment[environment.length - 1]));
-        addClientProof(payload);
-
+        long sequence = HEARTBEAT_SEQUENCE.incrementAndGet();
         Map<String, String> body = new HashMap<>();
-        body.put("data", FormUrlEncoder.encode(encryptPayload(payload)));
+        body.put("client_time", Long.toString(now));
+        body.put("sequence", Long.toString(sequence));
+        addClientProof(body);
 
         try {
-            String response = post(HEARTBEAT_API, body, headers);
+            String response = post(authApi("api/v2/verify/heartbeat"), body, headers);
             if (response == null) {
                 return Optional.empty();
             }
@@ -711,37 +737,12 @@ public class Wrapper {
                 return Optional.of((byte) code);
             }
             JsonObject entity = root.get("entity").asObject();
-            String encrypted = entity.getString("data", "==");
-            String signature = entity.getString("signature", "");
-            byte[] plain = decryptPayload(encrypted);
-
-            JsonObject data = Json.parse(new String(plain, StandardCharsets.UTF_8)).asObject();
-            long serverTime = data.getLong("t", now);
-            if (Math.abs(now - serverTime) > 60000L) {
+            long serverTime = entity.getLong("server_time", now);
+            long acknowledgedSequence = entity.getLong("sequence", -1L);
+            if (Math.abs(now - serverTime) > 90000L || acknowledgedSequence != sequence) {
                 return Optional.of((byte) -1);
             }
-
-            int verificationSeed = RANDOM.nextInt();
-            Object[] verifyArgs = new Object[] {
-                    RANDOM.nextInt(),
-                    RANDOM.nextInt(),
-                    RANDOM.nextInt(),
-                    verificationSeed,
-                    data.getString("h", "==")
-            };
-            verifyEnvironmentPacket(verifyArgs);
-            if (!(verifyArgs[0] instanceof Number)) {
-                return Optional.of((byte) -2);
-            }
-            long proof = ((Number) verifyArgs[0]).longValue();
-            if ((((proof >> 32) ^ verificationSeed) & 1L) != 1L) {
-                return Optional.of((byte) -2);
-            }
-            if (signature.isEmpty()
-                    || !verifyEd25519Signature(signature, data.toString().getBytes(StandardCharsets.UTF_8))) {
-                return Optional.of((byte) -3);
-            }
-            absorbHeartbeatData(data);
+            absorbHeartbeatData(entity);
             lastVerifiedAt = System.currentTimeMillis();
             return Optional.of((byte) 0);
         } catch (Exception ex) {
@@ -757,15 +758,14 @@ public class Wrapper {
         }
 
         try {
-            JsonObject payload = Json.object();
-            payload.addLong("t", System.currentTimeMillis());
-            payload.add("-", JsonValue.NULL);
-            addClientProof(payload);
-
+            long now = System.currentTimeMillis();
+            long sequence = HEARTBEAT_SEQUENCE.incrementAndGet();
             Map<String, String> body = new HashMap<>();
-            body.put("data", FormUrlEncoder.encode(encryptPayload(payload)));
+            body.put("client_time", Long.toString(now));
+            body.put("sequence", Long.toString(sequence));
+            addClientProof(body);
 
-            String response = post(HEARTBEAT_API, body, headers);
+            String response = post(authApi("api/v2/verify/heartbeat"), body, headers);
             if (response == null) {
                 return;
             }
@@ -777,18 +777,13 @@ public class Wrapper {
             }
 
             JsonObject entity = root.get("entity").asObject();
-            String encrypted = entity.getString("data", "==");
-            String signature = entity.getString("signature", "");
-            JsonObject data = Json.parse(new String(decryptPayload(encrypted), StandardCharsets.UTF_8)).asObject();
-            if (signature.isEmpty()
-                    || !verifyEd25519Signature(signature, data.toString().getBytes(StandardCharsets.UTF_8))) {
+            long serverTime = entity.getLong("server_time", now);
+            long acknowledgedSequence = entity.getLong("sequence", -1L);
+            if (Math.abs(now - serverTime) > 90000L || acknowledgedSequence != sequence) {
                 terminateProcess();
                 return;
             }
-            if (data.get("b") != null) {
-                terminateProcess();
-            }
-            absorbHeartbeatData(data);
+            absorbHeartbeatData(entity);
             lastVerifiedAt = System.currentTimeMillis();
         } catch (Exception ex) {
             terminateProcess();
@@ -930,235 +925,6 @@ public class Wrapper {
         }
     }
 
-    private static String encryptPayload(JsonObject payload) {
-        ensureRuntime();
-        synchronized (Wrapper.class) {
-            return Base64Codec.encodeToString(sessionCrypto.apply(payload.toString().getBytes(StandardCharsets.UTF_8)));
-        }
-    }
-
-    private static byte[] decryptPayload(String encrypted) {
-        ensureRuntime();
-        synchronized (Wrapper.class) {
-            return sessionCrypto.apply(Base64Codec.decode(encrypted));
-        }
-    }
-
-    private static LoginHandshake createLoginHandshake() {
-        byte[] seed = new byte[32];
-        RANDOM.nextBytes(seed);
-        byte[] privateScalar = deriveEd25519PrivateScalar(seed);
-        byte[] publicKey = ed25519PublicKey(privateScalar);
-        return new LoginHandshake(privateScalar, publicKey);
-    }
-
-    private static byte[] deriveEd25519PrivateScalar(byte[] seed) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-512");
-            byte[] hash = digest.digest(seed);
-            byte[] scalar = Arrays.copyOf(hash, 32);
-            scalar[0] &= (byte) 248;
-            scalar[31] &= (byte) 63;
-            scalar[31] |= (byte) 64;
-            return scalar;
-        } catch (Exception ex) {
-            return Arrays.copyOf(seed, seed.length);
-        }
-    }
-
-    private static byte[] ed25519PublicKey(byte[] privateScalar) {
-        EdwardsPoint point = edwardsScalarMultiply(privateScalar, new EdwardsPoint(EDWARDS_BASE_X, EDWARDS_BASE_Y));
-        return encodeEdwardsPoint(point);
-    }
-
-    private static void configureLoginCrypto(JsonObject data, String signatureText, LoginHandshake handshake) {
-        try {
-            byte[] encodedNonce = Base64Codec.decode(data.getString("n", "=="));
-            if (encodedNonce != null && encodedNonce.length == 48) {
-                nonce = decodeLoginNonce(encodedNonce);
-            }
-        } catch (RuntimeException ignored) {
-        }
-
-        try {
-            byte[] signatureBytes = signatureText == null || signatureText.isEmpty()
-                    ? new byte[0]
-                    : Base64Codec.decode(signatureText);
-            MessageDigest digest = MessageDigest.getInstance("SHA-512");
-            byte[] sharedSecret = ed25519KeyExchange(LOGIN_SERVER_PUBLIC_KEY, handshake.privateScalar);
-            byte[] fullDigest = digest.digest(sharedSecret);
-            key = Arrays.copyOfRange(fullDigest, 12, 44);
-            sessionCrypto = new ChaChaStream(key, nonce, 0L);
-        } catch (Exception ignored) {
-        }
-    }
-
-    private static byte[] ed25519KeyExchange(byte[] publicKey, byte[] privateScalar) {
-        byte[] yBytes = Arrays.copyOf(publicKey, 32);
-        yBytes[31] &= (byte) 0x7f;
-        BigInteger y = fromLittleEndian(yBytes);
-        BigInteger u = y.add(BigInteger.ONE)
-                .multiply(BigInteger.ONE.subtract(y).mod(CURVE_P).modInverse(CURVE_P))
-                .mod(CURVE_P);
-        BigInteger shared = x25519(privateScalar, u);
-        return toLittleEndian(shared, 32);
-    }
-
-    private static BigInteger x25519(byte[] scalarBytes, BigInteger u) {
-        BigInteger scalar = fromLittleEndian(scalarBytes);
-        BigInteger x1 = u;
-        BigInteger x2 = BigInteger.ONE;
-        BigInteger z2 = BigInteger.ZERO;
-        BigInteger x3 = u;
-        BigInteger z3 = BigInteger.ONE;
-        int swap = 0;
-        for (int pos = 254; pos >= 0; pos--) {
-            int bit = scalar.testBit(pos) ? 1 : 0;
-            swap ^= bit;
-            if (swap != 0) {
-                BigInteger tmp = x2; x2 = x3; x3 = tmp;
-                tmp = z2; z2 = z3; z3 = tmp;
-            }
-            swap = bit;
-
-            BigInteger a = x2.add(z2).mod(CURVE_P);
-            BigInteger aa = a.multiply(a).mod(CURVE_P);
-            BigInteger b = x2.subtract(z2).mod(CURVE_P);
-            BigInteger bb = b.multiply(b).mod(CURVE_P);
-            BigInteger e = aa.subtract(bb).mod(CURVE_P);
-            BigInteger c = x3.add(z3).mod(CURVE_P);
-            BigInteger d = x3.subtract(z3).mod(CURVE_P);
-            BigInteger da = d.multiply(a).mod(CURVE_P);
-            BigInteger cb = c.multiply(b).mod(CURVE_P);
-            x3 = da.add(cb).mod(CURVE_P).pow(2).mod(CURVE_P);
-            z3 = x1.multiply(da.subtract(cb).mod(CURVE_P).pow(2).mod(CURVE_P)).mod(CURVE_P);
-            x2 = aa.multiply(bb).mod(CURVE_P);
-            z2 = e.multiply(bb.add(BigInteger.valueOf(121666).multiply(e)).mod(CURVE_P)).mod(CURVE_P);
-        }
-        if (swap != 0) {
-            BigInteger tmp = x2; x2 = x3; x3 = tmp;
-            tmp = z2; z2 = z3; z3 = tmp;
-        }
-        return x2.multiply(z2.modInverse(CURVE_P)).mod(CURVE_P);
-    }
-
-    private static EdwardsPoint edwardsScalarMultiply(byte[] scalarBytes, EdwardsPoint base) {
-        return edwardsScalarMultiply(fromLittleEndian(scalarBytes), base);
-    }
-
-    private static EdwardsPoint edwardsScalarMultiply(BigInteger scalar, EdwardsPoint base) {
-        EdwardsPoint result = new EdwardsPoint(BigInteger.ZERO, BigInteger.ONE);
-        EdwardsPoint addend = base;
-        for (int i = 0; i < 256; i++) {
-            if (scalar.testBit(i)) {
-                result = edwardsAdd(result, addend);
-            }
-            addend = edwardsAdd(addend, addend);
-        }
-        return result;
-    }
-
-    private static EdwardsPoint edwardsAdd(EdwardsPoint p, EdwardsPoint q) {
-        BigInteger x1x2 = p.x.multiply(q.x).mod(CURVE_P);
-        BigInteger y1y2 = p.y.multiply(q.y).mod(CURVE_P);
-        BigInteger dxxyy = EDWARDS_D.multiply(x1x2).multiply(y1y2).mod(CURVE_P);
-        BigInteger x = p.x.multiply(q.y).add(q.x.multiply(p.y)).mod(CURVE_P)
-                .multiply(BigInteger.ONE.add(dxxyy).mod(CURVE_P).modInverse(CURVE_P))
-                .mod(CURVE_P);
-        BigInteger y = y1y2.add(x1x2).mod(CURVE_P)
-                .multiply(BigInteger.ONE.subtract(dxxyy).mod(CURVE_P).modInverse(CURVE_P))
-                .mod(CURVE_P);
-        return new EdwardsPoint(x, y);
-    }
-
-    private static EdwardsPoint edwardsNegate(EdwardsPoint point) {
-        return new EdwardsPoint(CURVE_P.subtract(point.x), point.y);
-    }
-
-    private static EdwardsPoint decodeEdwardsPoint(byte[] encoded) {
-        if (encoded == null || encoded.length != 32) {
-            return null;
-        }
-        byte[] yBytes = Arrays.copyOf(encoded, 32);
-        boolean xOdd = (yBytes[31] & 0x80) != 0;
-        yBytes[31] &= (byte) 0x7f;
-        BigInteger y = fromLittleEndian(yBytes);
-        if (y.compareTo(CURVE_P) >= 0) {
-            return null;
-        }
-
-        BigInteger y2 = y.multiply(y).mod(CURVE_P);
-        BigInteger numerator = y2.subtract(BigInteger.ONE).mod(CURVE_P);
-        BigInteger denominator = EDWARDS_D.multiply(y2).add(BigInteger.ONE).mod(CURVE_P);
-        BigInteger x2 = numerator.multiply(denominator.modInverse(CURVE_P)).mod(CURVE_P);
-        BigInteger x = x2.modPow(CURVE_P.add(BigInteger.valueOf(3)).shiftRight(3), CURVE_P);
-        if (!x.multiply(x).subtract(x2).mod(CURVE_P).equals(BigInteger.ZERO)) {
-            x = x.multiply(EDWARDS_SQRT_M1).mod(CURVE_P);
-        }
-        if (!x.multiply(x).subtract(x2).mod(CURVE_P).equals(BigInteger.ZERO)) {
-            return null;
-        }
-        if (x.testBit(0) != xOdd) {
-            x = CURVE_P.subtract(x).mod(CURVE_P);
-        }
-        return new EdwardsPoint(x, y);
-    }
-
-    private static byte[] encodeEdwardsPoint(EdwardsPoint point) {
-        byte[] encoded = toLittleEndian(point.y, 32);
-        if (point.x.testBit(0)) {
-            encoded[31] |= (byte) 0x80;
-        }
-        return encoded;
-    }
-
-    private static BigInteger fromLittleEndian(byte[] bytes) {
-        byte[] bigEndian = new byte[bytes.length + 1];
-        for (int i = 0; i < bytes.length; i++) {
-            bigEndian[bigEndian.length - 1 - i] = bytes[i];
-        }
-        return new BigInteger(bigEndian);
-    }
-
-    private static byte[] toLittleEndian(BigInteger value, int length) {
-        byte[] bigEndian = value.mod(CURVE_P).toByteArray();
-        byte[] littleEndian = new byte[length];
-        for (int i = 0; i < length; i++) {
-            int source = bigEndian.length - 1 - i;
-            littleEndian[i] = source >= 0 ? bigEndian[source] : 0;
-        }
-        return littleEndian;
-    }
-
-    private static byte[] decodeLoginNonce(byte[] encoded) {
-        byte[] out = new byte[12];
-        for (int i = 0; i < 12; i++) {
-            int pos = i * 4;
-            int value = (encoded[pos] & 0xff)
-                    | ((encoded[pos + 1] & 0xff) << 8)
-                    | ((encoded[pos + 2] & 0xff) << 16)
-                    | ((encoded[pos + 3] & 0xff) << 24);
-            value -= 0x3a812d31;
-            value = Integer.rotateRight(value, 11);
-            value = Integer.rotateRight(value, 4);
-            value ^= 0xc6285b6a;
-            value ^= 0xe60db52e;
-            value ^= 0xfe2a55f6;
-            value += 0xc01f77ed;
-            value = ~value;
-            value += 0xaf03b7be;
-            value = ~value;
-            value = Integer.rotateLeft(value, 23);
-            value ^= 0xa470ff42;
-            value = ~value;
-            value += 0x9d1f8fa8;
-            value += 0xcb008166;
-            value = Integer.rotateRight(value, 25);
-            out[i] = (byte) value;
-        }
-        return out;
-    }
-
     private static void absorbHeartbeatData(JsonObject data) {
         JsonValue magic = data.get("m");
         if (magic != null) {
@@ -1200,8 +966,7 @@ public class Wrapper {
                 byte[] decoded = Base64Codec.decode(newKey.asString());
                 if (decoded.length >= 32) {
                     key = Arrays.copyOf(decoded, 32);
-                    sessionCrypto = new ChaChaStream(key, nonce, 0L);
-            }
+                }
             } catch (RuntimeException ignored) {
             }
         }
@@ -1236,33 +1001,6 @@ public class Wrapper {
             }
         }
         return seed;
-    }
-
-    private static boolean verifyEd25519Signature(String signatureText, byte[] message) {
-        try {
-            byte[] signatureBytes = Base64Codec.decode(signatureText);
-            if (signatureBytes == null || signatureBytes.length != 64 || (signatureBytes[63] & 0xe0) != 0) {
-                return false;
-            }
-            EdwardsPoint publicKey = decodeEdwardsPoint(LOGIN_SERVER_PUBLIC_KEY);
-            if (publicKey == null) {
-                return false;
-            }
-
-            MessageDigest digest = MessageDigest.getInstance("SHA-512");
-            digest.update(signatureBytes, 0, 32);
-            digest.update(LOGIN_SERVER_PUBLIC_KEY);
-            digest.update(message);
-            BigInteger h = fromLittleEndian(digest.digest()).mod(ED25519_L);
-            BigInteger s = fromLittleEndian(Arrays.copyOfRange(signatureBytes, 32, 64));
-
-            EdwardsPoint sBase = edwardsScalarMultiply(s, new EdwardsPoint(EDWARDS_BASE_X, EDWARDS_BASE_Y));
-            EdwardsPoint hPublic = edwardsScalarMultiply(h, publicKey);
-            byte[] checker = encodeEdwardsPoint(edwardsAdd(sBase, edwardsNegate(hPublic)));
-            return Arrays.equals(Arrays.copyOf(signatureBytes, 32), checker);
-        } catch (Exception ex) {
-            return false;
-        }
     }
 
     private static String userHomeAndName() {
@@ -1323,26 +1061,6 @@ public class Wrapper {
             out[i] = (byte) (input[i] ^ ENVIRONMENT_XOR_KEY[i % ENVIRONMENT_XOR_KEY.length]);
         }
         return out;
-    }
-
-    private static final class LoginHandshake {
-        final byte[] privateScalar;
-        final byte[] publicKey;
-
-        LoginHandshake(byte[] privateScalar, byte[] publicKey) {
-            this.privateScalar = privateScalar;
-            this.publicKey = publicKey;
-        }
-    }
-
-    private static final class EdwardsPoint {
-        final BigInteger x;
-        final BigInteger y;
-
-        EdwardsPoint(BigInteger x, BigInteger y) {
-            this.x = x.mod(CURVE_P);
-            this.y = y.mod(CURVE_P);
-        }
     }
 
     @SuppressWarnings("unused")

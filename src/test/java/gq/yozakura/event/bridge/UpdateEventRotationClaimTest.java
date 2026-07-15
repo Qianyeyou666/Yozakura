@@ -41,6 +41,44 @@ public class UpdateEventRotationClaimTest {
         assertTrue(event.isRotated());
     }
 
+    @Test
+    public void replacingAnEqualPriorityClaimClearsThePreviousMoveFixIntent() {
+        UpdateEvent event = preEvent();
+
+        assertTrue(event.trySetRotation(30.0F, 70.0F, 1));
+        event.setPervRotation(30.0F, 1);
+        assertTrue(event.isMoveFix());
+
+        assertTrue(event.trySetRotation(50.0F, 85.0F, 1));
+
+        assertEquals(50.0F, event.getNewYaw(), 0.0F);
+        assertEquals(50.0F, event.getPreYaw(), 0.0F);
+        assertEquals(1, event.isRotating());
+        assertFalse(event.isMoveFix());
+    }
+
+    @Test
+    public void moveFixCanOnlyBeRequestedByTheCurrentRotationWinner() {
+        UpdateEvent event = preEvent();
+
+        assertTrue(event.trySetRotation(30.0F, 70.0F, 1));
+        event.setPervRotation(45.0F, 1);
+
+        assertFalse(event.isMoveFix());
+    }
+
+    @Test
+    public void lowerPriorityMoveFixCannotOverrideAnExistingWinner() {
+        UpdateEvent event = preEvent();
+
+        assertTrue(event.trySetRotation(30.0F, 70.0F, 4));
+        event.setPervRotation(30.0F, 1);
+
+        assertEquals(30.0F, event.getPreYaw(), 0.0F);
+        assertEquals(4, event.isRotating());
+        assertFalse(event.isMoveFix());
+    }
+
     private static UpdateEvent preEvent() {
         return new UpdateEvent(EventType.PRE, 0.0F, 0.0F, 0.0F, 0.0F);
     }

@@ -106,14 +106,12 @@ final class ModernWebClickGuiController {
         add("HitSelect", "Combat", "Select smarter attack timing for combat modules.")
                 .mode("Mode", "Smart", "Smart", "HurtTime", "Combo")
                 .number("Chance", 100.0D, 0.0D, 100.0D, 1.0D);
-        add("Velocity", "Combat", "Knockback control settings.")
-                .mode("Mode", "Reduce", "Attack", "Reduce")
-                .number("Horizontal", 60.0D, 0.0D, 100.0D, 1.0D)
-                .number("Vertical", 100.0D, 0.0D, 100.0D, 1.0D)
-                .number("Chance", 100.0D, 0.0D, 100.0D, 1.0D);
+        add("Velocity", "Combat", "Attack slowdown or server-physics-compatible knockback handling.")
+                .mode("Mode", "Reduce", "Attack", "Reduce");
         add("JumpReset", "Combat", "Jump reset after receiving velocity.")
                 .bool("Fake Check", false)
-                .bool("Force Forward", true);
+                .bool("Force Forward", true)
+                .number("Chance", 100.0D, 0.0D, 100.0D, 1.0D);
         add("BowAimBot", "Combat", "Auto aim targets while using a bow.")
                 .number("Range", 35.0D, 5.0D, 80.0D, 1.0D)
                 .bool("Predict", true);
@@ -430,7 +428,8 @@ final class ModernWebClickGuiController {
     }
 
     public static void setNumberValue(String moduleName, String valueName, double next) {
-        ModernValue value = value(moduleName, valueName);
+        ModernModule module = MODULES.get(normalize(moduleName));
+        ModernValue value = module == null ? null : module.value(valueName);
         if (value == null || !"number".equals(value.type)) {
             return;
         }

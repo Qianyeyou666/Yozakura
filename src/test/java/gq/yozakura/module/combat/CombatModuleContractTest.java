@@ -47,12 +47,13 @@ public class CombatModuleContractTest {
     }
 
     @Test
-    public void velocityReduceLetsVanillaApplyTheScaledPacket() throws IOException {
+    public void velocityReducePreservesTheServerVelocityPacket() throws IOException {
         String source = source("src/main/java/gq/yozakura/module/combat/Velocity.java");
 
-        assertTrue(source.contains("scaleVelocityPacket"));
+        assertFalse(source.contains("scaleVelocityPacket"));
         assertFalse(source.contains("event.setCancelled(true)"));
         assertFalse(source.contains("runOnClientThread"));
+        assertTrue(source.contains("\"Compatibility\""));
     }
 
     @Test
@@ -163,11 +164,31 @@ public class CombatModuleContractTest {
     @Test
     public void modernVelocitySettingsMatchTheTwoSupportedModes() throws IOException {
         String source = source("src/main/java/gq/yozakura/ui/click/web/ModernWebClickGuiController.java");
+        int begin = source.indexOf("add(\"Velocity\"");
+        int end = source.indexOf("add(\"JumpReset\"", begin);
+        String settings = source.substring(begin, end);
 
-        assertTrue(source.contains(".mode(\"Mode\", \"Reduce\", \"Attack\", \"Reduce\")"));
-        assertTrue(source.contains(".number(\"Horizontal\", 60.0D"));
-        assertTrue(source.contains(".number(\"Vertical\", 100.0D"));
-        assertFalse(source.contains("\"Update\""));
+        assertTrue(settings.contains(".mode(\"Mode\", \"Reduce\", \"Attack\", \"Reduce\")"));
+        assertTrue(settings.contains("server-physics-compatible"));
+        assertFalse(settings.contains(".number("));
+        assertFalse(settings.contains("\"Update\""));
+    }
+
+    @Test
+    public void modernVelocityDoesNotInterceptInboundMotionPackets() throws IOException {
+        String source = source("src/main/java/gq/yozakura/core/modern/ModernPacketBridge.java");
+
+        assertFalse(source.contains("handleVelocity(packet, player)"));
+        assertFalse(source.contains("scaleMotionPacket("));
+        assertFalse(source.contains("VELOCITY_REDUCTION_STATE"));
+    }
+
+    @Test
+    public void modernVelocityDoesNotKeepObsoleteReductionRevisionState() throws IOException {
+        String source = source("src/main/java/gq/yozakura/ui/click/web/ModernWebClickGuiController.java");
+
+        assertFalse(source.contains("VELOCITY_REVISION"));
+        assertFalse(source.contains("markVelocityChanged"));
     }
 
     private static String source(String path) throws IOException {

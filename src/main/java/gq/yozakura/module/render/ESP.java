@@ -3,6 +3,9 @@ package gq.yozakura.module.render;
 import gq.yozakura.bridge.YozakuraEventBridge;
 import gq.yozakura.event.bridge.Render2DEvent;
 import gq.yozakura.event.bus.EventTarget;
+import gq.yozakura.engine.render.glow.GlowProfile;
+import gq.yozakura.engine.render.glow.GlowRenderer;
+import gq.yozakura.engine.render.ui.RenderServices;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.Module;
 import gq.yozakura.module.combat.AntiBot;
@@ -69,6 +72,7 @@ public class ESP extends Module {
     private final Option<Boolean> distanceFade = new Option<Boolean>("Distance Fade", "DistanceFade", true);
     private final Option<Boolean> nameTags = new Option<Boolean>("Name Tags", "NameTags", true);
     private final Option<Boolean> healthBar = new Option<Boolean>("Health Bar", "HealthBar", true);
+    private final Option<Boolean> healthBarGlow = new Option<Boolean>("Health Bar Glow", "HealthBarGlow", false);
     private final Option<Boolean> heldItem = new Option<Boolean>("Held Item", "HeldItem", false);
     private final Option<Boolean> oppositeCorners = new Option<Boolean>("Opposite Corners", "OppositeCorners", false);
     private final Numbers<Double> red = new Numbers<Double>("Red", "Red", 95.0, 0.0, 255.0, 1.0);
@@ -85,7 +89,7 @@ public class ESP extends Module {
         glowStrength.visibleWhen(() -> boxMode.getValue() == EspBoxMode.GLOWESP);
         distanceFade.visibleWhen(this::is2DMode);
         nameTags.visibleWhen(this::is2DMode);
-        healthBar.visibleWhen(this::is2DMode);
+        healthBarGlow.visibleWhen(() -> Boolean.TRUE.equals(healthBar.getValue()));
         heldItem.visibleWhen(this::is2DMode);
         oppositeCorners.visibleWhen(() -> boxMode.getValue() == EspBoxMode.TWO_D_HALF_CORNERS);
         lineWidth.visibleWhen(this::is2DMode);
@@ -94,8 +98,9 @@ public class ESP extends Module {
         green.visibleWhen(() -> !Boolean.TRUE.equals(paletteColors.getValue()));
         blue.visibleWhen(() -> !Boolean.TRUE.equals(paletteColors.getValue()));
         this.addValues(boxMode, paletteColors, rainbow, players, mobs, animals, invisible, redOnDamage,
-                distanceFade, nameTags, healthBar, heldItem, oppositeCorners, red, green, blue, alpha, lineWidth, glowStrength);
-        Chinese = "实体框体";
+                distanceFade, nameTags, healthBar, healthBarGlow, heldItem, oppositeCorners, red, green, blue, alpha,
+                lineWidth, glowStrength);
+        Chinese = "实体透视";
     }
 
     @SubscribeEvent
@@ -105,11 +110,14 @@ public class ESP extends Module {
         }
 
         EspBoxMode currentMode = boxMode.getValue();
-        if (is2DMode()) {
+        if (is2DMode() || Boolean.TRUE.equals(healthBar.getValue())) {
             collectOverlayEntries(event.partialTicks);
+        } else {
+            overlayEntries.clear();
+        }
+        if (is2DMode()) {
             return;
         }
-        overlayEntries.clear();
         if (currentMode == EspBoxMode.GLOWESP) {
             renderScreenSpaceGlow(event.partialTicks);
             return;
@@ -214,7 +222,7 @@ public class ESP extends Module {
             if (bounds == null) {
                 continue;
             }
-            float opacity = Boolean.TRUE.equals(distanceFade.getValue())
+            float opacity = is2DMode() && Boolean.TRUE.equals(distanceFade.getValue())
                     ? MathHelper.clamp_float(1.0f - mc.thePlayer.getDistanceToEntity(entity) / 64.0f, 0.0f, 1.0f)
                     : 1.0f;
             if (opacity > 0.01f) {
@@ -282,28 +290,44 @@ public class ESP extends Module {
     }
 
     private void renderOverlayEntries() {
-        if (!isInGame() || !is2DMode() || overlayEntries.isEmpty()) {
+        boolean shouldDraw2DBox = is2DMode();
+        boolean shouldDrawHealthBar = Boolean.TRUE.equals(healthBar.getValue());
+        boolean shouldGlowHealthBar = shouldDrawHealthBar && Boolean.TRUE.equals(healthBarGlow.getValue());
+        if (!isInGame() || (!shouldDraw2DBox && !shouldDrawHealthBar) || overlayEntries.isEmpty()) {
             return;
         }
-        for (OverlayEntry entry : overlayEntries) {
-            if (entry.entity.isDead || entry.entity.deathTime > 0) {
-                continue;
-            }
-            int color = EspOverlayGeometry.applyOpacity(getColor(entry.entity, 0), entry.opacity);
-            draw2DBox(entry.bounds, color, entry.opacity);
-            if (Boolean.TRUE.equals(healthBar.getValue())) {
-                drawHealthBar(entry);
-            }
-            if (Boolean.TRUE.equals(nameTags.getValue())) {
-                drawCenteredText(entry.entity.getDisplayName().getFormattedText(), entry.bounds.minX,
-                        entry.bounds.maxX, entry.bounds.minY - mc.fontRendererObj.FONT_HEIGHT - 3.0f, entry.opacity, true);
-            }
-            if (Boolean.TRUE.equals(heldItem.getValue())) {
-                ItemStack stack = entry.entity.getHeldItem();
-                if (stack != null) {
-                    drawCenteredText(stack.getDisplayName(), entry.bounds.minX, entry.bounds.maxX,
-                            entry.bounds.maxY + 3.0f, entry.opacity, false);
+        GlowRenderer glowRenderer = shouldGlowHealthBar ? RenderServices.glow() : null;
+        boolean isolatedGlowFrame = glowRenderer != null && !glowRenderer.isFrameOpen();
+        if (isolatedGlowFrame) {
+            glowRenderer.beginFrame();
+        }
+        try {
+            for (OverlayEntry entry : overlayEntries) {
+                if (entry.entity.isDead || entry.entity.deathTime > 0) {
+                    continue;
                 }
+                int color = EspOverlayGeometry.applyOpacity(getColor(entry.entity, 0), entry.opacity);
+                if (shouldDraw2DBox) {
+                    draw2DBox(entry.bounds, color, entry.opacity);
+                }
+                if (shouldDrawHealthBar) {
+                    drawHealthBar(entry, glowRenderer);
+                }
+                if (shouldDraw2DBox && Boolean.TRUE.equals(nameTags.getValue())) {
+                    drawCenteredText(entry.entity.getDisplayName().getFormattedText(), entry.bounds.minX,
+                            entry.bounds.maxX, entry.bounds.minY - mc.fontRendererObj.FONT_HEIGHT - 3.0f, entry.opacity, true);
+                }
+                if (shouldDraw2DBox && Boolean.TRUE.equals(heldItem.getValue())) {
+                    ItemStack stack = entry.entity.getHeldItem();
+                    if (stack != null) {
+                        drawCenteredText(stack.getDisplayName(), entry.bounds.minX, entry.bounds.maxX,
+                                entry.bounds.maxY + 3.0f, entry.opacity, false);
+                    }
+                }
+            }
+        } finally {
+            if (isolatedGlowFrame) {
+                glowRenderer.flush();
             }
         }
     }
@@ -355,15 +379,20 @@ public class ESP extends Module {
                 x + thickness * 0.5f, Math.max(y, verticalEnd), color);
     }
 
-    private void drawHealthBar(OverlayEntry entry) {
+    private void drawHealthBar(OverlayEntry entry, GlowRenderer glowRenderer) {
         float health = MathHelper.clamp_float(entry.entity.getHealth() / Math.max(1.0f, entry.entity.getMaxHealth()), 0.0f, 1.0f);
         float barX = entry.bounds.minX - 4.0f;
         float bottom = entry.bounds.maxY;
         float top = entry.bounds.minY;
+        float fillTop = bottom - (bottom - top) * health;
         int shadow = EspOverlayGeometry.applyOpacity(0xD9000000, entry.opacity);
+        int fillColor = EspOverlayGeometry.applyOpacity(healthColor(health), entry.opacity);
         RenderUtil.drawRect(barX - 1.0f, top - 1.0f, barX + 2.0f, bottom + 1.0f, shadow);
-        RenderUtil.drawRect(barX, bottom - (bottom - top) * health, barX + 1.0f, bottom,
-                EspOverlayGeometry.applyOpacity(healthColor(health), entry.opacity));
+        RenderUtil.drawRect(barX, fillTop, barX + 1.0f, bottom, fillColor);
+        if (glowRenderer != null && fillTop < bottom) {
+            glowRenderer.queueRoundedRect(barX - 0.5f, fillTop - 0.5f, barX + 1.5f, bottom + 0.5f,
+                    0.75f, EspOverlayGeometry.applyOpacity(fillColor, 0.62f), 0.50f, GlowProfile.ACCENT);
+        }
     }
 
     private void drawCenteredText(String text, float minX, float maxX, float y, float opacity, boolean primary) {

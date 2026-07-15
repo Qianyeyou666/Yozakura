@@ -23,4 +23,5 @@ public final class ModernWebClickGuiState {
     public static void setNumberValue(String moduleName, String valueName, double next) {
         ModernWebClickGuiController.setNumberValue(moduleName, valueName, next);
     }
+
 }

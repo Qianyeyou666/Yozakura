@@ -27,7 +27,8 @@ public class StandaloneEventBridgeDelayedPacketOrderContractTest {
     @Test
     public void doesNotReleaseASilentActionBatchForAnExtraPlayerPacketInTheSameTick() throws IOException {
         String playerPacket = playerPacketWriteMethod(source());
-        int tickAdvance = playerPacket.indexOf("boolean playerTickAdvanced = playerPacketTickGate.consumeNextPlayerPacket();");
+        int tickAdvance = playerPacket.indexOf(
+                "boolean playerTickAdvanced = playerPacketTickGate.consumeNextCanonicalPlayerPacket(");
         int readyActionFlush = playerPacket.indexOf("flushReadyActionPackets(ctx);");
 
         assertTrue("A queued silent action batch must wait for a new player tick, not merely any C03 packet",
@@ -94,9 +95,13 @@ public class StandaloneEventBridgeDelayedPacketOrderContractTest {
                 actionClassifier.contains("C0BPacketEntityAction"));
         assertFalse("Ability state changes must not be delayed behind a movement packet",
                 actionClassifier.contains("C13PacketPlayerAbilities"));
-        assertTrue("Every Post-sensitive packet must enter the current tick batch unless its accepted lifecycle explicitly preserves vanilla order",
+        assertTrue("The standalone bridge must default every normal action to its vanilla write position",
                 packetBridgeWriteMethod(source).contains(
-                                "preserveOriginalPacketOrder = accepted.isOriginalPacketOrderRequired();")
+                                "boolean preserveOriginalPacketOrder = true;")
+                        && packetBridgeWriteMethod(source).contains(
+                                "preserveOriginalPacketOrder = preserveOriginalPacketOrder")
+                        && packetBridgeWriteMethod(source).contains(
+                                "|| accepted.isOriginalPacketOrderRequired();")
                         && packetBridgeWriteMethod(source).contains(
                                 "if (!skipPacketEvent && !preserveOriginalPacketOrder && isPostSensitiveAction(packet))")
                         && packetBridgeWriteMethod(source).contains(

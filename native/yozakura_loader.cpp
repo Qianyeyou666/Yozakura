@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "yozakura_native_auth.h"
+
 #define IDR_YOZAKURA_JAR 101
 
 #ifndef JAR_TO_DLL_CLIENT_CLASS
@@ -549,6 +551,11 @@ static DWORD WINAPI loaderThread(LPVOID param) {
                 entryLoader = createChildClassLoader(env, loader, jarPath);
             }
         }
+        if (entryLoader && !registerYozakuraNativeAuth(env, entryLoader)) {
+            logJavaException(env, "failed to register native authentication bridge");
+            debug("native authentication bridge registration failed; client startup rejected");
+            entryLoader = nullptr;
+        }
         if (entryLoader && instantiateClient(env, entryLoader, &constructorAttempted)) {
             debug("client loaded");
             clientLoaded = true;
@@ -602,6 +609,8 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
     if (reason == DLL_PROCESS_ATTACH) {
         DisableThreadLibraryCalls(module);
         startLoader(module);
+    } else if (reason == DLL_PROCESS_DETACH) {
+        signalYozakuraNativeAuthShutdown();
     }
     return TRUE;
 }

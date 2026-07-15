@@ -158,7 +158,7 @@ final class ModernPacketBridge {
     }
 
     private static boolean needsNetworkBridge() {
-        if (ModernForgeEventBridge.enabled("Velocity") || ModernForgeEventBridge.enabled("FakeLag")) {
+        if (ModernForgeEventBridge.enabled("FakeLag")) {
             return true;
         }
         if (!ModernForgeEventBridge.enabled("Backtrack")) {
@@ -193,64 +193,11 @@ final class ModernPacketBridge {
         if (minecraft == null || player == null || level == null) {
             return false;
         }
-        if (ModernForgeEventBridge.enabled("Velocity") && handleVelocity(packet, player)) {
-            return true;
-        }
         if (ModernForgeEventBridge.enabled("Backtrack") && shouldDelayBacktrack(packet, level, player)) {
             queueBacktrack(ctx, packet);
             return true;
         }
         return false;
-    }
-
-    private static boolean handleVelocity(Object packet, Object player) {
-        String name = className(packet);
-        if (name.contains("clientboundsetentitymotionpacket") || name.contains("clientboundsetentityvelocitypacket")) {
-            int id = intValue(invokeOrField(packet, "getId", "m_133182_", "id", "f_133170_"), -999999);
-            if (id != ModernRotationBridge.entityId(player)) {
-                return false;
-            }
-            String mode = ModernForgeEventBridge.mode("Velocity", "Mode", "Reduce");
-            if (!"Reduce".equalsIgnoreCase(mode)) {
-                return false;
-            }
-            double horizontal = ModernForgeEventBridge.number("Velocity", "Horizontal", 60.0D) / 100.0D;
-            double vertical = ModernForgeEventBridge.number("Velocity", "Vertical", 100.0D) / 100.0D;
-            scaleMotionPacket(packet, Math.max(0.0D, Math.min(1.0D, horizontal)),
-                    Math.max(0.0D, Math.min(1.0D, vertical)));
-            return false;
-        }
-        return false;
-    }
-
-    private static void scaleMotionPacket(Object packet, double horizontal, double vertical) {
-        int xa = scaledInt(packet, horizontal, "getXa", "m_133192_", "xa", "f_133171_", "x", "f_133171_");
-        int ya = scaledInt(packet, vertical, "getYa", "m_133199_", "ya", "f_133172_", "y", "f_133172_");
-        int za = scaledInt(packet, horizontal, "getZa", "m_133196_", "za", "f_133173_", "z", "f_133173_");
-        setInt(packet, xa, "xa", "f_133171_", "x", "field_149415_b");
-        setInt(packet, ya, "ya", "f_133172_", "y", "field_149416_c");
-        setInt(packet, za, "za", "f_133173_", "z", "field_149414_d");
-    }
-
-    private static int scaledInt(Object packet, double scale, String method, String obfuscatedMethod,
-                                 String field, String obfuscatedField, String altField, String altObfuscated) {
-        Object value = ModernForgeEventBridge.invoke(packet, method);
-        if (value == null) {
-            value = ModernForgeEventBridge.invoke(packet, obfuscatedMethod);
-        }
-        if (value == null) {
-            value = ModernForgeEventBridge.field(packet, field);
-        }
-        if (value == null) {
-            value = ModernForgeEventBridge.field(packet, obfuscatedField);
-        }
-        if (value == null) {
-            value = ModernForgeEventBridge.field(packet, altField);
-        }
-        if (value == null) {
-            value = ModernForgeEventBridge.field(packet, altObfuscated);
-        }
-        return value instanceof Number ? (int) Math.round(((Number) value).intValue() * scale) : 0;
     }
 
     private static void scaleExplosionPacket(Object packet, double horizontal, double vertical) {
@@ -592,17 +539,6 @@ final class ModernPacketBridge {
         return object != null && findField(object.getClass(), names) != null;
     }
 
-    private static void setInt(Object target, int value, String... names) {
-        Field field = findField(target.getClass(), names);
-        if (field == null) {
-            return;
-        }
-        try {
-            field.setInt(target, value);
-        } catch (Throwable ignored) {
-        }
-    }
-
     private static void setDoubleOrFloat(Object target, double value, String... names) {
         Field field = findField(target.getClass(), names);
         if (field == null) {
@@ -616,21 +552,6 @@ final class ModernPacketBridge {
             }
         } catch (Throwable ignored) {
         }
-    }
-
-    private static Object invokeOrField(Object target, String method, String obfuscatedMethod,
-                                        String field, String obfuscatedField) {
-        Object value = ModernForgeEventBridge.invoke(target, method);
-        if (value == null) {
-            value = ModernForgeEventBridge.invoke(target, obfuscatedMethod);
-        }
-        if (value == null) {
-            value = ModernForgeEventBridge.field(target, field);
-        }
-        if (value == null) {
-            value = ModernForgeEventBridge.field(target, obfuscatedField);
-        }
-        return value;
     }
 
     private static Object firstValue(Object target, String[] methods, String[] fields) {

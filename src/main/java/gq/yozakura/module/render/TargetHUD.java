@@ -71,7 +71,7 @@ public class TargetHUD extends Module {
     private static final Set<Class<?>> ENTITY_TEXTURE_MISSES = new HashSet<Class<?>>();
 
     private final Mode<TargetHudStyle> style = new Mode<TargetHudStyle>("Style", "Style",
-            TargetHudStyle.values(), TargetHudStyle.LEGACY);
+            TargetHudStyle.values(), TargetHudStyle.AUTO);
     private final Numbers<Double> xPosition = new Numbers<Double>("X", "X", -1.0, -1.0, 2000.0, 1.0);
     private final Numbers<Double> yPosition = new Numbers<Double>("Y", "Y", -1.0, -1.0, 1200.0, 1.0);
     private final Numbers<Double> scale = new Numbers<Double>("Scale", "Scale", 1.0, 0.65, 1.8, 0.05);
@@ -100,7 +100,7 @@ public class TargetHUD extends Module {
 
     public TargetHUD() {
         super("TargetHUD", Keyboard.KEY_NONE, ModuleType.Render, "Show target info when aiming at an entity");
-        Chinese = "目标HUD";
+        Chinese = "目标信息";
         this.addValues(xPosition, yPosition, scale, xOffset, yOffset, showAvatar, auraTarget, frostedGlass, style);
     }
 
@@ -122,6 +122,7 @@ public class TargetHUD extends Module {
 
     @Override
     public void disable() {
+        HudDrag.unregisterDocked("target_hud");
         visibility = 0.0f;
         displayTarget = null;
         attackedTarget = null;
@@ -154,6 +155,17 @@ public class TargetHUD extends Module {
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onRender(RenderGameOverlayEvent.Text event) {
         if (!YozakuraEventBridge.hasRenderedOverlayThisFrame()) {
+            boolean ownsEffectsFrame = !RenderServices.shadows().isFrameOpen()
+                    && !RenderServices.glow().isFrameOpen();
+            if (ownsEffectsFrame) {
+                RenderServices.beginHudEffectsFrame();
+                try {
+                    renderOverlay();
+                } finally {
+                    RenderServices.flushHudEffectsFrame();
+                }
+                return;
+            }
             renderOverlay();
         }
     }
@@ -164,7 +176,7 @@ public class TargetHUD extends Module {
             return;
         }
 
-        TargetHudStyle selectedStyle = style.getValue() == null ? TargetHudStyle.LEGACY : style.getValue();
+        TargetHudStyle selectedStyle = getSelectedStyle();
         if (renderedStyle != selectedStyle) {
             if (renderedStyle != null) {
                 if (selectedStyle == TargetHudStyle.NIGHT_BLOOM) {
@@ -218,6 +230,15 @@ public class TargetHUD extends Module {
         drawHud(new ScaledResolution(mc), displayTarget, visibility);
     }
 
+    private TargetHudStyle getSelectedStyle() {
+        TargetHudStyle selected = style.getValue() == null ? TargetHudStyle.AUTO : style.getValue();
+        if (selected == TargetHudStyle.AUTO) {
+            return HUD.getActiveStyle() == HUD.HudStyle.NIGHT_BLOOM
+                    ? TargetHudStyle.NIGHT_BLOOM : TargetHudStyle.LEGACY;
+        }
+        return selected;
+    }
+
     private void renderNightBloomOverlay() {
         long now = System.currentTimeMillis();
         float deltaSeconds = Math.max(0.0F, Math.min(0.05F, (now - lastNightBloomFrameMS) / 1000.0F));
@@ -265,12 +286,13 @@ public class TargetHUD extends Module {
         float defaultY = resolution.getScaledHeight() / 2.0F + yOffset.getValue().floatValue();
         float width = NightBloomTargetHudRenderer.WIDTH * uiScale;
         float height = NightBloomTargetHudRenderer.HEIGHT * uiScale;
-        float[] position = HudDrag.update("target_hud", xPosition, yPosition, scale, defaultX, defaultY,
-                width, height, resolution);
+        float[] position = HudDrag.updateDocked("target_hud", xPosition, yPosition, scale, defaultX, defaultY,
+                width, height, NightBloomHudLayout.PANEL_RADIUS * uiScale, resolution);
 
         nightBloomRenderer.draw(position[0], position[1], uiScale, nightBloomCurrent, nightBloomPrevious,
                 nightBloomMotion, editMode, Boolean.TRUE.equals(showAvatar.getValue()));
-        HudDrag.drawHint("target_hud", position[0], position[1], width, height, 7.0F * uiScale);
+        HudDrag.drawDockHint("target_hud", position[0], position[1], width, height,
+                NightBloomHudLayout.PANEL_RADIUS * uiScale);
         HudDrag.handleScroll("target_hud", scale, position[0], position[1], width, height, 0.65F, 1.8F);
     }
 

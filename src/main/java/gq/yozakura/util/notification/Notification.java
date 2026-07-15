@@ -3,6 +3,7 @@ package gq.yozakura.util.notification;
 import gq.yozakura.ui.click.ClickGuiIcons;
 import gq.yozakura.module.Module;
 import gq.yozakura.module.render.HUD;
+import gq.yozakura.module.render.NightBloomHudDockRenderer;
 import gq.yozakura.util.color.ColorUtils;
 import gq.yozakura.util.time.TimerUtil;
 import gq.yozakura.engine.font.CFontRenderer;
@@ -259,40 +260,109 @@ public class Notification {
         if (alpha <= 0.002F) {
             return;
         }
+        boolean stackDocked = NightBloomHudDockRenderer.hasLink("hud_notifications");
 
-        NightBloomNotificationLayout.Layout layout = NightBloomNotificationLayout.create(x1, y1, x2, y2);
+        NightBloomNotificationLayout.LiquidPair pair =
+                NightBloomNotificationLayout.createLiquidPair(x1, y1, x2, y2, alpha);
+        if (!pair.isRenderable()) {
+            if (!stackDocked) {
+                HUD.drawNightBloomShadow(x1, y1, x2, y2, NIGHT_BLOOM_PANEL_RADIUS, alpha);
+                RenderServices.shapes().rounded(x1, y1, x2, y2, NIGHT_BLOOM_PANEL_RADIUS,
+                        withAlpha(NIGHT_BLOOM_PANEL_FILL, Math.round(220.0F * alpha)));
+            }
+            return;
+        }
 
-        HUD.drawNightBloomShadow(x1, y1, x2, y2, NIGHT_BLOOM_PANEL_RADIUS, alpha);
-        RenderServices.shapes().rounded(x1, y1, x2, y2, NIGHT_BLOOM_PANEL_RADIUS,
-                withAlpha(NIGHT_BLOOM_PANEL_FILL, Math.round(220.0F * alpha)));
+        if (!stackDocked) {
+            drawNightBloomFusedShadows(pair, alpha);
+            drawNightBloomFusedSurfaces(pair, alpha);
+        }
 
-        float iconLeft = layout.getIconLeft();
-        float iconTop = layout.getIconTop();
-        float iconSize = layout.getIconSize();
-        float iconCenterX = iconLeft + iconSize * 0.5F;
-        float iconCenterY = iconTop + iconSize * 0.5F;
+        float iconSize = pair.getIconSize();
+        float iconCenterX = pair.getIconCenterX();
+        float iconCenterY = pair.getIconCenterY();
         RenderServices.shapes().circle(iconCenterX, iconCenterY, 0, 360, iconSize * 0.5F,
                 withAlpha(NIGHT_BLOOM_ICON_FILL, Math.round(217.0F * alpha)));
         HUD.drawNightBloomCenteredIcon(getIcon(), FontLoaders.I16, iconCenterX, iconCenterY,
                 withAlpha(NIGHT_BLOOM_PRIMARY, Math.round(246.0F * alpha)),
                 withAlpha(NIGHT_BLOOM_PRIMARY, Math.round(156.0F * alpha)), 0.58F);
 
-        float panelWidth = x2 - x1;
-        String titleText = trim(getTitle(), FontLoaders.C16, panelWidth - 52.0F);
-        HUD.drawNightBloomText(FontLoaders.C16, titleText, layout.getTitleX(), layout.getTitleY(),
+        float contentWidth = Math.max(0.0F, pair.getProgressRight() - pair.getTitleX());
+        String titleText = trim(getTitle(), FontLoaders.C16, contentWidth);
+        HUD.drawNightBloomText(FontLoaders.C16, titleText, pair.getTitleX(), y1 + 7.0F,
                 withAlpha(NIGHT_BLOOM_PRIMARY, Math.round(248.0F * alpha)),
                 withAlpha(NIGHT_BLOOM_PRIMARY, Math.round(94.0F * alpha)), 0.44F);
         if (message.length() > 0) {
-            String messageText = trim(message, FontLoaders.C12, panelWidth - 52.0F);
-            HUD.drawNightBloomText(FontLoaders.C12, messageText, layout.getTitleX(), layout.getMessageY(),
+            String messageText = trim(message, FontLoaders.C12, contentWidth);
+            HUD.drawNightBloomText(FontLoaders.C12, messageText, pair.getTitleX(), y1 + 22.0F,
                     withAlpha(NIGHT_BLOOM_SECONDARY, Math.round(224.0F * alpha)),
                     withAlpha(NIGHT_BLOOM_PRIMARY, Math.round(48.0F * alpha)), 0.24F);
         }
 
-        RenderServices.shapes().progressBar(layout.getProgressLeft(), layout.getProgressTop(),
-                layout.getProgressRight(), layout.getProgressBottom(), 1.0F, progress,
+        RenderServices.shapes().progressBar(pair.getProgressLeft(), y2 - 3.8F,
+                pair.getProgressRight(), y2 - 2.0F, 1.0F, progress,
                 withAlpha(NIGHT_BLOOM_SECONDARY, Math.round(28.0F * alpha)),
                 withAlpha(NIGHT_BLOOM_PRIMARY, Math.round(224.0F * alpha)));
+    }
+
+    private void drawNightBloomFusedShadows(NightBloomNotificationLayout.LiquidPair pair, float alpha) {
+        float individualOpacity = 1.0F - pair.getCompositeProgress();
+        if (individualOpacity > 0.01F) {
+            HUD.drawNightBloomShadow(pair.getIconLeft(), pair.getIconTop(),
+                    pair.getIconRight(), pair.getIconBottom(), NIGHT_BLOOM_PANEL_RADIUS,
+                    alpha * individualOpacity);
+            HUD.drawNightBloomShadow(pair.getBodyLeft(), pair.getCompositeTop(),
+                    pair.getBodyRight(), pair.getCompositeBottom(), NIGHT_BLOOM_PANEL_RADIUS,
+                    alpha * individualOpacity);
+        }
+        if (pair.hasVisibleBridge()) {
+            HUD.drawNightBloomShadow(pair.getBridgeLeft(), pair.getBridgeTop(),
+                    pair.getBridgeRight(), pair.getBridgeBottom(), pair.getBridgeRadius(),
+                    alpha * pair.getBridgeOpacity() * individualOpacity);
+        }
+        if (pair.getCompositeProgress() > 0.01F) {
+            HUD.drawNightBloomShadow(pair.getCompositeLeft(), pair.getCompositeTop(),
+                    pair.getCompositeRight(), pair.getCompositeBottom(), NIGHT_BLOOM_PANEL_RADIUS,
+                    alpha * pair.getCompositeProgress());
+        }
+    }
+
+    private void drawNightBloomFusedSurfaces(NightBloomNotificationLayout.LiquidPair pair, float alpha) {
+        float individualOpacity = 1.0F - pair.getCompositeProgress();
+        if (pair.hasVisibleBridge() && individualOpacity > 0.01F) {
+            float bridgeOpacity = alpha * pair.getBridgeOpacity() * individualOpacity;
+            RenderServices.shapes().joinedRounded(pair.getBridgeLeft(), pair.getBridgeTop(),
+                    pair.getBridgeRight(), pair.getBridgeBottom(),
+                    pair.getBridgeRadius(), pair.getBridgeRadius(), pair.getBridgeRadius(), pair.getBridgeRadius(),
+                    nightBloomSurfaceColor(bridgeOpacity));
+        }
+        if (individualOpacity > 0.01F) {
+            float joinRadius = NIGHT_BLOOM_PANEL_RADIUS * (1.0F - pair.getEdgeProgress());
+            int tileColor = nightBloomSurfaceColor(alpha * individualOpacity);
+            RenderServices.shapes().joinedRounded(pair.getIconLeft(), pair.getIconTop(),
+                    pair.getIconRight(), pair.getIconBottom(),
+                    NIGHT_BLOOM_PANEL_RADIUS, joinRadius, joinRadius, NIGHT_BLOOM_PANEL_RADIUS,
+                    1.0F, 0.0F, 1.0F, 0.0F,
+                    1.0F, 0.0F, pair.getRightJoinStart(), pair.getRightJoinEnd(), tileColor);
+            RenderServices.shapes().joinedRounded(pair.getBodyLeft(), pair.getCompositeTop(),
+                    pair.getBodyRight(), pair.getCompositeBottom(),
+                    joinRadius, NIGHT_BLOOM_PANEL_RADIUS, NIGHT_BLOOM_PANEL_RADIUS, joinRadius,
+                    1.0F, 0.0F, 1.0F, 0.0F,
+                    pair.getLeftJoinStart(), pair.getLeftJoinEnd(), 1.0F, 0.0F, tileColor);
+        }
+        if (pair.getCompositeProgress() > 0.01F) {
+            RenderServices.shapes().joinedRounded(pair.getCompositeLeft(), pair.getCompositeTop(),
+                    pair.getCompositeRight(), pair.getCompositeBottom(),
+                    NIGHT_BLOOM_PANEL_RADIUS, NIGHT_BLOOM_PANEL_RADIUS,
+                    NIGHT_BLOOM_PANEL_RADIUS, NIGHT_BLOOM_PANEL_RADIUS,
+                    nightBloomSurfaceColor(NightBloomNotificationLayout.fusedCompositeSurfaceOpacity(
+                            220.0F / 255.0F, alpha, pair.getCompositeProgress())));
+        }
+    }
+
+    private static int nightBloomSurfaceColor(float alpha) {
+        return withAlpha(NIGHT_BLOOM_PANEL_FILL,
+                Math.round(220.0F * ColorUtils.clamp(alpha, 0.0F, 1.0F)));
     }
 
     private void drawSakura(float x1, float y1, float x2, float y2, float bodyAlpha, int accent, float progress) {
@@ -375,6 +445,10 @@ public class Notification {
 
     public float getHeight() {
         return renderHeight();
+    }
+
+    public float getWidth() {
+        return renderWidth();
     }
 
     private boolean isFinished() {

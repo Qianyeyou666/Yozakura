@@ -430,7 +430,7 @@
                 value="${escapeHtml(String(current))}"
                 data-value-slider="${escapeHtml(value.name)}"
               />
-              <span class="number-box" data-number-preview="${escapeHtml(value.name)}">${escapeHtml(formatNumber(current))}</span>
+              <span class="number-box" data-number-preview="${escapeHtml(value.name)}">${escapeHtml(formatNumber(current, step))}</span>
             </div>
           </div>
         `;
@@ -514,7 +514,7 @@
       input.addEventListener("input", () => {
         const preview = els.valueList.querySelector(`[data-number-preview="${cssEscape(input.getAttribute("data-value-slider"))}"]`);
         if (preview) {
-          preview.textContent = formatNumber(Number(input.value));
+          preview.textContent = formatNumber(Number(input.value), Number(input.step));
         }
       });
       input.addEventListener("change", () => {
@@ -784,11 +784,24 @@
     return value === true || value === "true" || value === 1 || value === "1";
   }
 
-  function formatNumber(value) {
+  function formatNumber(value, step) {
     if (!Number.isFinite(value)) {
       return "0";
     }
-    return Math.abs(value - Math.round(value)) < 0.05 ? String(Math.round(value)) : value.toFixed(1).replace(/\.0$/, "");
+    return value.toFixed(decimalPlaces(step));
+  }
+
+  function decimalPlaces(step) {
+    if (!Number.isFinite(step) || step <= 0) {
+      return 0;
+    }
+    const normalized = String(step).toLowerCase();
+    if (normalized.includes("e-")) {
+      const [coefficient, exponent] = normalized.split("e-");
+      return Number(exponent) + (coefficient.split(".")[1] || "").length;
+    }
+    const decimal = normalized.indexOf(".");
+    return decimal < 0 ? 0 : normalized.length - decimal - 1;
   }
 
   function cssEscape(value) {

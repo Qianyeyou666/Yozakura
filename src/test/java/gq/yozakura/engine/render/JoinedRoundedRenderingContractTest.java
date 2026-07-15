@@ -39,11 +39,13 @@ public class JoinedRoundedRenderingContractTest {
         assertTrue("coverage must be centered on the mathematical edge without expanding the quad",
                 fragment.contains("smoothstep(-antialias, antialias, distance)"));
         assertTrue("a shared edge must become fully covered instead of leaking the world background",
-                fragment.contains("coverage = max(coverage, joinedCoverage)"));
+                fragment.contains("coverage = max(coverage, max(joinedCoverage, sideCoverage))"));
         assertTrue("only the actual overlap interval may suppress edge antialiasing",
                 fragment.contains("intervalCoverage(coord.x, joinRanges.xy"));
         assertTrue("the bottom edge must use the bottom pair rather than the top interval",
                 fragment.contains("bottomBand * intervalCoverage(coord.x, joinRanges.zw"));
+        assertTrue("side joins must cover only their exact vertical interval",
+                fragment.contains("intervalCoverage(coord.y, sideJoinRanges.xy"));
     }
 
     @Test

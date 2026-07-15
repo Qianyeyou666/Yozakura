@@ -4,19 +4,32 @@ setlocal
 pushd "%~dp0"
 if errorlevel 1 exit /b %errorlevel%
 
-call :main
+call :main %*
 set "EXIT_CODE=%errorlevel%"
 popd
 exit /b %EXIT_CODE%
 
 :main
 
-if not defined JAVA8_HOME if defined JAVA_HOME set "JAVA8_HOME=%JAVA_HOME%"
-if not defined JAVA8_HOME set "JAVA8_HOME=C:\Users\shiranaidk\jdk-8\jdk8u492-b09"
+set "AUTH_BASE_URL=%~1"
+if not defined AUTH_BASE_URL set "AUTH_BASE_URL=%YOZAKURA_AUTH_BASE_URL%"
+if not defined AUTH_BASE_URL set "AUTH_BASE_URL=https://auth.yozakura.wtf/"
+
+echo Authentication endpoint: %AUTH_BASE_URL%
+
+if not defined JAVA8_HOME if defined JAVA_HOME call :select_java8_from "%JAVA_HOME%"
+if not defined JAVA8_HOME for /d %%D in ("%USERPROFILE%\.jdks\corretto-1.8*") do if not defined JAVA8_HOME set "JAVA8_HOME=%%~fD"
+if not defined JAVA8_HOME for /d %%D in ("%USERPROFILE%\.jdks\temurin-8*") do if not defined JAVA8_HOME set "JAVA8_HOME=%%~fD"
+if not defined JAVA8_HOME for /d %%D in ("%USERPROFILE%\.jdks\jdk8*") do if not defined JAVA8_HOME set "JAVA8_HOME=%%~fD"
+if not defined JAVA8_HOME (
+  echo Java 8 was not found. Set JAVA8_HOME to a JDK 8 installation.
+  exit /b 1
+)
+set "JAVA_HOME=%JAVA8_HOME%"
 if not defined VS_BUILD set "VS_BUILD=C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build"
 
 echo Refreshing build\libs\Yozakura.jar...
-call "%~dp0gradlew.bat" syncRuntimeJar
+call "%~dp0gradlew.bat" syncRuntimeJar "-Pyozakura_auth_base_url=%AUTH_BASE_URL%"
 if errorlevel 1 exit /b %errorlevel%
 
 if not exist "%JAVA8_HOME%\include\jni.h" (
@@ -67,12 +80,31 @@ if errorlevel 1 exit /b %errorlevel%
 rc /nologo /fo "build\native\yozakura_loader_%ARCH%.res" "native\yozakura_loader.rc"
 if errorlevel 1 exit /b %errorlevel%
 
-cl /nologo /EHsc /LD /O2 /GL ^
+cl /nologo /EHsc /c /O2 /GL ^
   /I"%JAVA8_HOME%\include" ^
   /I"%JAVA8_HOME%\include\win32" ^
-  /Fo"build\native\%ARCH%_" ^
-  "native\yozakura_loader.cpp" ^
+  /Fo"build\native\%ARCH%_loader.obj" ^
+  "native\yozakura_loader.cpp"
+if errorlevel 1 exit /b %errorlevel%
+
+cl /nologo /EHsc /c /O2 /GL ^
+  /I"%JAVA8_HOME%\include" ^
+  /I"%JAVA8_HOME%\include\win32" ^
+  /Fo"build\native\%ARCH%_auth.obj" ^
+  "native\yozakura_native_auth.cpp"
+if errorlevel 1 exit /b %errorlevel%
+
+link /NOLOGO /DLL /LTCG /OPT:REF /OPT:ICF ^
+  "build\native\%ARCH%_loader.obj" ^
+  "build\native\%ARCH%_auth.obj" ^
   "build\native\yozakura_loader_%ARCH%.res" ^
-  /link /NOLOGO /LTCG /OPT:REF /OPT:ICF /OUT:"%OUTDLL%" /IMPLIB:"build\native\%ARCH%.lib" /PDB:"build\native\%ARCH%.pdb"
+  winhttp.lib ^
+  /OUT:"%OUTDLL%" /IMPLIB:"build\native\%ARCH%.lib" /PDB:"build\native\%ARCH%.pdb"
 
 exit /b %errorlevel%
+
+:select_java8_from
+if not exist "%~1\release" exit /b 0
+for /f "tokens=1,* delims==" %%A in ('findstr /B /C:"JAVA_VERSION=" "%~1\release"') do set "CANDIDATE_JAVA_VERSION=%%~B"
+if "%CANDIDATE_JAVA_VERSION:~0,4%"=="1.8." set "JAVA8_HOME=%~1"
+exit /b 0

@@ -52,6 +52,7 @@ public final class StandaloneClient {
             return;
         }
         stopExistingStandalonePumps();
+        throwIfPreviousStandaloneBridgeIsStillActive();
         YozakuraAuthGate.verifyOrThrow("standalone");
         Client.username = YozakuraAuthGate.getVerifiedUsername();
         boolean initialized = false;
@@ -206,6 +207,12 @@ public final class StandaloneClient {
     private static void throwIfPreviousStandaloneBridgeFailed() {
         if (hasTerminalBridgeFailure()) {
             throw new IllegalStateException("A previous standalone bridge failed to tear down; restart Minecraft before reinjecting");
+        }
+    }
+
+    private static void throwIfPreviousStandaloneBridgeIsStillActive() {
+        if (isBridgeOwnerActive()) {
+            throw new IllegalStateException("A previous standalone bridge still owns this client; restart Minecraft before reinjecting");
         }
     }
 

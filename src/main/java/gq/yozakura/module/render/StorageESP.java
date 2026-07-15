@@ -47,7 +47,7 @@ public class StorageESP extends Module {
         super("StorageESP", Keyboard.KEY_NONE, ModuleType.Render,"Chest Renderer ESP");
         glowStrength.visibleWhen(() -> visualMode.getValue() == StorageVisualMode.GLOWESP);
         this.addValues(this.Chest, this.EnderChest, visualMode, glowStrength);
-        Chinese="ExampleModule";
+        Chinese="容器透视";
     }
 
     @SubscribeEvent

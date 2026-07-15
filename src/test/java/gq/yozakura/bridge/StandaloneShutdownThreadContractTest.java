@@ -106,6 +106,21 @@ public class StandaloneShutdownThreadContractTest {
     }
 
     @Test
+    public void reinjectionRejectsAnOrphanedBridgeOwnerBeforeInstallingAnotherPacketHook() throws IOException {
+        String client = source("src/main/java/gq/yozakura/core/StandaloneClient.java");
+        int constructor = client.indexOf("    public StandaloneClient() {");
+        int stopExisting = client.indexOf("stopExistingStandalonePumps();", constructor);
+        int ownerGuard = client.indexOf("throwIfPreviousStandaloneBridgeIsStillActive();", stopExisting);
+        int auth = client.indexOf("YozakuraAuthGate.verifyOrThrow(\"standalone\");", ownerGuard);
+
+        assertTrue("A stale process-wide owner must abort reinjection instead of adding a second bridge",
+                constructor >= 0 && stopExisting > constructor && ownerGuard > stopExisting && auth > ownerGuard);
+        assertTrue("The owner guard must consult the JVM-wide active bridge marker",
+                client.contains("private static void throwIfPreviousStandaloneBridgeIsStillActive()")
+                        && client.contains("if (isBridgeOwnerActive())"));
+    }
+
+    @Test
     public void initializationRollbackKeepsOwnershipUntilTheStartedPumpHasTornDown() throws IOException {
         String client = source("src/main/java/gq/yozakura/core/StandaloneClient.java");
         int rollbackBegin = client.indexOf("    private void rollbackFailedInitialization() {");

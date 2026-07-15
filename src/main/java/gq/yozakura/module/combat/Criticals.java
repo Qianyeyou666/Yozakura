@@ -1,5 +1,6 @@
 package gq.yozakura.module.combat;
 
+import gq.yozakura.bridge.PacketBridgeSupport;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.Module;
 import gq.yozakura.value.Mode;
@@ -83,8 +84,12 @@ public class Criticals extends Module {
             double x = mc.thePlayer.posX;
             double y = mc.thePlayer.posY;
             double z = mc.thePlayer.posZ;
-            mc.thePlayer.sendQueue.addToSendQueue(new C03PacketPlayer.C04PacketPlayerPosition(x, y + 0.0625D, z, false));
-            mc.thePlayer.sendQueue.addToSendQueue(new C03PacketPlayer.C04PacketPlayerPosition(x, y, z, false));
+            C03PacketPlayer first = new C03PacketPlayer.C04PacketPlayerPosition(x, y + 0.0625D, z, false);
+            C03PacketPlayer second = new C03PacketPlayer.C04PacketPlayerPosition(x, y, z, false);
+            PacketBridgeSupport.markNonCanonicalPlayerPacket(first);
+            PacketBridgeSupport.markNonCanonicalPlayerPacket(second);
+            mc.thePlayer.sendQueue.addToSendQueue(first);
+            mc.thePlayer.sendQueue.addToSendQueue(second);
         }
         lastCritTick = mc.thePlayer.ticksExisted;
     }

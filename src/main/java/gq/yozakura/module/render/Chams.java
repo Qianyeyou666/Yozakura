@@ -40,12 +40,18 @@ public class Chams extends Module {
 
     public Chams() {
         super("Chams", Keyboard.KEY_NONE, ModuleType.Render, "Render entities with colored chams");
-        rainbow.visibleWhen(() -> !Boolean.TRUE.equals(paletteColors.getValue()));
-        red.visibleWhen(() -> !Boolean.TRUE.equals(paletteColors.getValue()));
-        green.visibleWhen(() -> !Boolean.TRUE.equals(paletteColors.getValue()));
-        blue.visibleWhen(() -> !Boolean.TRUE.equals(paletteColors.getValue()));
+        paletteColors.visibleWhen(() -> !Boolean.TRUE.equals(textured.getValue()));
+        rainbow.visibleWhen(() -> !Boolean.TRUE.equals(textured.getValue())
+                && !Boolean.TRUE.equals(paletteColors.getValue()));
+        red.visibleWhen(() -> !Boolean.TRUE.equals(textured.getValue())
+                && !Boolean.TRUE.equals(paletteColors.getValue()));
+        green.visibleWhen(() -> !Boolean.TRUE.equals(textured.getValue())
+                && !Boolean.TRUE.equals(paletteColors.getValue()));
+        blue.visibleWhen(() -> !Boolean.TRUE.equals(textured.getValue())
+                && !Boolean.TRUE.equals(paletteColors.getValue()));
+        alpha.visibleWhen(() -> !Boolean.TRUE.equals(textured.getValue()));
         this.addValues(throughWalls, textured, paletteColors, rainbow, players, mobs, animals, invisible, red, green, blue, alpha);
-        Chinese = "透视染色";
+        Chinese = "实体透视染色";
     }
 
     @Override
@@ -66,26 +72,18 @@ public class Chams extends Module {
         renderedEntities.add(entity.getEntityId());
         GL11.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_CURRENT_BIT | GL11.GL_COLOR_BUFFER_BIT
                 | GL11.GL_DEPTH_BUFFER_BIT | GL11.GL_POLYGON_BIT | GL11.GL_LIGHTING_BIT);
-        GL11.glEnable(GL11.GL_BLEND);
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        GL11.glDisable(GL11.GL_LIGHTING);
-        GL11.glDisable(GL11.GL_ALPHA_TEST);
-        GL11.glDepthMask(false);
 
         if (Boolean.TRUE.equals(throughWalls.getValue())) {
             GL11.glDisable(GL11.GL_DEPTH_TEST);
             GL11.glEnable(GL11.GL_POLYGON_OFFSET_FILL);
             GL11.glPolygonOffset(1.0f, -1000000.0f);
+            GL11.glDepthMask(false);
         }
         if (!Boolean.TRUE.equals(textured.getValue())) {
-            GL11.glDisable(GL11.GL_TEXTURE_2D);
+            applyColoredStyle(entity);
+        } else {
+            GL11.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
         }
-
-        int color = getColor(entity);
-        GL11.glColor4f(((color >> 16) & 255) / 255.0f,
-                ((color >> 8) & 255) / 255.0f,
-                (color & 255) / 255.0f,
-                Math.max(0.0f, Math.min(1.0f, alpha.getValue().floatValue() / 255.0f)));
     }
 
     @SubscribeEvent
@@ -95,8 +93,22 @@ public class Chams extends Module {
         }
         if (renderedEntities.remove(event.entity.getEntityId())) {
             GL11.glPopAttrib();
-            GL11.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
         }
+    }
+
+    private void applyColoredStyle(EntityLivingBase entity) {
+        GL11.glEnable(GL11.GL_BLEND);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GL11.glDisable(GL11.GL_LIGHTING);
+        GL11.glDisable(GL11.GL_ALPHA_TEST);
+        GL11.glDepthMask(false);
+        GL11.glDisable(GL11.GL_TEXTURE_2D);
+
+        int color = getColor(entity);
+        GL11.glColor4f(((color >> 16) & 255) / 255.0f,
+                ((color >> 8) & 255) / 255.0f,
+                (color & 255) / 255.0f,
+                Math.max(0.0f, Math.min(1.0f, alpha.getValue().floatValue() / 255.0f)));
     }
 
     private boolean isValidTarget(EntityLivingBase entity) {

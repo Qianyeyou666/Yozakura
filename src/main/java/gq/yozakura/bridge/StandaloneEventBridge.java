@@ -5,6 +5,7 @@ import gq.yozakura.core.ConfigBridge;
 import gq.yozakura.event.bridge.PacketAcceptedEvent;
 import gq.yozakura.event.bridge.PacketEvent;
 import gq.yozakura.event.bridge.PacketWriteEvent;
+import gq.yozakura.event.bridge.PlayerPacketBoundaryEvent;
 import gq.yozakura.event.bridge.RotationResolvedEvent;
 import gq.yozakura.event.bridge.SafeWalkEvent;
 import gq.yozakura.event.bridge.TickEvent;
@@ -209,7 +210,7 @@ public final class StandaloneEventBridge {
             EventManager.call(new RotationResolvedEvent(update));
             BridgeDebug.logUpdate("standalone", "PRE_AFTER_EVENT", update, pendingPostUpdate != null);
             RotationState.applyState(update.isRotated(), update.getNewYaw(), update.getNewPitch(),
-                    update.getPreYaw(), update.isRotating(), update.isMoveFix());
+                    update.getNewYaw(), update.isRotating(), update.isMoveFix());
             boolean rotationActive = RotationState.isActived();
             waitingForRotationPacket = rotationActive;
             rotationPublication.publish(rotationActive, RotationState.getRotationYawHead(),
@@ -512,6 +513,8 @@ public final class StandaloneEventBridge {
             }
             if (msg instanceof Packet<?>) {
                 Packet<?> packet = (Packet<?>) msg;
+                boolean nonCanonicalPlayerPacket = packet instanceof C03PacketPlayer
+                        && PacketBridgeSupport.consumeNonCanonicalPlayerPacket(packet);
                 boolean packetPendingPost = pendingPostUpdate != null;
                 PacketBridgeSupport.NoEventMarker noEventMarker =
                         PacketBridgeSupport.consumeNoEventMarker(packet);
@@ -521,7 +524,7 @@ public final class StandaloneEventBridge {
                 }
                 boolean skipPacketEvent = noEventMarker.isMarked();
                 long writeId = noEventMarker.getWriteId();
-                boolean preserveOriginalPacketOrder = false;
+                boolean preserveOriginalPacketOrder = true;
                 if (skipPacketEvent) {
                     BridgeDebug.logPacket("standalone", "SEND_NO_EVENT", packet, packetPendingPost);
                 }
@@ -536,7 +539,8 @@ public final class StandaloneEventBridge {
                     PacketAcceptedEvent accepted = new PacketAcceptedEvent(packet);
                     EventManager.call(accepted);
                     writeId = accepted.getWriteId();
-                    preserveOriginalPacketOrder = accepted.isOriginalPacketOrderRequired();
+                    preserveOriginalPacketOrder = preserveOriginalPacketOrder
+                            || accepted.isOriginalPacketOrderRequired();
                 }
                 observePacketWrite(ctx, packet, promise, writeId);
                 if (!skipPacketEvent && !preserveOriginalPacketOrder && isPostSensitiveAction(packet)) {
@@ -553,12 +557,11 @@ public final class StandaloneEventBridge {
                         return;
                     }
                 }
-
                 boolean preUpdatePending = activePreUpdate != null;
                 StandaloneRotationPublication.Snapshot rotation = rotationPublication.snapshot();
                 if (packet instanceof C03PacketPlayer) {
                     writePlayerPacket(ctx, (C03PacketPlayer) packet, promise, rotation,
-                            preUpdatePending, packetPendingPost, writeId);
+                            preUpdatePending, packetPendingPost, writeId, !nonCanonicalPlayerPacket);
                     return;
                 }
                 markSent(packet);
@@ -588,6 +591,22 @@ public final class StandaloneEventBridge {
 
         private void reportPacketWrite(Packet<?> packet, long writeId, boolean success) {
             EventManager.call(new PacketWriteEvent(packet, writeId, success));
+        }
+
+        private void reportPlayerPacketBoundary(ChannelPromise promise, final long writeId,
+                                                final boolean playerTickAdvanced) {
+            if (!playerTickAdvanced || promise == null) {
+                return;
+            }
+            promise.addListener(new ChannelFutureListener() {
+                @Override
+                public void operationComplete(ChannelFuture future) {
+                    if (!future.isSuccess() || writeId == PacketAcceptedEvent.NO_WRITE_ID) {
+                        return;
+                    }
+                    EventManager.call(new PlayerPacketBoundaryEvent(writeId));
+                }
+            });
         }
 
         @Override
@@ -630,8 +649,10 @@ public final class StandaloneEventBridge {
 
         private void writePlayerPacket(ChannelHandlerContext ctx, C03PacketPlayer packet, ChannelPromise promise,
                                        StandaloneRotationPublication.Snapshot rotation, boolean preUpdatePending,
-                                       boolean packetPendingPost, long writeId) throws Exception {
-            boolean playerTickAdvanced = playerPacketTickGate.consumeNextPlayerPacket();
+                                       boolean packetPendingPost, long writeId, boolean canonicalPlayerPacket)
+                throws Exception {
+            boolean playerTickAdvanced = playerPacketTickGate.consumeNextCanonicalPlayerPacket(canonicalPlayerPacket);
+            reportPlayerPacketBoundary(promise, writeId, playerTickAdvanced);
             if (playerTickAdvanced) {
                 flushReadyActionPackets(ctx);
             }
