@@ -31,6 +31,21 @@ public class AutoClickerBridgeTimingContractTest {
         assertTrue(bridgeTick.contains("handleInventoryClick();"));
     }
 
+    @Test
+    public void clickerUsesOnlyTheVanillaClickPathWithoutRandomOrCatchUpBursts() throws IOException {
+        String source = source();
+
+        assertTrue(source.contains("MinecraftAccessor.clickMouse(mc)"));
+        assertFalse(source.contains("mc.playerController.attackEntity"));
+        assertFalse(source.contains("mc.thePlayer.swingItem()"));
+        assertFalse(source.contains("new Random"));
+        assertFalse(source.contains("while (inventoryNextClickTime <= now)"));
+        assertFalse(source.contains("for (int i = 0; i < clicks; i++)"));
+        assertFalse(source.contains("keyBindUseItem"));
+        assertTrue(source.contains("if (isPointingAtBlock()"
+                + " && !Boolean.TRUE.equals(breakBlocks.getValue()))"));
+    }
+
     private static String source() throws IOException {
         return new String(Files.readAllBytes(Paths.get(
                 "src/main/java/gq/yozakura/module/combat/AutoClicker.java")), StandardCharsets.UTF_8);

@@ -48,7 +48,8 @@ public class PlayerPacketBoundaryContractTest {
     }
 
     private static String source(String path) throws IOException {
-        return new String(Files.readAllBytes(Paths.get(path)), StandardCharsets.UTF_8);
+        return new String(Files.readAllBytes(Paths.get(path)), StandardCharsets.UTF_8)
+                .replace("\r\n", "\n");
     }
 
     private static String method(String source, String beginMarker, String endMarker) {

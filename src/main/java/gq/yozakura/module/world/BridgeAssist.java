@@ -14,33 +14,41 @@ import gq.yozakura.module.Module;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
+import net.minecraft.init.Blocks;
 import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.MathHelper;
 import org.lwjgl.input.Keyboard;
 
 public class BridgeAssist extends Module {
-    private final Option<Boolean> prePlace = new Option<Boolean>("Pre Place", "PrePlace", false);
     private final Numbers<Double> edgeOffset =
-            new Numbers<Double>("Edge Offset", "EdgeOffset", 0.0D, 0.0D, 0.3D, 0.01D);
+            new Numbers<Double>("Edge Tolerance (blocks)", "EdgeOffset", 0.0D, 0.0D, 0.3D, 0.01D);
     private final Numbers<Double> unsneakDelay =
-            new Numbers<Double>("Unsneak Delay", "UnsneakDelay", 50.0D, 50.0D, 300.0D, 5.0D);
-    private final Numbers<Double> sneakOnJump =
-            new Numbers<Double>("Sneak On Jump", "SneakOnJump", 0.0D, 0.0D, 500.0D, 5.0D);
-    private final Option<Boolean> sneakKeyPressed =
-            new Option<Boolean>("Sneak Key Pressed", "SneakKeyPressed", false);
+            new Numbers<Double>("Release Delay (ms)", "UnsneakDelay", 50.0D, 10.0D, 300.0D, 1.0D);
     private final Option<Boolean> holdingBlocks =
-            new Option<Boolean>("Holding Blocks", "HoldingBlocks", false);
+            new Option<Boolean>("Only With Blocks", "HoldingBlocks", false);
+    private final Option<Boolean> advancedOptions =
+            new Option<Boolean>("Advanced Options", "AdvancedOptions", false);
+    private final Option<Boolean> prePlace =
+            new Option<Boolean>("Pre-place Rotation", "PrePlace", false);
+    private final Numbers<Double> sneakOnJump =
+            new Numbers<Double>("Jump Sneak Hold (ms)", "SneakOnJump", 0.0D, 0.0D, 500.0D, 1.0D);
+    private final Option<Boolean> sneakKeyPressed =
+            new Option<Boolean>("Require Sneak Key", "SneakKeyPressed", false);
     private final Option<Boolean> lookingDown =
-            new Option<Boolean>("Looking Down", "LookingDown", false);
+            new Option<Boolean>("Require Looking Down", "LookingDown", false);
     private final Option<Boolean> notMovingForward =
-            new Option<Boolean>("Not Moving Forward", "NotMovingForward", false);
+            new Option<Boolean>("Disable While Moving Forward", "NotMovingForward", false);
 
     private final BridgeAssistSneakController sneakController;
     private final BridgeAssistPrePlaceController prePlaceController;
 
     public BridgeAssist() {
         super("BridgeAssist", Keyboard.KEY_NONE, ModuleType.World, "Assist edge sneaking while bridging");
-        this.addValues(prePlace, edgeOffset, unsneakDelay, sneakOnJump,
-                sneakKeyPressed, holdingBlocks, lookingDown, notMovingForward);
+        configureOptionVisibility();
+        this.addValues(edgeOffset, unsneakDelay, holdingBlocks, advancedOptions, prePlace,
+                sneakOnJump, sneakKeyPressed, lookingDown, notMovingForward);
         sneakController = new BridgeAssistSneakController(mc, edgeOffset, unsneakDelay, sneakOnJump,
                 sneakKeyPressed, holdingBlocks, lookingDown, notMovingForward);
         prePlaceController = new BridgeAssistPrePlaceController(mc, prePlace, lookingDown, notMovingForward);
@@ -113,7 +121,7 @@ public class BridgeAssist extends Module {
 
     @EventTarget
     public void onPacketAccepted(PacketAcceptedEvent event) {
-        if (!getState() || !canAssist()) {
+        if (!getState() || !canPreservePlacementOrder()) {
             return;
         }
         if (!(event.getPacket() instanceof C08PacketPlayerBlockPlacement)) {
@@ -122,7 +130,9 @@ public class BridgeAssist extends Module {
         C08PacketPlayerBlockPlacement packet = (C08PacketPlayerBlockPlacement) event.getPacket();
         event.requestOriginalPacketOrder();
         if (packet.getPlacedBlockDirection() != 255) {
-            sneakController.onPlacementPacketAccepted(event.getWriteId());
+            if (canAssist()) {
+                sneakController.onPlacementPacketAccepted(event.getWriteId());
+            }
         }
     }
 
@@ -138,9 +148,55 @@ public class BridgeAssist extends Module {
     }
 
     private boolean canAssist() {
+        return canPreservePlacementOrder()
+                && !mc.thePlayer.isInWater()
+                && !mc.thePlayer.isInLava()
+                && !mc.thePlayer.isOnLadder()
+                && !mc.thePlayer.isRiding()
+                && !isInsideWeb();
+    }
+
+    private boolean canPreservePlacementOrder() {
         return isInGame()
                 && mc.currentScreen == null
                 && mc.playerController != null
                 && !mc.thePlayer.capabilities.isFlying;
+    }
+
+    private boolean isInsideWeb() {
+        AxisAlignedBB box = mc.thePlayer.getEntityBoundingBox();
+        int minX = MathHelper.floor_double(box.minX);
+        int maxX = MathHelper.floor_double(box.maxX - 1.0E-7D);
+        int minY = MathHelper.floor_double(box.minY);
+        int maxY = MathHelper.floor_double(box.maxY - 1.0E-7D);
+        int minZ = MathHelper.floor_double(box.minZ);
+        int maxZ = MathHelper.floor_double(box.maxZ - 1.0E-7D);
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    if (mc.theWorld.getBlockState(new BlockPos(x, y, z)).getBlock() == Blocks.web) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private void configureOptionVisibility() {
+        prePlace.visibleWhen(this::showAdvancedOptions);
+        sneakOnJump.visibleWhen(this::showAdvancedOptions);
+        sneakKeyPressed.visibleWhen(this::showAdvancedOptions);
+        lookingDown.visibleWhen(this::showAdvancedOptions);
+        notMovingForward.visibleWhen(this::showAdvancedOptions);
+    }
+
+    private boolean showAdvancedOptions() {
+        return Boolean.TRUE.equals(advancedOptions.getValue())
+                || Boolean.TRUE.equals(prePlace.getValue())
+                || sneakOnJump.getValue() > 0.0D
+                || Boolean.TRUE.equals(sneakKeyPressed.getValue())
+                || Boolean.TRUE.equals(lookingDown.getValue())
+                || Boolean.TRUE.equals(notMovingForward.getValue());
     }
 }

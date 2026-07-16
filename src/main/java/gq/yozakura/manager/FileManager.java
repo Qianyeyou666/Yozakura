@@ -17,17 +17,10 @@ import gq.yozakura.value.Option;
 import gq.yozakura.value.Value;
 import gq.yozakura.value.properties.ModeProperty;
 
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.PrintWriter;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
 
 public class FileManager {
     private static final long AUTO_SAVE_DELAY_MS = 1500L;
@@ -35,6 +28,7 @@ public class FileManager {
     private final File dir = new File(System.getenv("APPDATA"), YozakuraClientState.getName());
     private final File modules = new File(dir, YozakuraClientState.getConfig() + ".json");
     private final File backup = new File(dir, YozakuraClientState.getConfig() + ".json.bak");
+    private final ConfigFileStore configStore = new ConfigFileStore(modules, backup);
     private final Gson gson = new Gson();
 
     private boolean loading;
@@ -58,7 +52,7 @@ public class FileManager {
         try {
             saveModules();
         } catch (Exception exception) {
-            exception.printStackTrace();
+            logConfigFailure("Config save failed", exception);
         }
     }
 
@@ -76,7 +70,8 @@ public class FileManager {
     public synchronized void loadModules(boolean quiet) throws IOException {
         loading = true;
         try {
-            if (!modules.exists()) {
+            String snapshot = configStore.load();
+            if (snapshot == null) {
                 captureCurrentSnapshot();
                 if (!quiet) {
                     Helper.sendMessage("No Configs Found!");
@@ -84,16 +79,10 @@ public class FileManager {
                 return;
             }
 
-            JsonElement jsonElement = readJson(modules);
-            if ((jsonElement == null || jsonElement instanceof JsonNull || !jsonElement.isJsonObject()) && backup.exists()) {
-                jsonElement = readJson(backup);
+            if (configStore.wasBackupRecovered()) {
+                logConfigFailure("Recovered configuration from backup: " + backup.getAbsolutePath(), null);
             }
-            if (jsonElement == null || jsonElement instanceof JsonNull || !jsonElement.isJsonObject()) {
-                captureCurrentSnapshot();
-                return;
-            }
-
-            JsonObject jsonObject = (JsonObject) jsonElement;
+            JsonObject jsonObject = new JsonParser().parse(snapshot).getAsJsonObject();
             for (final Module module : ModuleManager.getModules()) {
                 try {
                     final JsonElement moduleElement = getModuleElement(jsonObject, module);
@@ -184,7 +173,7 @@ public class FileManager {
             }
             dirty = false;
         } catch (Exception exception) {
-            exception.printStackTrace();
+            logConfigFailure("Config auto-save failed", exception);
             lastDirtyMS = now;
         }
     }
@@ -293,28 +282,8 @@ public class FileManager {
         return gson.toJson(jsonObject);
     }
 
-    private JsonElement readJson(File file) throws IOException {
-        BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8));
-        try {
-            return new JsonParser().parse(reader);
-        } finally {
-            reader.close();
-        }
-    }
-
     private void writeSnapshot(String snapshot) throws IOException {
-        dir.mkdirs();
-        File temp = new File(dir, modules.getName() + ".tmp");
-        Files.write(temp.toPath(), snapshot.getBytes(StandardCharsets.UTF_8));
-        if (modules.exists()) {
-            Files.copy(modules.toPath(), backup.toPath(), StandardCopyOption.REPLACE_EXISTING);
-        }
-        try {
-            Files.move(temp.toPath(), modules.toPath(), StandardCopyOption.REPLACE_EXISTING,
-                    StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException ignored) {
-            Files.move(temp.toPath(), modules.toPath(), StandardCopyOption.REPLACE_EXISTING);
-        }
+        configStore.save(snapshot);
     }
 
     public static void logConfigFailure(String message, Throwable throwable) {

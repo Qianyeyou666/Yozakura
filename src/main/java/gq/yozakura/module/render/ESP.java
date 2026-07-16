@@ -9,6 +9,7 @@ import gq.yozakura.engine.render.ui.RenderServices;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.Module;
 import gq.yozakura.module.combat.AntiBot;
+import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.engine.render.ui.VisualPalette;
 import gq.yozakura.util.color.ColorUtil;
 import gq.yozakura.util.render.RenderUtil;
@@ -313,7 +314,8 @@ public class ESP extends Module {
                 if (shouldDrawHealthBar) {
                     drawHealthBar(entry, glowRenderer);
                 }
-                if (shouldDraw2DBox && Boolean.TRUE.equals(nameTags.getValue())) {
+                if (shouldDraw2DBox && Boolean.TRUE.equals(nameTags.getValue())
+                        && !isStandaloneNameTagsEnabled()) {
                     drawCenteredText(entry.entity.getDisplayName().getFormattedText(), entry.bounds.minX,
                             entry.bounds.maxX, entry.bounds.minY - mc.fontRendererObj.FONT_HEIGHT - 3.0f, entry.opacity, true);
                 }
@@ -330,6 +332,11 @@ public class ESP extends Module {
                 glowRenderer.flush();
             }
         }
+    }
+
+    private boolean isStandaloneNameTagsEnabled() {
+        Module module = ModuleManager.getModule("NameTags");
+        return module != null && module.getState();
     }
 
     private void draw2DBox(EspOverlayGeometry.Bounds bounds, int color, float opacity) {

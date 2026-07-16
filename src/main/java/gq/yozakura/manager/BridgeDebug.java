@@ -1,6 +1,5 @@
 package gq.yozakura.manager;
 
-import gq.yozakura.core.Client;
 import gq.yozakura.event.bridge.UpdateEvent;
 import gq.yozakura.runtime.YozakuraRuntime;
 import net.minecraft.client.Minecraft;
@@ -35,7 +34,7 @@ public final class BridgeDebug {
     }
 
     public static boolean isEnabled() {
-        return Client.DebugMode;
+        return false;
     }
 
     public static String getLogPath() {

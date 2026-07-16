@@ -149,22 +149,25 @@ public class StandaloneEventBridgeStateContractTest {
     @Test
     public void anEstablishedConnectionDispatchesExactlyOneDisconnectTransition() throws IOException {
         String bridge = source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java");
+        String disconnect = method(bridge,
+                "    private void dispatchDisconnected() {",
+                "    private void cleanupStandaloneModules() {");
 
         assertTrue("Startup without a world must not look like a disconnect",
                 bridge.contains("private boolean wasInGame;")
                         && bridge.contains("if (wasInGame)"));
         assertTrue("The standalone event bus must receive Forge's disconnect shim",
                 bridge.contains("new gq.yozakura.bridge.forge.FMLNetworkEvent.ClientDisconnectionFromServerEvent()"));
-        assertTrue("Standalone has no Forge Client listener, so disconnect must persist and disable directly",
-                bridge.contains("ConfigBridge.saveIfDirtyQuietly();")
-                        && bridge.contains("ConfigBridge.setAutoSaveSuspended(true);")
-                        && bridge.contains("ModuleManager.disableAll(false);")
-                        && bridge.contains("ConfigBridge.setAutoSaveSuspended(false);"));
+        assertTrue("Standalone has no Forge Client listener, so disconnect must persist directly",
+                disconnect.contains("ConfigBridge.saveIfDirtyQuietly();"));
+        assertFalse("Switching servers must not disable standalone modules",
+                disconnect.contains("cleanupStandaloneModules();")
+                        || disconnect.contains("ModuleManager.disableAll(false);"));
         assertTrue("Disconnect cleanup must include pending exit rotations",
                 bridge.contains("RotationExitState.clear();"));
 
         String shutdown = method(bridge, "    public void shutdown() {", "    private void clearBridgeState() {");
-        assertTrue("Reinjection can stop the old pump without a world-null tick",
+        assertTrue("Reinjection must still disable modules without a world-null tick",
                 shutdown.contains("cleanupStandaloneModules();"));
     }
 

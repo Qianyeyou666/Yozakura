@@ -104,7 +104,7 @@ final class NightBloomHudLayout {
     }
 
     static float moduleJoinStart(float firstLeft, float secondLeft, float radius) {
-        return Math.max(firstLeft, secondLeft) + nonNegative(radius);
+        return Math.max(firstLeft, secondLeft);
     }
 
     static float moduleJoinEnd(float firstRight, float secondRight) {
@@ -117,6 +117,18 @@ final class NightBloomHudLayout {
 
     static boolean moduleJoinReachesRight(float rowWidth, float joinEnd) {
         return joinEnd >= nonNegative(rowWidth) - MODULE_ROW_JOIN_EPSILON;
+    }
+
+    static float moduleTopLeftRadius(float rowLeft, float aboveLeft, float radius, boolean joinsAbove) {
+        return joinsAbove && rowLeft >= aboveLeft - MODULE_ROW_JOIN_EPSILON ? 0.0F : nonNegative(radius);
+    }
+
+    static float moduleBottomLeftRadius(float rowLeft, float belowLeft, float radius, boolean joinsBelow) {
+        return joinsBelow && rowLeft >= belowLeft - MODULE_ROW_JOIN_EPSILON ? 0.0F : nonNegative(radius);
+    }
+
+    static float moduleFusionShadowRadius(float radius) {
+        return nonNegative(radius) * 0.35F;
     }
 
     static float moduleRowBottom(float rowY, float nextRowY, boolean joinsBelow) {

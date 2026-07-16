@@ -3,6 +3,7 @@ package gq.yozakura.engine.render.glow;
 import gq.yozakura.engine.font.CFontRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
+import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.shader.Framebuffer;
@@ -133,6 +134,20 @@ public final class GlowRenderer {
             throw new IllegalArgumentException("profile must not be null");
         }
         commands.add(new TextCommand(font, text, x, y, glowColor, resolvedStrength, profile,
+                RenderSnapshot.capture()));
+    }
+
+    public void queueVanillaText(FontRenderer font, String text, double x, double y,
+                                 int glowColor, float strength, GlowProfile profile) {
+        requireOpenFrame();
+        if (font == null || text == null || text.length() == 0 || profile == null) {
+            return;
+        }
+        float resolvedStrength = GlowProfile.clampStrength(strength);
+        if (resolvedStrength <= 0.0F || alpha(glowColor) <= 0) {
+            return;
+        }
+        commands.add(new VanillaTextCommand(font, text, x, y, glowColor, resolvedStrength, profile,
                 RenderSnapshot.capture()));
     }
 
@@ -317,6 +332,10 @@ public final class GlowRenderer {
                 TextCommand text = (TextCommand) command;
                 maskProgram.set1i("mode", 0);
                 text.font.drawStringForGlowMask(text.text, text.x, text.y);
+            } else if (command instanceof VanillaTextCommand) {
+                VanillaTextCommand text = (VanillaTextCommand) command;
+                maskProgram.set1i("mode", 0);
+                text.font.drawString(text.text, (float) text.x, (float) text.y, 0xFFFFFFFF, false);
             } else {
                 RoundedRectCommand rect = (RoundedRectCommand) command;
                 float physicalScale = Math.max(0.001f,
@@ -619,6 +638,22 @@ public final class GlowRenderer {
 
         private TextCommand(CFontRenderer font, String text, double x, double y, int color,
                             float strength, GlowProfile profile, RenderSnapshot snapshot) {
+            super(color, strength, profile, snapshot);
+            this.font = font;
+            this.text = text;
+            this.x = x;
+            this.y = y;
+        }
+    }
+
+    private static final class VanillaTextCommand extends GlowCommand {
+        private final FontRenderer font;
+        private final String text;
+        private final double x;
+        private final double y;
+
+        private VanillaTextCommand(FontRenderer font, String text, double x, double y, int color,
+                                   float strength, GlowProfile profile, RenderSnapshot snapshot) {
             super(color, strength, profile, snapshot);
             this.font = font;
             this.text = text;

@@ -246,15 +246,33 @@ public class NightBloomHudVisualContractTest {
     }
 
     @Test
-    public void arrayListShadowMaskFusesTheContinuousRightEdgeWithoutDrawingAVisibleConnector() throws IOException {
+    public void arrayListShadowMaskFusesTheActualSharedWidthWithoutDrawingAVisibleConnector() throws IOException {
         String source = new String(Files.readAllBytes(Paths.get(HUD_SOURCE)), StandardCharsets.UTF_8);
         String shadows = between(source, "private void drawNightBloomModuleShadows(",
                 "private void drawNightBloomModuleSurfaces(");
 
-        assertTrue("a mask-only spine must close the rounded notches between touching right-aligned rows",
-                shadows.contains("drawNightBloomModuleShadowSpine("));
+        assertTrue("a mask-only bridge must close the rounded notches across the rows' shared width",
+                shadows.contains("drawNightBloomModuleShadowBridge("));
         assertFalse("fusion belongs to the shadow mask and must never add a visible surface rectangle",
                 shadows.contains("RenderServices.shapes().rect("));
+    }
+
+    @Test
+    public void arrayListUsesTheFullSharedWidthForItsLeftStepShadowMask() throws IOException {
+        String source = source(HUD_SOURCE);
+        String shadows = between(source, "private void drawNightBloomModuleShadows(",
+                "private void drawNightBloomModuleSurfaces(");
+        String surfaces = between(source, "private void drawNightBloomModuleSurfaces(",
+                "private void drawNightBloomModuleSurface(");
+
+        assertTrue(shadows.contains("drawNightBloomModuleShadowBridge("));
+        assertTrue(shadows.contains("Math.max(rowX, nextX)"));
+        assertTrue(shadows.contains("NightBloomHudLayout.moduleFusionShadowRadius("));
+        assertTrue(shadows.contains("next.snapshot.getY() - shadowRadius"));
+        assertTrue(shadows.contains("next.snapshot.getY() + shadowRadius"));
+        assertFalse(shadows.contains("drawNightBloomModuleShadowSpine("));
+        assertTrue(surfaces.contains("NightBloomHudLayout.moduleTopLeftRadius("));
+        assertTrue(surfaces.contains("NightBloomHudLayout.moduleBottomLeftRadius("));
     }
 
     @Test

@@ -29,7 +29,12 @@ final class BridgeAssistSneakStateMachine {
             return Decision.KEEP;
         }
 
-        if (frame.placementPending && (holdsModuleSneak() || canControl(frame))) {
+        if (!canControl(frame)) {
+            reset();
+            return Decision.KEEP;
+        }
+
+        if (frame.placementPending) {
             if (!holdsModuleSneak()) {
                 state = State.EDGE_HELD;
                 releaseTick = NO_TICK;
@@ -37,11 +42,6 @@ final class BridgeAssistSneakStateMachine {
                 placementObserved = false;
             }
             return Decision.FORCE_ON;
-        }
-
-        if (!canControl(frame)) {
-            reset();
-            return Decision.KEEP;
         }
 
         if (frame.placementCommitted && holdsModuleSneak()) {

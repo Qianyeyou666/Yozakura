@@ -126,6 +126,7 @@ public class ModuleManager {
         addModule("HUD", new ModuleFactory() { public Module create() { return new HUD(); } });
         addModule("TargetHUD", new ModuleFactory() { public Module create() { return new TargetHUD(); } });
         addModule("TargetESP", new ModuleFactory() { public Module create() { return new TargetESP(); } });
+        addModule("NameTags", new ModuleFactory() { public Module create() { return new NameTags(); } });
         addModule("KillEffect", new ModuleFactory() { public Module create() { return new KillEffect(); } });
         addModule("KeyboardDisplay", new ModuleFactory() { public Module create() { return new KeyboardDisplay(); } });
 //        addModule("MusicPlayer", new ModuleFactory() { public Module create() { return new MusicPlayer(); } });

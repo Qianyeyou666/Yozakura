@@ -172,7 +172,7 @@ public final class StandaloneEventBridge {
 
     private void dispatchDisconnected() {
         EventManager.call(new gq.yozakura.bridge.forge.FMLNetworkEvent.ClientDisconnectionFromServerEvent());
-        cleanupStandaloneModules();
+        ConfigBridge.saveIfDirtyQuietly();
     }
 
     private void cleanupStandaloneModules() {

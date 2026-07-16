@@ -59,6 +59,24 @@ public class ForgeBridgeLifecycleContractTest {
     }
 
     @Test
+    public void serverDisconnectPreservesModulesUntilTheClientIsUnloaded() throws IOException {
+        String client = source("src/main/java/gq/yozakura/core/Client.java");
+        String disconnect = method(client,
+                "    public void onDisconnect(FMLNetworkEvent.ClientDisconnectionFromServerEvent event) {",
+                "    public static void unInject() {");
+        String uninject = method(client,
+                "    public static void unInject() {",
+                "    private static void unregisterClient(Client client) {");
+
+        assertTrue("Disconnect must persist the enabled module configuration",
+                disconnect.contains("fileManager.saveIfDirtyQuietly();"));
+        assertFalse("Switching servers must not disable enabled modules",
+                disconnect.contains("ModuleManager.disableAll(false);"));
+        assertTrue("Explicit client unload must still disable modules and unregister their listeners",
+                uninject.contains("ModuleManager.disableAll(false);"));
+    }
+
+    @Test
     public void playerRenderRotationUsesBalancedSnapshotsAndCleansUpCancelledPairs() throws IOException {
         String bridge = source("src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java");
         String pre = method(bridge,

@@ -250,7 +250,9 @@ public class KeyboardDisplay extends Module {
         float round = NIGHT_BLOOM_RADIUS;
         int textColor = ColorUtils.interpolate(NIGHT_BLOOM.getTextPrimary(), NIGHT_BLOOM_PRIMARY, feedback);
 
-        HUD.drawNightBloomShadow(x, y, x + width, y + height, round, opacity);
+        if (!NightBloomHudDockRenderer.hasLink("keyboard_display")) {
+            HUD.drawNightBloomShadow(x, y, x + width, y + height, round, opacity);
+        }
         RenderServices.shapes().rounded(x, y, x + width, y + height, round,
                 multiplyAlpha(NIGHT_BLOOM_SURFACE, opacity));
         if (feedback > 0.01F) {

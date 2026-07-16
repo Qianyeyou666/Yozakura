@@ -12,6 +12,9 @@ import gq.yozakura.engine.render.ui.VisualPalette;
 import gq.yozakura.module.combat.AntiBot;
 import gq.yozakura.module.combat.Backtrack;
 import gq.yozakura.module.combat.KillAura;
+import gq.yozakura.module.render.runtime.HUD;
+import gq.yozakura.runtime.YozakuraRuntime;
+import gq.yozakura.util.module.RenderUtil;
 import gq.yozakura.value.Mode;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
@@ -34,21 +37,23 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GLContext;
 
+import java.awt.Color;
+
 public class TargetESP extends Module {
     private static final long ATTACK_TARGET_LINGER_MS = 1200L;
     private static final double FALLBACK_TARGET_RANGE = 6.0D;
 
     public enum EspMode {
-        VAPE,
-        RINGS,
-        CAPSULE,
+        DEFAULT,
+        HUD,
+        SCAN,
         COSMIC,
         AURORA,
         SAKURA,
         NIGHT_BLOOM
     }
 
-    private final Mode<EspMode> mode = new Mode<EspMode>("Mode", "Mode", EspMode.values(), EspMode.VAPE);
+    private final Mode<EspMode> mode = new Mode<EspMode>("Mode", "Mode", EspMode.values(), EspMode.DEFAULT);
     private final Numbers<Double> alpha = new Numbers<Double>("Alpha", "Alpha", 155.0, 35.0, 220.0, 5.0);
     private final Numbers<Double> radius = new Numbers<Double>("Radius", "Radius", 1.0, 0.65, 1.65, 0.05);
     private final Numbers<Double> height = new Numbers<Double>("Height", "Height", 1.0, 0.65, 1.45, 0.05);
@@ -286,6 +291,11 @@ public class TargetESP extends Module {
     }
 
     private void drawTarget(EntityLivingBase target, float partialTicks, float fade) {
+        EspMode current = mode.getValue();
+        if (current == EspMode.DEFAULT || current == EspMode.HUD) {
+            drawLegacyBox(target, current == EspMode.HUD);
+            return;
+        }
         double x = target.lastTickPosX + (target.posX - target.lastTickPosX) * partialTicks - mc.getRenderManager().viewerPosX;
         double y = target.lastTickPosY + (target.posY - target.lastTickPosY) * partialTicks - mc.getRenderManager().viewerPosY;
         double z = target.lastTickPosZ + (target.posZ - target.lastTickPosZ) * partialTicks - mc.getRenderManager().viewerPosZ;
@@ -294,7 +304,6 @@ public class TargetESP extends Module {
         float time = (System.currentTimeMillis() % 200000L) / 1000.0f * pulseSpeed.getValue().floatValue();
         float hurtPulse = target.hurtTime > 0 ? 1.0f : 0.0f;
         float alphaScale = fade * alpha.getValue().floatValue() / 255.0f;
-        EspMode current = mode.getValue();
         VisualPalette palette = ClickGUI.currentPalette();
         int primary = current == EspMode.NIGHT_BLOOM
                 ? (target.hurtTime > 0 ? palette.getEntityHurt() : palette.getAccentAlt())
@@ -328,11 +337,13 @@ public class TargetESP extends Module {
             if (Boolean.TRUE.equals(throughWalls.getValue())) {
                 GL11.glDisable(GL11.GL_DEPTH_TEST);
             }
-            if (current != EspMode.NIGHT_BLOOM && Boolean.TRUE.equals(shader.getValue())) {
+            if (current != EspMode.SCAN && current != EspMode.NIGHT_BLOOM && Boolean.TRUE.equals(shader.getValue())) {
                 TargetShader.begin(primary, secondary, alphaScale, time,
                         current == EspMode.AURORA || current == EspMode.SAKURA ? 0.0f : hurtPulse);
             }
-            if (current == EspMode.COSMIC) {
+            if (current == EspMode.SCAN) {
+                drawLegacyScan(bodyHeight, alphaScale);
+            } else if (current == EspMode.COSMIC) {
                 drawCosmic(target, baseRadius, bodyHeight, alphaScale, time);
             } else if (current == EspMode.AURORA) {
                 drawAurora(target, baseRadius, bodyHeight, alphaScale, time);
@@ -340,19 +351,53 @@ public class TargetESP extends Module {
                 drawSakuraPetals(baseRadius, bodyHeight, alphaScale, time);
             } else if (current == EspMode.NIGHT_BLOOM) {
                 drawNightBloom(target, baseRadius, bodyHeight, alphaScale, time, palette);
-            } else if (current == EspMode.VAPE || current == EspMode.CAPSULE) {
-                drawCapsule(baseRadius, bodyHeight, alphaScale, time);
-                drawVerticalMarkers(baseRadius, bodyHeight, alphaScale, time);
-            }
-            if (current == EspMode.VAPE || current == EspMode.RINGS) {
-                drawRing(0.04f, baseRadius + 0.08f, 0.045f, 72, alphaScale * 0.92f, time);
-                drawRing(bodyHeight * 0.52f, baseRadius + 0.03f, 0.025f, 72, alphaScale * 0.48f, time + 0.7f);
-                drawRing(bodyHeight + 0.04f, baseRadius + 0.06f, 0.035f, 72, alphaScale * 0.70f, time + 1.4f);
-                drawHealthArc(target, bodyHeight + 0.12f, baseRadius + 0.13f, 0.032f, alphaScale);
             }
         } finally {
             restoreTargetRenderState(previousProgram, matrixPushed, attribStatePushed);
         }
+    }
+
+    private void drawLegacyBox(EntityLivingBase target, boolean hudColor) {
+        Color color;
+        if (hudColor) {
+            color = ((HUD) YozakuraRuntime.moduleManager.modules.get(HUD.class))
+                    .getColor(System.currentTimeMillis());
+        } else {
+            color = new Color(target.hurtTime > 0 ? 16733525 : 5635925);
+        }
+        RenderUtil.enableRenderState();
+        try {
+            RenderUtil.drawEntityBox(target, color.getRed(), color.getGreen(), color.getBlue());
+        } finally {
+            RenderUtil.disableRenderState();
+        }
+    }
+
+    private void drawLegacyScan(float bodyHeight, float alpha) {
+        HUD hud = (HUD) YozakuraRuntime.moduleManager.modules.get(HUD.class);
+        double offset = (Math.sin(System.currentTimeMillis() / 300.0D) + 1.0D) * 0.5D * bodyHeight;
+        float scanRadius = 0.6F;
+
+        GL11.glShadeModel(GL11.GL_SMOOTH);
+        GL11.glBegin(GL11.GL_TRIANGLE_FAN);
+        setColor(hud.getColor(0).getRGB(), alpha * 0.4F);
+        GL11.glVertex3d(0.0D, offset, 0.0D);
+        for (int angleDegrees = 0; angleDegrees <= 360; angleDegrees += 10) {
+            double angle = Math.toRadians(angleDegrees);
+            setColor(hud.getColor(angleDegrees * 10L).getRGB(), 0.0F);
+            GL11.glVertex3d(Math.sin(angle) * scanRadius, offset, Math.cos(angle) * scanRadius);
+        }
+        GL11.glEnd();
+
+        GL11.glLineWidth(6.0F);
+        GL11.glBegin(GL11.GL_LINE_STRIP);
+        for (int angleDegrees = 0; angleDegrees <= 360; angleDegrees += 5) {
+            double angle = Math.toRadians(angleDegrees);
+            setColor(hud.getColor(angleDegrees * 20L).getRGB(), alpha);
+            GL11.glVertex3d(Math.sin(angle) * scanRadius, offset, Math.cos(angle) * scanRadius);
+        }
+        GL11.glEnd();
+        GL11.glShadeModel(GL11.GL_FLAT);
     }
 
     private static int currentProgram() {

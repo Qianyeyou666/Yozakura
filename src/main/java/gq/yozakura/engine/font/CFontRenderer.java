@@ -3,8 +3,6 @@ package gq.yozakura.engine.font;
 import gq.yozakura.engine.render.GLStateManager;
 import gq.yozakura.engine.render.glow.GlowProfile;
 import gq.yozakura.engine.render.ui.RenderServices;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import org.lwjgl.BufferUtils;
@@ -43,6 +41,8 @@ public class CFontRenderer extends CFont {
     private Font boldFont;
     private Font italicFont;
     private Font boldItalicFont;
+    private Font[] fallbackFonts;
+    private UnicodeGlyphCache unicodeGlyphCache;
     private final Map<Integer, CFontRenderer> scaledRenderers = new HashMap<Integer, CFontRenderer>();
     private final Map<String, Integer> widthCache = new LinkedHashMap<String, Integer>(128, 0.75f, true) {
         @Override
@@ -57,11 +57,13 @@ public class CFontRenderer extends CFont {
     }
 
     public CFontRenderer(Font font, Font boldFont, Font italicFont, Font boldItalicFont,
-                         boolean antiAlias, boolean fractionalMetrics, Font... ignoredFallbacks) {
+                         boolean antiAlias, boolean fractionalMetrics, Font... fallbackFonts) {
         super(font, antiAlias, fractionalMetrics);
         this.boldFont = boldFont == null ? font.deriveFont(Font.BOLD) : boldFont;
         this.italicFont = italicFont == null ? font.deriveFont(Font.ITALIC) : italicFont;
         this.boldItalicFont = boldItalicFont == null ? font.deriveFont(Font.BOLD | Font.ITALIC) : boldItalicFont;
+        this.unicodeGlyphCache = new UnicodeGlyphCache(font, fallbackFonts, antiAlias, fractionalMetrics);
+        this.fallbackFonts = this.unicodeGlyphCache.fallbackFonts();
         setupMinecraftColorcodes();
         setupBoldItalicIDs();
     }
@@ -97,9 +99,6 @@ public class CFontRenderer extends CFont {
      */
     public float drawGlowString(String text, double x, double y, int glowColor,
                                 float strength, GlowProfile profile) {
-        if (requiresUnicodeFallback(text)) {
-            return (float) (x + getStringWidth(text));
-        }
         RenderServices.glow().queueText(this, text, x, y, glowColor, strength, profile);
         return (float) (x + getStringWidth(text));
     }
@@ -144,9 +143,6 @@ public class CFontRenderer extends CFont {
                                      boolean allowScaleCompensation, boolean maskPass) {
         if (text == null || text.length() == 0) {
             return 0.0f;
-        }
-        if (!maskPass && requiresUnicodeFallback(text)) {
-            return drawUnicodeFallback(text, x, y, color, shadow);
         }
         if (allowScaleCompensation && scaleCompensationEnabled) {
             ParentScale parentScale = getParentScale();
@@ -269,18 +265,43 @@ public class CFontRenderer extends CFont {
                     continue;
                 }
 
+                int codePoint = Character.codePointAt(text, i);
+                if (codePoint >= currentData.length) {
+                    if (drawingBatch) {
+                        GL11.glEnd();
+                        drawingBatch = false;
+                    }
+                    int style = fontStyle(bold, italic);
+                    UnicodeGlyphCache.Glyph glyph = unicodeGlyphCache.glyph(codePoint, style);
+                    if (glyph.drawable) {
+                        boundTextureId = bindFontTexture(glyph.texture(), boundTextureId);
+                        GL11.glBegin(GL11.GL_QUADS);
+                        drawQuad((float) x, (float) y - glyph.yOffset,
+                                glyph.width, glyph.height, 0.0f, 0.0f, 1.0f, 1.0f);
+                        GL11.glEnd();
+                    }
+                    if (strikethrough) {
+                        double lineY = y + Math.max(1, fontHeight) / 2.0;
+                        drawLine(x, lineY, x + glyph.advance, lineY, 1.0f);
+                    }
+                    if (underline) {
+                        double lineY = y + Math.max(1, fontHeight) - 2.0;
+                        drawLine(x, lineY, x + glyph.advance, lineY, 1.0f);
+                    }
+                    x += glyph.advance + charOffset;
+                    i += Character.charCount(codePoint) - 1;
+                    continue;
+                }
+
                 if (randomCase && Character.isLetter(character)) {
                     character = Character.isUpperCase(character)
                             ? Character.toUpperCase(character)
                             : Character.toLowerCase(character);
                 }
-                if (character >= currentData.length) {
-                    continue;
-                }
-
                 CharData glyph = currentData[character];
                 if (glyph.drawable) {
                     if (!drawingBatch) {
+                        boundTextureId = bindFontTexture(currentTexture, boundTextureId);
                         GL11.glBegin(GL11.GL_QUADS);
                         drawingBatch = true;
                     }
@@ -326,51 +347,6 @@ public class CFontRenderer extends CFont {
         return (float) x / 2.0f;
     }
 
-    private static boolean requiresUnicodeFallback(String text) {
-        if (text == null) {
-            return false;
-        }
-        for (int index = 0; index < text.length(); index++) {
-            if (text.charAt(index) >= 256) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private float drawUnicodeFallback(String text, double x, double y, int color, boolean shadow) {
-        FontRenderer renderer = Minecraft.getMinecraft().fontRendererObj;
-        if (renderer == null) {
-            return 0.0f;
-        }
-        int resolvedColor = color == 553648127 ? 16777215 : color;
-        if ((resolvedColor & 0xFF000000) == 0) {
-            resolvedColor |= 0xFF000000;
-        }
-        boolean unicode = renderer.getUnicodeFlag();
-        try {
-            renderer.setUnicodeFlag(true);
-            renderer.drawString(text, (float) x, (float) y, resolvedColor, shadow);
-            return (float) (x + renderer.getStringWidth(text));
-        } finally {
-            renderer.setUnicodeFlag(unicode);
-        }
-    }
-
-    private int getUnicodeWidth(String text) {
-        FontRenderer renderer = Minecraft.getMinecraft().fontRendererObj;
-        if (renderer == null) {
-            return 0;
-        }
-        boolean unicode = renderer.getUnicodeFlag();
-        try {
-            renderer.setUnicodeFlag(true);
-            return renderer.getStringWidth(text);
-        } finally {
-            renderer.setUnicodeFlag(unicode);
-        }
-    }
-
     private double snapToTextGrid(double value) {
         return Math.round(value * 2.0) / 2.0;
     }
@@ -407,7 +383,8 @@ public class CFontRenderer extends CFont {
                 italicFont.deriveFont(Font.ITALIC, (float) size),
                 boldItalicFont.deriveFont(Font.BOLD | Font.ITALIC, (float) size),
                 antiAlias,
-                fractionalMetrics);
+                fractionalMetrics,
+                deriveFallbacks(size));
         scaledRenderers.put(size, renderer);
         return renderer;
     }
@@ -436,9 +413,6 @@ public class CFontRenderer extends CFont {
     public int getStringWidth(String text) {
         if (text == null) {
             return 0;
-        }
-        if (requiresUnicodeFallback(text)) {
-            return getUnicodeWidth(text);
         }
         String cacheKey = charOffset + "\u0000" + text;
         Integer cachedWidth = widthCache.get(cacheKey);
@@ -471,8 +445,12 @@ public class CFontRenderer extends CFont {
                 i++;
                 continue;
             }
-            if (character < currentData.length) {
-                width += currentData[character].advance + charOffset;
+            int codePoint = Character.codePointAt(text, i);
+            if (codePoint < currentData.length) {
+                width += currentData[codePoint].advance + charOffset;
+            } else {
+                width += unicodeGlyphCache.glyph(codePoint, fontStyle(bold, italic)).advance + charOffset;
+                i += Character.charCount(codePoint) - 1;
             }
         }
         int result = width / 2;
@@ -482,10 +460,12 @@ public class CFontRenderer extends CFont {
 
     @Override
     public void setFont(Font font) {
+        Font[] resizedFallbacks = deriveFallbacks(Math.max(1, Math.round(font.getSize2D())));
         super.setFont(font);
         this.boldFont = font.deriveFont(Font.BOLD);
         this.italicFont = font.deriveFont(Font.ITALIC);
         this.boldItalicFont = font.deriveFont(Font.BOLD | Font.ITALIC);
+        replaceUnicodeGlyphCache(font, resizedFallbacks);
         widthCache.clear();
         scaledRenderers.clear();
         setupBoldItalicIDs();
@@ -494,6 +474,7 @@ public class CFontRenderer extends CFont {
     @Override
     public void setAntiAlias(boolean antiAlias) {
         super.setAntiAlias(antiAlias);
+        replaceUnicodeGlyphCache(font, fallbackFonts);
         widthCache.clear();
         scaledRenderers.clear();
         setupBoldItalicIDs();
@@ -502,6 +483,7 @@ public class CFontRenderer extends CFont {
     @Override
     public void setFractionalMetrics(boolean fractionalMetrics) {
         super.setFractionalMetrics(fractionalMetrics);
+        replaceUnicodeGlyphCache(font, fallbackFonts);
         widthCache.clear();
         scaledRenderers.clear();
         setupBoldItalicIDs();
@@ -511,6 +493,26 @@ public class CFontRenderer extends CFont {
         texBold = setupTexture(boldFont, antiAlias, fractionalMetrics, boldChars);
         texItalic = setupTexture(italicFont, antiAlias, fractionalMetrics, italicChars);
         texItalicBold = setupTexture(boldItalicFont, antiAlias, fractionalMetrics, boldItalicChars);
+    }
+
+    private int fontStyle(boolean bold, boolean italic) {
+        return (bold ? Font.BOLD : Font.PLAIN) | (italic ? Font.ITALIC : Font.PLAIN);
+    }
+
+    private Font[] deriveFallbacks(int size) {
+        Font[] derived = new Font[fallbackFonts.length];
+        for (int i = 0; i < fallbackFonts.length; i++) {
+            derived[i] = fallbackFonts[i].deriveFont(fallbackFonts[i].getStyle(), (float) size);
+        }
+        return derived;
+    }
+
+    private void replaceUnicodeGlyphCache(Font primary, Font[] fallbacks) {
+        if (unicodeGlyphCache != null) {
+            unicodeGlyphCache.clear();
+        }
+        unicodeGlyphCache = new UnicodeGlyphCache(primary, fallbacks, antiAlias, fractionalMetrics);
+        fallbackFonts = unicodeGlyphCache.fallbackFonts();
     }
 
     private void drawLine(double x, double y, double x1, double y1, float width) {

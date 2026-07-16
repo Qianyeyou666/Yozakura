@@ -1,6 +1,5 @@
 package gq.yozakura.module.combat.aim;
 
-import gq.yozakura.module.combat.AntiBot;
 import gq.yozakura.util.minecraft.RotationUtil;
 import gq.yozakura.util.module.TeamUtil;
 import net.minecraft.client.Minecraft;
@@ -150,7 +149,7 @@ public final class AimAssistTargetSelector {
             if (settings.ignoreTeammates && TeamUtil.isSameTeam(player)) {
                 return false;
             }
-            if (settings.botCheck && (TeamUtil.isBot(player) || AntiBot.isServerBot(player))) {
+            if (settings.botCheck && TeamUtil.isBot(player)) {
                 return false;
             }
         }

@@ -40,9 +40,6 @@ import java.util.Random;
 import static gq.yozakura.util.minecraft.Helper.mc;
 
 public class Client {
-    public static final boolean DebugMode = false;
-    // 调试时可以启用，注入成功会修改标题
-
     public static String name = "Yozakura";
     public static String username = "YozakuraUser";
     public static String version = "1.52";
@@ -169,9 +166,6 @@ public class Client {
     @SubscribeEvent
     public void onDisconnect(FMLNetworkEvent.ClientDisconnectionFromServerEvent event) {
         fileManager.saveIfDirtyQuietly();
-        fileManager.setAutoSaveSuspended(true);
-        ModuleManager.disableAll(false);
-        fileManager.setAutoSaveSuspended(false);
         faList.clear();
     }
 

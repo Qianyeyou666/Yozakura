@@ -67,6 +67,7 @@ dependencies {
     shade 'javazoom:jlayer:1.0.1'
     shade 'com.google.zxing:core:3.5.3'
     testImplementation 'junit:junit:4.13.2'
+    testRuntimeOnly 'com.google.code.gson:gson:2.2.4'
 }
 
 unimined.minecraft {

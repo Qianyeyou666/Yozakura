@@ -4,10 +4,6 @@ import com.google.common.base.CaseFormat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityOtherPlayerMP;
 import net.minecraft.client.gui.inventory.GuiContainer;
-import net.minecraft.client.renderer.GlStateManager;
-import net.minecraft.client.renderer.Tessellator;
-import net.minecraft.client.renderer.WorldRenderer;
-import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.boss.EntityDragon;
@@ -30,7 +26,6 @@ import net.minecraft.util.MovingObjectPosition.MovingObjectType;
 import net.minecraft.world.WorldSettings.GameType;
 import gq.yozakura.module.ModuleType;
 import org.lwjgl.input.Keyboard;
-import org.lwjgl.opengl.GL11;
 import org.lwjgl.util.vector.Vector2f;
 import gq.yozakura.runtime.YozakuraRuntime;
 import gq.yozakura.manager.BlinkModules;
@@ -50,20 +45,21 @@ import gq.yozakura.module.world.BedNuker;
 import gq.yozakura.module.player.AutoBlockIn;
 import gq.yozakura.module.player.AutoHeal;
 import gq.yozakura.module.world.Scaffold;
-import gq.yozakura.module.render.runtime.HUD;
 import gq.yozakura.value.properties.*;
 import gq.yozakura.util.module.*;
 
-import java.awt.Color;
 import java.util.ArrayList;
 import java.util.Random;
 
 public class KillAura extends Module {
+    private static final float RANGE_INCREMENT = 0.1F;
+
     private static final Minecraft mc = Minecraft.getMinecraft();
-    private static final int AUTOBLOCK_RELEASE = 0;
-    private static final int AUTOBLOCK_INTERACT = 1;
-    private static final int AUTOBLOCK_SWITCH = 2;
-    private static final int AUTOBLOCK_BLINK = 3;
+    private static final int AUTOBLOCK_NONE = 0;
+    private static final int AUTOBLOCK_RELEASE = 1;
+    private static final int AUTOBLOCK_INTERACT = 2;
+    private static final int AUTOBLOCK_SWITCH = 3;
+    private static final int AUTOBLOCK_BLINK = 4;
     public final ModeProperty mode;
     public final ModeProperty sort;
     public ModeProperty autoBlock;
@@ -95,7 +91,6 @@ public class KillAura extends Module {
     public final BooleanProperty golems;
     public final BooleanProperty silverfish;
     public final BooleanProperty teams;
-    public final ModeProperty showTarget;
     public final BooleanProperty rotationDebug;
 
     private final TimerUtil timer = new TimerUtil();
@@ -133,13 +128,17 @@ public class KillAura extends Module {
         this.sort = new ModeProperty("Sort", 0, new String[]{"Distance", "Health", "Hurt Time", "FOV"});
 
         this.autoBlock = new ModeProperty(
-                "AutoBlock", 0, new String[]{"RELEASE", "INTERACT", "SWITCH", "BLINK"}
+                "AutoBlock", AUTOBLOCK_NONE,
+                new String[]{"None", "RELEASE", "INTERACT", "SWITCH", "BLINK"}
         );
         this.autoBlockRequirePress = new BooleanProperty("AutoBlock Require Press", false);
         this.autoBlockCPS = new IntProperty("AutoBlock Aps", 10, 1, 20);
         this.autoBlockRange = new FloatProperty("AutoBlock Range", 6.0F, 3.0F, 8.0F);
         this.swingRange = new FloatProperty("Swing Range", 3.5F, 3.0F, 6.0F);
         this.attackRange = new FloatProperty("Attack Range", 3.0F, 3.0F, 6.0F);
+        this.autoBlockRange.setIncrement(RANGE_INCREMENT);
+        this.swingRange.setIncrement(RANGE_INCREMENT);
+        this.attackRange.setIncrement(RANGE_INCREMENT);
         this.fov = new IntProperty("Fov", 360, 30, 360);
         this.minCPS = new IntProperty("Min CPS", 14, 1, 20);
         this.maxCPS = new IntProperty("Max CPS", 14, 1, 20);
@@ -162,7 +161,6 @@ public class KillAura extends Module {
         this.golems = new BooleanProperty("Golems", false);
         this.silverfish = new BooleanProperty("Silverfish", false);
         this.teams = new BooleanProperty("Teams", true);
-        this.showTarget = new ModeProperty("Show Target", 0, new String[]{"None", "Default", "Hud", "Scan"});
         this.rotationDebug = new BooleanProperty("Rotation Debug", false);
     }
 
@@ -472,7 +470,7 @@ public class KillAura extends Module {
     }
 
     private boolean canAutoBlock() {
-        if (!ItemUtil.isHoldingSword()) {
+        if (this.autoBlock.getValue() == AUTOBLOCK_NONE || !ItemUtil.isHoldingSword()) {
             return false;
         } else {
             return !this.autoBlockRequirePress.getValue() || PlayerUtil.isUsingItem();
@@ -854,106 +852,6 @@ public class KillAura extends Module {
                 }
                 this.clearBlockAnimationState();
             }
-        }
-    }
-
-    @EventTarget
-    public void onRender(Render3DEvent event) {
-        if (this.isEnabled() && this.attackTarget != null) {
-            if (this.showTarget.getValue() != 0
-                    && TeamUtil.isEntityLoaded(this.attackTarget.getEntity())
-                    && this.isAttackAllowed() && this.showTarget.getValue() != 3) {
-                Color color = new Color(-1);
-                switch (this.showTarget.getValue()) {
-                    case 1:
-                        if (this.attackTarget.getEntity().hurtTime > 0) {
-                            color = new Color(16733525);
-                        } else {
-                            color = new Color(5635925);
-                        }
-                        break;
-                    case 2:
-                        color = ((HUD) YozakuraRuntime.moduleManager.modules.get(HUD.class)).getColor(System.currentTimeMillis());
-                }
-                RenderUtil.enableRenderState();
-                try {
-                    RenderUtil.drawEntityBox(this.attackTarget.getEntity(), color.getRed(), color.getGreen(), color.getBlue());
-                } finally {
-                    RenderUtil.disableRenderState();
-                }
-            }
-            if (this.showTarget.getValue() == 3){
-                renderScan(event);
-            }
-        }
-    }
-    public static Vec3 interpolate(Vec3 previousVec, Vec3 currentVec, float progress) {
-        return new Vec3(
-                previousVec.xCoord + (currentVec.xCoord - previousVec.xCoord) * progress,
-                previousVec.yCoord + (currentVec.yCoord - previousVec.yCoord) * progress,
-                previousVec.zCoord + (currentVec.zCoord - previousVec.zCoord) * progress
-        );
-    }
-
-    private void renderScan(Render3DEvent event) {
-        if (this.attackTarget == null) return;
-        double renderPosX = mc.getRenderManager().viewerPosX;
-        double renderPosY = mc.getRenderManager().viewerPosY;
-        double renderPosZ = mc.getRenderManager().viewerPosZ;
-        Vec3 interpolated = interpolate(new Vec3(this.attackTarget.entity.lastTickPosX, this.attackTarget.entity.lastTickPosY, this.attackTarget.entity.lastTickPosZ), this.attackTarget.entity.getPositionVector(), event.getPartialTicks());
-
-        double height = this.attackTarget.entity.height;
-        double offset = (Math.sin(System.currentTimeMillis() / 300.0) + 1) / 2.0 * height;
-
-        double x = interpolated.xCoord - renderPosX;
-        double y = interpolated.yCoord + offset - renderPosY;
-        double z = interpolated.zCoord - renderPosZ;
-
-        GL11.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_COLOR_BUFFER_BIT | GL11.GL_CURRENT_BIT
-                | GL11.GL_DEPTH_BUFFER_BIT | GL11.GL_HINT_BIT | GL11.GL_LINE_BIT | GL11.GL_TEXTURE_BIT);
-        GlStateManager.pushMatrix();
-        try {
-            GlStateManager.translate(x, y, z);
-
-            GlStateManager.disableTexture2D();
-            GlStateManager.enableBlend();
-            GlStateManager.disableAlpha();
-            GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0);
-            GlStateManager.shadeModel(GL11.GL_SMOOTH);
-            GlStateManager.disableCull();
-
-            float radius = 0.6f;
-
-            Tessellator tessellator = Tessellator.getInstance();
-            WorldRenderer worldrenderer = tessellator.getWorldRenderer();
-            worldrenderer.begin(GL11.GL_TRIANGLE_FAN, DefaultVertexFormats.POSITION_COLOR);
-
-            Color centerCol = ((HUD) YozakuraRuntime.moduleManager.modules.get(HUD.class)).getColor(0);
-            worldrenderer.pos(0, 0, 0).color(centerCol.getRed()/255f, centerCol.getGreen()/255f, centerCol.getBlue()/255f, 0.4f).endVertex();
-
-            for(int i = 0; i <= 360; i+=10) {
-                double angle = Math.toRadians(i);
-                Color edgeCol = ((HUD) YozakuraRuntime.moduleManager.modules.get(HUD.class)).getColor(i * 10);
-                worldrenderer.pos(Math.sin(angle) * radius, 0, Math.cos(angle) * radius)
-                        .color(edgeCol.getRed()/255f, edgeCol.getGreen()/255f, edgeCol.getBlue()/255f, 0.0f).endVertex();
-            }
-            tessellator.draw();
-
-            GL11.glLineWidth(6.0f);
-            GL11.glBegin(GL11.GL_LINE_STRIP);
-            for (int i = 0; i <= 360; i+=5) {
-                double angle = Math.toRadians(i);
-                Color lineCol = ((HUD) YozakuraRuntime.moduleManager.modules.get(HUD.class)).getColor(i * 20);
-                GL11.glColor4f(lineCol.getRed()/255f, lineCol.getGreen()/255f, lineCol.getBlue()/255f, 1.0f);
-                GL11.glVertex3d(Math.sin(angle) * radius, 0, Math.cos(angle) * radius);
-            }
-            GL11.glEnd();
-        } finally {
-            GlStateManager.shadeModel(GL11.GL_FLAT);
-            GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
-            GlStateManager.popMatrix();
-            GL11.glPopAttrib();
-            gq.yozakura.engine.render.GLStateManager.syncToCurrent();
         }
     }
 

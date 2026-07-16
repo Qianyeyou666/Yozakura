@@ -78,26 +78,33 @@ public class TeamUtil {
     }
 
     public static boolean isSameTeam(EntityPlayer player) {
+        if (player == null || TeamUtil.mc.thePlayer == null) {
+            return false;
+        }
         if (player == TeamUtil.mc.thePlayer) {
             return true;
         }
-        NetworkPlayerInfo selfInfo = mc.getNetHandler().getPlayerInfo(TeamUtil.mc.thePlayer.getUniqueID());
-        if (selfInfo == null) {
-            return false;
-        }
-        ScorePlayerTeam selfTeam = selfInfo.getPlayerTeam();
+        ScorePlayerTeam selfTeam = getScoreTeam(TeamUtil.mc.thePlayer);
         if (selfTeam == null) {
             return false;
         }
-        NetworkPlayerInfo targetInfo = mc.getNetHandler().getPlayerInfo(player.getUniqueID());
-        if (targetInfo == null) {
-            return false;
-        }
-        ScorePlayerTeam targetTeam = targetInfo.getPlayerTeam();
+        ScorePlayerTeam targetTeam = getScoreTeam(player);
         if (targetTeam == null) {
             return false;
         }
-        return selfTeam.getColorPrefix().equals(targetTeam.getColorPrefix());
+        return TeamIdentity.isSameTeam(selfTeam.getRegisteredName(), selfTeam.getColorPrefix(),
+                targetTeam.getRegisteredName(), targetTeam.getColorPrefix());
+    }
+
+    private static ScorePlayerTeam getScoreTeam(EntityPlayer player) {
+        if (player.getTeam() instanceof ScorePlayerTeam) {
+            return (ScorePlayerTeam) player.getTeam();
+        }
+        if (mc.getNetHandler() == null) {
+            return null;
+        }
+        NetworkPlayerInfo playerInfo = mc.getNetHandler().getPlayerInfo(player.getUniqueID());
+        return playerInfo == null ? null : playerInfo.getPlayerTeam();
     }
 
     public static boolean hasTeamColor(EntityLivingBase entity) {

@@ -75,7 +75,10 @@ public class BridgeAssistDelegationContractTest {
         int acceptedEnd = bridgeAssist.indexOf("public void onPacketWritten(PacketWriteEvent event)", acceptedBegin);
         String acceptedHandler = bridgeAssist.substring(acceptedBegin, acceptedEnd);
 
-        assertTrue(acceptedHandler.contains("if (!getState() || !canAssist())"));
+        assertTrue(acceptedHandler.contains("if (!getState() || !canPreservePlacementOrder())"));
+        assertTrue(acceptedHandler.contains("event.requestOriginalPacketOrder();"));
+        assertTrue(acceptedHandler.contains("if (packet.getPlacedBlockDirection() != 255)"));
+        assertTrue(acceptedHandler.contains("if (canAssist())"));
         assertTrue(sneakController.contains("unclaimedPlacementWriteIds"));
         assertTrue(sneakController.contains("claimUnclaimedPlacementSessions"));
         assertTrue(sneakController.contains("hasPendingPlacementForActiveSession"));
@@ -93,6 +96,41 @@ public class BridgeAssistDelegationContractTest {
         assertTrue(bridgeAssist.contains("\"HoldingBlocks\""));
         assertTrue(bridgeAssist.contains("\"LookingDown\""));
         assertTrue(bridgeAssist.contains("\"NotMovingForward\""));
+    }
+
+    @Test
+    public void modulePresentsTickAccurateBasicSettingsWithoutHidingActiveLegacyOptions() throws IOException {
+        String bridgeAssist = source("src/main/java/gq/yozakura/module/world/BridgeAssist.java");
+
+        assertTrue(bridgeAssist.contains("\"Edge Tolerance (blocks)\", \"EdgeOffset\""));
+        assertTrue(bridgeAssist.contains("\"Edge Tolerance (blocks)\", \"EdgeOffset\", 0.0D, 0.0D, 0.3D, 0.01D"));
+        assertTrue(bridgeAssist.contains("\"Release Delay (ms)\", \"UnsneakDelay\", 50.0D, 10.0D, 300.0D, 1.0D"));
+        assertTrue(bridgeAssist.contains("\"Jump Sneak Hold (ms)\", \"SneakOnJump\", 0.0D, 0.0D, 500.0D, 1.0D"));
+        assertTrue(bridgeAssist.contains("\"Only With Blocks\", \"HoldingBlocks\""));
+        assertTrue(bridgeAssist.contains("\"Advanced Options\", \"AdvancedOptions\""));
+        assertTrue(bridgeAssist.contains("visibleWhen(this::showAdvancedOptions)"));
+        assertTrue(bridgeAssist.contains("Boolean.TRUE.equals(prePlace.getValue())"));
+        assertTrue(bridgeAssist.contains("sneakOnJump.getValue() > 0.0D"));
+    }
+
+    @Test
+    public void moduleYieldsControlDuringSpecialMovementPhysics() throws IOException {
+        String bridgeAssist = source("src/main/java/gq/yozakura/module/world/BridgeAssist.java");
+
+        assertTrue(bridgeAssist.contains("!mc.thePlayer.isInWater()"));
+        assertTrue(bridgeAssist.contains("!mc.thePlayer.isInLava()"));
+        assertTrue(bridgeAssist.contains("!mc.thePlayer.isOnLadder()"));
+        assertTrue(bridgeAssist.contains("!mc.thePlayer.isRiding()"));
+        assertTrue(bridgeAssist.contains("!isInsideWeb()"));
+        assertTrue(bridgeAssist.contains("Blocks.web"));
+    }
+
+    @Test
+    public void sneakControllerNeverKeepsAnInvalidConditionAliveForAPendingPlacement() throws IOException {
+        String sneakController = source("src/main/java/gq/yozakura/module/world/BridgeAssistSneakController.java");
+
+        assertTrue(sneakController.contains("if (shouldClearSneak(forward)) {"));
+        assertFalse(sneakController.contains("shouldClearSneak(forward) && !activePlacementPending"));
     }
 
     private static String source(String path) throws IOException {

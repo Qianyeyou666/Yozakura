@@ -12,14 +12,19 @@ import static org.junit.Assert.assertTrue;
 
 public class AuthReleaseBoundaryContractTest {
     @Test
-    public void releaseBuildCannotCompileAuthenticationIntoAnAlwaysAllowBranch() throws IOException {
+    public void releaseBuildKeepsAuthenticationEnabled() throws IOException {
         String client = source("src/main/java/gq/yozakura/core/Client.java");
         String gate = source("src/main/java/gq/yozakura/auth/YozakuraAuthGate.java");
+        String bridgeDebug = source("src/main/java/gq/yozakura/manager/BridgeDebug.java");
 
-        assertTrue("Release builds must compile with authentication enabled",
-                client.contains("public static final boolean DebugMode = false;"));
+        assertFalse("The client must not expose a patchable DebugMode switch",
+                client.contains("DebugMode"));
+        assertFalse("The authentication gate must not contain a debug switch",
+                gate.contains("Client.DebugMode"));
         assertFalse("The authentication gate must not contain a debug identity bypass",
                 gate.contains("return \"DebugUser\";"));
+        assertFalse("Bridge diagnostics must not depend on a client debug switch",
+                bridgeDebug.contains("Client.DebugMode"));
     }
 
     @Test

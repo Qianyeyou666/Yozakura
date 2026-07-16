@@ -101,6 +101,30 @@ public class BridgeAssistSneakStateMachineTest {
                 machine.update(packetFrame(100, false, true, false)));
     }
 
+    @Test
+    public void returnsControlWhenAPendingPlacementOutlivesMovement() {
+        BridgeAssistSneakStateMachine machine = new BridgeAssistSneakStateMachine();
+
+        assertEquals(BridgeAssistSneakStateMachine.Decision.FORCE_ON,
+                machine.update(packetFrame(100, true, false, false)));
+
+        assertEquals(BridgeAssistSneakStateMachine.Decision.KEEP,
+                machine.update(pendingFrame(101, false, false, false)));
+        assertEquals(BridgeAssistSneakStateMachine.State.IDLE, machine.getState());
+    }
+
+    @Test
+    public void returnsControlWhenTheRequiredSneakKeyIsReleasedDuringAPendingPlacement() {
+        BridgeAssistSneakStateMachine machine = new BridgeAssistSneakStateMachine();
+
+        assertEquals(BridgeAssistSneakStateMachine.Decision.FORCE_ON,
+                machine.update(frame(100, true, true, false)));
+
+        assertEquals(BridgeAssistSneakStateMachine.Decision.KEEP,
+                machine.update(pendingFrame(101, true, true, false)));
+        assertEquals(BridgeAssistSneakStateMachine.State.IDLE, machine.getState());
+    }
+
     private static BridgeAssistSneakStateMachine.Frame frame(int tick, boolean edge,
                                                               boolean physicalSneak, boolean placementCommitted) {
         return new BridgeAssistSneakStateMachine.Frame(
@@ -153,6 +177,26 @@ public class BridgeAssistSneakStateMachineTest {
                 false,
                 placementPending,
                 placementCommitted,
+                0,
+                0
+        );
+    }
+
+    private static BridgeAssistSneakStateMachine.Frame pendingFrame(int tick, boolean moving,
+                                                                      boolean requirePhysicalSneak,
+                                                                      boolean physicalSneak) {
+        return new BridgeAssistSneakStateMachine.Frame(
+                tick,
+                true,
+                moving,
+                physicalSneak,
+                requirePhysicalSneak,
+                false,
+                true,
+                false,
+                false,
+                true,
+                false,
                 0,
                 0
         );

@@ -101,6 +101,11 @@ public class TargetHUD extends Module {
     public TargetHUD() {
         super("TargetHUD", Keyboard.KEY_NONE, ModuleType.Render, "Show target info when aiming at an entity");
         Chinese = "目标信息";
+        xPosition.visibleWhen(() -> false);
+        yPosition.visibleWhen(() -> false);
+        scale.visibleWhen(() -> false);
+        xOffset.visibleWhen(() -> false);
+        yOffset.visibleWhen(() -> false);
         this.addValues(xPosition, yPosition, scale, xOffset, yOffset, showAvatar, auraTarget, frostedGlass, style);
     }
 

@@ -19,34 +19,34 @@ import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 
 import java.lang.reflect.Field;
-import java.util.Random;
 
 public class AutoClicker extends Module {
     private final Numbers<Double> minCps = new Numbers<Double>("Min CPS", "MinCPS", 8.0D, 1.0D, 20.0D, 0.5D);
     private final Numbers<Double> maxCps = new Numbers<Double>("Max CPS", "MaxCPS", 12.0D, 1.0D, 20.0D, 0.5D);
-    private final Option<Boolean> simulateExhaust =
-            new Option<Boolean>("Simulate exhaust", "SimulateExhaust", true);
+    private final Option<Boolean> smoothRhythm =
+            new Option<Boolean>("Smooth Rhythm", "SimulateExhaust", true);
     private final Option<Boolean> notUsingItem =
-            new Option<Boolean>("Not using item", "NotUsingItem", true);
-    private final Option<Boolean> breakBlocks = new Option<Boolean>("Break blocks", "BreakBlocks", false);
-    private final Option<Boolean> weaponOnly = new Option<Boolean>("Weapon only", "WeaponOnly", false);
+            new Option<Boolean>("Pause While Using", "NotUsingItem", true);
+    private final Option<Boolean> breakBlocks = new Option<Boolean>("Break Blocks", "BreakBlocks", false);
+    private final Option<Boolean> weaponOnly = new Option<Boolean>("Weapon Only", "WeaponOnly", false);
     private final Option<Boolean> disableCreative =
-            new Option<Boolean>("Disable in creative", "DisableCreative", false);
-    private final Option<Boolean> inventory = new Option<Boolean>("Inventory", "Inventory", false);
+            new Option<Boolean>("Disable In Creative", "DisableCreative", false);
+    private final Option<Boolean> inventory = new Option<Boolean>("Inventory Clicking", "Inventory", false);
     private final Numbers<Double> inventoryStartDelay =
-            new Numbers<Double>("Start delay", "InventoryStartDelay", 100.0D, 0.0D, 250.0D, 10.0D);
+            new Numbers<Double>("Inventory Start Delay (ms)", "InventoryStartDelay",
+                    100.0D, 0.0D, 250.0D, 10.0D);
 
     private static Field hoveredSlotField;
 
     private final AutoClickController clickController = new AutoClickController();
-    private final Random random = new Random();
     private long inventoryNextClickTime;
+    private int inventoryIntervalIndex;
     private int lastAttackTick = Integer.MIN_VALUE;
 
     public AutoClicker() {
         super("AutoClicker", Keyboard.KEY_K, ModuleType.Combat,
                 "Click automatically while the physical left mouse button is held");
-        addValues(minCps, maxCps, simulateExhaust, notUsingItem, breakBlocks, weaponOnly,
+        addValues(minCps, maxCps, smoothRhythm, notUsingItem, breakBlocks, weaponOnly,
                 disableCreative, inventory, inventoryStartDelay);
         Chinese = "连点器";
     }
@@ -105,16 +105,14 @@ public class AutoClicker extends Module {
         }
 
         boolean allowed = canClick();
-        if (isPointingAtBlock()) {
+        if (isPointingAtBlock() && !Boolean.TRUE.equals(breakBlocks.getValue())) {
             clickController.reset();
-            if (Boolean.TRUE.equals(breakBlocks.getValue())) {
-                return;
-            }
-            allowed = false;
+            return;
         }
 
-        long now = System.currentTimeMillis();
-        if (clickController.shouldClick(now, true, allowed, nextDelay())) {
+        long now = monotonicTimeMillis();
+        if (clickController.shouldClick(now, true, allowed,
+                minCps.getValue(), maxCps.getValue(), Boolean.TRUE.equals(smoothRhythm.getValue()))) {
             performLeftClick();
         }
     }
@@ -133,25 +131,20 @@ public class AutoClicker extends Module {
     }
 
     private void performLeftClick() {
+        Backtrack.applyBacktrackHit();
         Entity target = hoveredEntity();
         if (target != null && (!HitSelect.shouldAttack(target) || !KnockbackDelay.shouldAttack(target))) {
             return;
         }
 
-        Backtrack.applyBacktrackHit();
         if (target != null) {
             Criticals.tryCritical(false);
         }
 
         MinecraftAccessor.setLeftClickCounter(mc, 0);
-        boolean clicked = MinecraftAccessor.clickMouse(mc);
-        if (!clicked) {
-            if (target != null) {
-                mc.thePlayer.swingItem();
-                mc.playerController.attackEntity(mc.thePlayer, target);
-            } else {
-                mc.thePlayer.swingItem();
-            }
+        if (!MinecraftAccessor.clickMouse(mc)) {
+            clickController.reset();
+            return;
         }
 
         if (target != null) {
@@ -162,10 +155,11 @@ public class AutoClicker extends Module {
 
     private void handleInventoryClick() {
         if (!Boolean.TRUE.equals(inventory.getValue()) || !isInGame()) {
+            resetInventoryClickState();
             return;
         }
         if (!(mc.currentScreen instanceof GuiContainer) || !isMouseButtonDown(0)) {
-            inventoryNextClickTime = 0L;
+            resetInventoryClickState();
             return;
         }
 
@@ -174,17 +168,11 @@ public class AutoClicker extends Module {
             return;
         }
 
-        long now = System.currentTimeMillis();
+        long now = monotonicTimeMillis();
         if (inventoryNextClickTime == 0L) {
             inventoryNextClickTime = now + Math.max(0L, inventoryStartDelay.getValue().longValue());
         }
-
-        int clicks = 0;
-        while (inventoryNextClickTime <= now) {
-            clicks++;
-            inventoryNextClickTime += nextDelay();
-        }
-        if (clicks == 0) {
+        if (inventoryNextClickTime > now) {
             return;
         }
 
@@ -195,9 +183,11 @@ public class AutoClicker extends Module {
         }
 
         int mode = GuiScreen.isShiftKeyDown() ? 1 : 0;
-        for (int i = 0; i < clicks; i++) {
-            mc.playerController.windowClick(gui.inventorySlots.windowId, slot.slotNumber, 0, mode, mc.thePlayer);
-        }
+        mc.playerController.windowClick(gui.inventorySlots.windowId, slot.slotNumber, 0, mode, mc.thePlayer);
+        inventoryNextClickTime = now + AutoClickController.calculateDelay(
+                minCps.getValue(), maxCps.getValue(), Boolean.TRUE.equals(smoothRhythm.getValue()),
+                inventoryIntervalIndex++
+        );
     }
 
     private boolean isPointingAtBlock() {
@@ -209,33 +199,19 @@ public class AutoClicker extends Module {
         return mc.objectMouseOver == null ? null : mc.objectMouseOver.entityHit;
     }
 
-    private long nextDelay() {
-        double min = Math.max(1.0D, Math.min(minCps.getValue(), maxCps.getValue()));
-        double max = Math.max(min, Math.max(minCps.getValue(), maxCps.getValue()));
-        double cps = min + random.nextDouble() * (max - min + 0.001D);
-        int delay = Math.max(1, (int) Math.round(1000.0D / cps));
-
-        if (Boolean.TRUE.equals(simulateExhaust.getValue())) {
-            delay += random.nextInt(17) - 8;
-            if (random.nextInt(100) < 11) {
-                delay += 18 + random.nextInt(45);
-            }
-            if (random.nextInt(100) < 7) {
-                delay -= 8 + random.nextInt(18);
-            }
-            if (random.nextInt(100) < 4) {
-                delay += 70 + random.nextInt(90);
-            }
-        } else {
-            delay += random.nextInt(9) - 4;
-        }
-        return Math.max(50L, Math.min(260L, delay));
-    }
-
     private void resetState() {
         clickController.reset();
-        inventoryNextClickTime = 0L;
+        resetInventoryClickState();
         lastAttackTick = Integer.MIN_VALUE;
+    }
+
+    private void resetInventoryClickState() {
+        inventoryNextClickTime = 0L;
+        inventoryIntervalIndex = 0;
+    }
+
+    private static long monotonicTimeMillis() {
+        return System.nanoTime() / 1_000_000L;
     }
 
     private static boolean isMouseButtonDown(int button) {

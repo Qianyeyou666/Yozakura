@@ -99,7 +99,7 @@ public class NightBloomHudLayoutTest {
         float sharedEnd = NightBloomHudLayout.moduleJoinEnd(300.0F, 304.0F);
         float reversedEnd = NightBloomHudLayout.moduleJoinEnd(304.0F, 300.0F);
 
-        assertEquals(104.0F, sharedStart, EPSILON);
+        assertEquals(100.0F, sharedStart, EPSILON);
         assertEquals(sharedStart, reversedStart, EPSILON);
         assertEquals(300.0F, sharedEnd, EPSILON);
         assertEquals(sharedEnd, reversedEnd, EPSILON);
@@ -113,6 +113,25 @@ public class NightBloomHudLayoutTest {
 
         assertEquals(27.98F, NightBloomHudLayout.moduleRowBottom(10.0F, 27.98F, true), EPSILON);
         assertEquals(28.0F, NightBloomHudLayout.moduleRowBottom(10.0F, 27.98F, false), EPSILON);
+    }
+
+    @Test
+    public void fusedModuleStepsFlattenOnlyTheInsetLeftCorners() {
+        float radius = NightBloomHudLayout.PANEL_RADIUS;
+
+        assertEquals(0.0F, NightBloomHudLayout.moduleTopLeftRadius(
+                110.0F, 90.0F, radius, true), EPSILON);
+        assertEquals(radius, NightBloomHudLayout.moduleTopLeftRadius(
+                90.0F, 110.0F, radius, true), EPSILON);
+        assertEquals(radius, NightBloomHudLayout.moduleTopLeftRadius(
+                110.0F, 90.0F, radius, false), EPSILON);
+
+        assertEquals(0.0F, NightBloomHudLayout.moduleBottomLeftRadius(
+                110.0F, 90.0F, radius, true), EPSILON);
+        assertEquals(radius, NightBloomHudLayout.moduleBottomLeftRadius(
+                90.0F, 110.0F, radius, true), EPSILON);
+        assertEquals(radius, NightBloomHudLayout.moduleBottomLeftRadius(
+                110.0F, 90.0F, radius, false), EPSILON);
     }
 
     @Test

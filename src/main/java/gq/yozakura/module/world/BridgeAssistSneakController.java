@@ -6,6 +6,7 @@ import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.BlockPos;
 import net.minecraft.util.MathHelper;
 
 import java.util.ArrayDeque;
@@ -18,9 +19,7 @@ import java.util.Queue;
 /** Maintains BridgeAssist's edge prediction and submits one sneak intent per input frame. */
 final class BridgeAssistSneakController {
     private static final float MIN_LOOK_DOWN_PITCH = 70.0F;
-    private static final double INPUT_PREDICTION_SPEED = 0.12D;
     private static final double GROUND_CHECK_DEPTH = 0.01D;
-    private static final double TICK_MILLIS = 50.0D;
 
     private final Minecraft mc;
     private final Numbers<Double> edgeOffset;
@@ -52,7 +51,7 @@ final class BridgeAssistSneakController {
         float forward = event.getRawForward();
         float strafe = event.getRawStrafe();
         boolean activePlacementPending = placementSessions.hasPendingPlacementForActiveSession();
-        if (shouldClearSneak(forward) && !activePlacementPending) {
+        if (shouldClearSneak(forward)) {
             reset();
             return;
         }
@@ -72,8 +71,8 @@ final class BridgeAssistSneakController {
                 probe == EdgeProbe.VOID,
                 placementPending,
                 placementSessions.consumePlacementCommit(),
-                ticksFromMillis(unsneakDelay.getValue()),
-                ticksFromMillis(sneakOnJump.getValue())
+                BridgeAssistMovementPrediction.ticksFromMillis(unsneakDelay.getValue()),
+                BridgeAssistMovementPrediction.ticksFromMillis(sneakOnJump.getValue())
         );
         BridgeAssistSneakStateMachine.Decision decision = stateMachine.update(frame);
         placementSessions.finishInputFrame(decision == BridgeAssistSneakStateMachine.Decision.FORCE_ON,
@@ -128,26 +127,30 @@ final class BridgeAssistSneakController {
 
     private AxisAlignedBB predictInputBox(float forward, float strafe) {
         AxisAlignedBB box = mc.thePlayer.getEntityBoundingBox();
-        double[] inputMotion = inputMotion(forward, strafe, INPUT_PREDICTION_SPEED);
+        // The coordinator applies sneak scaling after this raw-input safety probe.
+        double[] inputMotion = BridgeAssistMovementPrediction.calculateInputMotion(
+                forward, strafe, inputAcceleration(), mc.thePlayer.rotationYaw
+        );
         return box.offset(mc.thePlayer.motionX + inputMotion[0], 0.0D, mc.thePlayer.motionZ + inputMotion[1]);
     }
 
-    private double[] inputMotion(float forward, float strafe, double speed) {
-        double input = forward * forward + strafe * strafe;
-        if (input < 1.0E-4D) {
-            return new double[]{0.0D, 0.0D};
-        }
-        input = Math.sqrt(input);
-        if (input < 1.0D) {
-            input = 1.0D;
-        }
-        input = speed / input;
-        strafe *= input;
-        forward *= input;
-        float yaw = mc.thePlayer.rotationYaw;
-        float sin = MathHelper.sin(yaw * (float) Math.PI / 180.0F);
-        float cos = MathHelper.cos(yaw * (float) Math.PI / 180.0F);
-        return new double[]{strafe * cos - forward * sin, forward * cos + strafe * sin};
+    private float inputAcceleration() {
+        return BridgeAssistMovementPrediction.calculateInputAcceleration(
+                mc.thePlayer.onGround,
+                mc.thePlayer.getAIMoveSpeed(),
+                mc.thePlayer.jumpMovementFactor,
+                groundSlipperiness()
+        );
+    }
+
+    private float groundSlipperiness() {
+        AxisAlignedBB box = mc.thePlayer.getEntityBoundingBox();
+        BlockPos belowPlayer = new BlockPos(
+                MathHelper.floor_double(mc.thePlayer.posX),
+                MathHelper.floor_double(box.minY) - 1,
+                MathHelper.floor_double(mc.thePlayer.posZ)
+        );
+        return mc.theWorld.getBlockState(belowPlayer).getBlock().slipperiness;
     }
 
     private double computeEdgeOffset(AxisAlignedBB simBox) {
@@ -171,10 +174,6 @@ final class BridgeAssistSneakController {
             minDistance = Math.min(minDistance, Math.max(dx, dz));
         }
         return minDistance;
-    }
-
-    private int ticksFromMillis(double millis) {
-        return (int) Math.ceil(Math.max(0.0D, millis) / TICK_MILLIS);
     }
 
     static final class PlacementSessionTracker {
