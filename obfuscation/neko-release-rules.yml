@@ -1,0 +1,186 @@
+transforms:
+  renamer: { enabled: true, packagePrefix: 'n/' }
+  keyDispatch: { enabled: false }
+  controlFlowFlattening: { enabled: true, intensity: 0.35 }
+
+native:
+  enabled: false
+
+keys:
+  masterSeed: 6436298515090611787
+
+rules:
+  - match: 'com.**'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+  - match: 'javazoom.**'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+  - match: 'gq.yozakura.*'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+  - match: 'gq.yozakura.auth.NativeAuthBridge'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+      keyDispatch: { enabled: false }
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.bridge.IsolatedClientClassLoader'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+  - match: 'gq.yozakura.**'
+    exclude: false
+    transforms:
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.bridge.**'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.core.modern.ModernForgeEventBridge'
+    exclude: false
+    transforms:
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.event.**'
+    exclude: false
+    transforms:
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.ui.**'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.util.render.**'
+    exclude: false
+    transforms:
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.util.notification.**'
+    exclude: false
+    transforms:
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.module.render.**'
+    exclude: false
+    transforms:
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.module.visual.**'
+    exclude: false
+    transforms:
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.module.world.Scaffold'
+    exclude: false
+    transforms:
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.auth.**'
+    exclude: false
+    transforms:
+      controlFlowFlattening: { enabled: true, intensity: 0.35 }
+  - match: 'gq.yozakura.auth.token.**'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.core.Client'
+    exclude: false
+    transforms:
+      controlFlowFlattening: { enabled: true, intensity: 0.35 }
+  - match: 'gq.yozakura.manager.**'
+    exclude: false
+    transforms:
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.config.**'
+    exclude: false
+    transforms:
+      controlFlowFlattening: { enabled: true, intensity: 0.35 }
+  - match: 'gq.yozakura.value.**'
+    exclude: false
+    transforms:
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.util.crypto.**'
+    exclude: false
+    transforms:
+      controlFlowFlattening: { enabled: true, intensity: 0.35 }
+  - match: 'gq.yozakura.xray.**'
+    exclude: false
+    transforms:
+      controlFlowFlattening: { enabled: true, intensity: 0.35 }
+  - match: 'gq.yozakura.bridge.IsolatedClientClassLoader'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+      keyDispatch: { enabled: false }
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.bridge.VanillaRemapClassLoader'
+    exclude: false
+    transforms:
+      keyDispatch: { enabled: false }
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.auth.YozakuraAuthGate**'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.auth.NativeAuthBridge**'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+      keyDispatch: { enabled: false }
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.auth.vendor.skidonion.sWdSl.VerificationPanel**'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.auth.vendor.skidonion.sWdSl.PasswordFieldKeyListener'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.auth.vendor.tech.skidonion.obfuscator.inline.Wrapper**'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.module.Module**'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+  - match: 'gq.yozakura.event.bus.EventManager**'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+  - match: 'gq.yozakura.event.api.EventManager**'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+  - match: 'gq.yozakura.bridge.MovementInputBridge**'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+  - match: 'gq.yozakura.ui.click.yozakura.YozakuraClickGui**'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+  - match: 'gq.yozakura.ui.click.yozakura.**'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.core.Client**'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.core.StandaloneClient**'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.core.ModernForgeClient**'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+      controlFlowFlattening: { enabled: false }

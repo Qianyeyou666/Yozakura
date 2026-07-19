@@ -43,7 +43,7 @@ cl /nologo /EHsc /c /O2 /DJAR_TO_DLL_CLIENT_CLASS=$entryDefine /DJAR_TO_DLL_LOG_
 if errorlevel 1 exit /b %errorlevel%
 cl /nologo /EHsc /c /O2 /I"$JavaHome\include" /I"$JavaHome\include\win32" /Fo"${ObjPrefix}auth.obj" "native\yozakura_native_auth.cpp"
 if errorlevel 1 exit /b %errorlevel%
-link /NOLOGO /DLL "${ObjPrefix}loader.obj" "${ObjPrefix}auth.obj" "$BuildDir\payload_$TargetArch.res" winhttp.lib /OUT:"$OutDll" /IMPLIB:"$BuildDir\$TargetArch.lib" /PDB:"$BuildDir\$TargetArch.pdb"
+link /NOLOGO /DLL /OPT:REF /OPT:ICF /INCREMENTAL:NO /RELEASE "${ObjPrefix}loader.obj" "${ObjPrefix}auth.obj" "$BuildDir\payload_$TargetArch.res" winhttp.lib /OUT:"$OutDll" /IMPLIB:"$BuildDir\$TargetArch.lib"
 "@
 
     Write-Host "Building $TargetArch -> $OutDll"

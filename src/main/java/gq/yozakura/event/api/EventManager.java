@@ -241,7 +241,7 @@ public final class EventManager {
 	 * @return Event in the state after dispatching it.
 	 */
 	public static final Event call(final Event event) {
-		if (!YozakuraAuthGate.allowRuntime("legacy-event:" + event.getClass().getName())) {
+		if (!YozakuraAuthGate.permitEventDispatch()) {
 			return event;
 		}
 		if (EventCancellable.a == 1) {

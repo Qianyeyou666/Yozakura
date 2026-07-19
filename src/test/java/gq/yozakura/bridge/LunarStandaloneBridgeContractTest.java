@@ -3,16 +3,30 @@ package gq.yozakura.bridge;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
  * Contracts for the Forge event surface emulated by the Lunar standalone bridge.
  */
 public class LunarStandaloneBridgeContractTest {
+    @Test
+    public void nekoRenamedApplicationClassesStillPassThroughTheLunarRemapper() throws Exception {
+        Method predicate = VanillaRemapClassLoader.class
+                .getDeclaredMethod("shouldLoadChildFirst", String.class);
+        predicate.setAccessible(true);
+
+        assertTrue("Neko's n.* classes must be defined by the remap loader before Lunar linkage",
+                ((Boolean) predicate.invoke(null, "n.l")).booleanValue());
+        assertFalse("The JNIC-bound authentication gate must stay in the parent isolated loader",
+                ((Boolean) predicate.invoke(null, "gq.yozakura.auth.YozakuraAuthGate")).booleanValue());
+    }
+
     @Test
     public void lunarMarkersTakePrecedenceOverForgeCompatibilityClasses() throws IOException {
         String bootstrap = source("src/main/java/gq/yozakura/YozakuraBootstrap.java");
@@ -97,6 +111,16 @@ public class LunarStandaloneBridgeContractTest {
                 loader.contains("bool constructorAttempted = false;")
                         && loader.contains("if (clientLoaded || constructorAttempted)")
                         && loader.contains("injectionGuard.retainForProcessLifetime();"));
+    }
+
+    @Test
+    public void nativeLoaderDoesNotFormatUnboundedJavaStackTracesIntoAFixedBuffer() throws IOException {
+        String loader = source("native/yozakura_loader.cpp");
+
+        assertFalse("A long Java stack trace must not trigger MSVC's invalid-parameter fail-fast",
+                loader.contains("%02u:%02u:%02u] %s\\r\\n"));
+        assertTrue("The loader must write exception text directly instead of copying it into the timestamp buffer",
+                loader.contains("WriteFile(file, message, messageLength"));
     }
 
     @Test

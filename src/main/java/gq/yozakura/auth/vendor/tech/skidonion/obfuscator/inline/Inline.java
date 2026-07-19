@@ -9,12 +9,12 @@ public class Inline {
     }
 
     public static void processEnvironment() {
-        Wrapper.processEnvironment();
+        _advanced_checkProtection(0);
     }
 
     public static void trycatch() {
         try {
-            Wrapper.processEnvironment();
+            _advanced_checkProtection(0);
         } catch (Throwable ignored) {
         }
     }
@@ -24,7 +24,7 @@ public class Inline {
         if (Boolean.getBoolean("phantom-shield-inline.disable-protection")) {
             result ^= 1;
         }
-        if (Wrapper.getVerifyToken().isEmpty()) {
+        if (Inline.class.getResource("Inline.class") == null) {
             result ^= 2;
         }
         return result;
@@ -76,4 +76,3 @@ public class Inline {
         return false;
     }
 }
-

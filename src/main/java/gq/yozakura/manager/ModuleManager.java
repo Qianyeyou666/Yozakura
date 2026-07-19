@@ -1,10 +1,7 @@
 package gq.yozakura.manager;
 
 import gq.yozakura.module.ModuleType;
-import gq.yozakura.module.config.IGN;
-import gq.yozakura.module.config.LoadConfig;
-import gq.yozakura.module.config.SaveConfig;
-import gq.yozakura.module.config.Uninject;
+import gq.yozakura.module.config.ConfigProfiles;
 import gq.yozakura.module.Module;
 import gq.yozakura.module.movement.*;
 import gq.yozakura.module.world.*;
@@ -122,7 +119,6 @@ public class ModuleManager {
         addModule("KeepSprint", new ModuleFactory() { public Module create() { return new KeepSprint(); } });
         addModule("NoJumpDelay", new ModuleFactory() { public Module create() { return new NoJumpDelay(); } });
         addModule("ClickGUI", new ModuleFactory() { public Module create() { return new ClickGUI(); } });
-        addModule("IGN", new ModuleFactory() { public Module create() { return new IGN(); } });
         addModule("HUD", new ModuleFactory() { public Module create() { return new HUD(); } });
         addModule("TargetHUD", new ModuleFactory() { public Module create() { return new TargetHUD(); } });
         addModule("TargetESP", new ModuleFactory() { public Module create() { return new TargetESP(); } });
@@ -140,8 +136,7 @@ public class ModuleManager {
         addModule("Scaffold", new ModuleFactory() { public Module create() { return new Scaffold(); } });
         addModule("Clutch", new ModuleFactory() { public Module create() { return new Clutch(); } });
         addModule("BridgeAssist", new ModuleFactory() { public Module create() { return new BridgeAssist(); } });
-        addModule("LoadConfig", new ModuleFactory() { public Module create() { return new LoadConfig(); } });
-        addModule("SaveConfig", new ModuleFactory() { public Module create() { return new SaveConfig(); } });
+        addModule("cfgmanager", new ModuleFactory() { public Module create() { return new ConfigProfiles(); } });
         addModule("Aimbot", new ModuleFactory() { public Module create() { return new Aimbot(); } });
         addModule("Backtrack", new ModuleFactory() { public Module create() { return new Backtrack(); } });
         addModule("Criticals", new ModuleFactory() { public Module create() { return new Criticals(); } });
@@ -153,7 +148,6 @@ public class ModuleManager {
         addModule("HitSelect", new ModuleFactory() { public Module create() { return new HitSelect(); } });
         addModule("Velocity", new ModuleFactory() { public Module create() { return new Velocity(); } });
         addModule("JumpReset", new ModuleFactory() { public Module create() { return new JumpReset(); } });
-        addModule("Uninject", new ModuleFactory() { public Module create() { return new Uninject(); } });
         addModule("InvMove", new ModuleFactory() { public Module create() { return new InvMove(); } });
         addModule("Health", new ModuleFactory() { public Module create() { return new Health(); } });
         addModule("KillAura", new ModuleFactory() { public Module create() { return new KillAura(); } });

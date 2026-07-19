@@ -1,0 +1,28 @@
+在 Fedora 上，Codex 可以通过 config.toml 指向中转站的 OpenAI 兼容 API。
+创建配置文件：
+mkdir -p ~/.codex
+nano ~/.codex/config.toml
+写入以下内容，把地址、密钥和模型名替换成中转站提供的值：
+model = "你的模型名"
+model_provider = "relay"
+
+[model_providers.relay]
+name = "Relay"
+base_url = "https://你的中转站域名/v1"
+env_key = "RELAY_API_KEY"
+wire_api = "responses"
+requires_openai_auth = false
+注意：
+base_url 一般以 /v1 结尾，不要写成 /v1/responses。
+wire_api = "responses" 要求中转站支持 OpenAI Responses API。
+如果中转站只支持 Chat Completions API，Codex 可能会出现 404 或接口不兼容。
+设置中转站 API Key：
+echo 'export RELAY_API_KEY="你的中转站API_KEY"' >> ~/.bashrc
+source ~/.bashrc
+如果你使用的是 Zsh：
+echo 'export RELAY_API_KEY="你的中转站API_KEY"' >> ~/.zshrc
+source ~/.zshrc
+启动 Codex：
+codex
+或者临时指定模型：
+codex --model 你的模型名

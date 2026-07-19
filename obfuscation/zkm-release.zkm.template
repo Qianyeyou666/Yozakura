@@ -1,0 +1,79 @@
+classpath "@ZKM_CLASSPATH@";
+open "@INPUT_JAR@";
+
+// Complete exclusions are intentional at external/reflection boundaries.
+// Everything else remains eligible for ZKM renaming and control-flow changes.
+exclude package gq.yozakura;
+exclude package gq.yozakura.auth;
+exclude package gq.yozakura.bridge;
+exclude package gq.yozakura.bridge.forge;
+exclude package gq.yozakura.core;
+exclude package gq.yozakura.core.modern;
+exclude package gq.yozakura.core.modern.adapter.impl;
+exclude package gq.yozakura.event.api;
+exclude package gq.yozakura.event.bridge;
+exclude package gq.yozakura.event.bus;
+exclude package gq.yozakura.module;
+exclude package gq.yozakura.util.render;
+
+exclude class gq.yozakura(YozakuraAttachPoint);
+exclude class gq.yozakura(YozakuraBootstrap);
+exclude class gq.yozakura(Yozakuraloader);
+exclude class gq.yozakura.bridge(IsolatedClientClassLoader);
+exclude class gq.yozakura.bridge(VanillaRemapClassLoader);
+exclude class gq.yozakura.core(Client);
+exclude class gq.yozakura.core(StandaloneClient);
+exclude class gq.yozakura.core(ModernForgeClient);
+exclude class gq.yozakura.auth(NativeAuthBridge);
+exclude class gq.yozakura.auth.vendor.tech.skidonion.obfuscator.inline(Wrapper);
+
+// JNIC selects this exact post-ZKM name and protects its method bodies.
+exclude class gq.yozakura.auth(YozakuraAuthGate);
+
+// Method and field exclusions required by manifest, reflection, and JNI.
+exclude gq.yozakura.YozakuraAttachPoint^agentmain(*);
+exclude gq.yozakura.YozakuraBootstrap^start(*);
+exclude gq.yozakura.Yozakuraloader^inject(*);
+exclude gq.yozakura.core.Client^showInjectionSuccessAnimation(*);
+exclude gq.yozakura.core.Client^markConfigDirty(*);
+exclude gq.yozakura.core.StandaloneClient^showInjectionSuccessAnimation(*);
+exclude gq.yozakura.core.StandaloneClient^isState(*);
+exclude gq.yozakura.core.StandaloneClient^shutdownForReinjection(*);
+exclude gq.yozakura.core.StandaloneClient^isShutdownComplete(*);
+exclude gq.yozakura.core.ModernForgeClient^showInjectionSuccessAnimation(*);
+exclude gq.yozakura.core.ModernForgeClient^isState(*);
+exclude gq.yozakura.auth.NativeAuthBridge^q0(*);
+exclude gq.yozakura.auth.NativeAuthBridge^q1(*);
+exclude gq.yozakura.auth.NativeAuthBridge^login0(*);
+exclude gq.yozakura.auth.NativeAuthBridge^redeemLicense0(*);
+exclude gq.yozakura.auth.NativeAuthBridge^logout0(*);
+exclude gq.yozakura.auth.NativeAuthBridge^username0(*);
+exclude gq.yozakura.auth.NativeAuthBridge^role0(*);
+exclude gq.yozakura.auth.NativeAuthBridge^expiry0(*);
+exclude gq.yozakura.auth.YozakuraAuthGate^*(*);
+
+// ZKM 26 control-flow analysis rejects this Java 8 constructor's stack map.
+// Keep the focused value holder untouched instead of weakening the full build.
+exclude class gq.yozakura.util.render(HudDockingCoordinator$NodeInput);
+exclude gq.yozakura.util.render.HudDockingCoordinator$NodeInput^*(*);
+
+exclude gq.yozakura.core.Client.state;
+exclude gq.yozakura.core.Client.name;
+exclude gq.yozakura.core.Client.config;
+exclude gq.yozakura.core.Client.MessageON;
+exclude gq.yozakura.core.Client.CHINESE;
+
+// These names are inspected explicitly by the event bridges or integrity hash.
+exclude class gq.yozakura.module(Module);
+exclude class gq.yozakura.event.bus(EventManager);
+exclude class gq.yozakura.event.api(EventManager);
+exclude class gq.yozakura.bridge(YozakuraEventBridge);
+exclude class gq.yozakura.bridge(StandaloneEventBridge);
+exclude class gq.yozakura.bridge(MovementInputBridge);
+exclude class gq.yozakura.ui.click.yozakura(YozakuraClickGui);
+exclude class gq.yozakura.core.modern.adapter.impl(Modern1201ClientAdapter);
+
+@DYNAMIC_EXCLUDES@
+
+obfuscate obfuscateFlow=none;
+saveAll "@OUTPUT_JAR@";

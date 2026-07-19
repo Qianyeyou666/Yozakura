@@ -84,7 +84,7 @@ public class Module {
         if (this.state == state && !NoToggle) {
             return;
         }
-        if (state && !YozakuraAuthGate.allowRuntime("module:" + getName())) {
+        if (state && !YozakuraAuthGate.permitModuleActivation()) {
             return;
         }
         if (state) {

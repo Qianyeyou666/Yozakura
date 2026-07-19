@@ -2,7 +2,10 @@ package gq.yozakura.core;
 
 import gq.yozakura.manager.FileManager;
 
+import java.awt.Desktop;
+import java.io.File;
 import java.io.IOException;
+import java.util.List;
 
 public final class ConfigBridge {
     private static FileManager standaloneFileManager;
@@ -26,6 +29,30 @@ public final class ConfigBridge {
 
     public static void loadModules() throws IOException {
         getFileManager().loadModules();
+    }
+
+    public static List<String> listProfiles() throws IOException {
+        return getFileManager().listProfiles();
+    }
+
+    public static void saveProfile(String name) throws IOException {
+        getFileManager().saveProfile(name);
+    }
+
+    public static void loadProfile(String name) throws IOException {
+        getFileManager().loadProfile(name);
+    }
+
+    public static File getProfileDirectory() throws IOException {
+        return getFileManager().getProfileDirectory();
+    }
+
+    public static void openProfileDirectory() throws IOException {
+        File directory = getProfileDirectory();
+        if (!Desktop.isDesktopSupported() || !Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+            throw new IOException("Opening the config profile directory is not supported on this system");
+        }
+        Desktop.getDesktop().open(directory);
     }
 
     public static void loadModulesQuietly() {

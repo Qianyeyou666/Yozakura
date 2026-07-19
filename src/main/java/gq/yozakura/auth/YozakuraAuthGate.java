@@ -8,20 +8,17 @@ import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.PrintWriter;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
 import javax.swing.WindowConstants;
 
 public final class YozakuraAuthGate {
-    private static final AtomicBoolean runtimeBlockedLogged = new AtomicBoolean();
-
     private YozakuraAuthGate() {
     }
 
     public static synchronized void verifyOrThrow(String environment) {
-        if (NativeAuthBridge.isVerifiedSession()) {
+        if (NativeAuthBridge.permitStartup()) {
             return;
         }
         if (!showVerification(environment)) {
@@ -33,21 +30,32 @@ public final class YozakuraAuthGate {
         return NativeAuthBridge.getVerifiedUsername();
     }
 
-    public static boolean allowRuntime(String surface) {
-        if (NativeAuthBridge.isVerifiedSession()) {
-            runtimeBlockedLogged.set(false);
-            return true;
-        }
-        if (runtimeBlockedLogged.compareAndSet(false, true)) {
-            log("Runtime blocked without verified session: " + surface, null);
-        }
-        return false;
+    public static boolean permitModuleActivation() {
+        return NativeAuthBridge.permitModuleActivation();
     }
 
-    public static void requireRuntime(String surface) {
-        if (!allowRuntime(surface)) {
-            throw new IllegalStateException("Yozakura runtime verification rejected: " + surface);
-        }
+    public static boolean permitTickDispatch() {
+        return NativeAuthBridge.permitTickDispatch();
+    }
+
+    public static boolean permitRenderDispatch() {
+        return NativeAuthBridge.permitRenderDispatch();
+    }
+
+    public static boolean permitInputDispatch() {
+        return NativeAuthBridge.permitInputDispatch();
+    }
+
+    public static boolean permitPacketDispatch() {
+        return NativeAuthBridge.permitPacketDispatch();
+    }
+
+    public static boolean permitEventDispatch() {
+        return NativeAuthBridge.permitEventDispatch();
+    }
+
+    public static boolean permitMovementDispatch() {
+        return NativeAuthBridge.permitMovementDispatch();
     }
 
     private static boolean showVerification(String environment) {
@@ -94,7 +102,7 @@ public final class YozakuraAuthGate {
             }
             int result = panel.waitForResult();
             dispose(frameRef.get());
-            return result == 1 && NativeAuthBridge.isVerifiedSession();
+            return result == 1 && NativeAuthBridge.permitStartup();
         } catch (Throwable throwable) {
             log("Verification failed: " + environment, throwable);
             dispose(frameRef.get());

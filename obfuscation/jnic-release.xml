@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jnic>
+    <targets>
+        <target>WINDOWS_X86_64</target>
+    </targets>
+    <options>
+        <stringObf>true</stringObf>
+        <flowObf>false</flowObf>
+        <fastCompile>false</fastCompile>
+        <useIntrinsics>false</useIntrinsics>
+    </options>
+    <include>
+        <match className="gq/yozakura/auth/YozakuraAuthGate" methodName="(getVerifiedUsername|allowRuntime|requireRuntime)" />
+    </include>
+    <exclude>
+        <match className="gq/yozakura/auth/YozakuraAuthGate" methodName="&lt;(init|clinit)&gt;" />
+        <match className="gq/yozakura/auth/YozakuraAuthGate" methodName="verifyOrThrow" />
+        <match className="gq/yozakura/auth/YozakuraAuthGate" methodName="showVerification" />
+    </exclude>
+</jnic>

@@ -1,5 +1,7 @@
 package gq.yozakura.ui.click.yozakura;
 
+import gq.yozakura.core.ConfigBridge;
+import gq.yozakura.manager.FileManager;
 import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.module.render.ClickGUI;
 import gq.yozakura.engine.font.FontLoaders;
@@ -70,6 +72,22 @@ final class ClickGuiBottomBar {
         float settingsX = x + 136.0f;
         if (!YozakuraClickGui.isHovered(x, y, x + getWidth(), y + YozakuraClickGui.BOTTOM_BAR_H, mouseX, mouseY)) {
             return false;
+        }
+        if (YozakuraClickGui.isHovered(x, y, x + 136.0f, y + YozakuraClickGui.BOTTOM_BAR_H, mouseX, mouseY)) {
+            gui.openProfileScreen();
+            return true;
+        }
+        float quickActionsX = settingsX + 224.0f;
+        if (YozakuraClickGui.isHovered(quickActionsX + 64.0f, y + 42.0f,
+                quickActionsX + 83.0f, y + 61.0f, mouseX, mouseY)) {
+            try {
+                ConfigBridge.openProfileDirectory();
+                gui.addToast("Opened config folder");
+            } catch (Exception exception) {
+                gui.addToast("Unable to open config folder");
+                FileManager.logConfigFailure("Unable to open config profile folder", exception);
+            }
+            return true;
         }
         if (handleThemeSwatchClick(settingsX, y, mouseX, mouseY)) {
             return true;

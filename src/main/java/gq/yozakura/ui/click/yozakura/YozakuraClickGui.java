@@ -17,6 +17,7 @@ import gq.yozakura.engine.render.ShaderRenderer;
 import gq.yozakura.engine.render.ui.RenderServices;
 import gq.yozakura.engine.render.ui.VisualPalette;
 import gq.yozakura.ui.click.ClickGuiIcons;
+import gq.yozakura.ui.click.ConfigProfileScreen;
 import gq.yozakura.ui.UiTextField;
 import gq.yozakura.ui.UiTheme;
 import gq.yozakura.ui.UiToggle;
@@ -1683,6 +1684,10 @@ public class YozakuraClickGui extends GuiScreen {
     void addToast(String message) {
         toastText = message;
         toastStarted = System.currentTimeMillis();
+    }
+
+    void openProfileScreen() {
+        mc.displayGuiScreen(new ConfigProfileScreen(this));
     }
 
     /** 绘制 Toast 消息 */

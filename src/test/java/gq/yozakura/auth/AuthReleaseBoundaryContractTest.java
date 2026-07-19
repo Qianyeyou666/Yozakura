@@ -39,13 +39,23 @@ public class AuthReleaseBoundaryContractTest {
     }
 
     @Test
-    public void remoteAuthenticationRequiresHttps() throws IOException {
+    public void javaArtifactDoesNotShipASecondAuthenticationProtocol() throws IOException {
         String wrapper = source("src/main/java/gq/yozakura/auth/vendor/tech/skidonion/obfuscator/inline/Wrapper.java");
+        String gradleBuild = source("build.gradle");
 
-        assertFalse("The client must not embed the retired plaintext production endpoint",
-                wrapper.contains("http://49.235.166.227:8080/"));
-        assertTrue("Authentication URLs must be checked before opening a connection",
-                wrapper.contains("requireSecureAuthUrl"));
+        assertFalse("The JAR must not retain a comparable Java login implementation",
+                wrapper.contains("static int login("));
+        assertFalse("The JAR must not retain the old Java HTTP transport",
+                wrapper.contains("HttpURLConnection"));
+        assertFalse("The JAR must not retain Java heartbeat code",
+                wrapper.contains("Heartbeat") || wrapper.contains("heartbeat"));
+        assertFalse("The JAR must not retain old verification routes",
+                wrapper.contains("/verify/login") || wrapper.contains("/verify/heartbeat"));
+        assertFalse("The retired Java endpoint resource must not be packaged",
+                Files.exists(Paths.get("src/main/resources/yozakura-auth.properties")));
+        assertFalse("The Gradle build must not expand a retired Java endpoint resource",
+                gradleBuild.contains("yozakura-auth.properties")
+                        || gradleBuild.contains("yozakura_auth_base_url"));
     }
 
     @Test
@@ -67,12 +77,14 @@ public class AuthReleaseBoundaryContractTest {
         String loader = source("native/yozakura_loader.cpp");
         String nativeAuth = source("native/yozakura_native_auth.cpp");
         String nativeBuild = source("build-native.bat");
+        String nativeVerifier = source("tools/Verify-NativePayload.ps1");
+        String obfuscationBuild = source("obfuscate-linux.sh");
         String gradleBuild = source("build.gradle");
         String readme = source("README.md");
         String remapLoader = source("src/main/java/gq/yozakura/bridge/VanillaRemapClassLoader.java");
 
-        assertTrue("The runtime gate must use the native session authority",
-                gate.contains("NativeAuthBridge.isVerifiedSession()"));
+        assertFalse("The runtime gate must not expose one centralized allowRuntime patch point",
+                gate.contains("allowRuntime("));
         assertFalse("The runtime gate must not trust the retired Java session authority",
                 gate.contains("Wrapper.isVerifiedSession()"));
         assertTrue("Credential submission must enter the native implementation",
@@ -87,30 +99,75 @@ public class AuthReleaseBoundaryContractTest {
                 nativeAuth.contains("expired_date"));
         assertTrue("The login UI must show the verified expiry to the customer",
                 panel.contains("NativeAuthBridge.getVerifiedExpiry()"));
+        assertFalse("The verification window must not show the registration/legal link row",
+                panel.contains("registerLabel") || panel.contains("termsLabel") || panel.contains("privacyLabel"));
         assertTrue("Native builds must compile the native authentication implementation",
                 nativeBuild.contains("native\\yozakura_native_auth.cpp"));
         assertTrue("Native builds must link WinHTTP",
                 nativeBuild.contains("winhttp.lib"));
-        assertTrue("Native release builds must receive an explicit authentication endpoint",
-                nativeBuild.contains("YOZAKURA_AUTH_BASE_URL"));
-        assertTrue("Native release builds must default to the official HTTPS endpoint",
-                nativeBuild.contains("https://auth.yozakura.wtf/"));
+        assertFalse("The Java obfuscation path must not expose a configurable authentication endpoint",
+                obfuscationBuild.contains("YOZAKURA_AUTH_BASE_URL")
+                        || obfuscationBuild.contains("49.235.166.227"));
         assertFalse("Native release builds must not retain the example endpoint",
-                nativeBuild.contains("https://auth.example.com/"));
+                obfuscationBuild.contains("https://auth.example.com/"));
         assertFalse("Release documentation must not instruct builders to use an example endpoint",
                 readme.contains("https://auth.example.com/"));
-        assertTrue("Regular client builds must use the same official endpoint",
-                gradleBuild.contains("orElse('https://auth.yozakura.wtf/')"));
+        assertFalse("Release documentation must not publish the native endpoint",
+                readme.contains("49.235.166.227"));
         assertTrue("Native builds must run Gradle on the required Java 8 installation",
                 nativeBuild.contains("set \"JAVA_HOME=%JAVA8_HOME%\""));
         assertTrue("Native builds should discover a user-installed Java 8 without a machine-specific path",
                 nativeBuild.contains("%USERPROFILE%\\.jdks\\corretto-1.8*"));
         assertFalse("Native builds must not contain a previous developer's private JDK path",
                 nativeBuild.contains("C:\\Users\\shiranaidk"));
-        assertTrue("The endpoint must be embedded into the JAR before it enters the DLL",
-                nativeBuild.contains("-Pyozakura_auth_base_url=%AUTH_BASE_URL%"));
+        assertTrue("Windows native builds must verify the protected JAR before embedding it",
+                nativeBuild.contains("Verify-ObfuscatedJar.ps1"));
+        assertTrue("Windows native builds must scan the produced DLL",
+                nativeBuild.contains("Verify-NativePayload.ps1"));
+        assertFalse("Release native builds must not emit a program database",
+                nativeBuild.contains("/PDB:"));
+        assertTrue("The DLL verifier must reject retired log and export names",
+                nativeVerifier.contains("JarToDllLoader.log")
+                        && nativeVerifier.contains("JarToDllInject")
+                        && nativeVerifier.contains("YozakuraInject"));
         assertTrue("Remapped clients must share the exact registered native bridge class",
                 remapLoader.contains("!name.equals(\"gq.yozakura.auth.NativeAuthBridge\")"));
+    }
+
+    @Test
+    public void javaDoesNotOwnAFixedNativeSuccessIdentity() throws IOException {
+        String bridge = source("src/main/java/gq/yozakura/auth/NativeAuthBridge.java");
+
+        assertFalse("The Java bridge must not embed a fixed native runtime identifier",
+                bridge.contains("RUNTIME_ID") || bridge.contains("0x594F5A414B555241"));
+        assertFalse("The Java bridge must not expose the old runtime identity JNI method",
+                bridge.contains("runtimeId0"));
+        assertFalse("The Java bridge must not cache a patchable verified boolean",
+                bridge.contains("boolean verified") || bridge.contains("boolean success"));
+    }
+
+    @Test
+    public void tokenAuthScreenKeepsMinecraftGuiOverrideAbiAfterNeko() throws IOException {
+        String rules = source("obfuscation/neko-release-rules.yml");
+        String pipeline = source("tools/Obfuscate-Client.ps1");
+
+        String match = "- match: 'gq.yozakura.auth.token.**'";
+        int ruleStart = rules.indexOf(match);
+        int nextRule = ruleStart < 0 ? -1 : rules.indexOf("\n  - match:", ruleStart + match.length());
+        String tokenGuiRule = ruleStart < 0 ? "" : rules.substring(
+                ruleStart, nextRule < 0 ? rules.length() : nextRule);
+        assertTrue("Neko must preserve TokenAuthSessionGui's inherited GuiScreen method names",
+                tokenGuiRule.contains("renamer: { enabled: false }")
+                        && tokenGuiRule.contains("controlFlowFlattening: { enabled: false }"));
+        assertTrue("The release verifier must inspect TokenAuthSessionGui",
+                pipeline.contains("'gq.yozakura.auth.token.TokenAuthSessionGui'"));
+        for (String callback : new String[] {
+                "func_73866_w_", "func_146281_b", "func_73876_c", "func_73863_a",
+                "func_146284_a", "func_73869_a", "func_73864_a", "func_73868_f"
+        }) {
+            assertTrue("The release verifier must require the TokenAuth GUI callback " + callback,
+                    pipeline.contains(callback));
+        }
     }
 
     private static void assertBefore(String source, String required, String boundary) {

@@ -11,12 +11,6 @@ exit /b %EXIT_CODE%
 
 :main
 
-set "AUTH_BASE_URL=%~1"
-if not defined AUTH_BASE_URL set "AUTH_BASE_URL=%YOZAKURA_AUTH_BASE_URL%"
-if not defined AUTH_BASE_URL set "AUTH_BASE_URL=https://auth.yozakura.wtf/"
-
-echo Authentication endpoint: %AUTH_BASE_URL%
-
 if not defined JAVA8_HOME if defined JAVA_HOME call :select_java8_from "%JAVA_HOME%"
 if not defined JAVA8_HOME for /d %%D in ("%USERPROFILE%\.jdks\corretto-1.8*") do if not defined JAVA8_HOME set "JAVA8_HOME=%%~fD"
 if not defined JAVA8_HOME for /d %%D in ("%USERPROFILE%\.jdks\temurin-8*") do if not defined JAVA8_HOME set "JAVA8_HOME=%%~fD"
@@ -27,10 +21,44 @@ if not defined JAVA8_HOME (
 )
 set "JAVA_HOME=%JAVA8_HOME%"
 if not defined VS_BUILD set "VS_BUILD=C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build"
+if not defined YOZAKURA_THEMIDA_SDK set "YOZAKURA_THEMIDA_SDK=D:\obf\Themida v3.1.8.0\ThemidaSDK"
+if /I "%YOZAKURA_THEMIDA_MARKERS%"=="1" (
+  if not exist "%YOZAKURA_THEMIDA_SDK%\Include\C\ThemidaSDK.h" (
+    echo Themida SDK headers were not found: %YOZAKURA_THEMIDA_SDK%
+    exit /b 1
+  )
+  if not exist "%YOZAKURA_THEMIDA_SDK%\Lib\COFF\SecureEngineSDK64.lib" (
+    echo Themida x64 SDK library was not found: %YOZAKURA_THEMIDA_SDK%
+    exit /b 1
+  )
+)
 
-echo Refreshing build\libs\Yozakura.jar...
-call "%~dp0gradlew.bat" syncRuntimeJar "-Pyozakura_auth_base_url=%AUTH_BASE_URL%"
-if errorlevel 1 exit /b %errorlevel%
+if defined YOZAKURA_RUNTIME_JAR (
+  if not exist "%YOZAKURA_RUNTIME_JAR%" (
+    echo YOZAKURA_RUNTIME_JAR does not exist: %YOZAKURA_RUNTIME_JAR%
+    exit /b 1
+  )
+  if not exist "build\libs" mkdir "build\libs"
+  copy /Y "%YOZAKURA_RUNTIME_JAR%" "build\libs\Yozakura.jar" >nul
+  if errorlevel 1 exit /b %errorlevel%
+  if defined YOZAKURA_OBFUSCATION_INPUT_JAR if defined YOZAKURA_INTERMEDIATE_JAR (
+    echo Verifying protected runtime JAR...
+    powershell -ExecutionPolicy Bypass -File "tools\Verify-ObfuscatedJar.ps1" ^
+      -InputJar "%YOZAKURA_OBFUSCATION_INPUT_JAR%" ^
+      -ZkmJar "%YOZAKURA_INTERMEDIATE_JAR%" ^
+      -Jar "build\libs\Yozakura.jar" ^
+      -JavaHome "%JAVA8_HOME%"
+    if errorlevel 1 exit /b %errorlevel%
+  ) else (
+    echo Verifying runtime JAR ZIP integrity...
+    "%JAVA8_HOME%\bin\jar.exe" tf "build\libs\Yozakura.jar" >nul
+    if errorlevel 1 exit /b %errorlevel%
+  )
+) else (
+  echo Refreshing build\libs\Yozakura.jar...
+  call "%~dp0gradlew.bat" syncRuntimeJar
+  if errorlevel 1 exit /b %errorlevel%
+)
 
 if not exist "%JAVA8_HOME%\include\jni.h" (
   echo JDK 8 JNI headers not found: %JAVA8_HOME%
@@ -45,7 +73,19 @@ if not exist "build\libs\Yozakura.jar" (
 if not exist "build\native" mkdir "build\native"
 if not exist "build\libs" mkdir "build\libs"
 
+if /I "%YOZAKURA_THEMIDA_MARKERS%"=="1" (
+  call :build_one x64 "%VS_BUILD%\vcvars64.bat" "build\libs\YozakuraLoader-x64-themida-input.dll"
+  if errorlevel 1 exit /b %errorlevel%
+  powershell -NoProfile -ExecutionPolicy Bypass -File "tools\Verify-NativePayload.ps1" -Dll "build\libs\YozakuraLoader-x64-themida-input.dll" -Jar "build\libs\Yozakura.jar"
+  if errorlevel 1 exit /b %errorlevel%
+  echo Built Themida input:
+  echo   build\libs\YozakuraLoader-x64-themida-input.dll
+  exit /b 0
+)
+
 call :build_one x64 "%VS_BUILD%\vcvars64.bat" "build\libs\YozakuraLoader-x64.dll"
+if errorlevel 1 exit /b %errorlevel%
+powerShell -NoProfile -ExecutionPolicy Bypass -File "tools\Verify-NativePayload.ps1" -Dll "build\libs\YozakuraLoader-x64.dll" -Jar "build\libs\Yozakura.jar"
 if errorlevel 1 exit /b %errorlevel%
 
 call :build_one x86 "%VS_BUILD%\vcvars32.bat" "build\libs\YozakuraLoader-x86.dll"
@@ -68,6 +108,8 @@ set "ARCH=%~1"
 set "VCVARS=%~2"
 set "OUTDLL=%~3"
 
+del /q "build\native\%ARCH%.pdb" 2>nul
+
 if not exist "%VCVARS%" (
   echo Visual Studio environment not found: %VCVARS%
   exit /b 1
@@ -79,6 +121,29 @@ if errorlevel 1 exit /b %errorlevel%
 
 rc /nologo /fo "build\native\yozakura_loader_%ARCH%.res" "native\yozakura_loader.rc"
 if errorlevel 1 exit /b %errorlevel%
+
+if /I "%YOZAKURA_THEMIDA_MARKERS%"=="1" (
+  cl /nologo /EHsc /c /O2 ^
+    /DYOZAKURA_THEMIDA_MARKERS=1 ^
+    /I"%YOZAKURA_THEMIDA_SDK%\Include\C" ^
+    /Fo"build\native\%ARCH%_themida_guard.obj" ^
+    "native\yozakura_themida_guard.cpp"
+) else (
+  cl /nologo /EHsc /c /O2 ^
+    /Fo"build\native\%ARCH%_themida_guard.obj" ^
+    "native\yozakura_themida_guard.cpp"
+)
+if errorlevel 1 exit /b %errorlevel%
+
+if /I "%ARCH%"=="x64" if /I not "%YOZAKURA_THEMIDA_MARKERS%"=="1" (
+  cl /nologo /EHsc /O2 ^
+    "native\tests\yozakura_themida_guard_test.cpp" ^
+    "build\native\%ARCH%_themida_guard.obj" ^
+    /Fe"build\native\yozakura_themida_guard_test.exe"
+  if errorlevel 1 exit /b %errorlevel%
+  "build\native\yozakura_themida_guard_test.exe"
+  if errorlevel 1 exit /b %errorlevel%
+)
 
 cl /nologo /EHsc /c /O2 /GL ^
   /I"%JAVA8_HOME%\include" ^
@@ -94,12 +159,28 @@ cl /nologo /EHsc /c /O2 /GL ^
   "native\yozakura_native_auth.cpp"
 if errorlevel 1 exit /b %errorlevel%
 
-link /NOLOGO /DLL /LTCG /OPT:REF /OPT:ICF ^
-  "build\native\%ARCH%_loader.obj" ^
-  "build\native\%ARCH%_auth.obj" ^
-  "build\native\yozakura_loader_%ARCH%.res" ^
-  winhttp.lib ^
-  /OUT:"%OUTDLL%" /IMPLIB:"build\native\%ARCH%.lib" /PDB:"build\native\%ARCH%.pdb"
+if /I "%YOZAKURA_THEMIDA_MARKERS%"=="1" (
+  link /NOLOGO /DLL /LTCG /OPT:REF /OPT:ICF /INCREMENTAL:NO /RELEASE ^
+    "build\native\%ARCH%_loader.obj" ^
+    "build\native\%ARCH%_auth.obj" ^
+    "build\native\%ARCH%_themida_guard.obj" ^
+    "build\native\yozakura_loader_%ARCH%.res" ^
+    "%YOZAKURA_THEMIDA_SDK%\Lib\COFF\SecureEngineSDK64.lib" ^
+    winhttp.lib ^
+    crypt32.lib ^
+    advapi32.lib ^
+    /OUT:"%OUTDLL%" /IMPLIB:"build\native\%ARCH%.lib"
+) else (
+  link /NOLOGO /DLL /LTCG /OPT:REF /OPT:ICF /INCREMENTAL:NO /RELEASE ^
+    "build\native\%ARCH%_loader.obj" ^
+    "build\native\%ARCH%_auth.obj" ^
+    "build\native\%ARCH%_themida_guard.obj" ^
+    "build\native\yozakura_loader_%ARCH%.res" ^
+    winhttp.lib ^
+    crypt32.lib ^
+    advapi32.lib ^
+    /OUT:"%OUTDLL%" /IMPLIB:"build\native\%ARCH%.lib"
+)
 
 exit /b %errorlevel%
 

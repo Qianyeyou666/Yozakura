@@ -1,0 +1,90 @@
+D:\VapuLite-main>inject-mod.bat
+Target PID: 17556
+Target: Minecraft 1.8.9
+Profile: Auto
+DLL: D:\VapuLite-main\build\libs\YozakuraLoader-x64.dll
+Injected. LoadLibrary handle: 2009595904
+
+Log: C:\Users\Administrator\AppData\Local\Temp\JarToDllLoader.log
+[2026-07-16 21:21:21] failed to load isolated classloader class
+[2026-07-16 21:21:21] java.lang.ClassNotFoundException: gq.yozakura.bridge.IsolatedClientClassLoader
+        at java.base/java.net.URLClassLoader.findClass(Unknown Source)
+        at java.base/java.lang.ClassLoader.loadClass(Unknown Source)
+        at java.base/java.lang.ClassLoader.loadClass(Unknown Source)
+
+[2026-07-16 21:21:21] adding jar to classloader
+[2026-07-16 21:21:21] jar added to classloader
+[2026-07-16 21:24:25] loader thread started
+[2026-07-16 21:24:25] process injection guard acquired
+[2026-07-16 21:24:25] embedded jar written
+[2026-07-16 21:24:25] attaching native thread to JVM
+[2026-07-16 21:24:25] searching Minecraft classloader
+[2026-07-16 21:24:25] Minecraft classloader found by loadClass probe
+[2026-07-16 21:24:25] Minecraft classloader found by thread name
+[2026-07-16 21:24:25] Forge environment detected, using Minecraft classloader
+[2026-07-16 21:24:25] adding jar to classloader
+[2026-07-16 21:24:25] jar added to classloader
+[2026-07-16 21:24:25] loading client entry class
+[2026-07-16 21:24:25] failed to instantiate client exception
+[2026-07-16 21:24:25] java.lang.RuntimeException: java.lang.IllegalStateException: Yozakura verification rejected
+        at gq.yozakura.YozakuraBootstrap.start(YozakuraBootstrap.java)
+        at gq.yozakura.YozakuraBootstrap.<init>(YozakuraBootstrap.java)
+Caused by: java.lang.IllegalStateException: Yozakura verification rejected
+        at gq.yozakura.auth.YozakuraAuthGate.verifyOrThrow(Native Method)
+        at gq.yozakura.c.Client.<init>(Client.java)
+        at sun.reflect.NativeConstructorAccessorImpl.newInstance0(Native Method)
+        at sun.reflect.NativeConstructorAccessorImpl.newInstance(NativeConstructorAccessorImpl.java:62)
+        at sun.reflect.DelegatingConstructorAccessorImpl.newInstance(DelegatingConstructorAccessorImpl.java:45)
+        at java.lang.reflect.Constructor.newInstance(Constructor.java:423)
+        at java.lang.Class.newInstance(Class.java:442)
+        at gq.yozakura.YozakuraBootstrap.a(YozakuraBootstrap.java)
+        ... 2 more
+
+[2026-07-16 21:24:25] failed to instantiate client
+[2026-07-16 21:24:25] client constructor entered but did not complete; restart required before reinjection
+[2026-07-16 21:34:38] loader thread started
+[2026-07-16 21:34:38] process injection guard acquired
+[2026-07-16 21:34:38] embedded jar written
+[2026-07-16 21:34:38] attaching native thread to JVM
+[2026-07-16 21:34:38] searching Minecraft classloader
+[2026-07-16 21:34:38] Minecraft classloader found by loadClass probe
+[2026-07-16 21:34:38] Minecraft classloader found by thread name
+[2026-07-16 21:34:38] creating isolated Yozakura classloader
+[2026-07-16 21:34:38] failed to load isolated classloader class
+[2026-07-16 21:34:38] java.lang.ClassNotFoundException: gq.yozakura.bridge.IsolatedClientClassLoader
+        at java.base/java.net.URLClassLoader.findClass(Unknown Source)
+        at java.base/java.lang.ClassLoader.loadClass(Unknown Source)
+        at java.base/java.lang.ClassLoader.loadClass(Unknown Source)
+
+[2026-07-16 21:34:38] adding jar to classloader
+[2026-07-16 21:34:38] jar added to classloader
+[2026-07-16 21:36:46] loader thread started
+[2026-07-16 21:36:46] process injection guard acquired
+[2026-07-16 21:36:46] embedded jar written
+[2026-07-16 21:36:46] attaching native thread to JVM
+[2026-07-16 21:36:46] searching Minecraft classloader
+[2026-07-16 21:36:46] Minecraft classloader found by loadClass probe
+[2026-07-16 21:36:46] Minecraft classloader found by thread name
+[2026-07-16 21:36:46] Forge environment detected, using Minecraft classloader
+[2026-07-16 21:36:46] adding jar to classloader
+[2026-07-16 21:36:46] jar added to classloader
+[2026-07-16 21:36:46] loading client entry class
+[2026-07-16 21:36:46] failed to instantiate client exception
+[2026-07-16 21:36:46] java.lang.RuntimeException: java.lang.IllegalStateException: Yozakura verification rejected
+        at gq.yozakura.YozakuraBootstrap.start(YozakuraBootstrap.java)
+        at gq.yozakura.YozakuraBootstrap.<init>(YozakuraBootstrap.java)
+Caused by: java.lang.IllegalStateException: Yozakura verification rejected
+        at gq.yozakura.auth.YozakuraAuthGate.verifyOrThrow(YozakuraAuthGate.java)
+        at gq.yozakura.c.Client.<init>(Client.java)
+        at sun.reflect.NativeConstructorAccessorImpl.newInstance0(Native Method)
+        at sun.reflect.NativeConstructorAccessorImpl.newInstance(NativeConstructorAccessorImpl.java:62)
+        at sun.reflect.DelegatingConstructorAccessorImpl.newInstance(DelegatingConstructorAccessorImpl.java:45)
+        at java.lang.reflect.Constructor.newInstance(Constructor.java:423)
+        at java.lang.Class.newInstance(Class.java:442)
+        at gq.yozakura.YozakuraBootstrap.a(YozakuraBootstrap.java)
+        ... 2 more
+
+[2026-07-16 21:36:46] failed to instantiate client
+[2026-07-16 21:36:46] client constructor entered but did not complete; restart required before reinjection
+
+D:\VapuLite-main>

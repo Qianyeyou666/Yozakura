@@ -252,10 +252,6 @@ final class ModernWebClickGuiController {
                 .mode("Mode", "Small", "Small", "Burst")
                 .number("Packets", 20.0D, 1.0D, 200.0D, 1.0D);
 
-        add("CopyName", "Config", "Copy your name for party commands.");
-        add("LoadConfig", "Config", "Load saved client configuration.");
-        add("SaveConfig", "Config", "Save current client configuration.");
-        add("Uninject", "Config", "Disable modern runtime state.");
     }
 
     private ModernWebClickGuiController() {

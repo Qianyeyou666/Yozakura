@@ -65,7 +65,7 @@ public final class StandaloneEventBridge {
         if (stopForTerminatedPacketBridge()) {
             return;
         }
-        if (!YozakuraAuthGate.allowRuntime("standalone-tick")) {
+        if (!YozakuraAuthGate.permitTickDispatch()) {
             MovementInputBridge.setSafeWalkRequested(false);
             MovementInputBridge.setBeforeMoveInputHook(null);
             MovementInputBridge.setAfterMoveInputHook(null);
@@ -507,7 +507,7 @@ public final class StandaloneEventBridge {
                 completeFailedWrite(promise, new ClosedChannelException());
                 return;
             }
-            if (!YozakuraAuthGate.allowRuntime("standalone-packet-send")) {
+            if (!YozakuraAuthGate.permitPacketDispatch()) {
                 super.write(ctx, msg, promise);
                 return;
             }
@@ -633,7 +633,7 @@ public final class StandaloneEventBridge {
             if (packetBridgeTerminated || !ctx.channel().isActive()) {
                 return;
             }
-            if (!YozakuraAuthGate.allowRuntime("standalone-packet-receive")) {
+            if (!YozakuraAuthGate.permitPacketDispatch()) {
                 super.channelRead(ctx, msg);
                 return;
             }

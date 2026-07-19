@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "yozakura_native_auth.h"
+#include "yozakura_string_obfuscation.h"
 
 #define IDR_YOZAKURA_JAR 101
 
@@ -15,15 +16,19 @@
 #define JAR_TO_DLL_CLIENT_CLASS "gq.yozakura.YozakuraBootstrap"
 #endif
 
-#ifndef JAR_TO_DLL_LOG_NAME
+#if defined(YOZAKURA_NATIVE_DIAGNOSTICS) && !defined(JAR_TO_DLL_LOG_NAME)
 #define JAR_TO_DLL_LOG_NAME "JarToDllLoader.log"
 #endif
 
 #ifndef JAR_TO_DLL_TEMP_PREFIX
-#define JAR_TO_DLL_TEMP_PREFIX L"JarToDll"
+#define JAR_TO_DLL_TEMP_PREFIX L"j8c"
 #endif
 
+#if defined(YOZAKURA_NATIVE_DIAGNOSTICS)
 static void debug(const char* message) {
+    if (!message) {
+        message = "(null)";
+    }
     OutputDebugStringA("[JarToDllLoader] ");
     OutputDebugStringA(message);
     OutputDebugStringA("\n");
@@ -36,10 +41,15 @@ static void debug(const char* message) {
             DWORD written = 0;
             SYSTEMTIME time = {};
             GetLocalTime(&time);
-            char line[1024] = {};
-            sprintf_s(line, "[%04u-%02u-%02u %02u:%02u:%02u] %s\r\n",
-                time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond, message);
-            WriteFile(file, line, static_cast<DWORD>(strlen(line)), &written, nullptr);
+            char prefix[64] = {};
+            int prefixLength = sprintf_s(prefix, "[%04u-%02u-%02u %02u:%02u:%02u] ",
+                time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond);
+            if (prefixLength > 0) {
+                WriteFile(file, prefix, static_cast<DWORD>(prefixLength), &written, nullptr);
+            }
+            DWORD messageLength = static_cast<DWORD>(strlen(message));
+            WriteFile(file, message, messageLength, &written, nullptr);
+            WriteFile(file, "\r\n", 2, &written, nullptr);
             CloseHandle(file);
         }
     }
@@ -50,6 +60,10 @@ static void debugLastError(const char* message) {
     sprintf_s(line, "%s GetLastError=%lu", message, GetLastError());
     debug(line);
 }
+#else
+#define debug(...) ((void)0)
+#define debugLastError(...) ((void)0)
+#endif
 
 class ProcessInjectionGuard {
 public:
@@ -74,7 +88,7 @@ private:
 static HANDLE acquireProcessInjectionGuard() {
     wchar_t guardName[256] = {};
     swprintf_s(guardName,
-               L"Local\\%ls-Loader-%lu",
+               L"Local\\%ls-%lu",
                JAR_TO_DLL_TEMP_PREFIX,
                GetCurrentProcessId());
 
@@ -107,6 +121,7 @@ static std::wstring tempJarPath() {
     return std::wstring(fileName);
 }
 
+#if defined(YOZAKURA_NATIVE_DIAGNOSTICS)
 static void logJavaException(JNIEnv* env, const char* context) {
     if (!env->ExceptionCheck()) {
         return;
@@ -141,6 +156,14 @@ static void logJavaException(JNIEnv* env, const char* context) {
         env->ExceptionClear();
     }
 }
+#else
+static void clearJavaException(JNIEnv* env) {
+    if (env && env->ExceptionCheck()) {
+        env->ExceptionClear();
+    }
+}
+#define logJavaException(env, ...) clearJavaException(env)
+#endif
 
 static bool writeEmbeddedJar(HMODULE module, const std::wstring& path) {
     HRSRC res = FindResourceW(module, MAKEINTRESOURCEW(IDR_YOZAKURA_JAR), MAKEINTRESOURCEW(10));
@@ -202,16 +225,14 @@ static jobject findClientThreadClassLoader(JNIEnv* env) {
     jmethodID getContextClassLoader = env->GetMethodID(threadClass, "getContextClassLoader", "()Ljava/lang/ClassLoader;");
     jclass classLoaderClass = env->FindClass("java/lang/ClassLoader");
     jmethodID loadClass = env->GetMethodID(classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
-    const char* minecraftNames[] = {
-        "net.minecraft.client.Minecraft",
-        "net.minecraftforge.common.MinecraftForge",
-        "cpw.mods.modlauncher.Launcher",
-        "ave"
-    };
-    jstring minecraftName = env->NewStringUTF(minecraftNames[0]);
-    jstring forgeName = env->NewStringUTF(minecraftNames[1]);
-    jstring modLauncherName = env->NewStringUTF(minecraftNames[2]);
-    jstring obfuscatedMinecraftName = env->NewStringUTF(minecraftNames[3]);
+    std::string minecraftClass = YOZAKURA_PROTECTED_STRING("net.minecraft.client.Minecraft");
+    std::string forgeClass = YOZAKURA_PROTECTED_STRING("net.minecraftforge.common.MinecraftForge");
+    std::string modLauncherClass = YOZAKURA_PROTECTED_STRING("cpw.mods.modlauncher.Launcher");
+    std::string obfuscatedMinecraftClass = YOZAKURA_PROTECTED_STRING("ave");
+    jstring minecraftName = env->NewStringUTF(minecraftClass.c_str());
+    jstring forgeName = env->NewStringUTF(forgeClass.c_str());
+    jstring modLauncherName = env->NewStringUTF(modLauncherClass.c_str());
+    jstring obfuscatedMinecraftName = env->NewStringUTF(obfuscatedMinecraftClass.c_str());
 
     jobject traces = env->CallStaticObjectMethod(threadClass, getAllStackTraces);
     jclass mapClass = env->FindClass("java/util/Map");
@@ -419,7 +440,9 @@ static jobject createIsolatedClassLoader(JNIEnv* env, jobject parent, const std:
 
     jclass classLoaderClass = env->FindClass("java/lang/ClassLoader");
     jmethodID loadClass = env->GetMethodID(classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
-    jstring isolatedName = env->NewStringUTF("gq.yozakura.bridge.IsolatedClientClassLoader");
+    std::string isolatedClassName =
+        YOZAKURA_PROTECTED_STRING("gq.yozakura.bridge.IsolatedClientClassLoader");
+    jstring isolatedName = env->NewStringUTF(isolatedClassName.c_str());
     jclass isolatedClass = static_cast<jclass>(env->CallObjectMethod(helperLoader, loadClass, isolatedName));
     if (env->ExceptionCheck() || !isolatedClass) {
         logJavaException(env, "failed to load isolated classloader class");
@@ -447,7 +470,8 @@ static bool instantiateClient(JNIEnv* env, jobject loader, bool* constructorAtte
 
     jclass classLoaderClass = env->FindClass("java/lang/ClassLoader");
     jmethodID loadClass = env->GetMethodID(classLoaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
-    jstring clientName = env->NewStringUTF(JAR_TO_DLL_CLIENT_CLASS);
+    std::string clientClassName = YOZAKURA_PROTECTED_STRING(JAR_TO_DLL_CLIENT_CLASS);
+    jstring clientName = env->NewStringUTF(clientClassName.c_str());
     jclass clientClass = static_cast<jclass>(env->CallObjectMethod(loader, loadClass, clientName));
     if (env->ExceptionCheck() || !clientClass) {
         logJavaException(env, "failed to load client class");
@@ -588,21 +612,6 @@ static void startLoader(HMODULE module) {
     } else {
         debugLastError("failed to create loader thread");
     }
-}
-
-extern "C" __declspec(dllexport) void YozakuraInject() {
-    HMODULE module = nullptr;
-    GetModuleHandleExW(
-        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-        reinterpret_cast<LPCWSTR>(&YozakuraInject),
-        &module);
-    if (module) {
-        startLoader(module);
-    }
-}
-
-extern "C" __declspec(dllexport) void JarToDllInject() {
-    YozakuraInject();
 }
 
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {

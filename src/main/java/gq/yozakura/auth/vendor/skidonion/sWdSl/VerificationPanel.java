@@ -1,20 +1,16 @@
 package gq.yozakura.auth.vendor.skidonion.sWdSl;
 
-import java.awt.Color;
-import java.awt.Desktop;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
-import java.awt.event.MouseEvent;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -33,13 +29,11 @@ import javax.swing.JPasswordField;
 import javax.swing.JTextField;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
-import gq.yozakura.auth.vendor.tech.skidonion.obfuscator.inline.Wrapper;
 import gq.yozakura.auth.NativeAuthBridge;
 
 public class VerificationPanel extends JPanel {
     private static final String CACHE_DIR = "yozakura";
     private static final String CACHE_COMMENT = "local username cache";
-    private static final Color LINK_HOVER = new Color(4276735);
     private static final ExecutorService LOGIN_EXECUTOR = Executors.newSingleThreadExecutor(VerificationPanel::newDaemonThread);
 
     private ResourceBundle bundle;
@@ -53,9 +47,12 @@ public class VerificationPanel extends JPanel {
     private JLabel passwordLabel;
     private JPasswordField passwordField;
     private JButton loginButton;
-    private JLabel registerLabel;
-    private JLabel termsLabel;
-    private JLabel privacyLabel;
+    private JTextField licenseField;
+    private JButton redeemButton;
+    private JLabel registerUsernameLabel;
+    private JTextField registerUsernameField;
+    private JLabel registerPasswordLabel;
+    private JPasswordField registerPasswordField;
 
     public VerificationPanel(JFrame frame) {
         this.frame = frame;
@@ -97,13 +94,55 @@ public class VerificationPanel extends JPanel {
         LOGIN_EXECUTOR.submit(this::performLogin);
     }
 
+    private void startRedeem(ActionEvent event) {
+        if (!redeemButton.isEnabled() || !loginButton.isEnabled()) {
+            return;
+        }
+        redeemButton.setEnabled(false);
+        loginButton.setEnabled(false);
+        LOGIN_EXECUTOR.submit(this::performRedeem);
+    }
+
+    private void performRedeem() {
+        char[] passwordChars = registerPasswordField.getPassword();
+        try {
+            int code = NativeAuthBridge.redeemLicense(
+                    licenseField.getText(), registerUsernameField.getText(), passwordChars);
+            if (code == 0) {
+                usernameField.setText(registerUsernameField.getText());
+                passwordField.setText("");
+                saveCredentials(registerUsernameField.getText());
+                licenseField.setText("");
+                registerPasswordField.setText("");
+                JOptionPane.showMessageDialog(this,
+                        text("VerificationPanel.redeem.success", "Registration successful. Please log in."),
+                        "Yozakura", JOptionPane.INFORMATION_MESSAGE);
+            } else {
+                JOptionPane.showMessageDialog(this,
+                        registrationMessage(code),
+                        "Yozakura", JOptionPane.ERROR_MESSAGE);
+            }
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this,
+                    text("VerificationPanel.login.code.-1", "please check your internet connection"),
+                    "Yozakura", JOptionPane.ERROR_MESSAGE);
+        } finally {
+            java.util.Arrays.fill(passwordChars, '\0');
+            registerPasswordField.setText("");
+            redeemButton.setEnabled(true);
+            loginButton.setEnabled(true);
+        }
+    }
+
     private void performLogin() {
         int code = 0;
         char[] passwordChars = passwordField.getPassword();
+        boolean loginAccepted = false;
         try {
             code = NativeAuthBridge.login(usernameField.getText(), passwordChars);
 
             if (code == 0) {
+                loginAccepted = true;
                 saveCredentials(usernameField.getText());
                 showVerifiedEntitlement();
                 writeResult(1);
@@ -115,7 +154,9 @@ public class VerificationPanel extends JPanel {
             JOptionPane.showMessageDialog(this, text("VerificationPanel.login.exception", "JVM Occurs a Error"));
         } finally {
             java.util.Arrays.fill(passwordChars, '\0');
-            passwordField.setText("");
+            if (loginAccepted) {
+                passwordField.setText("");
+            }
             if (loginButton != null) {
                 loginButton.setEnabled(true);
             }
@@ -150,42 +191,6 @@ public class VerificationPanel extends JPanel {
         }
     }
 
-    private void openTerms(MouseEvent event) {
-        browseService();
-    }
-
-    private void hoverTerms(MouseEvent event) {
-        setLinkHover(termsLabel);
-    }
-
-    private void unhoverTerms(MouseEvent event) {
-        setLinkNormal(termsLabel);
-    }
-
-    private void openPrivacy(MouseEvent event) {
-        browseService();
-    }
-
-    private void hoverPrivacy(MouseEvent event) {
-        setLinkHover(privacyLabel);
-    }
-
-    private void unhoverPrivacy(MouseEvent event) {
-        setLinkNormal(privacyLabel);
-    }
-
-    private void openRegister(MouseEvent event) {
-        browseService();
-    }
-
-    private void hoverRegister(MouseEvent event) {
-        setLinkHover(registerLabel);
-    }
-
-    private void unhoverRegister(MouseEvent event) {
-        setLinkNormal(registerLabel);
-    }
-
     private void clearCachedPasswordOnEdit(KeyEvent event) {
     }
 
@@ -196,20 +201,18 @@ public class VerificationPanel extends JPanel {
         passwordLabel = new JLabel();
         passwordField = new JPasswordField();
         loginButton = new JButton();
-        registerLabel = new JLabel();
-        termsLabel = new JLabel();
-        privacyLabel = new JLabel();
+        licenseField = new JTextField();
+        redeemButton = new JButton();
 
         Font labelFont = new Font("Microsoft YaHei", Font.PLAIN, 14);
         Font inputFont = new Font("Microsoft YaHei UI", Font.PLAIN, 14);
-        Font linkFont = new Font("Microsoft YaHei", Font.PLAIN, 12);
 
         setFont(inputFont);
         setLayout(new GridBagLayout());
 
         GridBagLayout layout = (GridBagLayout) getLayout();
         layout.columnWidths = new int[] { 0, 245, 0 };
-        layout.rowHeights = new int[] { 0, 0, 0, 0, 0 };
+        layout.rowHeights = new int[] { 0, 0, 0, 0, 0, 0, 0, 0 };
         layout.columnWeights = new double[] { 0.0, 1.0, 1.0E-4 };
         layout.rowWeights = new double[] { 0.0, 0.0, 0.0, 0.0, 1.0E-4 };
 
@@ -235,23 +238,40 @@ public class VerificationPanel extends JPanel {
         loginButton.addActionListener(this::startLogin);
         add(loginButton, constraints(1, 2, 1, 1, 0.0, 0.0, GridBagConstraints.CENTER, GridBagConstraints.HORIZONTAL, new Insets(5, 0, 8, 10)));
 
-        registerLabel.setText(text("VerificationPanel.registerLabel.text", "Register"));
-        registerLabel.setFont(linkFont);
-        registerLabel.setHorizontalAlignment(SwingConstants.CENTER);
-        registerLabel.addMouseListener(new RegisterLinkMouseListener(this));
-        add(registerLabel, constraints(0, 3, 1, 1, 0.0, 0.0, GridBagConstraints.CENTER, GridBagConstraints.NONE, new Insets(0, 10, 10, 5)));
+        registerUsernameLabel = new JLabel(text("VerificationPanel.registerUsernameLabel.text", "register username"));
+        registerUsernameLabel.setFont(labelFont);
+        registerUsernameLabel.setHorizontalAlignment(SwingConstants.RIGHT);
+        add(registerUsernameLabel, constraints(0, 3, 1, 1, 0.0, 0.0, GridBagConstraints.EAST,
+                GridBagConstraints.NONE, new Insets(5, 10, 5, 5)));
+        registerUsernameField = new JTextField();
+        registerUsernameField.setFont(inputFont);
+        add(registerUsernameField, constraints(1, 3, 1, 1, 1.0, 0.0, GridBagConstraints.CENTER,
+                GridBagConstraints.HORIZONTAL, new Insets(5, 0, 5, 10)));
 
-        termsLabel.setText(text("VerificationPanel.termsLabel.text", "Terms of Service"));
-        termsLabel.setFont(linkFont);
-        termsLabel.setHorizontalAlignment(SwingConstants.CENTER);
-        termsLabel.addMouseListener(new TermsLinkMouseListener(this));
-        add(termsLabel, constraints(1, 3, 1, 1, 0.0, 0.0, GridBagConstraints.CENTER, GridBagConstraints.NONE, new Insets(0, 0, 10, 5)));
+        registerPasswordLabel = new JLabel(text("VerificationPanel.registerPasswordLabel.text", "register password"));
+        registerPasswordLabel.setFont(labelFont);
+        registerPasswordLabel.setHorizontalAlignment(SwingConstants.RIGHT);
+        add(registerPasswordLabel, constraints(0, 4, 1, 1, 0.0, 0.0, GridBagConstraints.EAST,
+                GridBagConstraints.NONE, new Insets(0, 10, 5, 5)));
+        registerPasswordField = new JPasswordField();
+        registerPasswordField.setFont(inputFont);
+        add(registerPasswordField, constraints(1, 4, 1, 1, 1.0, 0.0, GridBagConstraints.CENTER,
+                GridBagConstraints.HORIZONTAL, new Insets(0, 0, 5, 10)));
 
-        privacyLabel.setText(text("VerificationPanel.privacyLabel.text", "Privacy Policy"));
-        privacyLabel.setFont(linkFont);
-        privacyLabel.setHorizontalAlignment(SwingConstants.CENTER);
-        privacyLabel.addMouseListener(new PrivacyLinkMouseListener(this));
-        add(privacyLabel, constraints(2, 3, 1, 1, 0.0, 0.0, GridBagConstraints.CENTER, GridBagConstraints.NONE, new Insets(0, 0, 10, 10)));
+        JLabel licenseLabel = new JLabel(text("VerificationPanel.licenseLabel.text", "license key"));
+        licenseLabel.setFont(labelFont);
+        licenseLabel.setHorizontalAlignment(SwingConstants.RIGHT);
+        add(licenseLabel, constraints(0, 5, 1, 1, 0.0, 0.0, GridBagConstraints.EAST,
+                GridBagConstraints.NONE, new Insets(0, 10, 5, 5)));
+        licenseField.setFont(inputFont);
+        add(licenseField, constraints(1, 5, 1, 1, 1.0, 0.0, GridBagConstraints.CENTER,
+                GridBagConstraints.HORIZONTAL, new Insets(0, 0, 5, 10)));
+        redeemButton.setText(text("VerificationPanel.redeemButton.text", "Redeem license"));
+        redeemButton.setFont(inputFont);
+        redeemButton.addActionListener(this::startRedeem);
+        add(redeemButton, constraints(1, 6, 1, 1, 0.0, 0.0, GridBagConstraints.CENTER,
+                GridBagConstraints.HORIZONTAL, new Insets(5, 0, 10, 10)));
+
     }
 
     private static Thread newDaemonThread(Runnable runnable) {
@@ -262,42 +282,6 @@ public class VerificationPanel extends JPanel {
 
     static void onPasswordKeyPressed(VerificationPanel panel, KeyEvent event) {
         panel.clearCachedPasswordOnEdit(event);
-    }
-
-    static void onTermsClicked(VerificationPanel panel, MouseEvent event) {
-        panel.openTerms(event);
-    }
-
-    static void onTermsEntered(VerificationPanel panel, MouseEvent event) {
-        panel.hoverTerms(event);
-    }
-
-    static void onTermsExited(VerificationPanel panel, MouseEvent event) {
-        panel.unhoverTerms(event);
-    }
-
-    static void onPrivacyClicked(VerificationPanel panel, MouseEvent event) {
-        panel.openPrivacy(event);
-    }
-
-    static void onPrivacyEntered(VerificationPanel panel, MouseEvent event) {
-        panel.hoverPrivacy(event);
-    }
-
-    static void onPrivacyExited(VerificationPanel panel, MouseEvent event) {
-        panel.unhoverPrivacy(event);
-    }
-
-    static void onRegisterClicked(VerificationPanel panel, MouseEvent event) {
-        panel.openRegister(event);
-    }
-
-    static void onRegisterEntered(VerificationPanel panel, MouseEvent event) {
-        panel.hoverRegister(event);
-    }
-
-    static void onRegisterExited(VerificationPanel panel, MouseEvent event) {
-        panel.unhoverRegister(event);
     }
 
     private static GridBagConstraints constraints(int gridx, int gridy, int gridwidth, int gridheight, double weightx, double weighty, int anchor, int fill, Insets insets) {
@@ -329,6 +313,23 @@ public class VerificationPanel extends JPanel {
         JOptionPane.showMessageDialog(this, text(key, key), "Yozakura", JOptionPane.ERROR_MESSAGE);
     }
 
+    private String registrationMessage(int code) {
+        String key = "VerificationPanel.redeem.code." + code;
+        if (code == -1) {
+            return text(key, "Unable to connect to the verification server.");
+        }
+        if (code == 4) {
+            return text(key, "License key was not found.");
+        }
+        if (code == 5) {
+            return text(key, "License key has already been redeemed.");
+        }
+        if (code == 6) {
+            return text(key, "This username already exists. Choose another username.");
+        }
+        return text(key, "Registration details are invalid. Use a unique username and a password of at least 8 characters.");
+    }
+
     private void showVerifiedEntitlement() {
         String role = NativeAuthBridge.getVerifiedRole();
         String expiry = NativeAuthBridge.getVerifiedExpiry();
@@ -336,33 +337,6 @@ public class VerificationPanel extends JPanel {
                 + "\n" + text("VerificationPanel.login.role", "Role") + ": " + role
                 + "\n" + text("VerificationPanel.login.expires", "Expires") + ": " + expiry;
         JOptionPane.showMessageDialog(this, message, "Yozakura", JOptionPane.INFORMATION_MESSAGE);
-    }
-
-    private void browse(String uri) {
-        try {
-            Desktop.getDesktop().browse(URI.create(uri));
-        } catch (Exception ignored) {
-        }
-    }
-
-    private void browseService() {
-        try {
-            browse(Wrapper.getServiceBaseUrl());
-        } catch (RuntimeException exception) {
-            JOptionPane.showMessageDialog(this, exception.getMessage(), "Yozakura", JOptionPane.ERROR_MESSAGE);
-        }
-    }
-
-    private void setLinkHover(JLabel label) {
-        if (label != null) {
-            label.setForeground(LINK_HOVER);
-        }
-    }
-
-    private void setLinkNormal(JLabel label) {
-        if (label != null) {
-            label.setForeground(Color.black);
-        }
     }
 
     private ResourceBundle loadBundle() {

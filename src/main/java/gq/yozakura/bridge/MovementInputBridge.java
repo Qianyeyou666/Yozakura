@@ -149,7 +149,7 @@ final class MovementInputBridge {
     }
 
     private static void afterVanillaInput(HookedMovementInput input) {
-        if (!YozakuraAuthGate.allowRuntime("movement-input")) {
+        if (!YozakuraAuthGate.permitMovementDispatch()) {
             restoreRotation();
             sneakInputCoordinator.clear();
             return;

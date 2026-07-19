@@ -129,7 +129,7 @@ public final class YozakuraEventBridge {
         if (event.phase == TickEvent.Phase.START) {
             restoreDanglingPlayerRenderRotations();
         }
-        if (!YozakuraAuthGate.allowRuntime("forge-client-tick")) {
+        if (!YozakuraAuthGate.permitTickDispatch()) {
             MovementInputBridge.setSafeWalkRequested(false);
             MovementInputBridge.setBeforeMoveInputHook(null);
             MovementInputBridge.setAfterMoveInputHook(null);
@@ -211,7 +211,7 @@ public final class YozakuraEventBridge {
         if (yieldToStandaloneBridge()) {
             return;
         }
-        if (!YozakuraAuthGate.allowRuntime("forge-render-2d")) {
+        if (!YozakuraAuthGate.permitRenderDispatch()) {
             return;
         }
         if (isInGame()) {
@@ -235,7 +235,7 @@ public final class YozakuraEventBridge {
         if (yieldToStandaloneBridge()) {
             return;
         }
-        if (!YozakuraAuthGate.allowRuntime("forge-render-3d")) {
+        if (!YozakuraAuthGate.permitRenderDispatch()) {
             return;
         }
         if (isInGame()) {
@@ -252,7 +252,7 @@ public final class YozakuraEventBridge {
         if (yieldToStandaloneBridge()) {
             return;
         }
-        if (!YozakuraAuthGate.allowRuntime("forge-mouse")) {
+        if (!YozakuraAuthGate.permitInputDispatch()) {
             return;
         }
         if (!isInGame()) {
@@ -634,7 +634,7 @@ public final class YozakuraEventBridge {
 
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
-            if (!YozakuraAuthGate.allowRuntime("forge-packet-send")) {
+            if (!YozakuraAuthGate.permitPacketDispatch()) {
                 super.write(ctx, msg, promise);
                 return;
             }
@@ -762,7 +762,7 @@ public final class YozakuraEventBridge {
 
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-            if (!YozakuraAuthGate.allowRuntime("forge-packet-receive")) {
+            if (!YozakuraAuthGate.permitPacketDispatch()) {
                 super.channelRead(ctx, msg);
                 return;
             }

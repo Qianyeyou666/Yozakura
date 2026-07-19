@@ -70,7 +70,7 @@ public final class EventManager {
         if (event == null) {
             return null;
         }
-        if (!YozakuraAuthGate.allowRuntime("event:" + event.getClass().getName())) {
+        if (!YozakuraAuthGate.permitEventDispatch()) {
             return event;
         }
         List<MethodData> list = REGISTRY.get(event.getClass());

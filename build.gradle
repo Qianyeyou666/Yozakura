@@ -95,14 +95,8 @@ tasks.withType(xyz.wagyourtail.unimined.api.runs.RunConfig).configureEach {
 processResources {
     inputs.property 'version', project.version
     inputs.property 'mcversion', project.minecraft_version
-    inputs.property 'authBaseUrl', providers.gradleProperty('yozakura_auth_base_url').orElse('https://auth.yozakura.wtf/')
-
     filesMatching('mcmod.info') {
         expand 'version': project.version, 'mcversion': project.minecraft_version
-    }
-
-    filesMatching('yozakura-auth.properties') {
-        expand 'authBaseUrl': providers.gradleProperty('yozakura_auth_base_url').orElse('https://auth.yozakura.wtf/').get()
     }
 
     def srgToMcp = file('.gradle/unimined/local/mappings/srg2mcp.srg')
@@ -147,6 +141,28 @@ tasks.register('syncRuntimeJar', Copy) {
     from tasks.named('remapJar').flatMap { it.archiveFile }
     into layout.buildDirectory.dir('libs')
     rename { 'Yozakura.jar' }
+}
+
+tasks.register('syncObfuscationInputJar', Copy) {
+    dependsOn tasks.named('remapJar')
+    from tasks.named('remapJar').flatMap { it.archiveFile }
+    into layout.buildDirectory.dir('obfuscation/input')
+    rename { 'Yozakura-unobfuscated.jar' }
+}
+
+tasks.register('syncObfuscationClasspath', Sync) {
+    from {
+        sourceSets.main.compileClasspath.filter {
+            it.isFile() && it.name.toLowerCase(Locale.ROOT).endsWith('.jar')
+        }
+    }
+    into layout.buildDirectory.dir('obfuscation/zkm-libs')
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+}
+
+tasks.register('prepareObfuscation') {
+    dependsOn tasks.named('syncObfuscationInputJar')
+    dependsOn tasks.named('syncObfuscationClasspath')
 }
 
 tasks.named('build') {

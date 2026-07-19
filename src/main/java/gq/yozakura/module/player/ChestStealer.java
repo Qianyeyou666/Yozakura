@@ -5,6 +5,9 @@ import gq.yozakura.module.ModuleType;
 import gq.yozakura.util.time.TimerUtil;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
+import net.minecraft.block.Block;
+import net.minecraft.block.BlockChest;
+import net.minecraft.block.BlockEnderChest;
 import net.minecraft.client.gui.inventory.GuiChest;
 import net.minecraft.init.Items;
 import net.minecraft.inventory.ContainerChest;
@@ -16,11 +19,14 @@ import net.minecraft.item.ItemPotion;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemSword;
 import net.minecraft.item.ItemTool;
+import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.input.Keyboard;
 
 public class ChestStealer extends Module {
+    private static final long CHEST_INTERACTION_TIMEOUT_MS = 1500L;
+
     private final Numbers<Integer> clickDelay = new Numbers<Integer>("Click Delay", "ClickDelay", 80, 0, 1000, 10);
     private final Numbers<Integer> closeDelay = new Numbers<Integer>("Close Delay", "CloseDelay", 120, 0, 1000, 10);
     private final Option<Boolean> nameCheck = new Option<Boolean>("Name Check", "NameCheck", true);
@@ -29,6 +35,7 @@ public class ChestStealer extends Module {
 
     private final TimerUtil clickTimer = new TimerUtil();
     private final TimerUtil closeTimer = new TimerUtil();
+    private final ChestAccessTracker chestAccess = new ChestAccessTracker(CHEST_INTERACTION_TIMEOUT_MS);
 
     public ChestStealer() {
         super("ChestStealer", Keyboard.KEY_NONE, ModuleType.Player, "Take useful items from chests");
@@ -40,15 +47,45 @@ public class ChestStealer extends Module {
     public void enable() {
         clickTimer.reset();
         closeTimer.reset();
+        chestAccess.reset();
+    }
+
+    @Override
+    public void disable() {
+        chestAccess.reset();
+    }
+
+    @SubscribeEvent
+    public void onInteract(PlayerInteractEvent event) {
+        if (event.entityPlayer != mc.thePlayer
+                || event.action != PlayerInteractEvent.Action.RIGHT_CLICK_BLOCK
+                || event.world == null || event.pos == null) {
+            return;
+        }
+        Block block = event.world.getBlockState(event.pos).getBlock();
+        if (block instanceof BlockChest || block instanceof BlockEnderChest) {
+            chestAccess.recordPhysicalInteraction(System.currentTimeMillis());
+        }
     }
 
     @SubscribeEvent
     public void onTick(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.START || !isInGame() || !(mc.currentScreen instanceof GuiChest)) {
+        if (event.phase != TickEvent.Phase.START) {
+            return;
+        }
+        if (!isInGame()) {
+            chestAccess.reset();
+            return;
+        }
+        if (!(mc.currentScreen instanceof GuiChest)) {
+            chestAccess.clearAuthorizedWindow();
             return;
         }
         GuiChest chest = (GuiChest) mc.currentScreen;
         if (!(chest.inventorySlots instanceof ContainerChest)) {
+            return;
+        }
+        if (!chestAccess.authorizeWindow(chest.inventorySlots.windowId, System.currentTimeMillis())) {
             return;
         }
         IInventory inventory = ((ContainerChest) chest.inventorySlots).getLowerChestInventory();

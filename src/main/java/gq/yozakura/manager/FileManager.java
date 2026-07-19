@@ -21,6 +21,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.List;
 
 public class FileManager {
     private static final long AUTO_SAVE_DELAY_MS = 1500L;
@@ -29,6 +30,7 @@ public class FileManager {
     private final File modules = new File(dir, YozakuraClientState.getConfig() + ".json");
     private final File backup = new File(dir, YozakuraClientState.getConfig() + ".json.bak");
     private final ConfigFileStore configStore = new ConfigFileStore(modules, backup);
+    private final ConfigProfileStore profileStore = new ConfigProfileStore(new File(dir, "configs"));
     private final Gson gson = new Gson();
 
     private boolean loading;
@@ -82,70 +84,36 @@ public class FileManager {
             if (configStore.wasBackupRecovered()) {
                 logConfigFailure("Recovered configuration from backup: " + backup.getAbsolutePath(), null);
             }
-            JsonObject jsonObject = new JsonParser().parse(snapshot).getAsJsonObject();
-            for (final Module module : ModuleManager.getModules()) {
-                try {
-                    final JsonElement moduleElement = getModuleElement(jsonObject, module);
-                    if (moduleElement == null) {
-                        continue;
-                    }
+            applySnapshot(snapshot);
 
-                    if (moduleElement == null || moduleElement instanceof JsonNull || !moduleElement.isJsonObject()) {
-                        continue;
-                    }
-
-                    final JsonObject moduleJson = (JsonObject) moduleElement;
-                    migrateLegacyAimAssistValues(module, moduleJson);
-                    migrateLegacyVelocityValues(module, moduleJson);
-
-                    if (moduleJson.has("key")) {
-                        module.setKey(moduleJson.get("key").getAsInt());
-                    }
-
-                    for (final Value value : module.getValues()) {
-                        if (!moduleJson.has(value.getName())) {
-                            continue;
-                        }
-
-                        try {
-                            if (value instanceof Option) {
-                                value.setValue(moduleJson.get(value.getName()).getAsBoolean());
-                            } else if (value instanceof ModeProperty) {
-                                JsonElement element = moduleJson.get(value.getName());
-                                if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isNumber()) {
-                                    ((ModeProperty) value).setNumberValue(element.getAsDouble());
-                                } else {
-                                    ((ModeProperty) value).setMode(element.getAsString());
-                                }
-                            } else if (value instanceof Mode) {
-                                ((Mode) value).setMode(moduleJson.get(value.getName()).getAsString());
-                            } else if (value instanceof Numbers) {
-                                ((Numbers) value).setNumberValue(moduleJson.get(value.getName()).getAsDouble());
-                            }
-                        } catch (Throwable throwable) {
-                            logConfigFailure("Failed to load value " + module.getName() + "." + value.getName(), throwable);
-                        }
-                    }
-
-                    if (!module.NoToggle && moduleJson.has("state")) {
-                        module.setState(moduleJson.get("state").getAsBoolean(), false);
-                    }
-                } catch (Throwable throwable) {
-                    logConfigFailure("Failed to load module " + module.getName(), throwable);
-                }
-            }
-
-            // 恢复ClickGUI界面状态
-            if (jsonObject.has("_gui") && jsonObject.get("_gui").isJsonObject()) {
-                try {
-                    YozakuraClickGui.loadGuiState((JsonObject) jsonObject.get("_gui"));
-                } catch (Throwable throwable) {
-                    logConfigFailure("Failed to load ClickGUI state", throwable);
-                }
-            }
         } finally {
             loading = false;
             captureCurrentSnapshot();
+        }
+    }
+
+    public synchronized List<String> listProfiles() throws IOException {
+        return profileStore.list();
+    }
+
+    public synchronized File getProfileDirectory() throws IOException {
+        return profileStore.getDirectory();
+    }
+
+    public synchronized void saveProfile(String name) throws IOException {
+        profileStore.save(name, createSnapshot());
+    }
+
+    public synchronized void loadProfile(String name) throws IOException {
+        loading = true;
+        try {
+            applySnapshot(profileStore.load(name));
+            String snapshot = createSnapshot();
+            writeSnapshot(snapshot);
+            lastSavedSnapshot = snapshot;
+            dirty = false;
+        } finally {
+            loading = false;
         }
     }
 
@@ -189,6 +157,64 @@ public class FileManager {
     private void captureCurrentSnapshot() {
         lastSavedSnapshot = createSnapshot();
         dirty = false;
+    }
+
+    private void applySnapshot(String snapshot) {
+        JsonObject jsonObject = new JsonParser().parse(snapshot).getAsJsonObject();
+        for (final Module module : ModuleManager.getModules()) {
+            try {
+                final JsonElement moduleElement = getModuleElement(jsonObject, module);
+                if (moduleElement == null || moduleElement instanceof JsonNull || !moduleElement.isJsonObject()) {
+                    continue;
+                }
+
+                final JsonObject moduleJson = (JsonObject) moduleElement;
+                migrateLegacyAimAssistValues(module, moduleJson);
+                migrateLegacyVelocityValues(module, moduleJson);
+
+                if (moduleJson.has("key")) {
+                    module.setKey(moduleJson.get("key").getAsInt());
+                }
+
+                for (final Value value : module.getValues()) {
+                    if (!moduleJson.has(value.getName())) {
+                        continue;
+                    }
+                    try {
+                        if (value instanceof Option) {
+                            value.setValue(moduleJson.get(value.getName()).getAsBoolean());
+                        } else if (value instanceof ModeProperty) {
+                            JsonElement element = moduleJson.get(value.getName());
+                            if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isNumber()) {
+                                ((ModeProperty) value).setNumberValue(element.getAsDouble());
+                            } else {
+                                ((ModeProperty) value).setMode(element.getAsString());
+                            }
+                        } else if (value instanceof Mode) {
+                            ((Mode) value).setMode(moduleJson.get(value.getName()).getAsString());
+                        } else if (value instanceof Numbers) {
+                            ((Numbers) value).setNumberValue(moduleJson.get(value.getName()).getAsDouble());
+                        }
+                    } catch (Throwable throwable) {
+                        logConfigFailure("Failed to load value " + module.getName() + "." + value.getName(), throwable);
+                    }
+                }
+
+                if (!module.NoToggle && moduleJson.has("state")) {
+                    module.setState(moduleJson.get("state").getAsBoolean(), false);
+                }
+            } catch (Throwable throwable) {
+                logConfigFailure("Failed to load module " + module.getName(), throwable);
+            }
+        }
+
+        if (jsonObject.has("_gui") && jsonObject.get("_gui").isJsonObject()) {
+            try {
+                YozakuraClickGui.loadGuiState((JsonObject) jsonObject.get("_gui"));
+            } catch (Throwable throwable) {
+                logConfigFailure("Failed to load ClickGUI state", throwable);
+            }
+        }
     }
 
     private JsonElement getModuleElement(JsonObject jsonObject, Module module) {

@@ -105,7 +105,17 @@ public class InventoryManager extends Module {
         for (int type = 0; type < best.length; type++) {
             int slot = best[type];
             int armorSlot = 5 + type;
-            if (slot != -1 && mc.thePlayer.inventoryContainer.getSlot(armorSlot).getStack() == null) {
+            ItemStack equippedStack = mc.thePlayer.inventoryContainer.getSlot(armorSlot).getStack();
+            if (equippedStack != null && shouldIgnore(equippedStack)) {
+                continue;
+            }
+            boolean equipped = equippedStack != null;
+            InventorySelection.ArmorAction action = InventorySelection.chooseArmorAction(slot, armorSlot, equipped);
+            if (action == InventorySelection.ArmorAction.UNEQUIP_CURRENT) {
+                click(armorSlot, 0, 1);
+                return true;
+            }
+            if (action == InventorySelection.ArmorAction.EQUIP_BEST) {
                 click(slot, 0, 1);
                 return true;
             }
@@ -114,27 +124,27 @@ public class InventoryManager extends Module {
     }
 
     private boolean sortHotbar() {
-        int sword = bestSlot(ItemSword.class);
+        int sword = bestSlot(ItemSword.class, 36);
         if (sword != -1 && sword != 36) {
             swapToHotbar(sword, 0);
             return true;
         }
-        int bow = bestSlot(ItemBow.class);
+        int bow = bestSlot(ItemBow.class, 37);
         if (bow != -1 && bow != 37) {
             swapToHotbar(bow, 1);
             return true;
         }
-        int pickaxe = bestSlot(ItemPickaxe.class);
+        int pickaxe = bestSlot(ItemPickaxe.class, 38);
         if (pickaxe != -1 && pickaxe != 38) {
             swapToHotbar(pickaxe, 2);
             return true;
         }
-        int axe = bestSlot(ItemAxe.class);
+        int axe = bestSlot(ItemAxe.class, 39);
         if (axe != -1 && axe != 39) {
             swapToHotbar(axe, 3);
             return true;
         }
-        int blocks = bestBlockSlot();
+        int blocks = bestBlockSlot(40);
         if (blocks != -1 && blocks != 40) {
             swapToHotbar(blocks, 4);
             return true;
@@ -144,12 +154,12 @@ public class InventoryManager extends Module {
 
     private boolean dropTrash() {
         int[] bestArmor = bestArmorSlots();
-        int bestSword = bestSlot(ItemSword.class);
-        int bestBow = bestSlot(ItemBow.class);
-        int bestPickaxe = bestSlot(ItemPickaxe.class);
-        int bestAxe = bestSlot(ItemAxe.class);
-        int bestSpade = bestSlot(ItemSpade.class);
-        int bestBlock = bestBlockSlot();
+        int bestSword = bestSlot(ItemSword.class, 36);
+        int bestBow = bestSlot(ItemBow.class, 37);
+        int bestPickaxe = bestSlot(ItemPickaxe.class, 38);
+        int bestAxe = bestSlot(ItemAxe.class, 39);
+        int bestSpade = bestSlot(ItemSpade.class, -1);
+        int bestBlock = bestBlockSlot(40);
 
         for (int slot = 9; slot < 45; slot++) {
             ItemStack stack = mc.thePlayer.inventoryContainer.getSlot(slot).getStack();
@@ -176,8 +186,10 @@ public class InventoryManager extends Module {
     private int[] bestArmorSlots() {
         int[] slots = new int[4];
         float[] scores = new float[4];
+        int[] durabilities = new int[4];
         Arrays.fill(slots, -1);
         Arrays.fill(scores, -1.0F);
+        Arrays.fill(durabilities, -1);
         for (int slot = 5; slot < 45; slot++) {
             ItemStack stack = mc.thePlayer.inventoryContainer.getSlot(slot).getStack();
             if (stack == null || shouldIgnore(stack) || !(stack.getItem() instanceof ItemArmor)) {
@@ -186,37 +198,47 @@ public class InventoryManager extends Module {
             ItemArmor armor = (ItemArmor) stack.getItem();
             float score = armor.damageReduceAmount
                     + EnchantmentHelper.getEnchantmentLevel(Enchantment.protection.effectId, stack) * 0.75F;
-            if (score > scores[armor.armorType]) {
+            int durability = remainingDurability(stack);
+            int armorSlot = 5 + armor.armorType;
+            if (InventorySelection.isBetterCandidate(score, durability, slot,
+                    scores[armor.armorType], durabilities[armor.armorType], slots[armor.armorType], armorSlot)) {
                 scores[armor.armorType] = score;
+                durabilities[armor.armorType] = durability;
                 slots[armor.armorType] = slot;
             }
         }
         return slots;
     }
 
-    private int bestSlot(Class<?> type) {
+    private int bestSlot(Class<?> type, int preferredSlot) {
         int best = -1;
         float score = -1.0F;
+        int durability = -1;
         for (int slot = 9; slot < 45; slot++) {
             ItemStack stack = mc.thePlayer.inventoryContainer.getSlot(slot).getStack();
             if (stack == null || shouldIgnore(stack) || !type.isInstance(stack.getItem())) {
                 continue;
             }
             float current = itemScore(stack);
-            if (current > score) {
+            int currentDurability = remainingDurability(stack);
+            if (InventorySelection.isBetterCandidate(current, currentDurability, slot,
+                    score, durability, best, preferredSlot)) {
                 score = current;
+                durability = currentDurability;
                 best = slot;
             }
         }
         return best;
     }
 
-    private int bestBlockSlot() {
+    private int bestBlockSlot(int preferredSlot) {
         int best = -1;
         int size = -1;
         for (int slot = 9; slot < 45; slot++) {
             ItemStack stack = mc.thePlayer.inventoryContainer.getSlot(slot).getStack();
-            if (stack != null && stack.getItem() instanceof ItemBlock && stack.stackSize > size) {
+            if (stack != null && stack.getItem() instanceof ItemBlock
+                    && InventorySelection.isBetterCandidate(stack.stackSize, 0, slot,
+                    size, 0, best, preferredSlot)) {
                 size = stack.stackSize;
                 best = slot;
             }
@@ -249,6 +271,10 @@ public class InventoryManager extends Module {
 
     private boolean shouldIgnore(ItemStack stack) {
         return Boolean.TRUE.equals(ignoreCustomName.getValue()) && stack.hasDisplayName();
+    }
+
+    private int remainingDurability(ItemStack stack) {
+        return stack.getMaxDamage() <= 0 ? 0 : stack.getMaxDamage() - stack.getItemDamage();
     }
 
     private boolean contains(int[] values, int wanted) {

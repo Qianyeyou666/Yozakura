@@ -8,13 +8,13 @@ import static org.junit.Assert.assertTrue;
 public class NativeAuthBridgeTest {
     @Test
     public void standaloneJarCannotCreateAVerifiedSessionWithoutNativeRegistration() {
-        assertFalse(NativeAuthBridge.isVerifiedSession());
+        assertFalse(NativeAuthBridge.permitStartup());
 
         boolean rejected = false;
         try {
             NativeAuthBridge.login("test-user", "test-password".toCharArray());
-        } catch (IllegalStateException expected) {
-            rejected = expected.getMessage().contains("native authentication runtime");
+        } catch (UnsatisfiedLinkError expected) {
+            rejected = true;
         }
         assertTrue("The Java-only distribution must fail closed", rejected);
     }

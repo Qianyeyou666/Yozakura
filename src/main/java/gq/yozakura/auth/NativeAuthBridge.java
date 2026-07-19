@@ -3,58 +3,107 @@ package gq.yozakura.auth;
 import gq.yozakura.auth.vendor.tech.skidonion.obfuscator.inline.Wrapper;
 
 public final class NativeAuthBridge {
-    private static final long RUNTIME_ID = 0x594F5A414B555241L;
-
     private NativeAuthBridge() {
     }
 
+    static {
+        Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    logout0();
+                } catch (Throwable ignored) {
+                }
+            }
+        }, "Yozakura Auth Logout"));
+    }
+
     public static int login(String username, char[] password) {
-        requireNativeRuntime();
-        return login0(Wrapper.getServiceBaseUrl(), username, password,
+        return login0(username, password,
                 Wrapper.getClientBuildId(), Wrapper.getClientFingerprintForNative(),
                 Wrapper.getMachineFingerprintForNative());
     }
 
-    public static boolean isVerifiedSession() {
+    public static int redeemLicense(String licenseKey, String username, char[] password) {
+        return redeemLicense0(licenseKey, username, password);
+    }
+
+    static boolean permitStartup() {
         try {
-            return runtimeId0() == RUNTIME_ID && isVerified0();
+            return q0(System.nanoTime()) != 0L;
+        } catch (UnsatisfiedLinkError error) {
+            return false;
+        }
+    }
+
+    static boolean permitModuleActivation() {
+        try {
+            return q0(System.nanoTime() ^ 0x41D2B7A9L) != 0L;
+        } catch (UnsatisfiedLinkError error) {
+            return false;
+        }
+    }
+
+    static boolean permitTickDispatch() {
+        return channelPermit(3);
+    }
+
+    static boolean permitRenderDispatch() {
+        return channelPermit(7);
+    }
+
+    static boolean permitInputDispatch() {
+        return channelPermit(11);
+    }
+
+    static boolean permitPacketDispatch() {
+        return channelPermit(17);
+    }
+
+    static boolean permitEventDispatch() {
+        return channelPermit(23);
+    }
+
+    static boolean permitMovementDispatch() {
+        return channelPermit(29);
+    }
+
+    private static boolean channelPermit(int channel) {
+        try {
+            long probe = System.nanoTime();
+            return q1(channel, probe) != 0L;
         } catch (UnsatisfiedLinkError error) {
             return false;
         }
     }
 
     public static String getVerifiedUsername() {
-        if (!isVerifiedSession()) {
+        if (!permitStartup()) {
             return null;
         }
         return username0();
     }
 
     public static String getVerifiedRole() {
-        return isVerifiedSession() ? role0() : null;
+        return permitStartup() ? role0() : null;
     }
 
     public static String getVerifiedExpiry() {
-        return isVerifiedSession() ? expiry0() : null;
+        return permitStartup() ? expiry0() : null;
     }
 
-    private static void requireNativeRuntime() {
-        try {
-            if (runtimeId0() == RUNTIME_ID) {
-                return;
-            }
-        } catch (UnsatisfiedLinkError ignored) {
-        }
-        throw new IllegalStateException("Yozakura native authentication runtime is unavailable");
-    }
+    private static native long q0(long probe);
 
-    private static native long runtimeId0();
+    private static native long q1(int channel, long probe);
 
-    private static native int login0(String baseUrl, String username, char[] password,
+    private static native int login0(String username, char[] password,
                                      String buildId, String clientFingerprint,
                                      String machineFingerprint);
 
-    private static native boolean isVerified0();
+    private static native int redeemLicense0(String licenseKey,
+                                             String username, char[] password);
+
+    private static native void logout0();
 
     private static native String username0();
 
