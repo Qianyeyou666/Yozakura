@@ -1,7 +1,9 @@
 package gq.yozakura.module.render;
 
 public enum TargetHudStyle {
-    AUTO,
-    LEGACY,
+    APPLE,
+    RISE,
+    NYMPHILILA,
+    COOL,
     NIGHT_BLOOM
 }

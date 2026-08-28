@@ -77,9 +77,9 @@ def main():
         "gq/yozakura/YozakuraAttachPoint.class",
         "gq/yozakura/YozakuraBootstrap.class",
         "gq/yozakura/Yozakuraloader.class",
-        "gq/yozakura/auth/NativeAuthBridge.class",
-        "gq/yozakura/auth/YozakuraAuthGate.class",
-        "gq/yozakura/auth/vendor/tech/skidonion/obfuscator/inline/Wrapper.class",
+        "gq/yozakura/k/A.class",
+        "gq/yozakura/k/B.class",
+        "gq/yozakura/k/vendor/tech/skidonion/obfuscator/inline/C.class",
         "gq/yozakura/core/Client.class",
         "gq/yozakura/core/StandaloneClient.class",
         "gq/yozakura/core/ModernForgeClient.class",
@@ -137,24 +137,34 @@ def main():
         fail("the JNIC Windows native payload is missing")
     if any(re.match(r"(?i)^META-INF/.+\.(SF|RSA|DSA)$", name) for name in final_entries):
         fail("stale JAR signature files remain")
-    zkm_gate = javap(javap_executable, args.zkm, "-p", "gq.yozakura.auth.YozakuraAuthGate")
+    zkm_gate = javap(javap_executable, args.zkm, "-p", "gq.yozakura.k.B")
     if re.search(r"\bnative\b", zkm_gate):
-        fail("YozakuraAuthGate was native before JNIC")
-    final_gate = javap(javap_executable, args.jar, "-p", "gq.yozakura.auth.YozakuraAuthGate")
+        fail("B was native before JNIC")
+    final_gate = javap(javap_executable, args.jar, "-p", "gq.yozakura.k.B")
     native_count = sum(1 for line in final_gate.splitlines() if re.search(r"\bnative\b", line))
-    if native_count < 3:
-        fail(f"YozakuraAuthGate exposes only {native_count} native methods")
-    for method in ("getVerifiedUsername", "allowRuntime", "requireRuntime"):
+    if native_count < 1:
+        fail(f"B exposes only {native_count} native methods")
+    for method in ("verifyOrThrow",):
         if not re.search(r"native .+\b" + method + r"\(", final_gate):
             fail("JNIC did not translate the authentication method: " + method)
-    for method in ("verifyOrThrow", "showVerification"):
+    for method in ("permitModuleActivation", "permitTickDispatch", "permitRenderDispatch",
+                   "permitInputDispatch", "permitPacketDispatch", "permitEventDispatch",
+                   "permitMovementDispatch"):
         if re.search(r"native .+\b" + method + r"\(", final_gate):
-            fail("JNIC translated the UI authentication method and would prevent the verification window: " + method)
+            fail("JNIC transformed the hot runtime permit wrapper: " + method)
 
-    bridge = javap(javap_executable, args.jar, "-p", "gq.yozakura.auth.NativeAuthBridge")
+    bridge = javap(javap_executable, args.jar, "-p", "gq.yozakura.k.A")
     for method in ("q0", "q1", "login0", "redeemLicense0", "logout0", "username0", "role0", "expiry0"):
         if not re.search(r"\b" + method + r"\(", bridge):
             fail("JNI registration contract was renamed or removed: " + method)
+    for method in ("login", "redeemLicense"):
+        if not re.search(r"native .+\b" + method + r"\(", bridge):
+            fail("JNIC did not translate the login boundary method: " + method)
+    for method in ("permitStartup", "permitModuleActivation", "permitTickDispatch",
+                   "permitRenderDispatch", "permitInputDispatch", "permitPacketDispatch",
+                   "permitEventDispatch", "permitMovementDispatch"):
+        if re.search(r"native .+\b" + method + r"\(", bridge):
+            fail("JNIC transformed the hot native bridge permit wrapper: " + method)
 
     maximum_major = 0
     with zipfile.ZipFile(args.jar) as archive:
@@ -173,7 +183,7 @@ def main():
         "Yozakura obfuscation verification: PASS",
         "Input SHA-256:  " + sha256(args.input),
         "Output SHA-256: " + sha256(args.jar),
-        f"JNIC native guard methods in YozakuraAuthGate: {native_count}",
+        f"JNIC native guard methods in B: {native_count}",
         f"Yozakura classes renamed by ZKM: {renamed_count}",
         f"JAR entries: {len(final_entries)}",
         f"Non-class resources retained: {len(resources)}",

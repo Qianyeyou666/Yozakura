@@ -38,4 +38,15 @@ public class StandaloneRotationPublicationTest {
         publication.clear();
         assertFalse(publication.snapshot().isActive());
     }
+
+    @Test
+    public void teleportInvalidationDropsThePublishedSilentRotation() {
+        StandaloneRotationPublication publication = new StandaloneRotationPublication();
+        publication.publish(true, 72.0F, 36.0F);
+
+        publication.invalidateForTeleport();
+
+        assertFalse(publication.snapshot().isActive());
+        assertFalse(publication.hasUnsentRotation());
+    }
 }

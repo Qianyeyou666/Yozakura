@@ -1,0 +1,16 @@
+[
+  {
+    "modid": "Artemis",
+    "name": "Artemis",
+    "description": "Help you have a better experience in uhc mode",
+    "version": "unspecified",
+    "mcversion": "1.8.9",
+    "url": "https://github.com/sb/sb",
+    "updateUrl": "",
+    "authorList": ["NightCat"],
+    "credits": "",
+    "logoFile": "",
+    "screenshots": [],
+    "dependencies": []
+  }
+]

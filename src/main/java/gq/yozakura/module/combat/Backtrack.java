@@ -1,6 +1,7 @@
 package gq.yozakura.module.combat;
 
 import gq.yozakura.bridge.PacketPipelineAnchors;
+import gq.yozakura.bridge.util.ReflectionUtils;
 import gq.yozakura.core.StandaloneClient;
 import gq.yozakura.event.bridge.MouseOverEvent;
 import gq.yozakura.event.bus.EventTarget;
@@ -50,8 +51,6 @@ public class Backtrack extends Module {
     private static final int MAX_HISTORY = 40;
     private static final int MAX_QUEUED_PACKETS = 128;
     private static final int UNKNOWN_ENTITY_ID = Integer.MIN_VALUE;
-    private static volatile Field s14EntityIdField;
-    private static volatile boolean s14EntityIdFieldResolved;
     private static Backtrack INSTANCE;
 
     private final Mode<BacktrackMode> mode =
@@ -60,6 +59,7 @@ public class Backtrack extends Module {
     private final Numbers<Double> historyMs = new Numbers<Double>("History MS", "HistoryMS", 180.0, 50.0, 600.0, 10.0);
     private final Numbers<Double> packetDelay = new Numbers<Double>("Packet Delay", "PacketDelay", 120.0, 0.0, 400.0, 10.0);
     private final Numbers<Double> expand = new Numbers<Double>("Expand", "Expand", 0.08, 0.0, 1.0, 0.01);
+    private final Option<Boolean> safeReach = new Option<Boolean>("Safe Reach", "SafeReach", true);
     private final Option<Boolean> attackOnly = new Option<Boolean>("Attack Only", "AttackOnly", true);
     private final Option<Boolean> players = new Option<Boolean>("Players", "Players", true);
     private final Option<Boolean> mobs = new Option<Boolean>("Mobs", "Mobs", true);
@@ -74,12 +74,13 @@ public class Backtrack extends Module {
     private volatile Set<Integer> delayableEntityIds = Collections.emptySet();
     private int pendingDeliveryTasks;
     private volatile boolean acceptingPackets;
+    private MovingObjectPosition lastAppliedHistoricalHit;
     private Channel channel;
 
     public Backtrack() {
         super("Backtrack", Keyboard.KEY_NONE, ModuleType.Combat, "Attack entities at recent historical positions");
-        this.addValues(mode, range, historyMs, packetDelay, expand, attackOnly, players, mobs, animals, throughWalls,
-                render, renderTrail, renderAlpha);
+        this.addValues(mode, range, historyMs, packetDelay, expand, safeReach, attackOnly, players, mobs, animals,
+                throughWalls, render, renderTrail, renderAlpha);
         Chinese = "回溯";
         INSTANCE = this;
     }
@@ -87,6 +88,7 @@ public class Backtrack extends Module {
     @Override
     public void enable() {
         history.clear();
+        lastAppliedHistoricalHit = null;
         delayableEntityIds = Collections.emptySet();
         synchronized (deliveryLock) {
             queuedPackets.clear();
@@ -100,6 +102,7 @@ public class Backtrack extends Module {
         stopPacketAdmissionAndRelease();
         removeHandler();
         history.clear();
+        lastAppliedHistoricalHit = null;
         delayableEntityIds = Collections.emptySet();
     }
 
@@ -110,6 +113,7 @@ public class Backtrack extends Module {
         }
         if (!isInGame()) {
             history.clear();
+            lastAppliedHistoricalHit = null;
             delayableEntityIds = Collections.emptySet();
             stopPacketAdmissionAndRelease();
             removeHandler();
@@ -155,7 +159,8 @@ public class Backtrack extends Module {
         if (INSTANCE == null || !INSTANCE.getState() || INSTANCE.mode.getValue() == BacktrackMode.PACKET) {
             return null;
         }
-        MovingObjectPosition hit = INSTANCE.findHistoricalHit(INSTANCE.range.getValue(), INSTANCE.expand.getValue(), 1.0f);
+        MovingObjectPosition hit = INSTANCE.findHistoricalHit(INSTANCE.effectiveAttackRange(),
+                INSTANCE.expand.getValue(), 1.0f);
         return hit != null && hit.entityHit instanceof EntityLivingBase ? (EntityLivingBase) hit.entityHit : null;
     }
 
@@ -186,7 +191,8 @@ public class Backtrack extends Module {
                 history.put(living.getEntityId(), boxes);
             }
             boxes.addLast(new TrackedBox(now, living, living.getEntityBoundingBox(), living.posX, living.posY, living.posZ));
-            while (boxes.size() > MAX_HISTORY || !boxes.isEmpty() && now - boxes.peekFirst().time > historyMs.getValue()) {
+            long maxHistoryAge = effectiveHistoryMillis();
+            while (boxes.size() > MAX_HISTORY || !boxes.isEmpty() && now - boxes.peekFirst().time > maxHistoryAge) {
                 boxes.pollFirst();
             }
         }
@@ -202,21 +208,55 @@ public class Backtrack extends Module {
         delayableEntityIds = Collections.unmodifiableSet(currentDelayableIds);
     }
 
+    private double effectiveAttackRange() {
+        double configured = range.getValue();
+        if (!Boolean.TRUE.equals(safeReach.getValue()) || mc.playerController != null && mc.playerController.extendedReach()) {
+            return configured;
+        }
+        return Math.min(configured, 3.0D);
+    }
+
+    private long effectiveHistoryMillis() {
+        long configured = historyMs.getValue().longValue();
+        if (mode.getValue() != BacktrackMode.HYBRID || !usesPacketDelay()) {
+            return configured;
+        }
+        return Math.max(50L, configured - packetDelay.getValue().longValue());
+    }
+
     private boolean applyHistoricalHit() {
         return applyHistoricalHit(1.0F);
     }
 
     private boolean applyHistoricalHit(float partialTicks) {
         if (!isInGame() || mode.getValue() == BacktrackMode.PACKET) {
+            lastAppliedHistoricalHit = null;
             return false;
         }
-        MovingObjectPosition hit = findHistoricalHit(range.getValue(), expand.getValue(), partialTicks);
+        if (hasReliableCurrentEntityHit()) {
+            lastAppliedHistoricalHit = null;
+            return false;
+        }
+        MovingObjectPosition hit = findHistoricalHit(effectiveAttackRange(), expand.getValue(), partialTicks);
         if (hit == null || hit.entityHit == null) {
+            lastAppliedHistoricalHit = null;
             return false;
         }
         mc.objectMouseOver = hit;
         mc.pointedEntity = hit.entityHit;
+        lastAppliedHistoricalHit = hit;
         return true;
+    }
+
+    private boolean hasReliableCurrentEntityHit() {
+        MovingObjectPosition current = mc.objectMouseOver;
+        if (current == null || current == lastAppliedHistoricalHit || current.entityHit == null
+                || !(current.entityHit instanceof EntityLivingBase)) {
+            return false;
+        }
+        EntityLivingBase living = (EntityLivingBase) current.entityHit;
+        return CombatUtil.isValidTarget(living, effectiveAttackRange() + 0.1D, 180.0D,
+                players.getValue(), mobs.getValue(), animals.getValue(), throughWalls.getValue());
     }
 
     private MovingObjectPosition findHistoricalHit(double maxRange, double extraExpand, float partialTicks) {
@@ -229,35 +269,49 @@ public class Backtrack extends Module {
         Vec3 end = eyes.addVector(look.xCoord * maxRange, look.yCoord * maxRange, look.zCoord * maxRange);
         TrackedBox best = null;
         Vec3 bestHit = null;
-        double bestDistance = maxRange;
+        double bestDistance = blockObstructionDistance(eyes, end, maxRange);
+        long now = System.currentTimeMillis();
+        long maxHistoryAge = effectiveHistoryMillis();
 
         for (ArrayDeque<TrackedBox> boxes : history.values()) {
-            for (TrackedBox tracked : boxes) {
-                if (tracked.entity == null || tracked.entity.isDead) {
+            if (boxes == null || boxes.isEmpty()) {
+                continue;
+            }
+            Iterator<TrackedBox> newestFirst = boxes.descendingIterator();
+            while (newestFirst.hasNext()) {
+                TrackedBox tracked = newestFirst.next();
+                if (tracked.entity == null || tracked.entity.isDead || now - tracked.time > maxHistoryAge) {
                     continue;
                 }
-                if (mc.thePlayer.getDistance(tracked.x, tracked.y, tracked.z) > maxRange + extraExpand + 0.75D) {
+                if (!CombatUtil.isValidTarget((EntityLivingBase) tracked.entity, maxRange + extraExpand + 0.1D,
+                        180.0D, players.getValue(), mobs.getValue(), animals.getValue(), throughWalls.getValue())) {
                     continue;
                 }
                 AxisAlignedBB box = tracked.box.expand(extraExpand, extraExpand, extraExpand);
                 MovingObjectPosition intercept = box.calculateIntercept(eyes, end);
-                if (box.isVecInside(eyes)) {
-                    if (bestDistance >= 0.0D) {
-                        best = tracked;
-                        bestHit = intercept == null ? eyes : intercept.hitVec;
-                        bestDistance = 0.0D;
-                    }
-                } else if (intercept != null) {
-                    double distance = eyes.distanceTo(intercept.hitVec);
-                    if (distance < bestDistance || bestDistance == 0.0D) {
-                        best = tracked;
-                        bestHit = intercept.hitVec;
-                        bestDistance = distance;
-                    }
+                Vec3 hit = box.isVecInside(eyes) ? eyes : intercept == null ? null : intercept.hitVec;
+                if (hit == null) {
+                    continue;
                 }
+                double distance = eyes.distanceTo(hit);
+                if (distance <= bestDistance) {
+                    best = tracked;
+                    bestHit = hit;
+                    bestDistance = distance;
+                }
+                break;
             }
         }
         return best == null || bestHit == null ? null : new MovingObjectPosition(best.entity, bestHit);
+    }
+
+    private double blockObstructionDistance(Vec3 eyes, Vec3 end, double maxRange) {
+        if (Boolean.TRUE.equals(throughWalls.getValue())) {
+            return maxRange;
+        }
+        MovingObjectPosition blockHit = mc.theWorld.rayTraceBlocks(eyes, end, false, true, false);
+        return blockHit != null && blockHit.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK
+                ? Math.min(maxRange, eyes.distanceTo(blockHit.hitVec)) : maxRange;
     }
 
     private void renderHistoryBoxes() {
@@ -299,7 +353,7 @@ public class Backtrack extends Module {
                     if (tracked.entity == null || tracked.entity.isDead || tracked.box == null) {
                         continue;
                     }
-                    float age = (float) (now - tracked.time) / Math.max(1.0f, historyMs.getValue().floatValue());
+                    float age = (float) (now - tracked.time) / Math.max(1.0f, (float) effectiveHistoryMillis());
                     float fade = trail ? clamp01(1.0f - age) : 1.0f;
                     if (fade <= 0.02f) {
                         continue;
@@ -349,7 +403,7 @@ public class Backtrack extends Module {
         }
         try {
             NetworkManager manager = mc.getNetHandler().getNetworkManager();
-            Channel current = getChannel(manager);
+            Channel current = ReflectionUtils.getChannel(manager);
             if (current == null || !current.isOpen()) {
                 return;
             }
@@ -379,22 +433,6 @@ public class Backtrack extends Module {
         }
     }
 
-    private Channel getChannel(NetworkManager manager) {
-        String[] names = new String[]{"channel", "field_150746_k", "k"};
-        for (String name : names) {
-            try {
-                Field field = NetworkManager.class.getDeclaredField(name);
-                field.setAccessible(true);
-                Object value = field.get(manager);
-                if (value instanceof Channel) {
-                    return (Channel) value;
-                }
-            } catch (Throwable ignored) {
-            }
-        }
-        return null;
-    }
-
     private boolean isDelayablePacket(Packet packet) {
         if (!acceptingPackets || !getState() || !usesPacketDelay()
                 || packetDelay.getValue() <= 0.0D) {
@@ -411,7 +449,7 @@ public class Backtrack extends Module {
         if (!(packet instanceof S14PacketEntity)) {
             return UNKNOWN_ENTITY_ID;
         }
-        Field field = resolveS14EntityIdField();
+        Field field = ReflectionUtils.findField(S14PacketEntity.class, "entityId", "field_149074_a", "a");
         if (field == null) {
             return UNKNOWN_ENTITY_ID;
         }
@@ -419,28 +457,6 @@ public class Backtrack extends Module {
             return field.getInt(packet);
         } catch (Throwable ignored) {
             return UNKNOWN_ENTITY_ID;
-        }
-    }
-
-    private static Field resolveS14EntityIdField() {
-        if (s14EntityIdFieldResolved) {
-            return s14EntityIdField;
-        }
-        synchronized (Backtrack.class) {
-            if (s14EntityIdFieldResolved) {
-                return s14EntityIdField;
-            }
-            for (String name : new String[]{"entityId", "field_149074_a", "a"}) {
-                try {
-                    Field field = S14PacketEntity.class.getDeclaredField(name);
-                    field.setAccessible(true);
-                    s14EntityIdField = field;
-                    break;
-                } catch (Throwable ignored) {
-                }
-            }
-            s14EntityIdFieldResolved = true;
-            return s14EntityIdField;
         }
     }
 

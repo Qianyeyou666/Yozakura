@@ -10,11 +10,27 @@ final class InventorySelection {
     private InventorySelection() {
     }
 
-    static ArmorAction chooseArmorAction(int bestSlot, int armorSlot, boolean equipped) {
+    static ArmorAction chooseArmorAction(int bestSlot, int armorSlot, boolean equipped,
+                                         boolean hasInventorySpace) {
         if (bestSlot == -1 || bestSlot == armorSlot) {
             return ArmorAction.NONE;
         }
-        return equipped ? ArmorAction.UNEQUIP_CURRENT : ArmorAction.EQUIP_BEST;
+        if (equipped) {
+            return hasInventorySpace ? ArmorAction.UNEQUIP_CURRENT : ArmorAction.NONE;
+        }
+        return ArmorAction.EQUIP_BEST;
+    }
+
+    static float toolScore(float baseEfficiency, int efficiencyLevel) {
+        if (baseEfficiency <= 1.0F) {
+            return baseEfficiency;
+        }
+        int level = Math.max(0, efficiencyLevel);
+        return baseEfficiency + (level > 0 ? level * level + 1.0F : 0.0F);
+    }
+
+    static boolean shouldKeepBlock(boolean placeable) {
+        return placeable;
     }
 
     static boolean isBetterCandidate(float candidateScore, int candidateDurability, int candidateSlot,

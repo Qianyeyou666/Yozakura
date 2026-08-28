@@ -18,13 +18,11 @@ import java.util.Set;
 
 public final class HudDrag {
     private static final Minecraft MC = Minecraft.getMinecraft();
-    private static final HudDragSession SESSION = new HudDragSession();
+    private static final HudDragManager MANAGER = new HudDragManager();
     private static final VisualPalette PALETTE = VisualPalette.nightBloom();
     private static final HudDockingCoordinator DOCKING = new HudDockingCoordinator();
     private static final Map<String, DockBinding> DOCK_BINDINGS = new LinkedHashMap<String, DockBinding>();
     private static final long DOCK_STALE_NANOS = 180000000L;
-    private static String selectedId;
-    private static ActiveBinding activeBinding;
     private static HudDockingCoordinator.Snapshot dockingSnapshot;
     private static long lastDockUpdateNanos;
 
@@ -44,41 +42,13 @@ public final class HudDrag {
     public static float[] update(String id, Numbers<Double> xValue, Numbers<Double> yValue,
                                  Numbers<Double> scaleValue, float defaultX, float defaultY,
                                  float width, float height, ScaledResolution sr) {
+        if (sr == null) {
+            throw new IllegalArgumentException("scaled resolution must not be null");
+        }
         HudDragSession.Bounds bounds = new HudDragSession.Bounds(sr.getScaledWidth(), sr.getScaledHeight(), width, height);
-        HudDragSession.Position defaultPosition = HudDragSession.clampToBounds(
-                new HudDragSession.Position(resolvePosition(xValue, defaultX), resolvePosition(yValue, defaultY)), bounds);
-
-        if (!isEditMode()) {
-            cancelSession();
-            selectedId = null;
-            return asArray(defaultPosition);
-        }
-
-        boolean leftDown = Mouse.isButtonDown(0);
-        boolean escapeDown = Keyboard.isKeyDown(Keyboard.KEY_ESCAPE);
-        float mouseX = logicalMouseX(sr);
-        float mouseY = logicalMouseY(sr);
-        settleReleasedSession();
-        if (SESSION.isTracking(SESSION.getActiveId())) {
-            if (escapeDown) {
-                finishSession(true);
-            } else if (!leftDown) {
-                finishSession(false);
-            }
-        }
-
-        HudDragSession.Position position = defaultPosition;
-        if (SESSION.isTracking(id)) {
-            position = SESSION.drag(mouseX, mouseY, bounds).getPosition();
-        } else if (SESSION.getState() == HudDragSession.DragState.IDLE && !escapeDown && leftDown
-                && isHovered(mouseX, mouseY, defaultPosition.getX(), defaultPosition.getY(), width, height)) {
-            SESSION.arm(id, defaultPosition, mouseX, mouseY);
-            activeBinding = new ActiveBinding(id, xValue, yValue);
-            selectedId = id;
-            position = defaultPosition;
-        }
-
-        return asArray(position);
+        HudDragManager.Frame frame = new HudDragManager.Frame(isEditMode(), logicalMouseX(sr), logicalMouseY(sr),
+                Mouse.isButtonDown(0), Keyboard.isKeyDown(Keyboard.KEY_ESCAPE));
+        return asArray(MANAGER.update(id, xValue, yValue, defaultX, defaultY, bounds, frame));
     }
 
     /**
@@ -123,8 +93,11 @@ public final class HudDrag {
         binding.movable = true;
         advanceDocking(sr, now, true);
         HudDockingCoordinator.NodeView node = dockingSnapshot.getNode(id);
-        return node == null ? new float[]{binding.inputX, binding.inputY}
-                : new float[]{node.getX(), node.getY()};
+        float resolvedX = node == null ? binding.inputX : node.getX();
+        float resolvedY = node == null ? binding.inputY : node.getY();
+        MANAGER.observe(id, xValue, yValue, defaultX, defaultY, resolvedX, resolvedY,
+                binding.width, binding.height);
+        return new float[]{resolvedX, resolvedY};
     }
 
     public static float[] updateDocked(String id, Numbers<Double> xValue, Numbers<Double> yValue,
@@ -162,7 +135,10 @@ public final class HudDrag {
         binding.lastSeenNanos = now;
         advanceDocking(sr, now, false);
         HudDockingCoordinator.NodeView node = dockingSnapshot == null ? null : dockingSnapshot.getNode(id);
-        return node == null ? new float[]{x, y} : new float[]{node.getX(), node.getY()};
+        float resolvedX = node == null ? x : node.getX();
+        float resolvedY = node == null ? y : node.getY();
+        MANAGER.observe(id, null, null, x, y, resolvedX, resolvedY, width, height);
+        return new float[]{resolvedX, resolvedY};
     }
 
     /** Completes a local renderer-owned drag by snapping its proxy into the shared HUD graph. */
@@ -210,25 +186,20 @@ public final class HudDrag {
         }
         ScaledResolution sr = new ScaledResolution(MC);
         boolean hovered = isHovered(logicalMouseX(sr), logicalMouseY(sr), x, y, width, height);
-        boolean active = SESSION.isTracking(id);
-        boolean selected = id.equals(selectedId);
-        boolean releasing = SESSION.isReleaseFor(id);
-        if (!hovered && !active && !selected && !releasing) {
+        HudDragSession.DragState state = MANAGER.getState(id);
+        float hoverProgress = MANAGER.updateHoverProgress(id, hovered, System.nanoTime());
+        if (state == HudDragSession.DragState.SNAP_PREVIEW) {
+            HudDragSession.Preview preview = MANAGER.getPreview(id);
+            if (preview != null) {
+                drawSnapGuides(sr, preview);
+            }
+        }
+        int alpha = Math.round(255.0F * hoverProgress);
+        if (alpha <= 0) {
             return;
         }
-        HudDragSession.DragState state = active || releasing ? SESSION.getState() : HudDragSession.DragState.IDLE;
-        int color = state == HudDragSession.DragState.SNAP_PREVIEW
-                ? withAlpha(PALETTE.getBorderFocus(), 0xE8)
-                : active ? withAlpha(PALETTE.getAccentPrimary(), 0xC8)
-                : selected ? withAlpha(PALETTE.getAccentAlt(), 0xB8)
-                : withAlpha(PALETTE.getAccentPrimary(), 0x88);
-        if (state == HudDragSession.DragState.SNAP_PREVIEW) {
-            drawSnapGuides(sr, SESSION.getPreview());
-        }
-        RenderUtil.drawRoundedBorderedRect(x - 1.0f, y - 1.0f, x + width + 1.0f, y + height + 1.0f,
-                Math.max(2.0f, radius + 1.0f), 1.0f, 0x00000000, color);
-        RenderUtil.drawRoundedRect(x + width / 2.0f - 12.0f, y + 4.0f,
-                x + width / 2.0f + 12.0f, y + 6.0f, 1.0f, color);
+        RenderUtil.drawRoundedBorderedRect(x, y, x + width, y + height,
+                Math.max(0.0F, radius), 0.5F, 0x00FFFFFF, withAlpha(0xFFFFFFFF, alpha));
     }
 
     /** Draws the stronger edit-mode state for a shared docking node without changing panel rendering. */
@@ -263,11 +234,11 @@ public final class HudDrag {
     }
 
     public static boolean isDragging(String id) {
-        return SESSION.isTracking(id);
+        return MANAGER.isDragging(id);
     }
 
     public static boolean isSelected(String id) {
-        return id != null && id.equals(selectedId);
+        return MANAGER.isSelected(id);
     }
 
     /**
@@ -313,25 +284,6 @@ public final class HudDrag {
         if (value.getValue() == null || Math.abs(value.getValue() - rounded) > 0.0001D) {
             value.setNumberValue(rounded);
         }
-    }
-
-    private static void finishSession(boolean cancelled) {
-        HudDragSession.Completion completion = cancelled ? SESSION.cancel() : SESSION.release();
-        if (activeBinding == null || completion.getPosition() == null) {
-            return;
-        }
-        if (cancelled || completion.shouldPersist()) {
-            setNumber(activeBinding.xValue, completion.getPosition().getX());
-            setNumber(activeBinding.yValue, completion.getPosition().getY());
-        }
-    }
-
-    private static void cancelSession() {
-        if (SESSION.isTracking(SESSION.getActiveId())) {
-            finishSession(true);
-        }
-        SESSION.acknowledgeRelease();
-        activeBinding = null;
     }
 
     private static void persistDockedPositions(HudDockingCoordinator.Snapshot snapshot) {
@@ -382,14 +334,6 @@ public final class HudDrag {
                 || snapshot.isDirty() && snapshot.isSelected(id);
     }
 
-    private static void settleReleasedSession() {
-        if (SESSION.getState() != HudDragSession.DragState.RELEASE) {
-            return;
-        }
-        SESSION.acknowledgeRelease();
-        activeBinding = null;
-    }
-
     private static float[] asArray(HudDragSession.Position position) {
         return new float[]{position.getX(), position.getY()};
     }
@@ -436,18 +380,6 @@ public final class HudDrag {
 
     private static int withAlpha(int color, int alpha) {
         return (color & 0x00FFFFFF) | (Math.max(0, Math.min(255, alpha)) << 24);
-    }
-
-    private static final class ActiveBinding {
-        private final String id;
-        private final Numbers<Double> xValue;
-        private final Numbers<Double> yValue;
-
-        private ActiveBinding(String id, Numbers<Double> xValue, Numbers<Double> yValue) {
-            this.id = id;
-            this.xValue = xValue;
-            this.yValue = yValue;
-        }
     }
 
     private static final class DockBinding {

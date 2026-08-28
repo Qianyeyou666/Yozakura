@@ -18,7 +18,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Locale;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class ModernWebClickGuiService {
@@ -26,7 +26,7 @@ public final class ModernWebClickGuiService {
     private static final int DEFAULT_PORT = Integer.getInteger("yozakura.web.port", 18989).intValue();
     private static final String TOKEN = createToken();
     private static HttpServer server;
-    private static Executor executor;
+    private static ExecutorService executor;
     private static int activePort = -1;
 
     private ModernWebClickGuiService() {
@@ -47,8 +47,12 @@ public final class ModernWebClickGuiService {
         if (server != null) {
             server.stop(0);
             server = null;
-            activePort = -1;
         }
+        if (executor != null) {
+            executor.shutdownNow();
+            executor = null;
+        }
+        activePort = -1;
     }
 
     private static void ensureStarted() throws IOException {

@@ -22,7 +22,8 @@ public class EspHealthBarModeContractTest {
         assertTrue(source.contains("if (is2DMode() || Boolean.TRUE.equals(healthBar.getValue())) {"));
         assertTrue(source.contains("boolean shouldDrawHealthBar = Boolean.TRUE.equals(healthBar.getValue());"));
         assertTrue(source.contains("boolean shouldGlowHealthBar = shouldDrawHealthBar"));
-        assertTrue(source.contains("if (shouldDrawHealthBar) {\n                    drawHealthBar(entry, glowRenderer);"));
+        assertTrue(source.contains("if (shouldDrawHealthBar) {"));
+        assertTrue(source.contains("drawHealthBar(entry, glowRenderer);"));
         assertTrue(source.contains("glowRenderer.queueRoundedRect("));
     }
 

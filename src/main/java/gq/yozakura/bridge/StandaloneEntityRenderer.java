@@ -3,8 +3,21 @@ package gq.yozakura.bridge;
 import gq.yozakura.event.bridge.MouseOverEvent;
 import gq.yozakura.event.bridge.Render3DEvent;
 import gq.yozakura.event.bridge.RenderFrameGuard;
+import gq.yozakura.event.bridge.RenderTickEndEvent;
+import gq.yozakura.event.bridge.RenderTickStartEvent;
 import gq.yozakura.event.bus.EventManager;
+import gq.yozakura.manager.ModuleManager;
+import gq.yozakura.module.Module;
+import gq.yozakura.module.render.FreeLook;
+import gq.yozakura.module.render.HotBar;
+import gq.yozakura.module.render.InventoryAnimation;
+import gq.yozakura.module.render.SprintFovPolicy;
+import gq.yozakura.module.combat.Reach;
+import net.minecraft.entity.SharedMonsterAttributes;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiScreen;
+import net.minecraft.client.gui.ScaledResolution;
+import net.minecraft.client.gui.inventory.GuiContainer;
 import net.minecraft.client.renderer.EntityRenderer;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.OpenGlHelper;
@@ -13,6 +26,7 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL20;
+import org.lwjgl.input.Mouse;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -107,26 +121,158 @@ public class StandaloneEntityRenderer extends EntityRenderer {
         dispatchRuntimeMouseOver(partialTicks);
     }
 
+    @Override
+    public void updateCameraAndRender(float partialTicks, long nanoTime) {
+        if (!StandaloneGuiIngame.isLunarClient()) {
+            super.updateCameraAndRender(partialTicks, nanoTime);
+            return;
+        }
+        Object frameState = beginRuntimeFrame(partialTicks);
+        try {
+            super.updateCameraAndRender(partialTicks, nanoTime);
+        } catch (Throwable throwable) {
+            abortRuntimeFrame(frameState);
+            throw throwable;
+        }
+        finishRuntimeFrame(this, frameState, partialTicks);
+    }
+
+    public static Object beginRuntimeFrame(float partialTicks) {
+        Minecraft minecraft = Minecraft.getMinecraft();
+        GuiScreen currentScreen = minecraft.currentScreen;
+        GuiContainer animatedScreen = InventoryAnimation.prepareLunarScreen(currentScreen);
+        boolean suppressNativeScreen = animatedScreen != null && currentScreen == animatedScreen;
+        if (suppressNativeScreen) {
+            minecraft.currentScreen = null;
+        }
+        float originalFov = minecraft.gameSettings.fovSetting;
+        try {
+            boolean sprintFovAdjusted = prepareLunarSprintFov(minecraft, originalFov);
+            return new LunarFrameState(currentScreen, animatedScreen, suppressNativeScreen,
+                    originalFov, sprintFovAdjusted);
+        } catch (Throwable throwable) {
+            minecraft.gameSettings.fovSetting = originalFov;
+            if (suppressNativeScreen && minecraft.currentScreen == null) {
+                minecraft.currentScreen = currentScreen;
+            }
+            throw throwable;
+        }
+    }
+
+    public static void finishRuntimeFrame(Object renderer, Object state, float partialTicks) {
+        LunarFrameState frameState = requireFrameState(state);
+        restoreLunarScreen(frameState);
+        Minecraft minecraft = Minecraft.getMinecraft();
+        if (minecraft.theWorld != null && minecraft.thePlayer != null) {
+            if (!(renderer instanceof EntityRenderer)) {
+                throw new IllegalArgumentException("Runtime frame hook is not an EntityRenderer: "
+                        + (renderer == null ? "null" : renderer.getClass().getName()));
+            }
+            ((EntityRenderer) renderer).setupOverlayRendering();
+            HotBar.restoreLunarBackground();
+            if (minecraft.currentScreen == null || frameState.animatedScreen != null
+                    || !(minecraft.currentScreen instanceof GuiContainer)) {
+                StandaloneGuiIngame.dispatchRender2DExternally(partialTicks);
+            } else {
+                HotBar.renderLunarFrame(partialTicks);
+            }
+        }
+        if (frameState.animatedScreen != null) {
+            renderLunarInventory(frameState.animatedScreen, partialTicks, minecraft);
+            if (minecraft.currentScreen instanceof GuiContainer) {
+                ((EntityRenderer) renderer).setupOverlayRendering();
+                HotBar.renderLunarFrame(partialTicks);
+            }
+        }
+    }
+
+    public static void abortRuntimeFrame(Object state) {
+        if (state instanceof LunarFrameState) {
+            restoreLunarScreen((LunarFrameState) state);
+        }
+    }
+
+    private static void renderLunarInventory(GuiContainer animatedScreen, float partialTicks,
+                                             Minecraft minecraft) {
+        GlStateManager.clear(GL11.GL_DEPTH_BUFFER_BIT);
+        ScaledResolution resolution = new ScaledResolution(minecraft);
+        int mouseX = Mouse.getX() * resolution.getScaledWidth() / Math.max(1, minecraft.displayWidth);
+        int mouseY = resolution.getScaledHeight()
+                - Mouse.getY() * resolution.getScaledHeight() / Math.max(1, minecraft.displayHeight) - 1;
+        InventoryAnimation.renderLunarScreen(animatedScreen, mouseX, mouseY, partialTicks);
+    }
+
+    private static LunarFrameState requireFrameState(Object state) {
+        if (!(state instanceof LunarFrameState)) {
+            throw new IllegalArgumentException("Invalid runtime frame state: "
+                    + (state == null ? "null" : state.getClass().getName()));
+        }
+        return (LunarFrameState) state;
+    }
+
+    private static void restoreLunarScreen(LunarFrameState state) {
+        restoreLunarSprintFov(state);
+        if (state.suppressedNativeScreen) {
+            Minecraft minecraft = Minecraft.getMinecraft();
+            if (minecraft.currentScreen == null) {
+                minecraft.currentScreen = state.originalScreen;
+            }
+        }
+    }
+
+    private static boolean prepareLunarSprintFov(Minecraft minecraft, float originalFov) {
+        Module module = ModuleManager.getModule("NoSprintFOV");
+        if (module == null || !module.getState() || minecraft.thePlayer == null
+                || !minecraft.thePlayer.isSprinting()) {
+            return false;
+        }
+        double movementSpeed = minecraft.thePlayer.getEntityAttribute(
+                SharedMonsterAttributes.movementSpeed).getAttributeValue();
+        float adjusted = SprintFovPolicy.withoutSprint(originalFov, movementSpeed,
+                minecraft.thePlayer.capabilities.getWalkSpeed(), true);
+        if (Math.abs(adjusted - originalFov) <= 0.0001F) {
+            return false;
+        }
+        minecraft.gameSettings.fovSetting = adjusted;
+        return true;
+    }
+
+    private static void restoreLunarSprintFov(LunarFrameState state) {
+        if (state.sprintFovAdjusted) {
+            Minecraft.getMinecraft().gameSettings.fovSetting = state.originalFov;
+        }
+    }
+
     private void renderWorldHook(float partialTicks, long finishTimeNano) {
-        beginRuntimeRenderWorld();
+        beginRuntimeRenderWorld(partialTicks);
         try {
             super.renderWorld(partialTicks, finishTimeNano);
         } finally {
             abortRuntimeRenderWorld();
         }
         dispatchRuntimeRenderEvents(this, partialTicks);
+        HotBar.captureLunarBackground();
     }
 
     /** Called by the generated Lunar renderer subclass before invokespecial. */
-    public static void beginRuntimeRenderWorld() {
+    public static void beginRuntimeRenderWorld(float partialTicks) {
         boolean rotationPrepared = false;
+        boolean renderTickStarted = false;
         try {
             MovementInputBridge.prepareRotationForRender();
             rotationPrepared = true;
-            StandaloneLivingRendererBridge.install(Minecraft.getMinecraft());
+            Minecraft minecraft = Minecraft.getMinecraft();
+            if (minecraft.theWorld != null && minecraft.thePlayer != null) {
+                EventManager.call(new RenderTickStartEvent(partialTicks, true));
+                renderTickStarted = true;
+            }
+            StandaloneLivingRendererBridge.install(minecraft);
         } catch (Throwable throwable) {
             if (rotationPrepared) {
                 MovementInputBridge.restoreRotationForRender();
+            }
+            if (renderTickStarted) {
+                EventManager.call(new RenderTickEndEvent(0.0F));
             }
             throw throwable;
         }
@@ -134,17 +280,26 @@ public class StandaloneEntityRenderer extends EntityRenderer {
 
     /** Called after the generated subclass returns normally from invokespecial. */
     public static void finishRuntimeRenderWorld(Object renderer, float partialTicks) {
-        MovementInputBridge.restoreRotationForRender();
-        if (!(renderer instanceof EntityRenderer)) {
-            throw new IllegalArgumentException("Generated renderer hook is not an EntityRenderer: "
-                    + (renderer == null ? "null" : renderer.getClass().getName()));
+        try {
+            MovementInputBridge.restoreRotationForRender();
+            if (!(renderer instanceof EntityRenderer)) {
+                throw new IllegalArgumentException("Generated renderer hook is not an EntityRenderer: "
+                        + (renderer == null ? "null" : renderer.getClass().getName()));
+            }
+            dispatchRuntimeRenderEvents((EntityRenderer) renderer, partialTicks);
+            HotBar.captureLunarBackground();
+        } finally {
+            EventManager.call(new RenderTickEndEvent(partialTicks));
         }
-        dispatchRuntimeRenderEvents((EntityRenderer) renderer, partialTicks);
     }
 
     /** Called from the generated exception handler if the client renderer throws. */
     public static void abortRuntimeRenderWorld() {
-        MovementInputBridge.restoreRotationForRender();
+        try {
+            MovementInputBridge.restoreRotationForRender();
+        } finally {
+            EventManager.call(new RenderTickEndEvent(0.0F));
+        }
     }
 
     /** Called by the generated Lunar renderer subclass after invokespecial. */
@@ -152,16 +307,12 @@ public class StandaloneEntityRenderer extends EntityRenderer {
         Minecraft minecraft = Minecraft.getMinecraft();
         if (minecraft.theWorld != null && minecraft.thePlayer != null) {
             EventManager.call(new MouseOverEvent(partialTicks));
+            Reach.applyRuntimeMouseOverOverride(partialTicks);
         }
     }
 
     private static void dispatchRuntimeRenderEvents(EntityRenderer renderer, float partialTicks) {
         dispatchRender3D(renderer, partialTicks);
-        // On Lunar Client, StandaloneGuiIngame.install() is a no-op to preserve
-        // Lunar's HUD Caching. Dispatch 2D overlay here instead.
-        if (StandaloneGuiIngame.isLunarClient()) {
-            StandaloneGuiIngame.dispatchRender2DExternally(partialTicks);
-        }
     }
 
     private static void dispatchRender3D(EntityRenderer renderer, float partialTicks) {
@@ -177,6 +328,7 @@ public class StandaloneEntityRenderer extends EntityRenderer {
             try {
                 RenderFrameGuard.nextStandalone3DFrame();
                 restoreWorldCamera(renderer, partialTicks);
+                FreeLook.restorePlayerFacingForOverlays();
                 prepareWorldOverlayState();
                 EventManager.call(new Render3DEvent(partialTicks));
                 prepareWorldOverlayState();
@@ -447,5 +599,23 @@ public class StandaloneEntityRenderer extends EntityRenderer {
         private int program;
         private int activeTexture;
         private int texture0;
+    }
+
+    private static final class LunarFrameState {
+        private final GuiScreen originalScreen;
+        private final GuiContainer animatedScreen;
+        private final boolean suppressedNativeScreen;
+        private final float originalFov;
+        private final boolean sprintFovAdjusted;
+
+        private LunarFrameState(GuiScreen originalScreen, GuiContainer animatedScreen,
+                                boolean suppressedNativeScreen, float originalFov,
+                                boolean sprintFovAdjusted) {
+            this.originalScreen = originalScreen;
+            this.animatedScreen = animatedScreen;
+            this.suppressedNativeScreen = suppressedNativeScreen;
+            this.originalFov = originalFov;
+            this.sprintFovAdjusted = sprintFovAdjusted;
+        }
     }
 }

@@ -1,0 +1,141 @@
+{
+  "input": "__INPUT__",
+  "output": "__OUTPUT__",
+  "libraries": ["__LIBRARIES__"],
+  "global_exclusions": [],
+  "hard_exclusions": [],
+  "corrupt_output_stream": false,
+  "corrupt_class_names": false,
+  "obfuscation": {
+    "AntiDebugTransformer": {
+      "Enable": false
+    },
+    "MergeMethodsTransformer": {
+      "Enable": false
+    },
+    "PackagerTransformer": {
+      "Enable": false,
+      "Origin_main_class": "gq/yozakura/YozakuraAttachPoint",
+      "Loader_name": "gq/yozakura/YozakuraAttachPoint"
+    },
+    "TrashClassesTransformer": {
+      "Enable": false,
+      "GenClasses": 0.0,
+      "FakeUsage": false,
+      "Prefix": ""
+    },
+    "RenameMembersTransformer": {
+      "Enable": false,
+      "Rename_methods": false,
+      "Rename_fields": false,
+      "Rename_classes": false,
+      "Remove_packages": false,
+      "Reset_dictionary": false,
+      "BreakZip_contact": false,
+      "Internal_dictionary": "Alphabet",
+      "Prefix": "",
+      "Excluded_classes": [],
+      "Excluded_methods": [],
+      "Excluded_fields": []
+    },
+    "StringEncryptionTransformer": {
+      "Enable": true,
+      "Type": "FAST",
+      "AntiTemper": false
+    },
+    "InvokeDynamicTransformer": {
+      "Enable": false,
+      "Invalid_name": false,
+      "Excluded_classes": []
+    },
+    "ScrambleTransformer": {
+      "Enable": false,
+      "Aggressive_overload": false,
+      "Redirect_method": false,
+      "Redirect_fields": false,
+      "Get_fields": false,
+      "Set_fields": false
+    },
+    "HideCodeTransformer": {
+      "Enable": false
+    },
+    "MiscellaneousObfuscationTransformer": {
+      "Enable": false,
+      "Random_exceptions": false,
+      "Massive_signature": false,
+      "Massive_source": false,
+      "Push_transient": false,
+      "Push_varargs": false,
+      "Variable_descriptor": false,
+      "Variable_descriptor_list": [],
+      "Invalid_annotation": false,
+      "Duplicate_variables": false,
+      "Excluded_classes": []
+    },
+    "CrasherTransformer": {
+      "Enable": false,
+      "AntiASM": false,
+      "Anti_decompile": false,
+      "BadInvokedDynamic": false,
+      "HeavyProtectMethod": false
+    },
+    "NumberObfuscationTransformer": {
+      "Enable": true,
+      "Execute_twice": false,
+      "ShiftNumber": false,
+      "Excluded_classes": []
+    },
+    "ControlFlowTransformer": {
+      "Enable": false,
+      "Jump_return": false,
+      "Replace_goto": false,
+      "Trash_code": false,
+      "Block_splitter": false,
+      "Confusing_switch": false,
+      "SwitchMaxStack": 0.0,
+      "Fake_jump": false,
+      "TryCatch_type": "NONE",
+      "Flow_severity": 0.0,
+      "TryCatch_severity": 0.0,
+      "Excluded_classes": []
+    },
+    "ShuffleMembersTransformer": {
+      "Enable": false
+    },
+    "WaterMarkTransformer": {
+      "Enable": false,
+      "Message": "Yozakura protected release"
+    }
+  },
+  "optimization": {
+    "NoOperationTransformer": {
+      "Enable": false
+    },
+    "StaticStringCallTransformer": {
+      "Enable": false
+    },
+    "DeadCodeTransformer": {
+      "Enable": false
+    },
+    "RedundantTransformer": {
+      "Enable": false
+    },
+    "ConstantTransformer": {
+      "Enable": false
+    }
+  },
+  "shrinking": {
+    "MetadataRemoveTransformer": {
+      "Enable": false
+    },
+    "UnusedMemberTransformer": {
+      "Enable": false,
+      "Remove_classes": false,
+      "Remove_methods": false,
+      "Remove_fields": false
+    },
+    "InnerClassTransformer": {
+      "Enable": false
+    }
+  }
+}

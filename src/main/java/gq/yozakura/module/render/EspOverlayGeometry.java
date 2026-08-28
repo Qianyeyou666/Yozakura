@@ -29,6 +29,43 @@ final class EspOverlayGeometry {
         return color & 0x00FFFFFF | alpha << 24;
     }
 
+    static final class BoundsAccumulator {
+        private float minX;
+        private float minY;
+        private float maxX;
+        private float maxY;
+        private boolean invalid;
+        private int pointCount;
+
+        void reset() {
+            minX = Float.MAX_VALUE;
+            minY = Float.MAX_VALUE;
+            maxX = -Float.MAX_VALUE;
+            maxY = -Float.MAX_VALUE;
+            invalid = false;
+            pointCount = 0;
+        }
+
+        boolean include(float x, float y, float depth) {
+            if (invalid || depth < 0.0f || depth > 1.0f) {
+                invalid = true;
+                return false;
+            }
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+            pointCount++;
+            return true;
+        }
+
+        Bounds toBounds() {
+            return !invalid && pointCount > 0 && maxX > minX && maxY > minY
+                    ? new Bounds(minX, minY, maxX, maxY)
+                    : null;
+        }
+    }
+
     private static float clamp(float value, float minimum, float maximum) {
         return Math.max(minimum, Math.min(maximum, value));
     }

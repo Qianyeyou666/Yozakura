@@ -35,12 +35,15 @@ public final class NameTags extends Module {
     private final Option<Boolean> throughWalls = new Option<Boolean>("Through Walls", "ThroughWalls", true);
     private final Option<Boolean> invisibles = new Option<Boolean>("Invisibles", "Invisibles", false);
     private final Numbers<Double> scale = new Numbers<Double>("Scale", "Scale", 1.0D, 0.65D, 1.6D, 0.05D);
+    private final Numbers<Double> backgroundAlpha = new Numbers<Double>(
+            "Background Alpha", "BackgroundAlpha", 220.0D, 0.0D, 255.0D, 1.0D);
     private final Numbers<Double> maxDistance =
             new Numbers<Double>("Max Distance", "MaxDistance", 96.0D, 16.0D, 192.0D, 4.0D);
 
     public NameTags() {
         super("NameTags", Keyboard.KEY_NONE, ModuleType.Render, "Show NightBloom player name tags");
-        this.addValues(showHealth, showDistance, showHealthBar, throughWalls, invisibles, scale, maxDistance);
+        this.addValues(showHealth, showDistance, showHealthBar, throughWalls, invisibles, scale,
+                backgroundAlpha, maxDistance);
         Chinese = "名称标签";
     }
 
@@ -155,9 +158,11 @@ public final class NameTags extends Module {
         VisualPalette palette = ClickGUI.currentPalette();
         float healthFraction = NightBloomNameTagLayout.healthFraction(player.getHealth(), player.getMaxHealth());
         int healthColor = healthColor(palette, healthFraction);
+        int panelAlpha = backgroundAlpha.getValue().intValue();
+        int panelColor = withAlpha(PANEL_COLOR, panelAlpha);
 
         HUD.drawNightBloomShadow(left, top, right, bottom, PANEL_RADIUS, 0.72F);
-        RenderServices.shapes().rounded(left, top, right, bottom, PANEL_RADIUS, PANEL_COLOR);
+        RenderServices.shapes().rounded(left, top, right, bottom, PANEL_RADIUS, panelColor);
 
         String visibleName = trim(playerName, FontLoaders.TB16, layout.getNameMaxWidth());
         HUD.drawNightBloomText(FontLoaders.TB16, visibleName,

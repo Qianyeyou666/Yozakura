@@ -59,14 +59,7 @@ public class StorageESP extends Module {
             renderScreenSpaceGlow(ev.partialTicks);
             return;
         }
-        for (final TileEntity te : mc.theWorld.loadedTileEntityList) {
-            if (te instanceof TileEntityChest && this.Chest.getValue()) {
-                renderStorage(te.getPos(), ClickGUI.currentPalette().getStorageChest());
-            }
-            if(te instanceof TileEntityEnderChest && this.EnderChest.getValue()){
-                renderStorage(te.getPos(), ClickGUI.currentPalette().getStorageEnderChest());
-            }
-        }
+        renderStorageBatch();
     }
 
     private void renderScreenSpaceGlow(float partialTicks) {
@@ -90,8 +83,138 @@ public class StorageESP extends Module {
         }
     }
 
-    private void renderStorage(BlockPos position, int color) {
-        StorageESP.re(position, color);
+    private void renderStorageBatch() {
+        if (!hasSelectedStorage()) {
+            return;
+        }
+        VisualPalette palette = ClickGUI.currentPalette();
+        Tessellator tessellator = Tessellator.getInstance();
+        WorldRenderer renderer = tessellator.getWorldRenderer();
+        GL11.glBlendFunc(770, 771);
+        GL11.glEnable(3042);
+        GL11.glLineWidth(2.0f);
+        GL11.glDisable(3553);
+        GL11.glDisable(2929);
+        GL11.glDepthMask(false);
+        try {
+            renderer.begin(GL11.GL_LINES, DefaultVertexFormats.POSITION_COLOR);
+            appendStorageOutlines(renderer, palette);
+            tessellator.draw();
+
+            renderer.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_COLOR);
+            appendStorageFills(renderer, palette);
+            tessellator.draw();
+        } finally {
+            GL11.glEnable(3553);
+            GL11.glEnable(2929);
+            GL11.glDepthMask(true);
+            GL11.glDisable(3042);
+            GL11.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+        }
+    }
+
+    private boolean hasSelectedStorage() {
+        for (TileEntity tileEntity : mc.theWorld.loadedTileEntityList) {
+            if (tileEntity instanceof TileEntityChest && Boolean.TRUE.equals(Chest.getValue())) {
+                return true;
+            }
+            if (tileEntity instanceof TileEntityEnderChest && Boolean.TRUE.equals(EnderChest.getValue())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void appendStorageOutlines(WorldRenderer renderer, VisualPalette palette) {
+        for (TileEntity tileEntity : mc.theWorld.loadedTileEntityList) {
+            if (tileEntity instanceof TileEntityChest && Boolean.TRUE.equals(Chest.getValue())) {
+                appendStorageOutline(renderer, tileEntity.getPos(), palette.getStorageChest());
+            } else if (tileEntity instanceof TileEntityEnderChest && Boolean.TRUE.equals(EnderChest.getValue())) {
+                appendStorageOutline(renderer, tileEntity.getPos(), palette.getStorageEnderChest());
+            }
+        }
+    }
+
+    private void appendStorageFills(WorldRenderer renderer, VisualPalette palette) {
+        for (TileEntity tileEntity : mc.theWorld.loadedTileEntityList) {
+            if (tileEntity instanceof TileEntityChest && Boolean.TRUE.equals(Chest.getValue())) {
+                appendStorageFill(renderer, tileEntity.getPos(), palette.getStorageChest());
+            } else if (tileEntity instanceof TileEntityEnderChest && Boolean.TRUE.equals(EnderChest.getValue())) {
+                appendStorageFill(renderer, tileEntity.getPos(), palette.getStorageEnderChest());
+            }
+        }
+    }
+
+    private void appendStorageOutline(WorldRenderer renderer, BlockPos position, int color) {
+        double minX = position.getX() - mc.getRenderManager().viewerPosX;
+        double minY = position.getY() - mc.getRenderManager().viewerPosY;
+        double minZ = position.getZ() - mc.getRenderManager().viewerPosZ;
+        double maxX = minX + 1.0d;
+        double maxY = minY + 1.0d;
+        double maxZ = minZ + 1.0d;
+        float red = (color >> 16 & 0xFF) / 255.0f;
+        float green = (color >> 8 & 0xFF) / 255.0f;
+        float blue = (color & 0xFF) / 255.0f;
+        float alpha = (color >> 24 & 0xFF) / 255.0f;
+
+        line(renderer, minX, minY, minZ, maxX, minY, minZ, red, green, blue, alpha);
+        line(renderer, maxX, minY, minZ, maxX, minY, maxZ, red, green, blue, alpha);
+        line(renderer, maxX, minY, maxZ, minX, minY, maxZ, red, green, blue, alpha);
+        line(renderer, minX, minY, maxZ, minX, minY, minZ, red, green, blue, alpha);
+        line(renderer, minX, maxY, minZ, maxX, maxY, minZ, red, green, blue, alpha);
+        line(renderer, maxX, maxY, minZ, maxX, maxY, maxZ, red, green, blue, alpha);
+        line(renderer, maxX, maxY, maxZ, minX, maxY, maxZ, red, green, blue, alpha);
+        line(renderer, minX, maxY, maxZ, minX, maxY, minZ, red, green, blue, alpha);
+        line(renderer, minX, minY, minZ, minX, maxY, minZ, red, green, blue, alpha);
+        line(renderer, maxX, minY, minZ, maxX, maxY, minZ, red, green, blue, alpha);
+        line(renderer, maxX, minY, maxZ, maxX, maxY, maxZ, red, green, blue, alpha);
+        line(renderer, minX, minY, maxZ, minX, maxY, maxZ, red, green, blue, alpha);
+    }
+
+    private void appendStorageFill(WorldRenderer renderer, BlockPos position, int color) {
+        double minX = position.getX() - mc.getRenderManager().viewerPosX;
+        double minY = position.getY() - mc.getRenderManager().viewerPosY;
+        double minZ = position.getZ() - mc.getRenderManager().viewerPosZ;
+        double maxX = minX + 1.0d;
+        double maxY = minY + 1.0d;
+        double maxZ = minZ + 1.0d;
+        float red = (color >> 16 & 0xFF) / 255.0f;
+        float green = (color >> 8 & 0xFF) / 255.0f;
+        float blue = (color & 0xFF) / 255.0f;
+        float alpha = 0.25f;
+
+        doubleSidedQuad(renderer, minX, minY, minZ, maxX, minY, minZ, maxX, maxY, minZ, minX, maxY, minZ,
+                red, green, blue, alpha);
+        doubleSidedQuad(renderer, maxX, minY, maxZ, minX, minY, maxZ, minX, maxY, maxZ, maxX, maxY, maxZ,
+                red, green, blue, alpha);
+        doubleSidedQuad(renderer, minX, minY, maxZ, minX, minY, minZ, minX, maxY, minZ, minX, maxY, maxZ,
+                red, green, blue, alpha);
+        doubleSidedQuad(renderer, maxX, minY, minZ, maxX, minY, maxZ, maxX, maxY, maxZ, maxX, maxY, minZ,
+                red, green, blue, alpha);
+        doubleSidedQuad(renderer, minX, maxY, minZ, maxX, maxY, minZ, maxX, maxY, maxZ, minX, maxY, maxZ,
+                red, green, blue, alpha);
+        doubleSidedQuad(renderer, minX, minY, maxZ, maxX, minY, maxZ, maxX, minY, minZ, minX, minY, minZ,
+                red, green, blue, alpha);
+    }
+
+    private static void line(WorldRenderer renderer, double startX, double startY, double startZ,
+                             double endX, double endY, double endZ, float red, float green, float blue, float alpha) {
+        renderer.pos(startX, startY, startZ).color(red, green, blue, alpha).endVertex();
+        renderer.pos(endX, endY, endZ).color(red, green, blue, alpha).endVertex();
+    }
+
+    private static void doubleSidedQuad(WorldRenderer renderer,
+                                        double x1, double y1, double z1, double x2, double y2, double z2,
+                                        double x3, double y3, double z3, double x4, double y4, double z4,
+                                        float red, float green, float blue, float alpha) {
+        renderer.pos(x1, y1, z1).color(red, green, blue, alpha).endVertex();
+        renderer.pos(x2, y2, z2).color(red, green, blue, alpha).endVertex();
+        renderer.pos(x3, y3, z3).color(red, green, blue, alpha).endVertex();
+        renderer.pos(x4, y4, z4).color(red, green, blue, alpha).endVertex();
+        renderer.pos(x4, y4, z4).color(red, green, blue, alpha).endVertex();
+        renderer.pos(x3, y3, z3).color(red, green, blue, alpha).endVertex();
+        renderer.pos(x2, y2, z2).color(red, green, blue, alpha).endVertex();
+        renderer.pos(x1, y1, z1).color(red, green, blue, alpha).endVertex();
     }
 
     private static Minecraft mc;

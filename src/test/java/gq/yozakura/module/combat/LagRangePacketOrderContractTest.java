@@ -76,6 +76,29 @@ public class LagRangePacketOrderContractTest {
                         && writePacket.contains("pendingDeliveryTasks--"));
     }
 
+    @Test
+    public void teleportBoundaryDropsStaleDelayAndBypassesTheRequiredPositionConfirmation() throws IOException {
+        String source = source();
+        String queuePacket = method(source,
+                "    private boolean queuePacketIfLagging(ChannelHandlerContext ctx, Object packet, ChannelPromise promise) {",
+                "    private void forwardPacket(");
+        String boundary = method(source,
+                "    public void onTeleportBoundary(TeleportBoundaryEvent event) {",
+                "    private void updateLagState(");
+
+        assertTrue("S08 acceptance must atomically discard pre-teleport packets and arm a confirmation bypass",
+                boundary.contains("discardQueuedPacketsLocked();")
+                        && boundary.contains("teleportConfirmationPending = true;"));
+        assertTrue("The required Vanilla C04/C06 must bypass LagRange before C0F advances Grim's boundary",
+                queuePacket.contains("shouldBypassForTeleport(packet)"));
+        assertTrue("Only a position-bearing player packet may consume the bypass",
+                source.contains("playerPacket.isMoving()")
+                        && source.contains("teleportConfirmationPending = false;"));
+        assertTrue("A pre-teleport delivery already scheduled on Netty must be invalidated by epoch",
+                source.contains("deliveryEpoch++;")
+                        && source.contains("queued.epoch != deliveryEpoch"));
+    }
+
     private static String method(String source, String beginMarker, String endMarker) {
         int begin = source.indexOf(beginMarker);
         int end = source.indexOf(endMarker, begin + beginMarker.length());

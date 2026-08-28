@@ -40,7 +40,7 @@ public class VelocityReducePacketCompatibilityContractTest {
 
     private static String modernSource() throws IOException {
         return new String(Files.readAllBytes(Paths.get(
-                "src/main/java/gq/yozakura/core/modern/ModernPacketBridge.java")), StandardCharsets.UTF_8);
+                "src/main/java/gq/yozakura/bridge/modern/ModernPacketBridge.java")), StandardCharsets.UTF_8);
     }
 
     private static String between(String source, String beginMarker, String endMarker) {

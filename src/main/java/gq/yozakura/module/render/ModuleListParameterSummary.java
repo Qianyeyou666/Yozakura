@@ -238,7 +238,10 @@ final class ModuleListParameterSummary {
             return "3";
         }
         if ("GLOWESP".equals(upper)) {
-            return "GlowESP";
+            return "Outline Glow";
+        }
+        if ("BODY_GLOW".equals(upper)) {
+            return "Body Glow";
         }
         if ("ESP".equals(upper) || "HUD".equals(upper) || "CPS".equals(upper)
                 || "FOV".equals(upper) || "GUI".equals(upper) || "RGB".equals(upper)

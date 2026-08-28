@@ -28,19 +28,30 @@ public class CombatPacketStateBoundaryContractTest {
     }
 
     @Test
-    public void autoBlockDoesNotInjectInteractPacketsOnAnAttackBoundary() throws IOException {
+    public void referenceAutoBlockKeepsInteractionsOutsideTheAttackBoundary() throws IOException {
         String aura = source("src/main/java/gq/yozakura/module/combat/KillAura.java");
+        int attackBegin = aura.indexOf(
+                "    private boolean performAttack(float yaw, float pitch, boolean allowReferenceRelease) {");
+        int attackEnd = aura.indexOf("    private boolean startBlock()", attackBegin);
+        String attack = aura.substring(attackBegin, attackEnd);
+        int interactBegin = aura.indexOf("    private boolean interactBlockAfterAttack(");
+        int interactEnd = aura.indexOf(
+                "    private boolean updateLeaderLegitAutoBlockCycle(", interactBegin);
+        String interaction = aura.substring(interactBegin, interactEnd);
 
         assertTrue("The actual attack remains the one explicit C02 ATTACK action",
-                aura.contains("new C02PacketUseEntity(this.attackTarget.getEntity(), Action.ATTACK)"));
-        assertFalse("AutoBlock must use the normal use-item path instead of synthetic entity interaction",
-                aura.contains("sendExpoInteractPackets") || aura.contains("Action.INTERACT"));
+                attack.contains("new C02PacketUseEntity(this.attackTarget.getEntity(), Action.ATTACK)"));
+        assertFalse("Reference-mode interactions must not be mixed into the normal attack submission",
+                attack.contains("Action.INTERACT") || attack.contains("new Vec3("));
+        assertTrue("Reference AutoBlock may keep its isolated interaction plus vanilla sword-use helper",
+                interaction.contains("Action.INTERACT") && interaction.contains("this.startBlock()"));
+        assertFalse(aura.contains("sendExpoInteractPackets"));
     }
 
     @Test
     public void vanillaActionsKeepTheirOriginalOutboundPositionUnlessASeparateModuleDelaysThem() throws IOException {
-        assertNativeActionOrder(source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java"));
-        assertNativeActionOrder(source("src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java"));
+        assertNativeActionOrder(combinedStandaloneSource());
+        assertNativeActionOrder(combinedForgeSource());
     }
 
     @Test
@@ -59,12 +70,36 @@ public class CombatPacketStateBoundaryContractTest {
         return new String(Files.readAllBytes(Paths.get(path)), StandardCharsets.UTF_8);
     }
 
+    private static String baseSource() throws IOException {
+        return new String(Files.readAllBytes(Paths.get(
+                "src/main/java/gq/yozakura/bridge/BasePacketBridgeHandler.java")), StandardCharsets.UTF_8);
+    }
+
+    private static String forgeSource() throws IOException {
+        return new String(Files.readAllBytes(Paths.get(
+                "src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java")), StandardCharsets.UTF_8);
+    }
+
+    private static String standaloneSource() throws IOException {
+        return new String(Files.readAllBytes(Paths.get(
+                "src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java")), StandardCharsets.UTF_8);
+    }
+
+    private static String combinedForgeSource() throws IOException {
+        return baseSource() + "\n" + forgeSource();
+    }
+
+    private static String combinedStandaloneSource() throws IOException {
+        return baseSource() + "\n" + standaloneSource();
+    }
+
     private static void assertNativeActionOrder(String source) {
         assertTrue("The bridge must preserve vanilla action ordering by default",
                 source.contains("boolean preserveOriginalPacketOrder = true;"));
-        assertTrue("Packet listeners may strengthen but never clear the default ordering guarantee",
-                source.contains("preserveOriginalPacketOrder = preserveOriginalPacketOrder")
-                        && source.contains("|| accepted.isOriginalPacketOrderRequired();"));
+        assertTrue("Only an explicit current-rotation dependency may override the default ordering guarantee",
+                source.contains("afterCurrentRotation = accepted.isAfterCurrentRotationRequired();")
+                        && source.contains("preserveOriginalPacketOrder = !afterCurrentRotation")
+                        && source.contains("accepted.isOriginalPacketOrderRequired()"));
         assertTrue("Any retained legacy queue gate must remain behind the source-order guard",
                 source.contains("if (!skipPacketEvent && !preserveOriginalPacketOrder && isPostSensitiveAction(packet))"));
     }

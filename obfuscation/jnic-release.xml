@@ -10,11 +10,11 @@
         <useIntrinsics>false</useIntrinsics>
     </options>
     <include>
-        <match className="gq/yozakura/auth/YozakuraAuthGate" methodName="(getVerifiedUsername|allowRuntime|requireRuntime)" />
+        <match className="gq/yozakura/k/B" methodName="(getVerifiedUsername|allowRuntime|requireRuntime)" />
     </include>
     <exclude>
-        <match className="gq/yozakura/auth/YozakuraAuthGate" methodName="&lt;(init|clinit)&gt;" />
-        <match className="gq/yozakura/auth/YozakuraAuthGate" methodName="verifyOrThrow" />
-        <match className="gq/yozakura/auth/YozakuraAuthGate" methodName="showVerification" />
+        <match className="gq/yozakura/k/B" methodName="&lt;(init|clinit)&gt;" />
+        <match className="gq/yozakura/k/B" methodName="verifyOrThrow" />
+        <match className="gq/yozakura/k/B" methodName="showVerification" />
     </exclude>
 </jnic>

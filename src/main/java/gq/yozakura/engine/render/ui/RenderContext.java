@@ -33,10 +33,12 @@ public final class RenderContext {
         GlStateManager.translate(x, y, 0.0f);
         GlStateManager.scale(scale, scale, 1.0f);
         GlStateManager.translate(-x, -y, 0.0f);
+        RenderServices.markHudEffectsStateChanged();
     }
 
     public void scaleEnd() {
         GlStateManager.popMatrix();
+        RenderServices.markHudEffectsStateChanged();
     }
 
     public int applyOpacity(int color, float opacity) {

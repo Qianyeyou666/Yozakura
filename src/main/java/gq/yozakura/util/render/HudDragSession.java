@@ -31,6 +31,7 @@ final class HudDragSession {
     private float pointerDownMouseY;
     private SnapTarget horizontalSnap = SnapTarget.NONE;
     private SnapTarget verticalSnap = SnapTarget.NONE;
+    private boolean pointerBlockedUntilRelease;
 
     DragState getState() {
         return state;
@@ -47,6 +48,14 @@ final class HudDragSession {
 
     boolean isReleaseFor(String id) {
         return id != null && id.equals(activeId) && state == DragState.RELEASE;
+    }
+
+    boolean isPointerBlockedUntilRelease() {
+        return pointerBlockedUntilRelease;
+    }
+
+    void releasePointerBlock() {
+        pointerBlockedUntilRelease = false;
     }
 
     Preview getPreview() {
@@ -107,6 +116,7 @@ final class HudDragSession {
             return Completion.none();
         }
         state = DragState.RELEASE;
+        pointerBlockedUntilRelease = true;
         return new Completion(previewPosition, !samePosition(previewPosition, pointerDownPosition), false);
     }
 
@@ -118,6 +128,7 @@ final class HudDragSession {
         horizontalSnap = SnapTarget.NONE;
         verticalSnap = SnapTarget.NONE;
         state = DragState.RELEASE;
+        pointerBlockedUntilRelease = true;
         return new Completion(pointerDownPosition, false, true);
     }
 
@@ -249,6 +260,14 @@ final class HudDragSession {
 
         float centerY() {
             return clamp((screenHeight - elementHeight) * 0.5F, minY(), maxY());
+        }
+
+        float elementWidth() {
+            return elementWidth;
+        }
+
+        float elementHeight() {
+            return elementHeight;
         }
 
         private static float safeMin(float screenSize, float elementSize) {

@@ -14,10 +14,11 @@ import gq.yozakura.module.combat.Backtrack;
 import gq.yozakura.module.combat.KillAura;
 import gq.yozakura.module.render.runtime.HUD;
 import gq.yozakura.runtime.YozakuraRuntime;
-import gq.yozakura.util.module.RenderUtil;
+import gq.yozakura.util.module.RenderStateUtil;
 import gq.yozakura.value.Mode;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
+import net.minecraft.client.Minecraft;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.monster.EntityMob;
@@ -47,6 +48,7 @@ public class TargetESP extends Module {
         DEFAULT,
         HUD,
         SCAN,
+        RISE,
         COSMIC,
         AURORA,
         SAKURA,
@@ -76,6 +78,7 @@ public class TargetESP extends Module {
     private long lastFrameMS = System.currentTimeMillis();
     private long lastRenderNanos;
     private long lastStandaloneFrame;
+    private int renderFrameRate = 200;
 
     public TargetESP() {
         super("TargetESP", Keyboard.KEY_NONE, ModuleType.Render, "Draw a shader based marker around the current target");
@@ -142,6 +145,7 @@ public class TargetESP extends Module {
             visibility = 0.0f;
             return;
         }
+        renderFrameRate = Minecraft.getDebugFPS();
 
         long now = System.currentTimeMillis();
         float factor = animationFactor(now);
@@ -337,12 +341,15 @@ public class TargetESP extends Module {
             if (Boolean.TRUE.equals(throughWalls.getValue())) {
                 GL11.glDisable(GL11.GL_DEPTH_TEST);
             }
-            if (current != EspMode.SCAN && current != EspMode.NIGHT_BLOOM && Boolean.TRUE.equals(shader.getValue())) {
+            if (current != EspMode.SCAN && current != EspMode.RISE && current != EspMode.NIGHT_BLOOM
+                    && Boolean.TRUE.equals(shader.getValue())) {
                 TargetShader.begin(primary, secondary, alphaScale, time,
                         current == EspMode.AURORA || current == EspMode.SAKURA ? 0.0f : hurtPulse);
             }
             if (current == EspMode.SCAN) {
                 drawLegacyScan(bodyHeight, alphaScale);
+            } else if (current == EspMode.RISE) {
+                drawRiseSigmaRing(target, baseRadius, bodyHeight, alphaScale, time, palette);
             } else if (current == EspMode.COSMIC) {
                 drawCosmic(target, baseRadius, bodyHeight, alphaScale, time);
             } else if (current == EspMode.AURORA) {
@@ -365,12 +372,51 @@ public class TargetESP extends Module {
         } else {
             color = new Color(target.hurtTime > 0 ? 16733525 : 5635925);
         }
-        RenderUtil.enableRenderState();
+        RenderStateUtil.enableRenderState();
         try {
-            RenderUtil.drawEntityBox(target, color.getRed(), color.getGreen(), color.getBlue());
+            RenderStateUtil.drawEntityBox(target, color.getRed(), color.getGreen(), color.getBlue());
         } finally {
-            RenderUtil.disableRenderState();
+            RenderStateUtil.disableRenderState();
         }
+    }
+
+    private int segmentCount(int full, int minimum) {
+        return TargetEspRenderQuality.segments(full, minimum, renderFrameRate);
+    }
+
+    private void drawRiseSigmaRing(EntityLivingBase target, float radius, float bodyHeight, float alpha,
+                                   float time, VisualPalette palette) {
+        int segments = TargetEspRenderQuality.riseSigmaRingSegments(renderFrameRate);
+        float riseSigmaRingHeight = TargetEspRenderQuality.riseSigmaRingHeight(bodyHeight, time);
+        float riseSigmaRingTrailOffset = TargetEspRenderQuality.riseSigmaRingTrailOffset(bodyHeight, time);
+        float riseSigmaRingRadius = Math.max(0.67f, radius * 0.96f);
+        int ringColor = target.hurtTime > 0 ? palette.getEntityHurt() : palette.getAccentPrimary();
+        int trailColor = target.hurtTime > 0 ? palette.getEntityHurt() : palette.getAccentAlt();
+
+        GL11.glShadeModel(GL11.GL_SMOOTH);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GL11.glBegin(GL11.GL_TRIANGLE_STRIP);
+        for (int index = 0; index <= segments; index++) {
+            double angle = Math.PI * 2.0D * index / segments;
+            double x = Math.cos(angle) * riseSigmaRingRadius;
+            double z = Math.sin(angle) * riseSigmaRingRadius;
+            setColor(ringColor, alpha * 0.25f);
+            GL11.glVertex3d(x, riseSigmaRingHeight, z);
+            setColor(trailColor, 0.0f);
+            GL11.glVertex3d(x, Math.max(0.0f, riseSigmaRingHeight - riseSigmaRingTrailOffset), z);
+        }
+        GL11.glEnd();
+
+        GL11.glLineWidth(Math.max(1.0f, lineWidth.getValue().floatValue() * 0.85f));
+        GL11.glBegin(GL11.GL_LINE_LOOP);
+        for (int index = 0; index < segments; index++) {
+            double angle = Math.PI * 2.0D * index / segments;
+            setColor(ringColor, alpha * 0.78f);
+            GL11.glVertex3d(Math.cos(angle) * riseSigmaRingRadius, riseSigmaRingHeight,
+                    Math.sin(angle) * riseSigmaRingRadius);
+        }
+        GL11.glEnd();
+        GL11.glShadeModel(GL11.GL_FLAT);
     }
 
     private void drawLegacyScan(float bodyHeight, float alpha) {
@@ -382,18 +428,22 @@ public class TargetESP extends Module {
         GL11.glBegin(GL11.GL_TRIANGLE_FAN);
         setColor(hud.getColor(0).getRGB(), alpha * 0.4F);
         GL11.glVertex3d(0.0D, offset, 0.0D);
-        for (int angleDegrees = 0; angleDegrees <= 360; angleDegrees += 10) {
+        int fanSegments = segmentCount(36, 16);
+        for (int index = 0; index <= fanSegments; index++) {
+            float angleDegrees = 360.0f * index / fanSegments;
             double angle = Math.toRadians(angleDegrees);
-            setColor(hud.getColor(angleDegrees * 10L).getRGB(), 0.0F);
+            setColor(hud.getColor((long) (angleDegrees * 10.0f)).getRGB(), 0.0F);
             GL11.glVertex3d(Math.sin(angle) * scanRadius, offset, Math.cos(angle) * scanRadius);
         }
         GL11.glEnd();
 
         GL11.glLineWidth(6.0F);
         GL11.glBegin(GL11.GL_LINE_STRIP);
-        for (int angleDegrees = 0; angleDegrees <= 360; angleDegrees += 5) {
+        int lineSegments = segmentCount(72, 28);
+        for (int index = 0; index <= lineSegments; index++) {
+            float angleDegrees = 360.0f * index / lineSegments;
             double angle = Math.toRadians(angleDegrees);
-            setColor(hud.getColor(angleDegrees * 20L).getRGB(), alpha);
+            setColor(hud.getColor((long) (angleDegrees * 20.0f)).getRGB(), alpha);
             GL11.glVertex3d(Math.sin(angle) * scanRadius, offset, Math.cos(angle) * scanRadius);
         }
         GL11.glEnd();
@@ -446,9 +496,10 @@ public class TargetESP extends Module {
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
         GL11.glLineWidth(Math.max(1.25f, lineWidth.getValue().floatValue()));
         setColor(color, Math.min(1.0f, alpha * 0.95f));
-        drawWireRing(0.03f, radius + 0.12f, 96);
-        drawWireRing(height * 0.52f, radius + 0.08f, 96);
-        drawWireRing(height + 0.03f, radius + 0.12f, 96);
+        int ringSegments = segmentCount(96, 40);
+        drawWireRing(0.03f, radius + 0.12f, ringSegments);
+        drawWireRing(height * 0.52f, radius + 0.08f, ringSegments);
+        drawWireRing(height + 0.03f, radius + 0.12f, ringSegments);
 
         float pulse = 0.74f + 0.26f * (float) Math.sin(time * 4.0f);
         int hurtColor = target.hurtTime > 0 ? 0xFFFF6070 : color;
@@ -471,11 +522,12 @@ public class TargetESP extends Module {
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
         drawNightBloomCapsule(radius * breath, height, alpha * 0.42f, time,
                 palette.getAccentAlt(), palette.getInfo());
-        drawNightBloomRing(0.025f, radius * 1.12f, 0.038f, 64, alpha * 0.92f,
+        int ringSegments = segmentCount(64, 28);
+        drawNightBloomRing(0.025f, radius * 1.12f, 0.038f, ringSegments, alpha * 0.92f,
                 time, palette.getAccentPrimary());
-        drawNightBloomRing(height * 0.52f, radius * 1.04f, 0.021f, 64, alpha * 0.48f,
+        drawNightBloomRing(height * 0.52f, radius * 1.04f, 0.021f, ringSegments, alpha * 0.48f,
                 time + 0.70f, palette.getGlowSecondary());
-        drawNightBloomRing(height + 0.055f, radius * 1.10f, 0.030f, 64, alpha * 0.70f,
+        drawNightBloomRing(height + 0.055f, radius * 1.10f, 0.030f, ringSegments, alpha * 0.70f,
                 time + 1.20f, health);
         drawNightBloomHealthArc(target, height + 0.115f, radius * 1.17f, 0.030f, alpha, health);
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
@@ -483,7 +535,7 @@ public class TargetESP extends Module {
 
     private void drawNightBloomCapsule(float radius, float height, float alpha, float time,
                                        int lowerColor, int upperColor) {
-        int segments = 48;
+        int segments = segmentCount(48, 24);
         GL11.glBegin(GL11.GL_QUAD_STRIP);
         for (int index = 0; index <= segments; index++) {
             double angle = Math.PI * 2.0D * index / segments;
@@ -517,7 +569,7 @@ public class TargetESP extends Module {
     private void drawNightBloomHealthArc(EntityLivingBase target, float y, float radius, float thickness,
                                          float alpha, int color) {
         float health = MathHelper.clamp_float(target.getHealth() / Math.max(1.0f, target.getMaxHealth()), 0.0f, 1.0f);
-        int segments = Math.max(4, Math.round(72.0f * health));
+        int segments = Math.max(4, Math.round(segmentCount(72, 28) * health));
         double start = -Math.PI / 2.0D;
         double end = start + Math.PI * 2.0D * health;
         GL11.glBegin(GL11.GL_QUAD_STRIP);
@@ -550,10 +602,10 @@ public class TargetESP extends Module {
         drawCosmicCapsule(radius * breath, height, alpha * 0.48f, time);
         drawHelixRibbon(radius * 1.04f, height, alpha * 0.72f, time, 0.0f, false);
         drawHelixRibbon(radius * 1.04f, height, alpha * 0.58f, time, (float) Math.PI, true);
-        drawTiltedRing(height * 0.36f, orbitRadius, 0.026f, 92, alpha * 0.80f, time, 64.0f, time * 38.0f, 0.10f);
-        drawTiltedRing(height * 0.58f, orbitRadius * 0.98f, 0.022f, 92, alpha * 0.72f, time + 0.9f, -58.0f,
+        drawTiltedRing(height * 0.36f, orbitRadius, 0.026f, segmentCount(92, 36), alpha * 0.80f, time, 64.0f, time * 38.0f, 0.10f);
+        drawTiltedRing(height * 0.58f, orbitRadius * 0.98f, 0.022f, segmentCount(92, 36), alpha * 0.72f, time + 0.9f, -58.0f,
                 -time * 42.0f, 0.45f);
-        drawTiltedRing(height * 0.80f, orbitRadius * 0.90f, 0.018f, 84, alpha * 0.58f, time + 1.8f, 18.0f,
+        drawTiltedRing(height * 0.80f, orbitRadius * 0.90f, 0.018f, segmentCount(84, 32), alpha * 0.58f, time + 1.8f, 18.0f,
                 time * 56.0f, 0.72f);
         drawEnergySpikes(radius, height, alpha * 0.72f, time);
         drawOrbitingStars(orbitRadius * 1.04f, height, alpha, time);
@@ -573,7 +625,7 @@ public class TargetESP extends Module {
 
     private void drawSakuraPetals(float radius, float height, float alpha, float time) {
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
-        int petals = 12;
+        int petals = segmentCount(12, 6);
         float crossSpan = radius * 1.18f;
         for (int i = 0; i < petals; i++) {
             float phase = (float) (Math.PI * 2.0D * i / petals);
@@ -589,7 +641,7 @@ public class TargetESP extends Module {
 
     private void drawSakuraPetalTrail(float orbit, float height, float alpha, float time, float phase, int color,
                                       float size, int petalIndex) {
-        int samples = 9;
+        int samples = segmentCount(9, 4);
         for (int i = samples; i >= 1; i--) {
             float trail = i / (float) samples;
             float[] p = sakuraPetalPosition(orbit, height, time, phase, trail, petalIndex);
@@ -639,8 +691,8 @@ public class TargetESP extends Module {
         GL11.glRotatef(mc.getRenderManager().playerViewX, 1.0f, 0.0f, 0.0f);
         GL11.glRotatef(spin, 0.0f, 0.0f, 1.0f);
         if (!trail) {
-            drawBillboardGlow(size * 3.25f, 0xFFFF6FAE, alpha * 0.34f, 20);
-            drawBillboardGlow(size * 1.75f, 0xFFFFC0DC, alpha * 0.28f, 18);
+            drawBillboardGlow(size * 3.25f, 0xFFFF6FAE, alpha * 0.34f, segmentCount(20, 10));
+            drawBillboardGlow(size * 1.75f, 0xFFFFC0DC, alpha * 0.28f, segmentCount(18, 10));
         }
         for (int i = 0; i < 5; i++) {
             GL11.glPushMatrix();
@@ -650,7 +702,7 @@ public class TargetESP extends Module {
             GL11.glPopMatrix();
         }
         if (!trail) {
-            drawBillboardGlow(size * 0.38f, 0xFFFFF3A7, alpha * 0.88f, 12);
+            drawBillboardGlow(size * 0.38f, 0xFFFFF3A7, alpha * 0.88f, segmentCount(12, 8));
         }
         GL11.glPopMatrix();
     }
@@ -706,7 +758,7 @@ public class TargetESP extends Module {
     }
 
     private void drawAuroraTrail(float orbitRadius, float height, float alpha, float time, float phase, int color, boolean bloom) {
-        int samples = bloom ? 46 : 34;
+        int samples = bloom ? segmentCount(46, 20) : segmentCount(34, 16);
         for (int i = samples; i >= 1; i--) {
             float t = i / (float) samples;
             float[] p = auroraOrbPosition(orbitRadius, height, time, phase, t);
@@ -756,12 +808,14 @@ public class TargetESP extends Module {
         GL11.glTranslatef(x, y, z);
         GL11.glRotatef(-mc.getRenderManager().playerViewY, 0.0f, 1.0f, 0.0f);
         GL11.glRotatef(mc.getRenderManager().playerViewX, 1.0f, 0.0f, 0.0f);
-        drawBillboardGlow(size * (bloom ? 7.40f : 4.25f), color, alpha * (bloom ? 0.46f : 0.34f), bloom ? 32 : 24);
+        drawBillboardGlow(size * (bloom ? 7.40f : 4.25f), color, alpha * (bloom ? 0.46f : 0.34f),
+                bloom ? segmentCount(32, 16) : segmentCount(24, 12));
         drawBillboardGlow(size * (bloom ? 4.35f : 2.45f), trailColor(color, 0.15f, true),
-                alpha * (bloom ? 0.82f : 0.62f), bloom ? 32 : 24);
-        drawBillboardGlow(size * (bloom ? 2.10f : 1.18f), 0xFFFFFFFF, alpha * (bloom ? 1.25f : 1.0f), bloom ? 28 : 20);
+                alpha * (bloom ? 0.82f : 0.62f), bloom ? segmentCount(32, 16) : segmentCount(24, 12));
+        drawBillboardGlow(size * (bloom ? 2.10f : 1.18f), 0xFFFFFFFF, alpha * (bloom ? 1.25f : 1.0f),
+                bloom ? segmentCount(28, 16) : segmentCount(20, 12));
         if (bloom) {
-            drawBillboardGlow(size * 0.86f, 0xFFFFFFFF, alpha * 1.35f, 24);
+            drawBillboardGlow(size * 0.86f, 0xFFFFFFFF, alpha * 1.35f, segmentCount(24, 12));
         }
         GL11.glPopMatrix();
     }
@@ -896,7 +950,7 @@ public class TargetESP extends Module {
     }
 
     private void drawCosmicCapsule(float radius, float height, float alpha, float time) {
-        int segments = 72;
+        int segments = segmentCount(72, 32);
         GL11.glBegin(GL11.GL_QUAD_STRIP);
         for (int i = 0; i <= segments; i++) {
             double angle = Math.PI * 2.0D * i / segments;
@@ -917,15 +971,16 @@ public class TargetESP extends Module {
     }
 
     private void drawCosmicGround(float radius, float alpha, float time) {
-        drawColoredRing(0.015f, radius * 1.68f, 0.045f, 96, alpha * 0.68f, time, 0.02f);
-        drawColoredRing(0.025f, radius * (1.95f + 0.12f * (float) Math.sin(time * 2.1f)), 0.026f, 96,
+        int ringSegments = segmentCount(96, 40);
+        drawColoredRing(0.015f, radius * 1.68f, 0.045f, ringSegments, alpha * 0.68f, time, 0.02f);
+        drawColoredRing(0.025f, radius * (1.95f + 0.12f * (float) Math.sin(time * 2.1f)), 0.026f, ringSegments,
                 alpha * 0.38f, time + 0.45f, 0.30f);
-        drawColoredRing(0.035f, radius * (2.22f + 0.14f * (float) Math.cos(time * 2.4f)), 0.018f, 96,
+        drawColoredRing(0.035f, radius * (2.22f + 0.14f * (float) Math.cos(time * 2.4f)), 0.018f, ringSegments,
                 alpha * 0.26f, time + 0.90f, 0.58f);
     }
 
     private void drawHelixRibbon(float radius, float height, float alpha, float time, float phase, boolean reverse) {
-        int segments = 78;
+        int segments = segmentCount(78, 36);
         float ribbonWidth = 0.070f;
         float direction = reverse ? -1.0f : 1.0f;
         GL11.glBegin(GL11.GL_QUAD_STRIP);
@@ -1056,7 +1111,7 @@ public class TargetESP extends Module {
     }
 
     private void drawCosmicChains(float radius, float height, float alpha, float time) {
-        int links = 24;
+        int links = segmentCount(24, 12);
         GL11.glLineWidth(Math.max(1.1f, lineWidth.getValue().floatValue() * 0.58f));
         for (int i = 0; i < links; i++) {
             float t = i / (float) links;
@@ -1203,7 +1258,7 @@ public class TargetESP extends Module {
 
     private void drawHealthArc(EntityLivingBase target, float y, float radius, float thickness, float alpha) {
         float health = MathHelper.clamp_float(target.getHealth() / Math.max(1.0f, target.getMaxHealth()), 0.0f, 1.0f);
-        int segments = Math.max(4, Math.round(72.0f * health));
+        int segments = Math.max(4, Math.round(segmentCount(72, 28) * health));
         double start = -Math.PI / 2.0D;
         double end = start + Math.PI * 2.0D * health;
         GL11.glBegin(GL11.GL_QUAD_STRIP);

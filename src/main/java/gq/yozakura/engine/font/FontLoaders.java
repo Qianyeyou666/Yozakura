@@ -88,6 +88,19 @@ public abstract class FontLoaders {
     public static final CFontRenderer TB18 = tenacityBold(18);
     public static final CFontRenderer TB20 = tenacityBold(20);
 
+    // Inter — body text font matching the Nether v2.1 design spec
+    public static final CFontRenderer INTER12 = inter(12);
+    public static final CFontRenderer INTER13 = inter(13);
+    public static final CFontRenderer INTER14 = inter(14);
+    public static final CFontRenderer INTER16 = inter(16);
+    public static final CFontRenderer BRICOLAGE12 = bricolage(12);
+    public static final CFontRenderer BRICOLAGE14 = bricolage(14);
+    public static final CFontRenderer BRICOLAGE16 = bricolage(16);
+    public static final CFontRenderer BRICOLAGE18 = bricolage(18);
+    public static final CFontRenderer MONO10 = jetBrainsMono(10);
+    public static final CFontRenderer MONO11 = jetBrainsMono(11);
+    public static final CFontRenderer MONO12 = jetBrainsMono(12);
+
     public static final CFontRenderer Logo = icon(40);
     public static final CFontRenderer I14 = icon(14);
     public static final CFontRenderer I16 = icon(16);
@@ -125,6 +138,14 @@ public abstract class FontLoaders {
         return renderer(FontFamily.PRODUCT_SANS, size);
     }
 
+    public static CFontRenderer productSansLight(int size) {
+        return renderer(FontFamily.PRODUCT_SANS_LIGHT, size);
+    }
+
+    public static CFontRenderer productSansMedium(int size) {
+        return renderer(FontFamily.PRODUCT_SANS_MEDIUM, size);
+    }
+
     public static CFontRenderer badCache(int size) {
         return renderer(FontFamily.BAD_CACHE, size);
     }
@@ -135,6 +156,28 @@ public abstract class FontLoaders {
 
     public static CFontRenderer tenacityBold(int size) {
         return renderer(FontFamily.TENACITY_BOLD, size);
+    }
+
+    public static CFontRenderer inter(int size) {
+        return renderer(FontFamily.INTER, size);
+    }
+
+    public static CFontRenderer bricolage(int size) {
+        return renderer(FontFamily.BRICOLAGE, size);
+    }
+
+    public static CFontRenderer jetBrainsMono(int size) {
+        return renderer(FontFamily.JETBRAINS_MONO, size);
+    }
+
+    /** Epsilon Panel's bundled default TTF, used for visual parity with Panel Mode. */
+    public static CFontRenderer epsilonPanel(int size) {
+        return renderer(FontFamily.EPSILON_PANEL, size);
+    }
+
+    /** Epsilon Panel's Material icon font. */
+    public static CFontRenderer epsilonIcons(int size) {
+        return renderer(FontFamily.EPSILON_ICONS, size);
     }
 
     public static Font getFont(int size) {
@@ -180,11 +223,32 @@ public abstract class FontLoaders {
         if (family == FontFamily.PRODUCT_SANS) {
             return FontFamilyId.PRODUCT_SANS;
         }
+        if (family == FontFamily.PRODUCT_SANS_LIGHT) {
+            return FontFamilyId.PRODUCT_SANS_LIGHT;
+        }
+        if (family == FontFamily.PRODUCT_SANS_MEDIUM) {
+            return FontFamilyId.PRODUCT_SANS_MEDIUM;
+        }
         if (family == FontFamily.BAD_CACHE) {
             return FontFamilyId.BAD_CACHE;
         }
         if (family == FontFamily.ALIBABA) {
             return FontFamilyId.ALIBABA;
+        }
+        if (family == FontFamily.INTER) {
+            return FontFamilyId.INTER;
+        }
+        if (family == FontFamily.BRICOLAGE) {
+            return FontFamilyId.BRICOLAGE;
+        }
+        if (family == FontFamily.JETBRAINS_MONO) {
+            return FontFamilyId.JETBRAINS_MONO;
+        }
+        if (family == FontFamily.EPSILON_PANEL) {
+            return FontFamilyId.EPSILON_PANEL;
+        }
+        if (family == FontFamily.EPSILON_ICONS) {
+            return FontFamilyId.EPSILON_ICONS;
         }
         return FontFamilyId.SF;
     }
@@ -225,8 +289,8 @@ public abstract class FontLoaders {
     }
 
     private static Font[] fallbacks(FontFamily family, int size) {
-        if (family == FontFamily.ICON) {
-            return new Font[]{derive(FontFamily.INTER, Font.PLAIN, size), derive(FontFamily.ALIBABA, Font.PLAIN, size), SYSTEM_FALLBACK};
+        if (family == FontFamily.ICON || family == FontFamily.EPSILON_ICONS) {
+            return new Font[]{derive(FontFamily.EPSILON_PANEL, Font.PLAIN, size), derive(FontFamily.ALIBABA, Font.PLAIN, size), SYSTEM_FALLBACK};
         }
         return new Font[]{derive(FontFamily.ALIBABA, Font.PLAIN, size), SYSTEM_FALLBACK};
     }
@@ -236,11 +300,17 @@ public abstract class FontLoaders {
         CIRCULAR(new ResourceLocation("novo/fonts/CircularStd-Book.ttf"), null),
         CIRCULAR_MEDIUM(new ResourceLocation("novo/fonts/CircularStd-Medium.ttf"), null),
         PRODUCT_SANS(new ResourceLocation("novo/fonts/Product Sans Regular.ttf"), null),
+        PRODUCT_SANS_LIGHT(new ResourceLocation("novo/fonts/Product Sans Light.ttf"), null),
+        PRODUCT_SANS_MEDIUM(new ResourceLocation("novo/fonts/Product Sans Medium.ttf"), null),
         BAD_CACHE(new ResourceLocation("novo/fonts/badcache.ttf"), null),
         INTER(new ResourceLocation("font/Inter.ttf"), new ResourceLocation("font/Inter-Italic.ttf")),
+        BRICOLAGE(new ResourceLocation("font/BricolageGrotesque.ttf"), null),
+        JETBRAINS_MONO(new ResourceLocation("font/JetBrainsMono.ttf"), null),
         ALIBABA(new ResourceLocation("font/AlibabaSans-Regular.otf"), null),
         TENACITY_BOLD(new ResourceLocation("font/tenacity-bold.ttf"), null),
-        ICON(new ResourceLocation("font/TenacityIcon.ttf"), null);
+        ICON(new ResourceLocation("font/TenacityIcon.ttf"), null),
+        EPSILON_PANEL(new ResourceLocation("font/epsilon-panel.ttf"), null),
+        EPSILON_ICONS(new ResourceLocation("font/epsilon-icons.ttf"), null);
 
         private final ResourceLocation location;
         private final ResourceLocation italicLocation;

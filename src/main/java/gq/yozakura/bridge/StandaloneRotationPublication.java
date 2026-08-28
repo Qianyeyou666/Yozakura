@@ -21,6 +21,10 @@ final class StandaloneRotationPublication {
         current = INACTIVE;
     }
 
+    void invalidateForTeleport() {
+        current = INACTIVE;
+    }
+
     boolean hasUnsentRotation() {
         Snapshot snapshot = current;
         return snapshot.active && snapshot.generation > sentGeneration.get();

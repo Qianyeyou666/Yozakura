@@ -1,11 +1,16 @@
 package gq.yozakura.module.player;
 
+import gq.yozakura.event.bridge.TickEvent;
+import gq.yozakura.event.bus.EventTarget;
+import gq.yozakura.event.bus.types.EventType;
 import gq.yozakura.module.Module;
 import gq.yozakura.module.ModuleType;
+import gq.yozakura.util.module.BlockUtil;
 import gq.yozakura.util.time.TimerUtil;
 import gq.yozakura.value.Mode;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
+import net.minecraft.client.gui.inventory.GuiContainer;
 import net.minecraft.client.gui.inventory.GuiInventory;
 import net.minecraft.enchantment.Enchantment;
 import net.minecraft.enchantment.EnchantmentHelper;
@@ -23,15 +28,17 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemSword;
 import net.minecraft.network.play.client.C0DPacketCloseWindow;
 import net.minecraft.network.play.client.C16PacketClientStatus;
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
-import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.input.Keyboard;
+import org.lwjgl.input.Mouse;
 
 import java.util.Arrays;
 
 public class InventoryManager extends Module {
+    private static final int MAX_INSTANT_ACTIONS = 128;
+
     private enum InventoryMode {
         OPEN,
+        INSTANT,
         SPOOF,
         ALWAYS
     }
@@ -45,6 +52,9 @@ public class InventoryManager extends Module {
     private final Option<Boolean> ignoreCustomName = new Option<Boolean>("Ignore Custom Name", "IgnoreCustomName", true);
 
     private final TimerUtil timer = new TimerUtil();
+    private final int[] armorSlotScratch = new int[4];
+    private final float[] armorScoreScratch = new float[4];
+    private final int[] armorDurabilityScratch = new int[4];
     private boolean spoofOpen;
 
     public InventoryManager() {
@@ -64,12 +74,28 @@ public class InventoryManager extends Module {
         closeSpoof();
     }
 
-    @SubscribeEvent
-    public void onTick(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.START || !isInGame()) {
+    @EventTarget
+    public void onTick(TickEvent event) {
+        if (!getState() || event.getType() != EventType.PRE) {
             return;
         }
-        if (!shouldWork() || !timer.hasReached(delay.getValue())) {
+        if (!isInGame()) {
+            spoofOpen = false;
+            return;
+        }
+        if (!hasSafeInventoryContext()) {
+            closeSpoof();
+            return;
+        }
+        if (!shouldWork()) {
+            return;
+        }
+        InventoryMode current = currentMode();
+        if (current == InventoryMode.INSTANT) {
+            runInstantActions();
+            return;
+        }
+        if (!timer.hasReached(delay.getValue())) {
             return;
         }
 
@@ -88,20 +114,58 @@ public class InventoryManager extends Module {
         closeSpoof();
     }
 
+    private boolean hasSafeInventoryContext() {
+        if (mc.thePlayer == null || mc.thePlayer.inventoryContainer == null) {
+            return false;
+        }
+        return ServerContainerPolicy.isPlayerInventoryContext(
+                mc.playerController != null,
+                mc.thePlayer.inventory.getItemStack() == null,
+                isMouseButtonDown(),
+                mc.currentScreen instanceof GuiContainer,
+                mc.currentScreen instanceof GuiInventory,
+                mc.thePlayer.openContainer == mc.thePlayer.inventoryContainer);
+    }
+
     private boolean shouldWork() {
-        InventoryMode current = mode.getValue() == null ? InventoryMode.SPOOF : mode.getValue();
-        if (current == InventoryMode.OPEN) {
+        InventoryMode current = currentMode();
+        if (current == InventoryMode.OPEN || current == InventoryMode.INSTANT) {
+            closeSpoof();
             return mc.currentScreen instanceof GuiInventory;
         }
         if (current == InventoryMode.SPOOF) {
             openSpoof();
             return true;
         }
-        return true;
+        closeSpoof();
+        return !(mc.currentScreen instanceof GuiContainer) || mc.currentScreen instanceof GuiInventory;
+    }
+
+    private InventoryMode currentMode() {
+        return mode.getValue() == null ? InventoryMode.SPOOF : mode.getValue();
+    }
+
+    private void runInstantActions() {
+        for (int action = 0; action < MAX_INSTANT_ACTIONS; action++) {
+            if (!hasSafeInventoryContext() || !(mc.currentScreen instanceof GuiInventory)) {
+                return;
+            }
+            if (Boolean.TRUE.equals(autoArmor.getValue()) && equipArmor()) {
+                continue;
+            }
+            if (Boolean.TRUE.equals(sort.getValue()) && sortHotbar()) {
+                continue;
+            }
+            if (Boolean.TRUE.equals(clean.getValue()) && dropTrash()) {
+                continue;
+            }
+            return;
+        }
     }
 
     private boolean equipArmor() {
         int[] best = bestArmorSlots();
+        boolean inventoryHasSpace = hasInventorySpace();
         for (int type = 0; type < best.length; type++) {
             int slot = best[type];
             int armorSlot = 5 + type;
@@ -110,7 +174,8 @@ public class InventoryManager extends Module {
                 continue;
             }
             boolean equipped = equippedStack != null;
-            InventorySelection.ArmorAction action = InventorySelection.chooseArmorAction(slot, armorSlot, equipped);
+            InventorySelection.ArmorAction action = InventorySelection.chooseArmorAction(
+                    slot, armorSlot, equipped, inventoryHasSpace);
             if (action == InventorySelection.ArmorAction.UNEQUIP_CURRENT) {
                 click(armorSlot, 0, 1);
                 return true;
@@ -159,7 +224,6 @@ public class InventoryManager extends Module {
         int bestPickaxe = bestSlot(ItemPickaxe.class, 38);
         int bestAxe = bestSlot(ItemAxe.class, 39);
         int bestSpade = bestSlot(ItemSpade.class, -1);
-        int bestBlock = bestBlockSlot(40);
 
         for (int slot = 9; slot < 45; slot++) {
             ItemStack stack = mc.thePlayer.inventoryContainer.getSlot(slot).getStack();
@@ -173,7 +237,7 @@ public class InventoryManager extends Module {
                     || item instanceof ItemPickaxe && slot == bestPickaxe
                     || item instanceof ItemAxe && slot == bestAxe
                     || item instanceof ItemSpade && slot == bestSpade
-                    || item instanceof ItemBlock && slot == bestBlock
+                    || InventorySelection.shouldKeepBlock(item instanceof ItemBlock)
                     || item instanceof ItemArmor && contains(bestArmor, slot);
             if (!keep) {
                 click(slot, 1, 4);
@@ -184,12 +248,9 @@ public class InventoryManager extends Module {
     }
 
     private int[] bestArmorSlots() {
-        int[] slots = new int[4];
-        float[] scores = new float[4];
-        int[] durabilities = new int[4];
-        Arrays.fill(slots, -1);
-        Arrays.fill(scores, -1.0F);
-        Arrays.fill(durabilities, -1);
+        Arrays.fill(armorSlotScratch, -1);
+        Arrays.fill(armorScoreScratch, -1.0F);
+        Arrays.fill(armorDurabilityScratch, -1);
         for (int slot = 5; slot < 45; slot++) {
             ItemStack stack = mc.thePlayer.inventoryContainer.getSlot(slot).getStack();
             if (stack == null || shouldIgnore(stack) || !(stack.getItem() instanceof ItemArmor)) {
@@ -201,13 +262,14 @@ public class InventoryManager extends Module {
             int durability = remainingDurability(stack);
             int armorSlot = 5 + armor.armorType;
             if (InventorySelection.isBetterCandidate(score, durability, slot,
-                    scores[armor.armorType], durabilities[armor.armorType], slots[armor.armorType], armorSlot)) {
-                scores[armor.armorType] = score;
-                durabilities[armor.armorType] = durability;
-                slots[armor.armorType] = slot;
+                    armorScoreScratch[armor.armorType], armorDurabilityScratch[armor.armorType],
+                    armorSlotScratch[armor.armorType], armorSlot)) {
+                armorScoreScratch[armor.armorType] = score;
+                armorDurabilityScratch[armor.armorType] = durability;
+                armorSlotScratch[armor.armorType] = slot;
             }
         }
-        return slots;
+        return armorSlotScratch;
     }
 
     private int bestSlot(Class<?> type, int preferredSlot) {
@@ -236,7 +298,7 @@ public class InventoryManager extends Module {
         int size = -1;
         for (int slot = 9; slot < 45; slot++) {
             ItemStack stack = mc.thePlayer.inventoryContainer.getSlot(slot).getStack();
-            if (stack != null && stack.getItem() instanceof ItemBlock
+            if (stack != null && !shouldIgnore(stack) && isPlaceableBlock(stack)
                     && InventorySelection.isBetterCandidate(stack.stackSize, 0, slot,
                     size, 0, best, preferredSlot)) {
                 size = stack.stackSize;
@@ -255,7 +317,33 @@ public class InventoryManager extends Module {
         if (item instanceof ItemBow) {
             return 1.0F + EnchantmentHelper.getEnchantmentLevel(Enchantment.power.effectId, stack);
         }
+        if (item instanceof ItemPickaxe || item instanceof ItemAxe || item instanceof ItemSpade) {
+            float baseEfficiency = item instanceof ItemPickaxe
+                    ? ((ItemPickaxe) item).getToolMaterial().getEfficiencyOnProperMaterial()
+                    : item instanceof ItemAxe
+                    ? ((ItemAxe) item).getToolMaterial().getEfficiencyOnProperMaterial()
+                    : ((ItemSpade) item).getToolMaterial().getEfficiencyOnProperMaterial();
+            int efficiencyLevel = EnchantmentHelper.getEnchantmentLevel(Enchantment.efficiency.effectId, stack);
+            return InventorySelection.toolScore(baseEfficiency, efficiencyLevel);
+        }
         return stack.getMaxDamage() <= 0 ? stack.stackSize : stack.getMaxDamage() - stack.getItemDamage();
+    }
+
+    private boolean hasInventorySpace() {
+        for (int slot = 9; slot < 45; slot++) {
+            if (mc.thePlayer.inventoryContainer.getSlot(slot).getStack() == null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isPlaceableBlock(ItemStack stack) {
+        if (!(stack.getItem() instanceof ItemBlock) || stack.stackSize <= 0) {
+            return false;
+        }
+        ItemBlock itemBlock = (ItemBlock) stack.getItem();
+        return !BlockUtil.isInteractable(itemBlock.getBlock()) && BlockUtil.isSolid(itemBlock.getBlock());
     }
 
     private boolean isUseful(ItemStack stack) {
@@ -271,6 +359,10 @@ public class InventoryManager extends Module {
 
     private boolean shouldIgnore(ItemStack stack) {
         return Boolean.TRUE.equals(ignoreCustomName.getValue()) && stack.hasDisplayName();
+    }
+
+    private boolean isMouseButtonDown() {
+        return Mouse.isButtonDown(0) || Mouse.isButtonDown(1) || Mouse.isButtonDown(2);
     }
 
     private int remainingDurability(ItemStack stack) {
@@ -295,7 +387,11 @@ public class InventoryManager extends Module {
     }
 
     private void openSpoof() {
-        if (!spoofOpen && !(mc.currentScreen instanceof GuiInventory)) {
+        if (mc.currentScreen instanceof GuiInventory) {
+            spoofOpen = false;
+            return;
+        }
+        if (!spoofOpen) {
             mc.thePlayer.sendQueue.addToSendQueue(new C16PacketClientStatus(
                     C16PacketClientStatus.EnumState.OPEN_INVENTORY_ACHIEVEMENT));
             spoofOpen = true;

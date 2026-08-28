@@ -4,8 +4,8 @@ package gq.yozakura.module.render;
  * A single scrolling pink color field shared by every Night Bloom ArrayList glyph.
  */
 final class NightBloomArrayListGradient {
-    private static final int DEEP_PINK = 0xFFFF00A8;
-    private static final int LIGHT_PINK = 0xFFFFB4E3;
+    private static final int DEEP_PINK = 0xFFFF4FC7;
+    private static final int LIGHT_PINK = 0xFFFFD4EC;
     private static final float HORIZONTAL_FREQUENCY = 0.065F;
     private static final float VERTICAL_DISTANCE = 72.0F;
     private static final float VERTICAL_WEIGHT = 0.72F;

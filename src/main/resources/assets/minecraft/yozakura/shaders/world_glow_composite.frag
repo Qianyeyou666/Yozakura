@@ -5,6 +5,7 @@ uniform sampler2D blurTexture;
 uniform vec4 coreColor;
 uniform vec4 outerColor;
 uniform float coreLayer;
+uniform float fillCore;
 uniform float strength;
 
 void main() {
@@ -12,7 +13,8 @@ void main() {
     float maskAlpha = texture2D(maskTexture, uv).a;
     float glowAlpha = texture2D(blurTexture, uv).a * (1.0 - maskAlpha);
     vec4 tint = mix(outerColor, coreColor, clamp(coreLayer, 0.0, 1.0));
-    float finalAlpha = tint.a * glowAlpha * strength;
+    float bodyAlpha = maskAlpha * 0.42;
+    float finalAlpha = tint.a * (fillCore > 0.5 ? max(glowAlpha, bodyAlpha) : glowAlpha) * strength;
 
     gl_FragColor = vec4(tint.rgb * finalAlpha, finalAlpha);
 }

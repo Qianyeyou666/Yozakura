@@ -15,6 +15,7 @@ import net.minecraft.util.BlockPos;
 import net.minecraft.util.ResourceLocation;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL12;
 
 import java.awt.Color;
 import java.awt.image.BufferedImage;
@@ -123,13 +124,18 @@ public class RenderUtil {
             return;
         }
         normalizeRect(Rect.tmp, left, top, right, bottom);
-        GLStateManager.begin2D();
+        boolean ownsBatch = !ShaderRenderer.isBatchActive();
+        if (ownsBatch) {
+            GLStateManager.begin2D();
+        }
         try {
             if (!ShaderRenderer.drawRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom, color)) {
                 fillRectRaw(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom, color);
             }
         } finally {
-            GLStateManager.end2D();
+            if (ownsBatch) {
+                GLStateManager.end2D();
+            }
         }
     }
 
@@ -147,13 +153,18 @@ public class RenderUtil {
         }
         normalizeRect(Rect.tmp, x, y, x2, y2);
         float radius = GLStateManager.clampRadius(round, Rect.tmp.width(), Rect.tmp.height());
-        GLStateManager.begin2D();
+        boolean ownsBatch = !ShaderRenderer.isBatchActive();
+        if (ownsBatch) {
+            GLStateManager.begin2D();
+        }
         try {
             if (!ShaderRenderer.drawRoundedRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom, radius, color)) {
                 roundedRectRaw(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom, radius, color);
             }
         } finally {
-            GLStateManager.end2D();
+            if (ownsBatch) {
+                GLStateManager.end2D();
+            }
         }
     }
 
@@ -203,7 +214,16 @@ public class RenderUtil {
         float topRight = clampCornerRadius(topRightRadius, maximumRadius);
         float bottomRight = clampCornerRadius(bottomRightRadius, maximumRadius);
         float bottomLeft = clampCornerRadius(bottomLeftRadius, maximumRadius);
-        GLStateManager.begin2D();
+        // Skip per-call begin2D/end2D when the caller opened a shape batch:
+        // ShaderRenderer.beginShapeBatch already pushed one attrib stack frame
+        // and configured disableTexture2D/disableCull/alpha/blend/depth state
+        // shared across the whole batch. Skipping here saves ~31 GL calls per
+        // shape inside a batch (pushAttrib + pushMatrix + 6 state writes +
+        // syncToCurrent + color reset).
+        boolean ownsBatch = !ShaderRenderer.isBatchActive();
+        if (ownsBatch) {
+            GLStateManager.begin2D();
+        }
         try {
             if (!ShaderRenderer.drawJoinedRoundedRect(
                     Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
@@ -214,7 +234,9 @@ public class RenderUtil {
                         topLeft, topRight, bottomRight, bottomLeft, color);
             }
         } finally {
-            GLStateManager.end2D();
+            if (ownsBatch) {
+                GLStateManager.end2D();
+            }
         }
     }
 
@@ -253,7 +275,10 @@ public class RenderUtil {
             return;
         }
         borderWidth = Math.min(borderWidth, Math.min(width, height) / 2.0f);
-        GLStateManager.begin2D();
+        boolean ownsBatch = !ShaderRenderer.isBatchActive();
+        if (ownsBatch) {
+            GLStateManager.begin2D();
+        }
         try {
             if (!ShaderRenderer.drawRoundedBorderedRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
                     radius, borderWidth, fillColor, borderColor)) {
@@ -265,7 +290,9 @@ public class RenderUtil {
                 }
             }
         } finally {
-            GLStateManager.end2D();
+            if (ownsBatch) {
+                GLStateManager.end2D();
+            }
         }
     }
 
@@ -328,7 +355,10 @@ public class RenderUtil {
             return;
         }
         normalizeRect(Rect.tmp, x, y, x2, y2);
-        GLStateManager.begin2D();
+        boolean ownsBatch = !ShaderRenderer.isBatchActive();
+        if (ownsBatch) {
+            GLStateManager.begin2D();
+        }
         try {
             if (!ShaderRenderer.drawGradientRect(Rect.tmp.left, Rect.tmp.top, Rect.tmp.right, Rect.tmp.bottom,
                     leftColor, leftColor, rightColor, rightColor)) {
@@ -344,7 +374,9 @@ public class RenderUtil {
                 GL11.glShadeModel(GL11.GL_FLAT);
             }
         } finally {
-            GLStateManager.end2D();
+            if (ownsBatch) {
+                GLStateManager.end2D();
+            }
         }
     }
     public static void drawRoundedGradientRect(float x, float y, float x2, float y2, float radius,
@@ -630,6 +662,25 @@ public class RenderUtil {
         }
     }
 
+    public static void drawRoundedArcOutline(float x, float y, float radius, float start,
+                                             float end, float lineWidth, int color) {
+        drawArcOutline(x, y, radius, start, end, lineWidth, color);
+        float sweep = Math.abs(end - start);
+        if (sweep >= 359.9f || sweep <= 0.0f || radius <= 0.0f
+                || lineWidth <= 0.0f || getAlpha(color) <= 0) {
+            return;
+        }
+        float capRadius = lineWidth * 0.5f;
+        double startRadians = Math.toRadians(start);
+        double endRadians = Math.toRadians(end);
+        drawCircle((float) (x + Math.cos(startRadians) * radius),
+                (float) (y + Math.sin(startRadians) * radius),
+                0, 360, capRadius, color);
+        drawCircle((float) (x + Math.cos(endRadians) * radius),
+                (float) (y + Math.sin(endRadians) * radius),
+                0, 360, capRadius, color);
+    }
+
     public static void drawCircleBadge(float centerX, float centerY, float radius, float ringWidth,
                                        float progress, int fillColor, int trackColor, int progressColor) {
         if (radius <= 0.0f || ringWidth <= 0.0f) {
@@ -839,29 +890,47 @@ public class RenderUtil {
     }
 
     public static void drawTexturedRect(ResourceLocation image, float x, float y, float x2, float y2, float alpha) {
-        if (image == null || alpha <= 0.0f) {
+        drawTexturedRectTinted(image, x, y, x2, y2,
+                (Math.max(0, Math.min(255, Math.round(alpha * 255.0f))) << 24) | 0x00FFFFFF);
+    }
+
+    /** Draws an antialiased texture mask with an ARGB tint and restores GL state exactly. */
+    public static void drawTexturedRectTinted(ResourceLocation image, float x, float y,
+                                              float x2, float y2, int color) {
+        if (image == null || ((color >>> 24) & 0xFF) == 0) {
             return;
         }
         normalizeRect(Rect.tmp, x, y, x2, y2);
-        GLStateManager.beginTextured2D(alpha);
+        GLStateManager.beginTextured2D(((color >>> 24) & 0xFF) / 255.0f);
         try {
             bindTextureSafe(image);
-            // Switch to linear filtering to remove aliasing
-            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
-            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
-            GL11.glBegin(GL11.GL_QUADS);
-            GL11.glTexCoord2f(0.0f, 0.0f);
-            GL11.glVertex2f(Rect.tmp.left, Rect.tmp.top);
-            GL11.glTexCoord2f(0.0f, 1.0f);
-            GL11.glVertex2f(Rect.tmp.left, Rect.tmp.bottom);
-            GL11.glTexCoord2f(1.0f, 1.0f);
-            GL11.glVertex2f(Rect.tmp.right, Rect.tmp.bottom);
-            GL11.glTexCoord2f(1.0f, 0.0f);
-            GL11.glVertex2f(Rect.tmp.right, Rect.tmp.top);
-            GL11.glEnd();
-            // Restore default nearest filtering
-            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
-            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+            int previousMin = GL11.glGetTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER);
+            int previousMag = GL11.glGetTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER);
+            int previousWrapS = GL11.glGetTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S);
+            int previousWrapT = GL11.glGetTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T);
+            try {
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+                GLStateManager.textureEnvModulate();
+                GLStateManager.color(color);
+                GL11.glBegin(GL11.GL_QUADS);
+                GL11.glTexCoord2f(0.0f, 0.0f);
+                GL11.glVertex2f(Rect.tmp.left, Rect.tmp.top);
+                GL11.glTexCoord2f(0.0f, 1.0f);
+                GL11.glVertex2f(Rect.tmp.left, Rect.tmp.bottom);
+                GL11.glTexCoord2f(1.0f, 1.0f);
+                GL11.glVertex2f(Rect.tmp.right, Rect.tmp.bottom);
+                GL11.glTexCoord2f(1.0f, 0.0f);
+                GL11.glVertex2f(Rect.tmp.right, Rect.tmp.top);
+                GL11.glEnd();
+            } finally {
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, previousMin);
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, previousMag);
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, previousWrapS);
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, previousWrapT);
+            }
         } finally {
             GLStateManager.endTextured2D();
         }

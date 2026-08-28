@@ -55,7 +55,7 @@ final class ModernWebClickGuiController {
                 .number("Min CPS", 14.0D, 1.0D, 20.0D, 1.0D)
                 .number("Max CPS", 14.0D, 1.0D, 20.0D, 1.0D)
                 .number("Hurt Time", 10.0D, 0.0D, 10.0D, 1.0D)
-                .mode("AutoBlock", "None", "None", "RELEASE", "INTERACT", "SWITCH", "BLINK")
+                .mode("AutoBlock", "None", "None", "RELEASE", "INTERACT", "SWITCH", "BLINK", "FullAB", "BypassAll", "Hypixel")
                 .number("AutoBlock Aps", 10.0D, 1.0D, 20.0D, 1.0D)
                 .mode("Move Fix", "None", "None", "Silent", "Strict")
                 .bool("Weapon Only", false)
@@ -101,19 +101,36 @@ final class ModernWebClickGuiController {
         add("KnockbackDelay", "Combat", "Delay movement after receiving knockback.")
                 .number("Delay MS", 95.0D, 0.0D, 420.0D, 5.0D)
                 .number("Jitter MS", 35.0D, 0.0D, 220.0D, 5.0D)
-                .number("Chance", 100.0D, 0.0D, 100.0D, 1.0D);
+                .number("Chance", 100.0D, 0.0D, 100.0D, 1.0D)
+                .bool("Only Weapon", false)
+                .bool("Require Moving", false)
+                .bool("Ground Only", false);
         add("HitSelect", "Combat", "Select smarter attack timing for combat modules.")
-                .mode("Mode", "Smart", "Smart", "HurtTime", "Combo")
-                .number("Chance", 100.0D, 0.0D, 100.0D, 1.0D);
+                .mode("Mode", "Smart", "Smart", "Trade", "Vulnerable")
+                .number("Max HurtTime", 2.0D, 0.0D, 10.0D, 1.0D)
+                .number("Min Delay", 25.0D, 0.0D, 180.0D, 5.0D)
+                .number("Max Delay", 85.0D, 0.0D, 260.0D, 5.0D)
+                .number("Chance", 100.0D, 0.0D, 100.0D, 1.0D)
+                .number("Trade Window", 7.0D, 1.0D, 10.0D, 1.0D)
+                .number("Post Delay", 80.0D, 0.0D, 220.0D, 5.0D)
+                .bool("Only Weapon", false)
+                .bool("Allow Multi", true);
         add("Velocity", "Combat", "Attack slowdown or server-physics-compatible knockback handling.")
-                .mode("Mode", "Reduce", "Attack", "Reduce");
+                .mode("Mode", "Reduce", "Attack", "Reduce")
+                .number("Attack Timeout", 2.0D, 1.0D, 6.0D, 1.0D)
+                .number("Attack Range", 3.0D, 1.0D, 6.0D, 0.1D)
+                .bool("Only Sprinting", false)
+                .bool("Require KillAura", false)
+                .bool("Players Only", true)
+                .number("Chance", 100.0D, 0.0D, 100.0D, 1.0D);
         add("JumpReset", "Combat", "Jump reset after receiving velocity.")
                 .bool("Fake Check", false)
                 .bool("Force Forward", true)
                 .number("Chance", 100.0D, 0.0D, 100.0D, 1.0D);
         add("BowAimBot", "Combat", "Auto aim targets while using a bow.")
-                .number("Range", 35.0D, 5.0D, 80.0D, 1.0D)
-                .bool("Predict", true);
+                .number("Yaw Speed", 24.0D, 2.0D, 90.0D, 1.0D)
+                .number("Pitch Speed", 18.0D, 2.0D, 90.0D, 1.0D)
+                .number("Prediction", 0.55D, 0.0D, 2.0D, 0.05D);
         add("Reach", "Combat", "Extend attack ray distance.")
                 .number("Min Reach", 3.2D, 3.0D, 6.0D, 0.1D)
                 .number("Max Reach", 3.6D, 3.0D, 6.0D, 0.1D)
@@ -134,9 +151,9 @@ final class ModernWebClickGuiController {
                 .bool("Mobs", true)
                 .bool("Animals", true)
                 .bool("Through Walls", false);
-        add("GhostHand", "Combat", "Click through teammate or blocked targets.")
-                .bool("Players", true)
-                .bool("Blocks", false);
+        add("GhostHand", "Combat", "Click through teammates while preserving block targeting.")
+                .bool("Team Only", true)
+                .bool("Ignore Weapons", false);
 
         add("Speed", "Movement", "Movement speed settings.")
                 .mode("Mode", "Vanilla", "Vanilla", "Strafe", "Timer")
@@ -144,7 +161,10 @@ final class ModernWebClickGuiController {
         add("Sprint", "Movement", "Force sprint while moving.")
                 .bool("Omni", true);
         add("KeepSprint", "Movement", "Keep sprint behavior after attacks.")
-                .number("Slowdown", 60.0D, 0.0D, 100.0D, 1.0D);
+                .bool("Prediction", false)
+                .number("Slowdown", 0.0D, 0.0D, 100.0D, 1.0D)
+                .bool("Ground Only", false)
+                .bool("Reach Only", false);
         add("NoJumpDelay", "Movement", "Remove vanilla jump input cooldown.");
         add("LongJump", "Movement", "Boost jump distance while moving.")
                 .number("Boost", 0.08D, 0.02D, 0.18D, 0.01D);
@@ -176,7 +196,7 @@ final class ModernWebClickGuiController {
                 .number("Y", -1.0D, -1.0D, 2400.0D, 1.0D)
                 .number("Scale", 1.0D, 0.5D, 2.0D, 0.05D);
         add("TargetESP", "Render", "Draw a shader based marker around the current target.")
-                .mode("Mode", "Default", "Default", "Hud", "Scan", "Cosmic", "Aurora", "Sakura", "Night Bloom")
+                .mode("Mode", "Default", "Default", "Hud", "Scan", "Rise", "Cosmic", "Aurora", "Sakura", "Night Bloom")
                 .bool("Glow", true);
         add("KillEffect", "Render", "Play a visual effect when a target dies.")
                 .mode("Mode", "Sakura", "Sakura", "Lightning", "Bloom")
@@ -225,7 +245,8 @@ final class ModernWebClickGuiController {
         add("LTap", "Player", "Send configured chat messages from the player module.");
 
         add("FastPlace", "World", "Make block placement faster.")
-                .number("Delay", 0.0D, 0.0D, 4.0D, 1.0D);
+                .number("Delay", 0.0D, 0.0D, 4.0D, 1.0D)
+                .bool("Only Blocks", true);
         add("Scaffold", "World", "Block placement settings.")
                 .mode("rotations", "Prediction", "None", "Vanilla", "BackWards", "Strafe", "Test", "Prediction")
                 .mode("move-fix", "SILENT", "NONE", "SILENT")

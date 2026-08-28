@@ -12,6 +12,20 @@ import static org.junit.Assert.assertTrue;
 
 public class StandaloneShutdownThreadContractTest {
     @Test
+    public void successfulStandaloneShutdownPersistsCurrentConfigurationBeforeReleasingOwnership()
+            throws IOException {
+        String client = source("src/main/java/gq/yozakura/core/StandaloneClient.java");
+        int begin = client.indexOf("    private void completeSuccessfulShutdown() {");
+        int end = client.indexOf("    private void recordTerminalBridgeFailure", begin);
+
+        assertTrue(begin >= 0 && end > begin);
+        String shutdown = client.substring(begin, end);
+        assertTrue(shutdown.contains("ConfigBridge.saveModulesQuietly();"));
+        assertTrue(shutdown.indexOf("ConfigBridge.saveModulesQuietly();")
+                < shutdown.indexOf("activeClient = null;"));
+    }
+
+    @Test
     public void bridgeTeardownRunsOnTheMinecraftThreadBeforeThePumpExits() throws IOException {
         String client = source("src/main/java/gq/yozakura/core/StandaloneClient.java");
 
@@ -111,7 +125,7 @@ public class StandaloneShutdownThreadContractTest {
         int constructor = client.indexOf("    public StandaloneClient() {");
         int stopExisting = client.indexOf("stopExistingStandalonePumps();", constructor);
         int ownerGuard = client.indexOf("throwIfPreviousStandaloneBridgeIsStillActive();", stopExisting);
-        int auth = client.indexOf("YozakuraAuthGate.verifyOrThrow(\"standalone\");", ownerGuard);
+        int auth = client.indexOf("B.verifyOrThrow(\"standalone\");", ownerGuard);
 
         assertTrue("A stale process-wide owner must abort reinjection instead of adding a second bridge",
                 constructor >= 0 && stopExisting > constructor && ownerGuard > stopExisting && auth > ownerGuard);

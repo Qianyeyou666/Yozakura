@@ -110,6 +110,22 @@ public class CFontRenderer extends CFont {
     }
 
     /**
+     * Draws one string while resolving a color per Unicode code point. Unlike
+     * repeatedly calling drawString for one-character strings, this keeps the
+     * font texture, GL attributes and quad batch alive for the whole label.
+     */
+    public float drawColoredString(String text, double x, double y, CodePointColorProvider colors) {
+        if (colors == null) {
+            throw new IllegalArgumentException("colors must not be null");
+        }
+        return drawStringInternal(text, x, y, 0xFFFFFFFF, false, true, false, colors);
+    }
+
+    public interface CodePointColorProvider {
+        int colorAt(int codePoint, int codePointIndex, float x, float y);
+    }
+
+    /**
      * Replays glyph alpha into the off-screen glow mask. This keeps the normal
      * font path's legacy alpha test intact for icon-font atlas compatibility.
      */
@@ -136,18 +152,24 @@ public class CFontRenderer extends CFont {
 
     private float drawStringInternal(String text, double x, double y, int color, boolean shadow,
                                      boolean allowScaleCompensation) {
-        return drawStringInternal(text, x, y, color, shadow, allowScaleCompensation, false);
+        return drawStringInternal(text, x, y, color, shadow, allowScaleCompensation, false, null);
     }
 
     private float drawStringInternal(String text, double x, double y, int color, boolean shadow,
                                      boolean allowScaleCompensation, boolean maskPass) {
+        return drawStringInternal(text, x, y, color, shadow, allowScaleCompensation, maskPass, null);
+    }
+
+    private float drawStringInternal(String text, double x, double y, int color, boolean shadow,
+                                     boolean allowScaleCompensation, boolean maskPass,
+                                     CodePointColorProvider colors) {
         if (text == null || text.length() == 0) {
             return 0.0f;
         }
         if (allowScaleCompensation && scaleCompensationEnabled) {
             ParentScale parentScale = getParentScale();
             if (parentScale.scaled) {
-                return drawScaleCompensatedString(text, x, y, color, shadow, parentScale, maskPass);
+                return drawScaleCompensatedString(text, x, y, color, shadow, parentScale, maskPass, colors);
             }
         }
 
@@ -200,6 +222,7 @@ public class CFontRenderer extends CFont {
             applyGlColor(color, alpha);
             boundTextureId = bindFontTexture(currentTexture, boundTextureId);
 
+            int codePointIndex = 0;
             for (int i = 0; i < text.length(); i++) {
                 char character = text.charAt(i);
                 if (character == '\u00a7' && i < text.length() - 1) {
@@ -266,6 +289,13 @@ public class CFontRenderer extends CFont {
                 }
 
                 int codePoint = Character.codePointAt(text, i);
+                if (colors != null) {
+                    int glyphColor = colors.colorAt(codePoint, codePointIndex,
+                            (float) x / 2.0F + 1.0F, (float) y / 2.0F + 3.0F);
+                    alpha = (glyphColor >>> 24 & 255) / 255.0F;
+                    applyGlColor(glyphColor, alpha);
+                }
+                codePointIndex++;
                 if (codePoint >= currentData.length) {
                     if (drawingBatch) {
                         GL11.glEnd();
@@ -352,7 +382,8 @@ public class CFontRenderer extends CFont {
     }
 
     private float drawScaleCompensatedString(String text, double x, double y, int color, boolean shadow,
-                                             ParentScale parentScale, boolean maskPass) {
+                                             ParentScale parentScale, boolean maskPass,
+                                             CodePointColorProvider colors) {
         int scaledSize = Math.max(1, Math.min(96, Math.round(font.getSize2D() * parentScale.scale)));
         CFontRenderer renderer = getScaledRenderer(scaledSize);
 
@@ -361,7 +392,7 @@ public class CFontRenderer extends CFont {
             GL11.glTranslated(x, y, 0.0);
             GL11.glScaled(1.0 / parentScale.scale, 1.0 / parentScale.scale, 1.0);
             GL11.glTranslated(-x, -y, 0.0);
-            renderer.drawStringInternal(text, x, y, color, shadow, false, maskPass);
+            renderer.drawStringInternal(text, x, y, color, shadow, false, maskPass, colors);
         } finally {
             GL11.glPopMatrix();
         }

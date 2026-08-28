@@ -27,6 +27,10 @@
 # Local binary jars
 /libs/
 
+# Private website release payloads (served only through authenticated API)
+/web/yozakura-club/releases/*
+!/web/yozakura-club/releases/.gitkeep
+
 # NetBeans
 /.nb-gradle/
 /.nb-gradle-properties
@@ -45,5 +49,24 @@ Thumbs.db
 *.dll
 *.exe
 
+# Local release and analysis artifacts
+*.rpm
+*.zip
+*.iml
+*.ipr
+*.iws
+*.log
+/outputs/
+/analysis_dumps/
+/nul
+
 # Local agent/tool metadata
 /.serena/
+/.claude/
+/.workbuddy/
+
+# Generated packaging and extraction directories
+/org/
+/n/
+/gq/
+/META-INF/

@@ -29,6 +29,10 @@ final class PlayerPacketTickGate {
         return canonicalPlayerPacket && consumeNextPlayerPacket();
     }
 
+    void invalidatePending() {
+        pendingGeneration = 0L;
+    }
+
     void clear() {
         pendingGeneration = 0L;
         consumedGeneration = 0L;

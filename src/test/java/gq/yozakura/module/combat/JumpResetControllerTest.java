@@ -45,20 +45,20 @@ public class JumpResetControllerTest {
     }
 
     @Test
-    public void resetWindowPressesJumpForTwoTicksForcesForwardForThreeAndReleasesOnce() {
+    public void resetWindowUsesOneTickJumpPulseAndForcesForwardForThreeTicks() {
         JumpResetController controller = new JumpResetController();
         controller.acceptVelocity(false);
 
         assertEquals(JumpResetController.JumpAction.PRESS, controller.advance(true));
         assertTrue(controller.shouldForceForward());
 
-        assertEquals(JumpResetController.JumpAction.PRESS, controller.advance(true));
+        assertEquals(JumpResetController.JumpAction.RELEASE, controller.advance(true));
         assertTrue(controller.shouldForceForward());
 
         assertEquals(JumpResetController.JumpAction.NONE, controller.advance(true));
         assertTrue(controller.shouldForceForward());
 
-        assertEquals(JumpResetController.JumpAction.RELEASE, controller.advance(true));
+        assertEquals(JumpResetController.JumpAction.NONE, controller.advance(true));
         assertFalse(controller.shouldForceForward());
         assertEquals(JumpResetController.JumpAction.NONE, controller.advance(true));
     }

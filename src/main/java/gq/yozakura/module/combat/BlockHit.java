@@ -4,6 +4,8 @@ import com.google.common.base.CaseFormat;
 import gq.yozakura.event.bridge.PacketAcceptedEvent;
 import gq.yozakura.event.bridge.PacketWriteEvent;
 import gq.yozakura.event.bridge.PlayerPacketBoundaryEvent;
+import gq.yozakura.event.bridge.RenderTickEndEvent;
+import gq.yozakura.event.bridge.RenderTickStartEvent;
 import gq.yozakura.event.bridge.UpdateEvent;
 import gq.yozakura.event.bus.EventTarget;
 import gq.yozakura.event.bus.types.EventType;
@@ -40,6 +42,8 @@ public class BlockHit extends Module {
     private static final int MODE_PREDICT = 1;
     private static final int MODE_AUTO = 2;
     private static final int MODE_LAG = 3;
+    private static final int MODE_HYPIXEL = 4;
+    private static final int MODE_NO_PRE_HYP = 5;
     private static final long NO_BRIDGE_GENERATION = -1L;
 
     private static BlockHit instance;
@@ -48,6 +52,10 @@ public class BlockHit extends Module {
     public final ModeProperty mode = settings.mode;
     private final BlockHitController controller = new BlockHitController();
     private final BlockHitVanillaUseAction useAction = new BlockHitVanillaUseAction(mc);
+    private final BlockHitHelperController helperController = new BlockHitHelperController();
+    private final BlockHitHelperInput helperInput = new BlockHitHelperInput(mc);
+    private final BlockHitHelperThreatScanner helperThreatScanner = new BlockHitHelperThreatScanner(mc);
+    private final BlockHitRenderPose renderPose = new BlockHitRenderPose();
     private final ConcurrentLinkedQueue<SuccessfulAttack> successfulAttacks =
             new ConcurrentLinkedQueue<SuccessfulAttack>();
     private final ConcurrentLinkedQueue<OwnedUseWrite> successfulUseWrites =
@@ -67,6 +75,7 @@ public class BlockHit extends Module {
     private long releaseWhenUseWriteConfirmsCycle = BlockHitController.NO_CYCLE;
     private long lastPostAcceptedAttackSequence;
     private int activeMode = -1;
+    private boolean helperForceBlockPose;
 
     public BlockHit() {
         super("BlockHit", false);
@@ -83,6 +92,7 @@ public class BlockHit extends Module {
         bridgeGeneration++;
         activeMode = mode.getValue();
         resetState();
+        armHelperFirstAttackWarmUp();
         lastPostAcceptedAttackSequence = acceptedAttackSequence.get();
         acceptingBridgeEvents = true;
     }
@@ -92,6 +102,7 @@ public class BlockHit extends Module {
         long cycleId = useAction.getActiveUseCycleId();
         acceptingBridgeEvents = false;
         bridgeGeneration++;
+        stopHelper(true);
         controller.reset();
         discardPendingPackets();
         releaseAfterInputCycle = BlockHitController.NO_CYCLE;
@@ -119,14 +130,34 @@ public class BlockHit extends Module {
             return;
         }
         if (!isGameplayReady()) {
+            stopHelper(true);
             resetState();
             return;
         }
         if (activeMode != mode.getValue()) {
+            stopHelper(true);
             cancelCycle();
             discardPendingPackets();
             activeMode = mode.getValue();
+            armHelperFirstAttackWarmUp();
         }
+        if (!isPhysicalAttackDown()) {
+            stopHelper(true);
+            cancelCycle();
+            discardPendingPackets();
+            return;
+        }
+        if (isHelperMode(activeMode)) {
+            cancelCycle();
+            discardPendingPackets();
+            if (activeMode == MODE_HYPIXEL) {
+                handleHypixelTick();
+            } else {
+                handleHelperTick();
+            }
+            return;
+        }
+        stopHelper(true);
         if (hasExternalUseOwner() || useAction.isPhysicalUseDown()) {
             cancelCycle();
             discardPendingPackets();
@@ -137,6 +168,18 @@ public class BlockHit extends Module {
         drainAcceptedPackets();
         drainSuccessfulUseWrites();
         drainSuccessfulAttacks();
+    }
+
+    @EventTarget(Priority.HIGHEST)
+    public void onRenderTickStart(RenderTickStartEvent event) {
+        if (event != null && helperForceBlockPose && isHelperReady()) {
+            renderPose.begin(mc.thePlayer);
+        }
+    }
+
+    @EventTarget(Priority.LOWEST)
+    public void onRenderTickEnd(RenderTickEndEvent event) {
+        renderPose.end();
     }
 
     @EventTarget(Priority.LOWEST)
@@ -216,11 +259,13 @@ public class BlockHit extends Module {
     }
 
     public static boolean isBlockingActive() {
-        if (instance == null || !instance.isEnabled() || !instance.isGameplayReady()) {
+        if (instance == null || !instance.isEnabled() || !instance.isGameplayReady()
+                || !instance.isPhysicalAttackDown()) {
             return false;
         }
         return instance.mc.thePlayer.isBlocking()
-                && (instance.useAction.isUsing() || instance.useAction.isPhysicalUseDown());
+                && (instance.useAction.isUsing() || instance.useAction.isPhysicalUseDown()
+                || isHelperMode(instance.activeMode) && instance.helperInput.isHoldingUse());
     }
 
     @Override
@@ -229,9 +274,68 @@ public class BlockHit extends Module {
         return hasExternalUseOwner() ? new String[]{modeSuffix, "Paused"} : new String[]{modeSuffix};
     }
 
+    private void handleHypixelTick() {
+        boolean threatPredicted = helperThreatScanner.hasThreat(
+                settings.helperThreatRange.getValue(), settings.helperThreatAngle.getValue());
+        handleHelperTick(threatPredicted);
+    }
+
+    private void handleHelperTick() {
+        handleHelperTick(isPhysicalAttackDown());
+    }
+
+    private void handleHelperTick(boolean activationAllowed) {
+        if (hasExternalUseOwner() || !activationAllowed || !isPhysicalAttackDown()) {
+            stopHelper(true);
+            return;
+        }
+        boolean attackDown = isPhysicalAttackDown();
+        BlockHitHelperController.Action action = helperController.tick(
+                attackDown, activationAllowed, mc.thePlayer.isBlocking(), settings.stopTicks.getValue());
+        applyHelperAction(action);
+    }
+
+    private void applyHelperAction(BlockHitHelperController.Action action) {
+        helperForceBlockPose = action.shouldForceBlockPose();
+        if (action.shouldHoldUse()) {
+            helperInput.holdUse();
+        }
+        if (action.shouldSuppressUse()) {
+            helperInput.suppressUse();
+        }
+        if (action.shouldPressAttack()) {
+            helperInput.pressAttackOnce();
+        }
+    }
+
+    private void stopHelper(boolean releaseOwnedUse) {
+        renderPose.end();
+        helperForceBlockPose = false;
+        helperController.reset();
+        helperThreatScanner.reset();
+        if (releaseOwnedUse) {
+            helperInput.releaseOwnedUse();
+        }
+    }
+
+    private void armHelperFirstAttackWarmUp() {
+        if (isHelperMode(activeMode)) {
+            helperController.armFirstAttackWarmUp();
+        }
+    }
+
+    private boolean isHelperReady() {
+        return isEnabled() && isHelperMode(activeMode) && isGameplayReady() && isPhysicalAttackDown()
+                && !hasExternalUseOwner() && helperController.isActive();
+    }
+
+    private static boolean isHelperMode(int modeValue) {
+        return modeValue == MODE_HYPIXEL || modeValue == MODE_NO_PRE_HYP;
+    }
+
     private void armUseForAttack(C02PacketUseEntity packet) {
-        if (!isGameplayReady() || hasExternalUseOwner() || useAction.isPhysicalUseDown()
-                || mode.getValue() == MODE_LAG) {
+        if (!isGameplayReady() || !isPhysicalAttackDown() || hasExternalUseOwner()
+                || useAction.isPhysicalUseDown() || mode.getValue() == MODE_LAG) {
             return;
         }
         if (mode.getValue() == MODE_MANUAL) {
@@ -304,9 +408,6 @@ public class BlockHit extends Module {
     private boolean matchesAutomaticTarget(C02PacketUseEntity packet) {
         Entity entity = packet.getEntityFromWorld(mc.theWorld);
         if (!(entity instanceof EntityLivingBase)) {
-            return false;
-        }
-        if (Boolean.TRUE.equals(settings.requireMouseDown.getValue()) && !isPhysicalAttackDown()) {
             return false;
         }
         EntityLivingBase target = (EntityLivingBase) entity;
@@ -416,7 +517,8 @@ public class BlockHit extends Module {
         long acceptedAttacks = acceptedAttackSequence.get();
         boolean attackAcceptedInCurrentInputWindow = acceptedAttacks != lastPostAcceptedAttackSequence;
         lastPostAcceptedAttackSequence = acceptedAttacks;
-        if (!isEnabled() || !isGameplayReady() || hasExternalUseOwner() || useAction.isPhysicalUseDown()) {
+        if (!isEnabled() || !isGameplayReady() || !isPhysicalAttackDown()
+                || hasExternalUseOwner() || useAction.isPhysicalUseDown()) {
             cancelCycle();
         }
         long requestedUseCycle = controller.getRequestedUseCycleId();
@@ -437,7 +539,7 @@ public class BlockHit extends Module {
                 return;
             }
         }
-        if (isEnabled() && isGameplayReady() && controller.consumeUseRequest()) {
+        if (isEnabled() && isGameplayReady() && isPhysicalAttackDown() && controller.consumeUseRequest()) {
             long useCycle = controller.getRequestedUseCycleId();
             if (!useAction.startUse(useCycle)) {
                 controller.cancelCycle();

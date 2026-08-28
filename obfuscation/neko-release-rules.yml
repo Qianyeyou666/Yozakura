@@ -1,7 +1,8 @@
 transforms:
   renamer: { enabled: true, packagePrefix: 'n/' }
   keyDispatch: { enabled: false }
-  controlFlowFlattening: { enabled: true, intensity: 0.35 }
+  # Temporarily disabled while the upstream CFF implementation is under revision.
+  controlFlowFlattening: { enabled: false, intensity: 0.35 }
 
 native:
   enabled: false
@@ -10,19 +11,45 @@ keys:
   masterSeed: 6436298515090611787
 
 rules:
+  # ---- 全局排除：这些包完全不经 Neko 处理 ----
   - match: 'com.**'
     exclude: false
     transforms:
       renamer: { enabled: false }
+      controlFlowFlattening: { enabled: false }
   - match: 'javazoom.**'
     exclude: false
     transforms:
       renamer: { enabled: false }
+      controlFlowFlattening: { enabled: false }
+  - match: 'org.**'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+      controlFlowFlattening: { enabled: false }
+  - match: 'io.**'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+      controlFlowFlattening: { enabled: false }
+  - match: 'javax.**'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+      controlFlowFlattening: { enabled: false }
+
+  # ---- gq.yozakura 顶层：CFF 暂停期间保持全部关闭 ----
   - match: 'gq.yozakura.*'
     exclude: false
     transforms:
       renamer: { enabled: false }
-  - match: 'gq.yozakura.auth.NativeAuthBridge'
+  - match: 'gq.yozakura.**'
+    exclude: false
+    transforms:
+      controlFlowFlattening: { enabled: false }
+
+  # ---- 必须保持 ABI 的类：renamer 和 CFF 都关闭 ----
+  - match: 'gq.yozakura.k.A'
     exclude: false
     transforms:
       renamer: { enabled: false }
@@ -32,16 +59,12 @@ rules:
     exclude: false
     transforms:
       renamer: { enabled: false }
-  - match: 'gq.yozakura.**'
-    exclude: false
-    transforms:
-      controlFlowFlattening: { enabled: false }
   - match: 'gq.yozakura.bridge.**'
     exclude: false
     transforms:
       renamer: { enabled: false }
       controlFlowFlattening: { enabled: false }
-  - match: 'gq.yozakura.core.modern.ModernForgeEventBridge'
+  - match: 'gq.yozakura.bridge.modern.ModernForgeEventBridge'
     exclude: false
     transforms:
       controlFlowFlattening: { enabled: false }
@@ -70,43 +93,31 @@ rules:
     exclude: false
     transforms:
       controlFlowFlattening: { enabled: false }
-  - match: 'gq.yozakura.module.world.Scaffold'
+
+  # ---- 认证包：CFF 关闭（JNIC 已转 native），安全类仍参与 rename ----
+  - match: 'gq.yozakura.k.**'
     exclude: false
     transforms:
       controlFlowFlattening: { enabled: false }
-  - match: 'gq.yozakura.auth.**'
-    exclude: false
-    transforms:
-      controlFlowFlattening: { enabled: true, intensity: 0.35 }
-  - match: 'gq.yozakura.auth.token.**'
-    exclude: false
-    transforms:
-      renamer: { enabled: false }
-      controlFlowFlattening: { enabled: false }
+
+  # ---- 核心入口：CFF 关闭以保持稳定性 ----
   - match: 'gq.yozakura.core.Client'
     exclude: false
     transforms:
-      controlFlowFlattening: { enabled: true, intensity: 0.35 }
+      controlFlowFlattening: { enabled: false }
   - match: 'gq.yozakura.manager.**'
     exclude: false
     transforms:
       controlFlowFlattening: { enabled: false }
-  - match: 'gq.yozakura.config.**'
-    exclude: false
-    transforms:
-      controlFlowFlattening: { enabled: true, intensity: 0.35 }
   - match: 'gq.yozakura.value.**'
     exclude: false
     transforms:
       controlFlowFlattening: { enabled: false }
-  - match: 'gq.yozakura.util.crypto.**'
-    exclude: false
-    transforms:
-      controlFlowFlattening: { enabled: true, intensity: 0.35 }
-  - match: 'gq.yozakura.xray.**'
-    exclude: false
-    transforms:
-      controlFlowFlattening: { enabled: true, intensity: 0.35 }
+
+  # ---- 业务核心：CFF 候选清单暂不进入发布配置 ----
+  # 等 CFF 实现修改完成并通过独立内存/字节码验收后，再恢复具体类规则。
+
+  # ---- ABI 必须保持的类：renamer 关闭 ----
   - match: 'gq.yozakura.bridge.IsolatedClientClassLoader'
     exclude: false
     transforms:
@@ -118,36 +129,50 @@ rules:
     transforms:
       keyDispatch: { enabled: false }
       controlFlowFlattening: { enabled: false }
-  - match: 'gq.yozakura.auth.YozakuraAuthGate**'
+  - match: 'gq.yozakura.k.B'
     exclude: false
     transforms:
       renamer: { enabled: false }
       controlFlowFlattening: { enabled: false }
-  - match: 'gq.yozakura.auth.NativeAuthBridge**'
+  # A/B stay at their JNI/JNIC ABI names. Their anonymous helpers also stay
+  # beside the outer classes because Java 8 emits package-private constructors
+  # and synthetic accessors that cannot legally be invoked across packages.
+  - match: 'gq.yozakura.k.A$**'
     exclude: false
     transforms:
       renamer: { enabled: false }
       keyDispatch: { enabled: false }
       controlFlowFlattening: { enabled: false }
-  - match: 'gq.yozakura.auth.vendor.skidonion.sWdSl.VerificationPanel**'
+  - match: 'gq.yozakura.k.B$**'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+      keyDispatch: { enabled: false }
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.k.A'
+    exclude: false
+    transforms:
+      renamer: { enabled: false }
+      keyDispatch: { enabled: false }
+      controlFlowFlattening: { enabled: false }
+  - match: 'gq.yozakura.k.vendor.tech.skidonion.obfuscator.inline.C**'
     exclude: false
     transforms:
       renamer: { enabled: false }
       controlFlowFlattening: { enabled: false }
-  - match: 'gq.yozakura.auth.vendor.skidonion.sWdSl.PasswordFieldKeyListener'
+  # Keep Module and every nested companion together. Java 8 package-private
+  # constructors/accessors must not cross into n/** independently. ModuleType
+  # remains eligible because it is not part of the Module$** family.
+  - match: 'gq.yozakura.module.Module'
     exclude: false
     transforms:
       renamer: { enabled: false }
       controlFlowFlattening: { enabled: false }
-  - match: 'gq.yozakura.auth.vendor.tech.skidonion.obfuscator.inline.Wrapper**'
+  - match: 'gq.yozakura.module.Module$**'
     exclude: false
     transforms:
       renamer: { enabled: false }
       controlFlowFlattening: { enabled: false }
-  - match: 'gq.yozakura.module.Module**'
-    exclude: false
-    transforms:
-      renamer: { enabled: false }
   - match: 'gq.yozakura.event.bus.EventManager**'
     exclude: false
     transforms:

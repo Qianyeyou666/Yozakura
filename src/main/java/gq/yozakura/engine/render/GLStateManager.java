@@ -295,7 +295,6 @@ public final class GLStateManager {
     public static void end2D() {
         GL11.glPopMatrix();
         GL11.glPopAttrib();
-        syncToCurrent();
         color(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
@@ -314,7 +313,6 @@ public final class GLStateManager {
         depthMask(true);
         GL11.glPopMatrix();
         GL11.glPopAttrib();
-        syncToCurrent();
         color(1.0f, 1.0f, 1.0f, 1.0f);
     }
 

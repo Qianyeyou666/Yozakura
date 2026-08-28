@@ -10,6 +10,8 @@ import gq.yozakura.event.bridge.TickEvent;
 import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.runtime.Module;
+import gq.yozakura.util.module.PacketUtil;
+import gq.yozakura.util.module.TeamUtil;
 import gq.yozakura.value.properties.BooleanProperty;
 import gq.yozakura.value.properties.FloatProperty;
 import gq.yozakura.value.properties.IntProperty;
@@ -20,7 +22,10 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.network.Packet;
+import net.minecraft.network.play.client.C02PacketUseEntity;
+import net.minecraft.network.play.client.C0APacketAnimation;
 import net.minecraft.network.play.server.S12PacketEntityVelocity;
+import net.minecraft.util.MovingObjectPosition;
 import net.minecraftforge.event.entity.player.AttackEntityEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -34,7 +39,7 @@ public class Velocity extends Module {
 
     public final ModeProperty mode =
             new ModeProperty("Mode", MODE_REDUCE, new String[]{"Attack", "Reduce"});
-    // Retained for existing configuration files; Reduce no longer changes server-owned motion.
+    // Retained for existing configuration files; Raven Reduce uses the original fixed 0.6 slowdown.
     public final PercentProperty horizontal = new PercentProperty("Horizontal",
             VelocityConfigMigration.DEFAULT_REDUCE_HORIZONTAL, () -> false);
     public final PercentProperty vertical = new PercentProperty("Vertical", 100, () -> false);
@@ -84,11 +89,11 @@ public class Velocity extends Module {
         }
 
         int currentMode = mode.getValue();
-        if (currentMode != MODE_ATTACK) {
+        if (currentMode == MODE_REDUCE) {
             synchronized (attackStateLock) {
                 synchronizeModeLocked(currentMode);
-                knockback = false;
-                hasReceivedVelocity = false;
+                knockback = true;
+                hasReceivedVelocity = true;
             }
             return;
         }
@@ -130,14 +135,16 @@ public class Velocity extends Module {
             resetState();
             return;
         }
-        synchronized (attackStateLock) {
-            synchronizeModeLocked(mode.getValue());
-            if (mode.getValue() != MODE_ATTACK) {
-                knockback = false;
-                hasReceivedVelocity = false;
-                return;
+        int currentMode = mode.getValue();
+        if (currentMode == MODE_REDUCE) {
+            if (event.getType() == EventType.PRE) {
+                performReduce();
             }
+            return;
+        }
 
+        synchronized (attackStateLock) {
+            synchronizeModeLocked(currentMode);
             if (event.getType() == EventType.PRE) {
                 updateAttackFlagsLocked();
                 return;
@@ -172,9 +179,60 @@ public class Velocity extends Module {
     @Override
     public String[] getSuffix() {
         if (mode.getValue() == MODE_REDUCE) {
-            return new String[]{"Compatibility"};
+            return new String[]{"Reduce"};
         }
         return new String[]{CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.UPPER_CAMEL, mode.getModeString())};
+    }
+
+    private void performReduce() {
+        synchronized (attackStateLock) {
+            synchronizeModeLocked(MODE_REDUCE);
+            if (!knockback) {
+                return;
+            }
+            // Raven consumes the velocity trigger once, even when a guard prevents the attack.
+            knockback = false;
+            hasReceivedVelocity = false;
+        }
+
+        if (!mc.gameSettings.keyBindForward.isKeyDown() || !mc.thePlayer.isSprinting()) {
+            return;
+        }
+
+        EntityPlayer target = findReduceTarget();
+        if (target == null || TeamUtil.isFriend(target)) {
+            return;
+        }
+
+        PacketUtil.sendPacketNoEvent(new C0APacketAnimation());
+        PacketUtil.sendPacketNoEvent(new C02PacketUseEntity(target, C02PacketUseEntity.Action.ATTACK));
+        mc.thePlayer.motionX *= 0.6D;
+        mc.thePlayer.motionZ *= 0.6D;
+        mc.thePlayer.setSprinting(false);
+    }
+
+    private EntityPlayer findReduceTarget() {
+        gq.yozakura.module.Module module = ModuleManager.getModule("KillAura");
+        if (module instanceof KillAura && module.getState()) {
+            EntityLivingBase auraTarget = ((KillAura) module).getTarget();
+            if (auraTarget instanceof EntityPlayer && isValidReduceTarget((EntityPlayer) auraTarget)) {
+                return (EntityPlayer) auraTarget;
+            }
+        }
+
+        MovingObjectPosition hit = mc.objectMouseOver;
+        if (hit != null && hit.typeOfHit == MovingObjectPosition.MovingObjectType.ENTITY
+                && hit.entityHit instanceof EntityPlayer) {
+            EntityPlayer crosshairTarget = (EntityPlayer) hit.entityHit;
+            if (isValidReduceTarget(crosshairTarget)) {
+                return crosshairTarget;
+            }
+        }
+        return null;
+    }
+
+    private boolean isValidReduceTarget(EntityPlayer target) {
+        return target != mc.thePlayer && !target.isDead && target.getHealth() > 0.0F;
     }
 
     public static boolean applyAttackSlowdown(Entity target) {

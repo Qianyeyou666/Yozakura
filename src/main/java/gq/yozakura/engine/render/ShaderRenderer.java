@@ -68,6 +68,29 @@ public final class ShaderRenderer {
     private static Program viewportFeatherBlurProgram;
     private static Program killShatterProgram;
     private static Program gaussianBlurProgram;
+    /**
+     * Tracks the currently-bound GL program id so {@link Program#use()} can
+     * skip {@link GL20#glUseProgram(int)} when the same shader draws back-to-back.
+     * {@code -1} means "unknown" — forces a rebind on the next {@code use()}.
+     * Reset by {@link #invalidateProgramCache()} when external code may have
+     * swapped programs outside ShaderRenderer's view (e.g. vanilla MC passes).
+     */
+    private static int activeProgramId = -1;
+    /**
+     * Batch mode flag — when {@code true}, {@link #beginProgram(Program)} and
+     * {@link #endProgram(ShaderState)} skip the per-draw
+     * {@link GL11#glPushAttrib(int)}/{@link GL11#glPopAttrib()} stack and the
+     * texture-0 binding save/restore. The batch owner (see
+     * {@link #beginShapeBatch()}) is responsible for issuing the push/pop and
+     * texture save/restore exactly once for the whole batch.
+     */
+    private static boolean batchMode;
+    /**
+     * Saved texture-0 binding captured by {@link #beginShapeBatch()} and
+     * restored by {@link #endShapeBatch()}. {@code null} when no batch is
+     * active.
+     */
+    private static TextureState batchSavedTextureState;
     private static final String LIQUID_GLASS_FRAGMENT_RESOURCE =
             "/assets/minecraft/yozakura/shaders/liquid_glass.frag";
     private static final String KILL_SHATTER_FRAGMENT_RESOURCE =
@@ -92,6 +115,98 @@ public final class ShaderRenderer {
         lastGlassCaptureMs = 0L;
         advanceGlassCaptureVersion();
         Blur.invalidate();
+    }
+
+    /**
+     * Resets the cached {@code GL_CURRENT_PROGRAM} tracking so the next
+     * {@link Program#use()} will rebind. Call this whenever external code
+     * (e.g. Minecraft's vanilla renderers or {@code GlStateManager} reset
+     * hooks) may have swapped shader programs outside {@link ShaderRenderer}'s
+     * view. Safe to call from any thread; only meaningful on the render thread.
+     */
+    public static void invalidateProgramCache() {
+        activeProgramId = -1;
+    }
+
+    /**
+     * Begins a batch of {@link ShaderRenderer} shape draws that share one
+     * {@link GL11#glPushAttrib(int)} stack frame and one texture-0 binding
+     * save/restore. Within the batch, {@link #beginProgram(Program)} /
+     * {@link #endProgram(ShaderState)} still run for each draw (so the shared
+     * alpha/blend state is set up uniformly) but skip the per-draw attrib push
+     * and texture0 save — eliminating the dominant per-call cost when a HUD
+     * frame issues dozens of back-to-back rounded panel draws.
+     *
+     * <p>Batches may NOT be nested. Callers MUST pair every
+     * {@code beginShapeBatch()} with a {@code endShapeBatch()} in a
+     * {@code try/finally} block. Shader programs that bind their own textures
+     * (frosted glass, liquid glass, viewport feather) are NOT compatible with
+     * batch mode and will fall back to per-draw save/restore by checking
+     * {@link #batchMode}.</p>
+     */
+    public static void beginShapeBatch() {
+        if (batchMode) {
+            return;
+        }
+        GL11.glPushAttrib(SHADER_ATTRIB_MASK);
+        batchMode = true;
+        // Save texture-0 binding once for the whole batch; per-draw
+        // beginProgram/endProgram skip saveTexture0State/restoreTexture0State
+        // while batchMode is true, so they would not restore any texture
+        // binding changes made by previous draws in the batch.
+        batchSavedTextureState = saveTexture0State();
+        // Apply the same alpha/blend/depth state that beginProgram would, so
+        // per-draw beginProgram calls remain no-ops for these uniforms. The
+        // attrib stack we just pushed will restore the previous state on
+        // endShapeBatch().
+        GlStateManager.enableAlpha();
+        GlStateManager.enableBlend();
+        GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0);
+        GlStateManager.disableDepth();
+        GL11.glDepthMask(false);
+        // RenderUtil.draw*Rect paths skip GLStateManager.begin2D()/end2D() in
+        // batch mode (see ShaderRenderer.isBatchActive). begin2D normally
+        // disables texture_2D and cull face for the raw-rect fallback paths
+        // (roundedRectRaw/joinedRoundedRectRaw use fixed-function texturing);
+        // when those skips are in effect, the batch owner must establish the
+        // same state once so a fallback draw mid-batch cannot sample the
+        // currently-bound texture or drop triangles via GL_BACK culling.
+        // Use the yozakura GLStateManager (same package) — it forwards to
+        // both GL11 and vanilla GlStateManager so cached state stays in sync.
+        gq.yozakura.engine.render.GLStateManager.disableTexture2D();
+        gq.yozakura.engine.render.GLStateManager.disableCull();
+    }
+
+    /**
+     * Returns {@code true} when a shape batch opened by
+     * {@link #beginShapeBatch()} is currently active. Callers (notably
+     * {@code RenderUtil.draw*Rect}) poll this to decide whether to skip the
+     * per-call {@code GLStateManager.begin2D()/end2D()} bracket — the batch
+     * already pushed one attrib stack frame and configured the shared
+     * alpha/blend/depth/texture/cull state.
+     *
+     * @return {@code true} if the calling thread is inside a shape batch
+     */
+    public static boolean isBatchActive() {
+        return batchMode;
+    }
+
+    /**
+     * Ends a batch opened by {@link #beginShapeBatch()}. Restores the
+     * attribute stack and texture-0 binding that were saved at batch start.
+     */
+    public static void endShapeBatch() {
+        if (!batchMode) {
+            return;
+        }
+        batchMode = false;
+        GL11.glPopAttrib();
+        if (batchSavedTextureState != null) {
+            restoreTexture0State(batchSavedTextureState);
+            batchSavedTextureState = null;
+        }
+        gq.yozakura.engine.render.GLStateManager.syncToCurrent();
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
     public static void beginOverlayFrame() {
@@ -1253,14 +1368,18 @@ public final class ShaderRenderer {
     }
 
     private static ShaderState beginProgram(Program program) {
-        int previousProgram = 0;
-        try {
-            previousProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
-        } catch (Throwable ignored) {
-            previousProgram = 0;
+        int previousProgram = activeProgramId;
+        if (previousProgram == -1) {
+            try {
+                previousProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+            } catch (Throwable ignored) {
+                previousProgram = 0;
+            }
         }
-        TextureState textureState = saveTexture0State();
-        GL11.glPushAttrib(SHADER_ATTRIB_MASK);
+        TextureState textureState = batchMode ? null : saveTexture0State();
+        if (!batchMode) {
+            GL11.glPushAttrib(SHADER_ATTRIB_MASK);
+        }
         program.use();
         // This is the shared UI-shader entry point (rounded panels, glass and
         // shadows), not the off-screen glow mask.  Keep its original alpha
@@ -1277,10 +1396,14 @@ public final class ShaderRenderer {
     private static void endProgram(ShaderState state) {
         if (state == null) {
             GL20.glUseProgram(0);
+            activeProgramId = 0;
             return;
         }
         GL20.glUseProgram(state.previousProgram);
-        GL11.glPopAttrib();
+        activeProgramId = state.previousProgram;
+        if (!batchMode) {
+            GL11.glPopAttrib();
+        }
         restoreTexture0State(state.textureState);
         gq.yozakura.engine.render.GLStateManager.syncToCurrent();
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
@@ -1512,7 +1635,10 @@ public final class ShaderRenderer {
         }
 
         private void use() {
-            GL20.glUseProgram(id);
+            if (activeProgramId != id) {
+                GL20.glUseProgram(id);
+                activeProgramId = id;
+            }
         }
 
         private int uniform(String name) {
@@ -1630,10 +1756,9 @@ public final class ShaderRenderer {
             "    float bottomRadius = mix(cornerRadii.w, cornerRadii.z, rightSide);\n" +
             "    return mix(topRadius, bottomRadius, bottomSide);\n" +
             "}\n" +
-            "float intervalCoverage(float value, vec2 range, float antialias) {\n" +
+            "float intervalMask(float value, vec2 range) {\n" +
             "    float valid = step(range.x, range.y);\n" +
-            "    float distance = max(range.x - value, value - range.y);\n" +
-            "    return valid * (1.0 - smoothstep(-antialias, antialias, distance));\n" +
+            "    return valid * step(range.x, value) * step(value, range.y);\n" +
             "}\n" +
             "void main() {\n" +
             "    vec2 size = max(rectSize, vec2(0.001));\n" +
@@ -1651,11 +1776,11 @@ public final class ShaderRenderer {
             "    float leftBand = step(coord.x, antialias);\n" +
             "    float rightBand = step(size.x - coord.x, antialias);\n" +
             "    float joinedCoverage = max(topBand\n" +
-            "            * intervalCoverage(coord.x, joinRanges.xy, antialias),\n" +
-            "            bottomBand * intervalCoverage(coord.x, joinRanges.zw, antialias));\n" +
+            "            * intervalMask(coord.x, joinRanges.xy),\n" +
+            "            bottomBand * intervalMask(coord.x, joinRanges.zw));\n" +
             "    float sideCoverage = max(leftBand\n" +
-            "            * intervalCoverage(coord.y, sideJoinRanges.xy, antialias),\n" +
-            "            rightBand * intervalCoverage(coord.y, sideJoinRanges.zw, antialias));\n" +
+            "            * intervalMask(coord.y, sideJoinRanges.xy),\n" +
+            "            rightBand * intervalMask(coord.y, sideJoinRanges.zw));\n" +
             "    coverage = max(coverage, max(joinedCoverage, sideCoverage));\n" +
             "    if (coverage <= 0.0) discard;\n" +
             "    gl_FragColor = vec4(color.rgb, color.a * coverage);\n" +
@@ -1721,8 +1846,10 @@ public final class ShaderRenderer {
             "    float r = min(radius, min(halfSize.x, halfSize.y));\n" +
             "    float distance = roundSDF(coord - halfSize, halfSize, r);\n" +
             "    float mask = 1.0 - smoothstep(0.0, softness, distance);\n" +
-            "    float brightness = mix(1.0, 0.42, st.y);\n" +
-            "    vec3 rgb = hsv2rgb(vec3(st.x, 0.86, brightness));\n" +
+            "    bool vertical = size.y > size.x;\n" +
+            "    float hueValue = vertical ? st.y : st.x;\n" +
+            "    float brightness = vertical ? 1.0 : mix(1.0, 0.42, st.y);\n" +
+            "    vec3 rgb = hsv2rgb(vec3(hueValue, vertical ? 1.0 : 0.86, brightness));\n" +
             "    rgb += dither(st);\n" +
             "    gl_FragColor = vec4(rgb, alpha * mask);\n" +
             "}\n";

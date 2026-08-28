@@ -13,6 +13,8 @@ public class VisualPaletteTest {
 
         assertEquals(0xFF010203, palette.getCanvas());
         assertEquals(0xFF040506, palette.getSurface());
+        assertEquals(0xFF18191A, palette.getSurfaceRaised());
+        assertEquals(0xFF2B2C2D, palette.getSurfaceOverlay());
         assertEquals(0xFF070809, palette.getAccentPrimary());
         assertEquals(0xFF0A0B0C, palette.getAccentAlt());
         assertEquals(0xFF0D0E0F, palette.getDanger());

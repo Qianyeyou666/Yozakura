@@ -92,7 +92,7 @@ public class NightBloomTargetHudRendererVisualContractTest {
     @Test
     public void targetHudUsesOneEffectsFrameForTheForgeFallback() throws IOException {
         String fallback = between(source(TARGET_HUD_SOURCE), "public void onRender(RenderGameOverlayEvent.Text event)",
-                "private void renderOverlay()");
+                "private void renderOverlay(float partialTicks)");
 
         assertTrue(fallback.contains("RenderServices.beginHudEffectsFrame()"));
         assertTrue(fallback.contains("RenderServices.flushHudEffectsFrame()"));
@@ -115,15 +115,16 @@ public class NightBloomTargetHudRendererVisualContractTest {
     }
 
     @Test
-    public void targetHudAutoStyleInheritsThePrimaryNightBloomSelection() throws IOException {
+    public void targetHudUsesExplicitRiseOrNightBloomStyleSelection() throws IOException {
         String targetHud = source(TARGET_HUD_SOURCE);
         String styles = source(TARGET_HUD_STYLE_SOURCE);
 
-        assertTrue(styles.contains("AUTO"));
-        assertTrue(targetHud.contains("TargetHudStyle.AUTO"));
-        assertTrue(targetHud.contains("HUD.getActiveStyle() == HUD.HudStyle.NIGHT_BLOOM"));
+        assertFalse(styles.contains("AUTO"));
+        assertFalse(targetHud.contains("TargetHudStyle.AUTO"));
+        assertFalse(targetHud.contains("HUD.getActiveStyle() == HUD.HudStyle.NIGHT_BLOOM"));
         assertTrue(targetHud.contains("TargetHudStyle.NIGHT_BLOOM"));
-        assertTrue(targetHud.contains("TargetHudStyle.LEGACY"));
+        assertTrue(targetHud.contains("TargetHudStyle.RISE"));
+        assertTrue(targetHud.contains("TargetHudStyle.APPLE"));
     }
 
     private static String source() throws IOException {

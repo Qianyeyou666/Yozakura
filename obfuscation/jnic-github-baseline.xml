@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jnic>
+    <targets>
+        <target>WINDOWS_X86_64</target>
+    </targets>
+    <options>
+        <stringObf>true</stringObf>
+        <flowObf>true</flowObf>
+        <fastCompile>false</fastCompile>
+        <useIntrinsics>false</useIntrinsics>
+    </options>
+    <include>
+        <match className="gq/yozakura/k/A" methodName="(login|redeemLicense|getVerifiedUsername|getVerifiedRole|getVerifiedExpiry|requireNativeRuntime)" />
+        <match className="gq/yozakura/k/B" methodName="(verifyOrThrow|getVerifiedUsername|requireRuntime)" />
+    </include>
+    <exclude>
+        <match className="gq/yozakura/k/A" methodName="&lt;(init|clinit)&gt;" />
+        <match className="gq/yozakura/k/B" methodName="&lt;(init|clinit)&gt;" />
+    </exclude>
+</jnic>

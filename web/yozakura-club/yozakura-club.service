@@ -1,0 +1,22 @@
+[Unit]
+Description=Yozakura Club Website and API
+After=network-online.target openclaw.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=yozakura-club
+Group=yozakura-club
+WorkingDirectory=/opt/yozakura-club
+EnvironmentFile=/etc/yozakura-club/yozakura-club.env
+ExecStart=/usr/bin/node /opt/yozakura-club/server.js
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/yozakura-club /var/lib/yozakura-releases
+
+[Install]
+WantedBy=multi-user.target

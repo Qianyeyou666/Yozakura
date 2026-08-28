@@ -8,7 +8,6 @@ import com.google.gson.JsonParser;
 import gq.yozakura.core.YozakuraClientState;
 import gq.yozakura.module.combat.VelocityConfigMigration;
 import gq.yozakura.module.combat.aim.AimAssistConfigMigration;
-import gq.yozakura.ui.click.yozakura.YozakuraClickGui;
 import gq.yozakura.module.Module;
 import gq.yozakura.util.minecraft.Helper;
 import gq.yozakura.value.Mode;
@@ -16,6 +15,7 @@ import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
 import gq.yozakura.value.Value;
 import gq.yozakura.value.properties.ModeProperty;
+import org.lwjgl.input.Keyboard;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -104,6 +104,17 @@ public class FileManager {
         profileStore.save(name, createSnapshot());
     }
 
+    public synchronized String readProfileSnapshot(String name) throws IOException {
+        String snapshot = profileStore.load(name);
+        validateSnapshotObject(snapshot);
+        return snapshot;
+    }
+
+    public synchronized void saveProfileSnapshot(String name, String snapshot) throws IOException {
+        validateSnapshotObject(snapshot);
+        profileStore.save(name, snapshot);
+    }
+
     public synchronized void loadProfile(String name) throws IOException {
         loading = true;
         try {
@@ -111,6 +122,24 @@ public class FileManager {
             String snapshot = createSnapshot();
             writeSnapshot(snapshot);
             lastSavedSnapshot = snapshot;
+            dirty = false;
+        } finally {
+            loading = false;
+        }
+    }
+
+    public synchronized String exportSnapshot() {
+        return createSnapshot();
+    }
+
+    public synchronized void importSnapshot(String snapshot) throws IOException {
+        validateSnapshotObject(snapshot);
+        loading = true;
+        try {
+            applySnapshot(snapshot);
+            String appliedSnapshot = createSnapshot();
+            writeSnapshot(appliedSnapshot);
+            lastSavedSnapshot = appliedSnapshot;
             dirty = false;
         } finally {
             loading = false;
@@ -159,6 +188,19 @@ public class FileManager {
         dirty = false;
     }
 
+    private void validateSnapshotObject(String snapshot) throws IOException {
+        try {
+            JsonElement element = new JsonParser().parse(snapshot);
+            if (element == null || !element.isJsonObject()) {
+                throw new IOException("Configuration root must be a JSON object");
+            }
+        } catch (IOException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new IOException("Malformed configuration JSON", exception);
+        }
+    }
+
     private void applySnapshot(String snapshot) {
         JsonObject jsonObject = new JsonParser().parse(snapshot).getAsJsonObject();
         for (final Module module : ModuleManager.getModules()) {
@@ -173,7 +215,19 @@ public class FileManager {
                 migrateLegacyVelocityValues(module, moduleJson);
 
                 if (moduleJson.has("key")) {
-                    module.setKey(moduleJson.get("key").getAsInt());
+                    module.setKey(resolveModuleKey(module, moduleJson.get("key").getAsInt()));
+                }
+
+                if (moduleJson.has("bindMode")) {
+                    try {
+                        module.setBindMode(Module.BindMode.valueOf(
+                                moduleJson.get("bindMode").getAsString()));
+                    } catch (IllegalArgumentException ignored) {
+                        // Unknown bind mode in config — keep the TOGGLE default.
+                    }
+                }
+                if (moduleJson.has("hidden")) {
+                    module.setHidden(moduleJson.get("hidden").getAsBoolean());
                 }
 
                 for (final Value value : module.getValues()) {
@@ -186,9 +240,9 @@ public class FileManager {
                         } else if (value instanceof ModeProperty) {
                             JsonElement element = moduleJson.get(value.getName());
                             if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isNumber()) {
-                                ((ModeProperty) value).setNumberValue(element.getAsDouble());
+                                ((ModeProperty) value).setStoredNumberValue(element.getAsDouble());
                             } else {
-                                ((ModeProperty) value).setMode(element.getAsString());
+                                ((ModeProperty) value).setStoredMode(element.getAsString());
                             }
                         } else if (value instanceof Mode) {
                             ((Mode) value).setMode(moduleJson.get(value.getName()).getAsString());
@@ -207,14 +261,20 @@ public class FileManager {
                 logConfigFailure("Failed to load module " + module.getName(), throwable);
             }
         }
+    }
 
-        if (jsonObject.has("_gui") && jsonObject.get("_gui").isJsonObject()) {
-            try {
-                YozakuraClickGui.loadGuiState((JsonObject) jsonObject.get("_gui"));
-            } catch (Throwable throwable) {
-                logConfigFailure("Failed to load ClickGUI state", throwable);
-            }
+    /**
+     * Legacy configs may contain {@code ClickGUI.key = 0}, overriding the
+     * constructor's RSHIFT default and making every ClickGUI style impossible
+     * to open. Preserve NONE for ordinary modules, but keep this UI entrypoint
+     * reachable.
+     */
+    private int resolveModuleKey(Module module, int configuredKey) {
+        if ("ClickGUI".equalsIgnoreCase(module.getName())
+                && configuredKey == Keyboard.KEY_NONE) {
+            return Keyboard.KEY_RSHIFT;
         }
+        return configuredKey;
     }
 
     private JsonElement getModuleElement(JsonObject jsonObject, Module module) {
@@ -228,22 +288,17 @@ public class FileManager {
     }
 
     private void migrateLegacyAimAssistValues(Module module, JsonObject moduleJson) {
-        if (!"AimAssist".equalsIgnoreCase(module.getName()) || !moduleJson.has("VapeMode")) {
+        if (!"AimAssist".equalsIgnoreCase(module.getName())) {
             return;
         }
         JsonElement mode = moduleJson.get("Mode");
         JsonElement vapeMode = moduleJson.get("VapeMode");
-        if (isStringPrimitive(mode) && isStringPrimitive(vapeMode)) {
-            String mergedMode = AimAssistConfigMigration.resolveMode(mode.getAsString(), vapeMode.getAsString());
+        if (isStringPrimitive(mode)) {
+            String mergedMode = AimAssistConfigMigration.resolveMode(mode.getAsString(),
+                    isStringPrimitive(vapeMode) ? vapeMode.getAsString() : null);
             if (mergedMode != null) {
                 moduleJson.addProperty("Mode", mergedMode);
             }
-        }
-
-        JsonElement keepMoveDirection = moduleJson.get("KeepMoveDirection");
-        if (isBooleanPrimitive(keepMoveDirection)) {
-            moduleJson.addProperty("KeepMoveDirection",
-                    AimAssistConfigMigration.migrateKeepMoveDirection(keepMoveDirection.getAsBoolean()));
         }
     }
 
@@ -286,6 +341,8 @@ public class FileManager {
 
             moduleJson.addProperty("state", module.getState());
             moduleJson.addProperty("key", module.getKey());
+            moduleJson.addProperty("bindMode", module.getBindMode().name());
+            moduleJson.addProperty("hidden", module.isHidden());
 
             for (final Value value : module.getValues()) {
                 if (value instanceof ModeProperty) {
@@ -301,9 +358,6 @@ public class FileManager {
 
             jsonObject.add(module.name, moduleJson);
         }
-
-        // 保存ClickGUI界面状态（标签页/选中模块/详情子标签等）
-        jsonObject.add("_gui", YozakuraClickGui.saveGuiState());
 
         return gson.toJson(jsonObject);
     }

@@ -1,6 +1,6 @@
 package gq.yozakura.event.bus;
 
-import gq.yozakura.auth.YozakuraAuthGate;
+import gq.yozakura.k.B;
 import gq.yozakura.event.bus.events.EventStoppable;
 
 import java.lang.invoke.MethodHandle;
@@ -70,7 +70,7 @@ public final class EventManager {
         if (event == null) {
             return null;
         }
-        if (!YozakuraAuthGate.permitEventDispatch()) {
+        if (!B.permitEventDispatch()) {
             return event;
         }
         List<MethodData> list = REGISTRY.get(event.getClass());
@@ -78,7 +78,8 @@ public final class EventManager {
         if (list == null) {
             return event;
         }
-        for (MethodData data : list) {
+        for (int i = 0; i < list.size(); i++) {
+            MethodData data = list.get(i);
             try {
                 data.invoke(event);
                 if (event instanceof EventStoppable && ((EventStoppable) event).isStopped()) {

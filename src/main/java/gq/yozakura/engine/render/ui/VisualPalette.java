@@ -149,7 +149,7 @@ public final class VisualPalette {
             throw new IllegalArgumentException("base must not be null");
         }
         return new VisualPalette(
-                canvas, surface, base.surfaceRaised, base.surfaceOverlay,
+                canvas, surface, offsetRgb(surface, 20), offsetRgb(surface, 39),
                 base.textPrimary, base.textSecondary, base.textDisabled,
                 base.borderSubtle, accentPrimary,
                 accentPrimary, withAlpha(accentPrimary, 0x66), accentAlt,
@@ -163,6 +163,14 @@ public final class VisualPalette {
 
     private static int withAlpha(int color, int alpha) {
         return (color & 0x00FFFFFF) | (alpha << 24);
+    }
+
+    private static int offsetRgb(int color, int amount) {
+        int alpha = (color >>> 24) & 0xFF;
+        int red = Math.max(0, Math.min(255, ((color >>> 16) & 0xFF) + amount));
+        int green = Math.max(0, Math.min(255, ((color >>> 8) & 0xFF) + amount));
+        int blue = Math.max(0, Math.min(255, (color & 0xFF) + amount));
+        return (alpha << 24) | (red << 16) | (green << 8) | blue;
     }
 
     public int getCanvas() {

@@ -22,6 +22,8 @@ public class CFont {
     private static final int GLYPH_PADDING = 8;
     private static final int GLYPH_INSET_X = 2;
     private static final int GLYPH_INSET_Y = 2;
+    private static final int CELL_GUTTER = 2;
+    private static final float TEXEL_INSET = 0.5f;
     private static final int TRANSPARENT_WHITE = 0x00FFFFFF;
     protected static final int FONT_TEXTURE_FILTER = GL11.GL_LINEAR;
     protected CharData[] charData = new CharData[256];
@@ -75,9 +77,9 @@ public class CFont {
             data.srcWidth = data.width * ATLAS_SCALE;
             data.srcHeight = data.height * ATLAS_SCALE;
             data.drawable = character > ' ';
-            if (positionX + data.srcWidth >= ATLAS_WIDTH) {
+            if (positionX + data.srcWidth + CELL_GUTTER >= ATLAS_WIDTH) {
                 positionX = 0;
-                positionY += charHeight;
+                positionY += charHeight + CELL_GUTTER;
                 charHeight = 0;
             }
             if (data.srcHeight > charHeight) {
@@ -89,7 +91,7 @@ public class CFont {
                 measuredFontHeight = glyphHeight;
             }
             chars[i] = data;
-            positionX += data.srcWidth;
+            positionX += data.srcWidth + CELL_GUTTER;
         }
 
         int atlasHeight = Math.max(1, positionY + Math.max(charHeight, fontMetrics.getAscent()));
@@ -106,15 +108,17 @@ public class CFont {
             CharData data = chars[i];
             data.atlasWidth = ATLAS_WIDTH;
             data.atlasHeight = atlasHeight;
-            data.u1 = (float) data.storedX / (float) ATLAS_WIDTH;
-            data.v1 = (float) data.storedY / (float) atlasHeight;
-            data.u2 = (float) (data.storedX + data.srcWidth) / (float) ATLAS_WIDTH;
-            data.v2 = (float) (data.storedY + data.srcHeight) / (float) atlasHeight;
+            data.u1 = (data.storedX + TEXEL_INSET) / (float) ATLAS_WIDTH;
+            data.v1 = (data.storedY + TEXEL_INSET) / (float) atlasHeight;
+            data.u2 = (data.storedX + data.srcWidth - TEXEL_INSET) / (float) ATLAS_WIDTH;
+            data.v2 = (data.storedY + data.srcHeight - TEXEL_INSET) / (float) atlasHeight;
+            clearGlyphCell(bufferedImage, data);
+            graphics.setClip(data.storedX, data.storedY, data.srcWidth, data.srcHeight);
             graphics.drawString(String.valueOf((char) i),
                     data.storedX + GLYPH_INSET_X * ATLAS_SCALE,
                     data.storedY + GLYPH_INSET_Y * ATLAS_SCALE + renderMetrics.getAscent());
         }
-
+        graphics.setClip(null);
         graphics.dispose();
         fontHeight = measuredFontHeight;
         return bufferedImage;
@@ -264,6 +268,17 @@ public class CFont {
     private void fillTransparentWhite(BufferedImage image) {
         int[] pixels = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
         Arrays.fill(pixels, TRANSPARENT_WHITE);
+    }
+
+    private void clearGlyphCell(BufferedImage image, CharData data) {
+        int[] pixels = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
+        int maxX = Math.min(image.getWidth(), data.storedX + data.srcWidth);
+        int maxY = Math.min(image.getHeight(), data.storedY + data.srcHeight);
+        for (int y = Math.max(0, data.storedY); y < maxY; y++) {
+            int start = y * image.getWidth() + Math.max(0, data.storedX);
+            int end = y * image.getWidth() + maxX;
+            Arrays.fill(pixels, start, end, TRANSPARENT_WHITE);
+        }
     }
 
     protected class CharData {

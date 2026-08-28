@@ -13,6 +13,8 @@ public final class PacketAcceptedEvent implements Event {
     private final Packet<?> packet;
     private final long writeId;
     private boolean originalPacketOrderRequired;
+    private boolean strictOriginalPacketOrderRequired;
+    private boolean afterCurrentRotationRequired;
 
     public PacketAcceptedEvent(Packet<?> packet) {
         this.packet = packet;
@@ -33,10 +35,42 @@ public final class PacketAcceptedEvent implements Event {
      */
     public void requestOriginalPacketOrder() {
         originalPacketOrderRequired = true;
+        afterCurrentRotationRequired = false;
     }
 
     public boolean isOriginalPacketOrderRequired() {
         return originalPacketOrderRequired;
+    }
+
+    /**
+     * Locks this packet to its original submission position. Later listeners
+     * cannot move it behind a silent-rotation publication.
+     */
+    public void requestStrictOriginalPacketOrder() {
+        strictOriginalPacketOrderRequired = true;
+        originalPacketOrderRequired = true;
+        afterCurrentRotationRequired = false;
+    }
+
+    public boolean isStrictOriginalPacketOrderRequired() {
+        return strictOriginalPacketOrderRequired;
+    }
+
+    /**
+     * Defers this accepted action until the current canonical player packet has
+     * published its silent rotation. This is narrower than the normal action
+     * batch: it is flushed immediately after that C03 in the same client tick.
+     */
+    public void requestAfterCurrentRotation() {
+        if (strictOriginalPacketOrderRequired) {
+            return;
+        }
+        afterCurrentRotationRequired = true;
+        originalPacketOrderRequired = false;
+    }
+
+    public boolean isAfterCurrentRotationRequired() {
+        return afterCurrentRotationRequired;
     }
 
     private static long nextWriteId() {

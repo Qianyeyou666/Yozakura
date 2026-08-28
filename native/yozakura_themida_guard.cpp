@@ -31,7 +31,20 @@ extern "C" __declspec(noinline)
 int yozakuraThemidaAcceptRegistration(int registerResult, int methodCount) {
     volatile int accepted = 0;
     YOZAKURA_AUTH_VM_START
-    accepted = registerResult == 0 && methodCount == 8 ? 1 : 0;
+    accepted = registerResult == 0 && methodCount == 9 ? 1 : 0;
+    YOZAKURA_AUTH_VM_END
+    return accepted;
+}
+
+extern "C" __declspec(noinline)
+int yozakuraThemidaAcceptDebuggerState(int localDebuggerPresent,
+                                       int remoteQuerySucceeded,
+                                       int remoteDebuggerPresent) {
+    volatile int accepted = 0;
+    YOZAKURA_AUTH_VM_START
+    accepted = localDebuggerPresent == 0
+            && (remoteQuerySucceeded == 0
+                    || remoteDebuggerPresent == 0) ? 1 : 0;
     YOZAKURA_AUTH_VM_END
     return accepted;
 }

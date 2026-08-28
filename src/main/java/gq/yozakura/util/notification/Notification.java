@@ -5,7 +5,6 @@ import gq.yozakura.module.Module;
 import gq.yozakura.module.render.HUD;
 import gq.yozakura.module.render.NightBloomHudDockRenderer;
 import gq.yozakura.util.color.ColorUtils;
-import gq.yozakura.util.time.TimerUtil;
 import gq.yozakura.engine.font.CFontRenderer;
 import gq.yozakura.engine.font.FontLoaders;
 import gq.yozakura.engine.render.glow.GlowProfile;
@@ -26,14 +25,12 @@ public class Notification {
     private static int TEXT() { return isLightStyle() ? 0xFF1C1E22 : 0xFFE8EAEC; }
     private static int MUTED() { return isLightStyle() ? 0xFF606468 : 0xFFA4ADBB; }
     private static int GLASS() { return isSakura() ? 0xFFF5EEF2 : (isLightStyle() ? 0xFFEBEDF2 : 0xFF07090D); }
-    private static int GLASS_SOFT() { return isSakura() ? 0xFFEBE0E6 : (isLightStyle() ? 0xFFE0E3EA : 0xFF0B0E14); }
     private static int BORDER() { return isSakura() ? 0xFFD0A8B8 : (isLightStyle() ? 0xFF6BA0C0 : 0xFF8DBED8); }
     private static int VAPE_PRIMARY() { return isSakura() ? 0xFFE090A8 : (isLightStyle() ? 0xFF6090E0 : 0xFF7C9DFF); }
     private static int VAPE_SECONDARY() { return isSakura() ? 0xFFD88098 : (isLightStyle() ? 0xFF6888E0 : 0xFF838CEF); }
     private static int VAPE_SURFACE() { return isSakura() ? 0xFFF0E8EC : (isLightStyle() ? 0xFFE8EBF0 : 0xFF171A20); }
     private static int VAPE_SURFACE_VARIANT() { return isSakura() ? 0xFFE8DCE2 : (isLightStyle() ? 0xFFDCE0E8 : 0xFF1E222B); }
     private static int VAPE_ON_VARIANT() { return isLightStyle() ? 0xFF505560 : 0xFFAAB2C5; }
-    private static int ACCENT_ALT() { return isSakura() ? 0xFFE87898 : (isLightStyle() ? 0xFF6088E8 : 0xFF8B7CFF); }
     private static int onSurfaceColor() { return isLightStyle() ? 0xFF181A20 : 0xFFFFFFFF; }
     private static int progressTrack() { return isLightStyle() ? 0xFF000000 : 0xFFFFFFFF; }
     private static int shadowColor() { return isLightStyle() ? 0xFFFFFFFF : 0xFF000000; }
@@ -66,7 +63,6 @@ public class Notification {
     public String message;
     public String title;
     public String icon;
-    public TimerUtil timer;
     public int type;
     public long stayTime;
     Module module;
@@ -74,6 +70,9 @@ public class Notification {
     private float animationY;
     private final float width;
     private final float height;
+    private final float modernWidth;
+    private final float modernHeight;
+    private final ModernNotificationLayout.Layout modernLayout;
     private final long createdAt;
     private long lastFrameMS;
 
@@ -86,22 +85,26 @@ public class Notification {
         this.message = message == null ? "" : message;
         this.title = title == null ? "" : title;
         this.type = normalizeType(type);
-        this.stayTime = stayTime;
-        this.createdAt = System.currentTimeMillis();
+        this.stayTime = Math.max(0L, stayTime);
+        this.createdAt = monotonicMillis();
         this.lastFrameMS = this.createdAt;
         this.animationX = 1.0f;
         this.height = this.message.length() == 0 ? 44.0f : 52.0f;
         this.width = Math.max(226.0f, Math.min(292.0f,
-                Math.max(FontLoaders.C18.getStringWidth(getTitle()), FontLoaders.C14.getStringWidth(this.message)) + 74.0f));
+                Math.max(FontLoaders.C18.getStringWidth(getTitle()),
+                        FontLoaders.C14.getStringWidth(this.message)) + 74.0f));
+        this.modernWidth = ModernNotificationLayout.panelWidth(
+                FontLoaders.C16.getStringWidth(getTitle()),
+                FontLoaders.C12.getStringWidth(this.message));
+        this.modernHeight = ModernNotificationLayout.panelHeight(this.message.length() > 0);
+        this.modernLayout = ModernNotificationLayout.create(0.0F, 0.0F, modernWidth, modernHeight);
         this.isClassicNotification = false;
-        this.timer = new TimerUtil();
-        timer.reset();
     }
 
     public void draw(float screenWidth, float offsetY) {
-        long now = System.currentTimeMillis();
+        long now = monotonicMillis();
         float factor = animationFactor(now);
-        float target = isFinished() ? 1.0f : 0.0f;
+        float target = isFinished(now) ? 1.0f : 0.0f;
         animationX = lerp(animationX, target, factor);
 
         if (animationY == 0.0f) {
@@ -118,7 +121,7 @@ public class Notification {
         float y2 = y1 + drawHeight;
         float bodyAlpha = 1.0f - Math.min(1.0f, animationX * 0.85f);
         int accent = getAccentColor();
-        float progress = 1.0f - ColorUtils.clamp((now - createdAt) / (float) Math.max(1L, stayTime), 0.0f, 1.0f);
+        float progress = ModernNotificationLayout.progressForLifetime(now - createdAt, stayTime);
 
         if (HUD.useVapeSimpleStyle()) {
             drawVape(x1, y1, x2, y2, bodyAlpha, accent, progress);
@@ -136,33 +139,45 @@ public class Notification {
             return;
         }
 
-        if (HUD.isGlowEnabled() && isGlowFrameOpen()) {
-            RenderServices.glow().queueRoundedRect(x1, y1, x2, y2, 8.0f,
-                    withAlpha(accent, Math.round(220.0f * bodyAlpha)), 0.62f, GlowProfile.PANEL);
-        }
-        drawOldPanelBackground(x1, y1, x2, y2, 8.0f, 1.0f, bodyAlpha);
-        RenderServices.shapes().horizontalGradient(x1 + 10.0f, y1 + 4.0f, x2 - 10.0f, y1 + 5.1f,
-                withAlpha(accent, Math.round(120.0f * bodyAlpha)),
-                withAlpha(ACCENT_ALT(), Math.round(72.0f * bodyAlpha)));
+        drawModern(x1, y1, x2, y2, bodyAlpha, accent, progress);
+    }
 
-        float iconX = x1 + 11.0f;
-        float iconY = y1 + 10.0f;
-        drawOldIconBackground(iconX, iconY, iconX + 24.0f, iconY + 24.0f, 7.0f, 0.8f, bodyAlpha, accent);
-        RenderServices.shapes().shadow(iconX, iconY, iconX + 24.0f, iconY + 24.0f, 7.0f,
-                withAlpha(accent, Math.round(28.0f * bodyAlpha)), 4, 1.8f);
-        drawCenteredIcon(getIcon(), FontLoaders.I18, iconX + 12.0f, iconY + 12.0f,
-                withAlpha(accent, Math.round(230.0f * bodyAlpha)));
+    private void drawModern(float x1, float y1, float x2, float y2,
+                            float bodyAlpha, int accent, float progress) {
+        ModernNotificationLayout.Layout layout = modernLayout;
+        drawModernPanelBackground(x1, y1, x2, y2, ModernNotificationLayout.PANEL_RADIUS, bodyAlpha);
 
-        FontLoaders.C18.drawString(trim(getTitle(), FontLoaders.C18, width - 52.0f), x1 + 43.0f, y1 + 11.0f,
-                withAlpha(TEXT(), Math.round(245.0f * bodyAlpha)));
+        float accentLeft = x1 + layout.getAccentLeft();
+        RenderServices.shapes().rounded(accentLeft, y1 + 8.0F,
+                accentLeft + layout.getAccentWidth(), y2 - 8.0F,
+                layout.getAccentWidth() * 0.5F,
+                withAlpha(accent, Math.round(224.0F * bodyAlpha)));
+
+        float iconX = x1 + layout.getIconLeft();
+        float iconY = y1 + layout.getIconTop();
+        float iconSize = layout.getIconSize();
+        RenderServices.shapes().rounded(iconX, iconY, iconX + iconSize, iconY + iconSize, 6.0F,
+                withAlpha(accent, Math.round(30.0F * bodyAlpha)));
+        drawCenteredIconWithOptionalGlow(getIcon(), FontLoaders.I16,
+                iconX + iconSize * 0.5F, iconY + iconSize * 0.5F,
+                withAlpha(accent, Math.round(244.0F * bodyAlpha)),
+                withAlpha(accent, Math.round(116.0F * bodyAlpha)), 0.38F);
+
+        float textX = x1 + layout.getTextX();
+        float contentWidth = Math.max(0.0F, x2 - 8.0F - textX);
+        FontLoaders.C16.drawString(trim(getTitle(), FontLoaders.C16, contentWidth),
+                textX, y1 + layout.getTitleY(),
+                withAlpha(TEXT(), Math.round(248.0F * bodyAlpha)));
         if (message.length() > 0) {
-            FontLoaders.C14.drawString(trim(message, FontLoaders.C14, width - 54.0f), x1 + 43.0f, y1 + 27.0f,
-                    withAlpha(MUTED(), Math.round(216.0f * bodyAlpha)));
+            FontLoaders.C12.drawString(trim(message, FontLoaders.C12, contentWidth),
+                    textX, y1 + layout.getMessageY(),
+                    withAlpha(MUTED(), Math.round(218.0F * bodyAlpha)));
         }
 
-        RenderServices.shapes().progressBar(x1 + 12.0f, y2 - 4.0f, x2 - 12.0f, y2 - 2.3f, 1.5f, progress,
-                withAlpha(progressTrack(), Math.round(18.0f * bodyAlpha)),
-                withAlpha(accent, Math.round(190.0f * bodyAlpha)));
+        RenderServices.shapes().progressBar(x1 + layout.getProgressLeft(), y1 + layout.getProgressTop(),
+                x1 + layout.getProgressRight(), y1 + layout.getProgressBottom(), 0.8F, progress,
+                withAlpha(progressTrack(), Math.round(14.0F * bodyAlpha)),
+                withAlpha(accent, Math.round(176.0F * bodyAlpha)));
     }
 
     private void drawVape(float x1, float y1, float x2, float y2, float bodyAlpha, int accent, float progress) {
@@ -197,33 +212,22 @@ public class Notification {
                 withAlpha(accent, Math.round(150.0f * bodyAlpha)));
     }
 
-    private static void drawOldPanelBackground(float x1, float y1, float x2, float y2, float radius,
-                                               float borderWidth, float bodyAlpha) {
+    private static void drawModernPanelBackground(float x1, float y1, float x2, float y2,
+                                                  float radius, float bodyAlpha) {
         if (HUD.isHudFrostedGlassEnabled()) {
             RenderServices.shapes().shadow(x1, y1, x2, y2, radius,
-                    withAlpha(shadowColor(), Math.round(58.0f * bodyAlpha)), 7, 3.4f);
-            HUD.drawThemedFrostedGlass(x1, y1, x2, y2, radius, 1.0f,
-                    withAlpha(GLASS(), Math.round(146.0f * bodyAlpha)),
-                    withAlpha(BORDER(), Math.round(56.0f * bodyAlpha)));
+                    withAlpha(0xFF000000, Math.round((isLightStyle() ? 34.0F : 72.0F) * bodyAlpha)),
+                    7, 3.2F);
+            HUD.drawThemedFrostedGlass(x1, y1, x2, y2, radius, 0.55F,
+                    withAlpha(GLASS(), Math.round(158.0F * bodyAlpha)),
+                    withAlpha(BORDER(), Math.round(30.0F * bodyAlpha)));
             return;
         }
 
-        drawHudSolidPanel(x1, y1, x2, y2, radius, borderWidth, bodyAlpha);
-    }
-
-    private static void drawOldIconBackground(float x1, float y1, float x2, float y2, float radius,
-                                              float borderWidth, float bodyAlpha, int accent) {
-        if (HUD.isHudFrostedGlassEnabled()) {
-            HUD.drawThemedFrostedGlass(x1, y1, x2, y2, radius, 0.8f,
-                    withAlpha(GLASS_SOFT(), Math.round(154.0f * bodyAlpha)),
-                    withAlpha(accent, Math.round(76.0f * bodyAlpha)));
-            return;
-        }
-
-        RenderServices.shapes().roundedBorder(x1, y1, x2, y2, radius, Math.min(borderWidth, 0.65f),
-                HUD.getSolidPanelFillColor(bodyAlpha),
-                withAlpha(accent, Math.round(76.0f * bodyAlpha)));
-        drawSolidPanelHighlight(x1, y1, x2, y2, bodyAlpha);
+        RenderServices.shapes().shadow(x1, y1, x2, y2, radius,
+                HUD.getSolidPanelShadowColor(bodyAlpha), 7, 3.6F);
+        RenderServices.shapes().roundedBorder(x1, y1, x2, y2, radius, 0.55F,
+                HUD.getSolidPanelFillColor(bodyAlpha), HUD.getSolidPanelBorderColor(bodyAlpha));
     }
 
     private static void drawVapePanelBackground(float x1, float y1, float x2, float y2, float radius,
@@ -419,22 +423,35 @@ public class Notification {
     }
 
     public boolean shouldDelete() {
-        return isFinished() && animationX > 0.985f;
+        return isFinished(monotonicMillis()) && animationX > 0.985f;
     }
 
     private float renderWidth() {
-        if (!useNightBloomRenderer()) {
-            return width;
+        if (useNightBloomRenderer()) {
+            return NightBloomNotificationLayout.panelWidth(
+                    FontLoaders.C16.getStringWidth(getTitle()),
+                    FontLoaders.C12.getStringWidth(message));
         }
-        return NightBloomNotificationLayout.panelWidth(
-                FontLoaders.C16.getStringWidth(getTitle()),
-                FontLoaders.C12.getStringWidth(message));
+        if (useModernRenderer()) {
+            return modernWidth;
+        }
+        return width;
     }
 
     private float renderHeight() {
-        return useNightBloomRenderer()
-                ? NightBloomNotificationLayout.panelHeight(message.length() > 0)
-                : height;
+        if (useNightBloomRenderer()) {
+            return NightBloomNotificationLayout.panelHeight(message.length() > 0);
+        }
+        if (useModernRenderer()) {
+            return modernHeight;
+        }
+        return height;
+    }
+
+    private boolean useModernRenderer() {
+        return !HUD.useVapeSimpleStyle()
+                && !HUD.isNotificationSakura()
+                && !HUD.isNotificationNightBloom();
     }
 
     private boolean useNightBloomRenderer() {
@@ -451,8 +468,8 @@ public class Notification {
         return renderWidth();
     }
 
-    private boolean isFinished() {
-        return timer.delay(stayTime);
+    private boolean isFinished(long now) {
+        return now - createdAt >= stayTime;
     }
 
     private String getTitle() {
@@ -517,6 +534,10 @@ public class Notification {
 
     private static int withAlpha(int color, int alpha) {
         return (color & 0x00FFFFFF) | (ColorUtils.clamp(alpha, 0, 255) << 24);
+    }
+
+    private static long monotonicMillis() {
+        return System.nanoTime() / 1000000L;
     }
 
     private static boolean isGlowFrameOpen() {

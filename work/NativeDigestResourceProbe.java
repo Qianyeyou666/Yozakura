@@ -19,7 +19,6 @@ public final class NativeDigestResourceProbe {
                     "gq/yozakura/core/ModernForgeClient.class",
                     "gq/yozakura/module/Module.class",
                     "gq/yozakura/event/bus/EventManager.class",
-                    "gq/yozakura/event/api/EventManager.class",
                     "gq/yozakura/bridge/MovementInputBridge.class",
                     "gq/yozakura/ui/click/yozakura/YozakuraClickGui.class"
             };

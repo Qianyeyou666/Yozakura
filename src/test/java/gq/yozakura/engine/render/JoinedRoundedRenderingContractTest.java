@@ -40,12 +40,16 @@ public class JoinedRoundedRenderingContractTest {
                 fragment.contains("smoothstep(-antialias, antialias, distance)"));
         assertTrue("a shared edge must become fully covered instead of leaking the world background",
                 fragment.contains("coverage = max(coverage, max(joinedCoverage, sideCoverage))"));
+        assertTrue("join ranges describe hidden shared topology, so their endpoints must be fully covered",
+                fragment.contains("float intervalMask(float value, vec2 range)"));
         assertTrue("only the actual overlap interval may suppress edge antialiasing",
-                fragment.contains("intervalCoverage(coord.x, joinRanges.xy"));
+                fragment.contains("intervalMask(coord.x, joinRanges.xy"));
         assertTrue("the bottom edge must use the bottom pair rather than the top interval",
-                fragment.contains("bottomBand * intervalCoverage(coord.x, joinRanges.zw"));
+                fragment.contains("bottomBand * intervalMask(coord.x, joinRanges.zw"));
         assertTrue("side joins must cover only their exact vertical interval",
-                fragment.contains("intervalCoverage(coord.y, sideJoinRanges.xy"));
+                fragment.contains("intervalMask(coord.y, sideJoinRanges.xy"));
+        assertFalse("feathering a hidden join endpoint leaves a dark vertical groove between translucent rows",
+                fragment.contains("intervalCoverage"));
     }
 
     @Test

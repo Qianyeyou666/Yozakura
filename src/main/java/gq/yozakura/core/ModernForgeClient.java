@@ -1,8 +1,7 @@
 package gq.yozakura.core;
 
-import gq.yozakura.auth.YozakuraAuthGate;
-import gq.yozakura.core.modern.ModernForgeEventBridge;
-import gq.yozakura.ui.click.web.ModernWebClickGuiService;
+import gq.yozakura.k.B;
+import gq.yozakura.bridge.modern.ModernForgeEventBridge;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -15,17 +14,14 @@ public final class ModernForgeClient {
     public ModernForgeClient() {
         if (state) {
             log("Modern Forge client is already active");
-            ModernWebClickGuiService.open();
             return;
         }
-        YozakuraAuthGate.verifyOrThrow("modern-forge");
-        Client.username = YozakuraAuthGate.getVerifiedUsername();
+        B.verifyOrThrow("modern-forge");
+        ModernForgeEventBridge.initBridge();
         state = true;
         log("Modern Forge attach initialized: minecraft=" + minecraftVersion()
                 + ", forge=" + forgeVersion()
                 + ", mappings=" + mappingHint());
-        ModernForgeEventBridge.init();
-        ModernWebClickGuiService.open();
     }
 
     public static boolean isState() {
@@ -33,12 +29,15 @@ public final class ModernForgeClient {
     }
 
     public static void unInject() {
-        state = false;
-        ModernWebClickGuiService.stop();
+        try {
+            ModernForgeEventBridge.shutdownBridge();
+        } finally {
+            state = false;
+        }
     }
 
     public static void showInjectionSuccessAnimation() {
-        ModernWebClickGuiService.open();
+        log("Injection succeeded; non-Panel ClickGUI renderers are disabled");
     }
 
     private static String minecraftVersion() {

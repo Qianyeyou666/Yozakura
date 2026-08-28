@@ -77,6 +77,7 @@ public final class ScreenSpaceGlowRenderer {
     private ScreenSpaceGlowPlan.Quality quality = ScreenSpaceGlowPlan.Quality.MEDIUM;
     private ScreenSpaceGlowColors colors;
     private float compositeStrength = 1.0f;
+    private boolean fillCore;
     private boolean frameOpen;
     private boolean maskRendered;
     private Framebuffer maskFramebuffer;
@@ -97,11 +98,17 @@ public final class ScreenSpaceGlowRenderer {
     }
 
     public void beginFrame(VisualPalette palette, float strength) {
+        beginFrame(palette, strength, false);
+    }
+
+    /** Starts a glow frame, optionally tinting the collected mask inside the entity body. */
+    public void beginFrame(VisualPalette palette, float strength, boolean fillCore) {
         if (frameOpen) {
             throw new IllegalStateException("A world glow frame is already open");
         }
         colors = ScreenSpaceGlowColors.from(palette);
         compositeStrength = ScreenSpaceGlowPlan.clampStrength(strength);
+        this.fillCore = fillCore;
         entities.clear();
         blocks.clear();
         frameOpen = true;
@@ -156,7 +163,7 @@ public final class ScreenSpaceGlowRenderer {
             pushMatrices();
             matricesPushed = true;
 
-            ensureTargets(minecraft);
+            ensureTargets(minecraft, plan);
             clearMask();
             configureMaskState();
             renderEntityMasks(renderManager, clampPartialTicks(partialTicks));
@@ -191,6 +198,12 @@ public final class ScreenSpaceGlowRenderer {
 
                 requireTargets();
                 ensurePrograms();
+                // Identity matrices are required by both blur and outline
+                // passes and are not mutated by renderBlur/renderComposite
+                // (only by renderComposite's viewport call, which we re-do
+                // below). Set them once here so renderBlurPair does not need to
+                // re-issue loadIdentityMatrices on its second invocation.
+                loadIdentityMatrices();
                 renderOutline(plan);
                 renderBlurPair(plan.getOuterBlurRadius());
                 renderComposite(state, false);
@@ -237,6 +250,7 @@ public final class ScreenSpaceGlowRenderer {
         entities.clear();
         blocks.clear();
         colors = null;
+        fillCore = false;
         maskRendered = false;
         frameOpen = false;
     }
@@ -255,9 +269,9 @@ public final class ScreenSpaceGlowRenderer {
         }
     }
 
-    private void ensureTargets(Minecraft minecraft) {
-        int width = Math.max(1, minecraft.displayWidth);
-        int height = Math.max(1, minecraft.displayHeight);
+    private void ensureTargets(Minecraft minecraft, ScreenSpaceGlowPlan plan) {
+        int width = plan.scaleDimension(Math.max(1, minecraft.displayWidth));
+        int height = plan.scaleDimension(Math.max(1, minecraft.displayHeight));
         if (matches(maskFramebuffer, width, height)
                 && matches(outlineHorizontalFramebuffer, width, height)
                 && matches(outlineFramebuffer, width, height)
@@ -497,6 +511,11 @@ public final class ScreenSpaceGlowRenderer {
     }
 
     private void renderOutline(ScreenSpaceGlowPlan plan) {
+        // Identity matrices are set up once by composite(); configurePassState
+        // and outlineProgram.use are still set here because renderOutline is
+        // the first post-process step and configures the no-blend pass state.
+        configurePassState(false);
+        outlineProgram.use();
         renderOutlinePass(maskFramebuffer, outlineHorizontalFramebuffer, plan.getOutlineRadius(), 1.0f, 0.0f);
         renderOutlinePass(outlineHorizontalFramebuffer, outlineFramebuffer, plan.getOutlineRadius(), 0.0f, 1.0f);
     }
@@ -504,9 +523,9 @@ public final class ScreenSpaceGlowRenderer {
     private void renderOutlinePass(Framebuffer source, Framebuffer target, int radius,
                                    float directionX, float directionY) {
         clearAndBind(target);
-        configurePassState(false);
-        loadIdentityMatrices();
-        outlineProgram.use();
+        // loadIdentityMatrices / configurePassState(false) / outlineProgram.use
+        // are set up once per renderOutline call; pass only swaps source
+        // texture and direction uniforms.
         setActiveTexture(MASK_TEXTURE_UNIT);
         bindTexture(source.framebufferTexture);
         outlineProgram.set1i("maskTexture", 0);
@@ -518,6 +537,13 @@ public final class ScreenSpaceGlowRenderer {
     }
 
     private void renderBlurPair(int radius) {
+        // Identity matrices are set up once by composite(). configurePassState
+        // and blurProgram.use are still set here because renderComposite (run
+        // between the two blur pairs) switches to the composite program and
+        // enables blend; we must restore no-blend state and rebind blurProgram
+        // before the second pair runs.
+        configurePassState(false);
+        blurProgram.use();
         renderBlur(outlineFramebuffer, blurHorizontalFramebuffer, radius, 1.0f, 0.0f);
         renderBlur(blurHorizontalFramebuffer, blurFramebuffer, radius, 0.0f, 1.0f);
     }
@@ -525,9 +551,9 @@ public final class ScreenSpaceGlowRenderer {
     private void renderBlur(Framebuffer source, Framebuffer target, int radius,
                             float directionX, float directionY) {
         clearAndBind(target);
-        configurePassState(false);
-        loadIdentityMatrices();
-        blurProgram.use();
+        // loadIdentityMatrices / configurePassState(false) / blurProgram.use
+        // are set up once per renderBlurPair call; pass only swaps source
+        // texture, direction and kernel uniforms.
         setActiveTexture(MASK_TEXTURE_UNIT);
         bindTexture(source.framebufferTexture);
         blurProgram.set1i("sourceTexture", 0);
@@ -543,7 +569,8 @@ public final class ScreenSpaceGlowRenderer {
         OpenGlHelper.glBindFramebuffer(OpenGlHelper.GL_FRAMEBUFFER, state.framebuffer);
         GL11.glViewport(state.viewportX, state.viewportY, state.viewportWidth, state.viewportHeight);
         configurePassState(true);
-        loadIdentityMatrices();
+        // Identity matrices were loaded by renderBlurPair and renderBlur does
+        // not mutate them; no need to reload here.
         compositeProgram.use();
         setActiveTexture(MASK_TEXTURE_UNIT);
         bindTexture(blurFramebuffer.framebufferTexture);
@@ -556,6 +583,7 @@ public final class ScreenSpaceGlowRenderer {
         compositeProgram.set4f("outerColor", red(colors.getOuterColor()), green(colors.getOuterColor()),
                 blue(colors.getOuterColor()), alpha(colors.getOuterColor()));
         compositeProgram.set1f("coreLayer", coreLayer ? 1.0f : 0.0f);
+        compositeProgram.set1f("fillCore", fillCore ? 1.0f : 0.0f);
         compositeProgram.set1f("strength", compositeStrength * (coreLayer ? 1.0f : 0.82f));
         setActiveTexture(MASK_TEXTURE_UNIT);
         drawFullscreenQuad();

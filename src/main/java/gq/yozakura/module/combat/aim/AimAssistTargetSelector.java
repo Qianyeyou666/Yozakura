@@ -1,6 +1,7 @@
 package gq.yozakura.module.combat.aim;
 
 import gq.yozakura.util.minecraft.RotationUtil;
+import gq.yozakura.module.combat.AntiBot;
 import gq.yozakura.util.module.TeamUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.Entity;
@@ -27,6 +28,11 @@ public final class AimAssistTargetSelector {
         ANGLE,
         HURT_TIME,
         DISTANCE
+    }
+
+    public enum AimPointMode {
+        ADAPTIVE,
+        LOCK_ON_HEAD
     }
 
     private static final long MINIMUM_LOCK_MILLIS = 150L;
@@ -91,7 +97,7 @@ public final class AimAssistTargetSelector {
             lockedTargetId = selectedId;
             lockedAtMillis = nowMillis;
         }
-        return new Selection(selected.target, selected.point, AimAssistAimPoint.from(selected.target, selected.point));
+        return new Selection(selected.target, selected.point);
     }
 
     public void clear() {
@@ -149,7 +155,7 @@ public final class AimAssistTargetSelector {
             if (settings.ignoreTeammates && TeamUtil.isSameTeam(player)) {
                 return false;
             }
-            if (settings.botCheck && TeamUtil.isBot(player)) {
+            if (settings.botCheck && AntiBot.isServerBot(player)) {
                 return false;
             }
         }
@@ -169,6 +175,9 @@ public final class AimAssistTargetSelector {
     }
 
     private boolean isTargetTypeAllowed(EntityLivingBase target, Settings settings) {
+        if (settings.aimPointMode == AimPointMode.LOCK_ON_HEAD) {
+            return target instanceof EntityPlayer && settings.targetPlayers;
+        }
         if (target instanceof EntityPlayer) {
             return settings.targetPlayers;
         }
@@ -180,6 +189,9 @@ public final class AimAssistTargetSelector {
     }
 
     private Vec3 findAimPoint(Minecraft minecraft, EntityLivingBase target, Settings settings, List<Blocker> blockers) {
+        if (settings.aimPointMode == AimPointMode.LOCK_ON_HEAD) {
+            return findLockOnHeadPoint(minecraft, (EntityPlayer) target, settings, blockers);
+        }
         AxisAlignedBB box = target.getEntityBoundingBox().expand(0.03D, 0.03D, 0.03D);
         Vec3 eye = minecraft.thePlayer.getPositionEyes(1.0F);
         Vec3 closest = closestPoint(eye, box);
@@ -190,13 +202,21 @@ public final class AimAssistTargetSelector {
         double height = box.maxY - box.minY;
         double centerX = (box.minX + box.maxX) * 0.5D;
         double centerZ = (box.minZ + box.maxZ) * 0.5D;
+        double aimX = centerX + (closest.xCoord - centerX) * horizontal;
+        double aimZ = centerZ + (closest.zCoord - centerZ) * horizontal;
+        double levelY = preferredLevelHeight(eye.yCoord, box);
+        Vec3 preferredLevelPoint = createPoint(box, aimX, levelY, aimZ);
+        if (isAimPointAllowed(minecraft, preferredLevelPoint, target, settings, blockers)) {
+            return preferredLevelPoint;
+        }
+
         double centerY = box.minY + height * 0.62D;
         double closestY = MathHelper.clamp_double(closest.yCoord, box.minY + height * 0.18D,
                 box.minY + height * 0.92D);
         Vec3 primary = createPoint(box,
-                centerX + (closest.xCoord - centerX) * horizontal,
+                aimX,
                 centerY + (closestY - centerY) * vertical,
-                centerZ + (closest.zCoord - centerZ) * horizontal);
+                aimZ);
         if (isAimPointAllowed(minecraft, primary, target, settings, blockers)) {
             return primary;
         }
@@ -236,12 +256,102 @@ public final class AimAssistTargetSelector {
         return best;
     }
 
+    private Vec3 findLockOnHeadPoint(Minecraft minecraft, EntityPlayer target,
+                                     Settings settings, List<Blocker> blockers) {
+        AxisAlignedBB box = target.getEntityBoundingBox();
+        AimAssistLockOnGeometry.Frame frame = AimAssistLockOnGeometry.create(
+                box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ,
+                target.renderYawOffset, settings.multipointHorizontal, settings.multipointVertical);
+        Vec3 eye = minecraft.thePlayer.getPositionEyes(1.0F);
+        AimAssistLockOnGeometry.Point nearest = frame.nearestHeadPoint(
+                eye.xCoord, eye.yCoord, eye.zCoord);
+        Vec3 preferred = new Vec3(nearest.getX(), nearest.getY(), nearest.getZ());
+        if (isAimPointAllowed(minecraft, preferred, target, settings, blockers)) {
+            return preferred;
+        }
+
+        AimAssistLockOnGeometry.Region head = frame.get(AimAssistLockOnGeometry.Zone.HEAD);
+        Vec3 best = null;
+        double bestAngleDistance = Double.MAX_VALUE;
+        float[] preferredRotation = RotationUtil.getRotationsTo(
+                minecraft, preferred.xCoord, preferred.yCoord, preferred.zCoord);
+        for (int yIndex = 0; yIndex < 3; yIndex++) {
+            double y = head.getMinimumY() + (head.getMaximumY() - head.getMinimumY())
+                    * (0.2D + yIndex * 0.3D);
+            for (int xIndex = 0; xIndex < 5; xIndex++) {
+                double x = box.minX + (box.maxX - box.minX) * (0.1D + xIndex * 0.2D);
+                for (int zIndex = 0; zIndex < 5; zIndex++) {
+                    double z = box.minZ + (box.maxZ - box.minZ) * (0.1D + zIndex * 0.2D);
+                    if (!head.contains(x, y, z)) {
+                        continue;
+                    }
+                    Vec3 candidate = new Vec3(x, y, z);
+                    if (!isAimPointAllowed(minecraft, candidate, target, settings, blockers)) {
+                        continue;
+                    }
+                    float[] rotation = RotationUtil.getRotationsTo(minecraft, x, y, z);
+                    double yawDistance = Math.abs(MathHelper.wrapAngleTo180_float(
+                            rotation[0] - preferredRotation[0]));
+                    double pitchDistance = Math.abs(rotation[1] - preferredRotation[1]);
+                    double angleDistance = yawDistance * yawDistance + pitchDistance * pitchDistance;
+                    if (angleDistance < bestAngleDistance) {
+                        best = candidate;
+                        bestAngleDistance = angleDistance;
+                    }
+                }
+            }
+        }
+        return best;
+    }
+
+    static double preferredLevelHeight(double eyeY, AxisAlignedBB box) {
+        return preferredLevelHeight(eyeY, box.minY, box.maxY);
+    }
+
+    static double preferredLevelHeight(double eyeY, double minY, double maxY) {
+        return Math.max(minY + 0.08D, Math.min(maxY - 0.04D, eyeY));
+    }
+
     private Vec3 createPoint(AxisAlignedBB box, double x, double y, double z) {
         return new Vec3(
                 MathHelper.clamp_double(x, box.minX, box.maxX),
                 MathHelper.clamp_double(y, box.minY + 0.08D, box.maxY - 0.04D),
                 MathHelper.clamp_double(z, box.minZ, box.maxZ)
         );
+    }
+
+    public boolean isLineAllowed(Minecraft minecraft, Vec3 eye, Vec3 point,
+                                 EntityLivingBase target, Settings settings) {
+        if (minecraft == null || minecraft.theWorld == null || eye == null || point == null
+                || target == null || settings == null) {
+            return false;
+        }
+        double allowedRange = settings.range + 0.15D;
+        if (eye.squareDistanceTo(point) > allowedRange * allowedRange) {
+            return false;
+        }
+        if (settings.ignoreBehindWalls
+                && minecraft.theWorld.rayTraceBlocks(eye, point, false, true, false) != null) {
+            return false;
+        }
+        if (!settings.ignoreBehindEntities) {
+            return true;
+        }
+        double targetDistance = eye.distanceTo(point);
+        for (Entity entity : minecraft.theWorld.getLoadedEntityList()) {
+            if (entity == minecraft.thePlayer || entity == target || !(entity instanceof EntityLivingBase)
+                    || entity instanceof EntityArmorStand || entity.isDead) {
+                continue;
+            }
+            float border = entity.getCollisionBorderSize();
+            MovingObjectPosition intercept = entity.getEntityBoundingBox().expand(border, border, border)
+                    .calculateIntercept(eye, point);
+            if (intercept != null && intercept.hitVec != null
+                    && eye.distanceTo(intercept.hitVec) < targetDistance - 0.05D) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private boolean isAimPointAllowed(Minecraft minecraft, Vec3 point, EntityLivingBase target, Settings settings,
@@ -356,11 +466,21 @@ public final class AimAssistTargetSelector {
         private final boolean targetMobs;
         private final double multipointHorizontal;
         private final double multipointVertical;
+        private final AimPointMode aimPointMode;
 
         public Settings(double range, double fov, Sort sort, boolean ignoreBehindWalls,
                         boolean ignoreBehindEntities, boolean aimInvisible, boolean ignoreTeammates,
                         boolean botCheck, boolean targetPlayers, boolean targetAnimals, boolean targetMobs,
                         double multipointHorizontal, double multipointVertical) {
+            this(range, fov, sort, ignoreBehindWalls, ignoreBehindEntities, aimInvisible,
+                    ignoreTeammates, botCheck, targetPlayers, targetAnimals, targetMobs,
+                    multipointHorizontal, multipointVertical, AimPointMode.ADAPTIVE);
+        }
+
+        public Settings(double range, double fov, Sort sort, boolean ignoreBehindWalls,
+                        boolean ignoreBehindEntities, boolean aimInvisible, boolean ignoreTeammates,
+                        boolean botCheck, boolean targetPlayers, boolean targetAnimals, boolean targetMobs,
+                        double multipointHorizontal, double multipointVertical, AimPointMode aimPointMode) {
             if (!isFinite(range) || range < 0.0D || !isFinite(fov) || fov < 0.0D || sort == null) {
                 throw new IllegalArgumentException("Invalid target selector settings");
             }
@@ -377,18 +497,17 @@ public final class AimAssistTargetSelector {
             this.targetMobs = targetMobs;
             this.multipointHorizontal = MathHelper.clamp_double(multipointHorizontal, 0.0D, 1.0D);
             this.multipointVertical = MathHelper.clamp_double(multipointVertical, 0.0D, 1.0D);
+            this.aimPointMode = aimPointMode == null ? AimPointMode.ADAPTIVE : aimPointMode;
         }
     }
 
     public static final class Selection {
         private final EntityLivingBase target;
         private final Vec3 point;
-        private final AimAssistAimPoint aimPoint;
 
-        private Selection(EntityLivingBase target, Vec3 point, AimAssistAimPoint aimPoint) {
+        private Selection(EntityLivingBase target, Vec3 point) {
             this.target = target;
             this.point = point;
-            this.aimPoint = aimPoint;
         }
 
         public EntityLivingBase getTarget() {
@@ -397,10 +516,6 @@ public final class AimAssistTargetSelector {
 
         public Vec3 getPoint() {
             return point;
-        }
-
-        public AimAssistAimPoint getAimPoint() {
-            return aimPoint;
         }
     }
 

@@ -44,6 +44,32 @@ public class BridgeAssistMovementPredictionTest {
     }
 
     @Test
+    public void scalesPredictedInputToTheVanillaSneakSpeedWhileSneakIsHeld() {
+        assertVector(0.0D, 0.03D,
+                BridgeAssistMovementPrediction.calculateInputMotion(
+                        1.0F, 0.0F, 0.1D, 0.0F, true));
+        assertVector(0.0D, 0.1D,
+                BridgeAssistMovementPrediction.calculateInputMotion(
+                        1.0F, 0.0F, 0.1D, 0.0F, false));
+    }
+
+    @Test
+    public void keepsSneakPredictionWhileTheModuleOwnsTheHold() {
+        assertEquals(true, BridgeAssistMovementPrediction.shouldApplySneakMultiplier(
+                false, true, false, false));
+        assertEquals(true, BridgeAssistMovementPrediction.shouldApplySneakMultiplier(
+                true, false, false, false));
+    }
+
+    @Test
+    public void restoresFullSpeedPredictionOnALegitPlacementCommit() {
+        assertEquals(false, BridgeAssistMovementPrediction.shouldApplySneakMultiplier(
+                false, true, true, false));
+        assertEquals(true, BridgeAssistMovementPrediction.shouldApplySneakMultiplier(
+                false, true, true, true));
+    }
+
+    @Test
     public void leavesZeroInputStationary() {
         assertVector(0.0D, 0.0D,
                 BridgeAssistMovementPrediction.calculateInputMotion(0.0F, 0.0F, 0.1D, 0.0F));

@@ -22,7 +22,7 @@ import static org.junit.Assert.fail;
  */
 public class LunarRuntimeEntityRendererHookContractTest {
     @Test
-    public void runtimeSubclassHookIsGeneratedInTheRemapLoaderAndOverridesBothBridgePoints() throws Exception {
+    public void runtimeSubclassHookIsGeneratedInTheRemapLoaderAndOverridesAllBridgePoints() throws Exception {
         VanillaRemapClassLoader loader = new VanillaRemapClassLoader(new URL[0],
                 VanillaRemapClassLoader.class.getClassLoader(), true);
         Method factory = VanillaRemapClassLoader.class.getMethod("defineRuntimeEntityRendererHook", Class.class);
@@ -37,6 +37,8 @@ public class LunarRuntimeEntityRendererHookContractTest {
                 hook.getMethod("renderWorld", Float.TYPE, Long.TYPE).getDeclaringClass());
         assertEquals("The generated hook must own the getMouseOver interception point", hook,
                 hook.getMethod("getMouseOver", Float.TYPE).getDeclaringClass());
+        assertEquals("The generated hook must own the complete frame interception point", hook,
+                hook.getMethod("updateCameraAndRender", Float.TYPE, Long.TYPE).getDeclaringClass());
         assertTrue("The constructor-free generated hook must support Unsafe allocation",
                 PublicRendererShape.class.isInstance(allocateWithoutConstructor(hook)));
         assertSame("The remap loader must reuse its hook class for the same runtime renderer type", hook,
@@ -75,10 +77,13 @@ public class LunarRuntimeEntityRendererHookContractTest {
         TestCallbacks.reset();
         hook.getMethod("renderWorld", Float.TYPE, Long.TYPE).invoke(instance, 0.5F, 42L);
         hook.getMethod("getMouseOver", Float.TYPE).invoke(instance, 0.5F);
+        hook.getMethod("updateCameraAndRender", Float.TYPE, Long.TYPE).invoke(instance, 0.5F, 42L);
 
         assertEquals("invokespecial must execute the runtime renderer's renderWorld override", 1,
                 PublicRendererShape.renderWorldCalls);
         assertEquals("The generated render hook must prepare exactly once", 1, TestCallbacks.beginCalls);
+        assertEquals("The pre-world callback must receive the renderer's interpolation time",
+                0.5F, TestCallbacks.beginPartialTicks, 0.0001F);
         assertEquals("The generated render hook must complete normally after the runtime override", 1,
                 TestCallbacks.finishCalls);
         assertEquals("The abort path must not run after a normal runtime override", 0, TestCallbacks.abortCalls);
@@ -88,6 +93,12 @@ public class LunarRuntimeEntityRendererHookContractTest {
                 PublicRendererShape.mouseOverCalls);
         assertEquals("The generated mouse hook must dispatch after the runtime override", 1,
                 TestCallbacks.mouseOverCalls);
+        assertEquals("The generated frame hook must prepare exactly once", 1, TestCallbacks.frameBeginCalls);
+        assertEquals("invokespecial must execute the runtime renderer's complete frame override", 1,
+                PublicRendererShape.frameCalls);
+        assertEquals("The generated frame hook must finish exactly once", 1, TestCallbacks.frameFinishCalls);
+        assertEquals("The generated frame hook must preserve its restoration token", TestCallbacks.frameToken,
+                TestCallbacks.finishedFrameToken);
 
         PublicRendererShape.reset();
         PublicRendererShape.throwFromRenderWorld = true;
@@ -122,9 +133,16 @@ public class LunarRuntimeEntityRendererHookContractTest {
                 remapLoader.contains("defineRuntimeEntityRendererHook")
                         && generator.contains("writeInvokeSpecial")
                         && generator.contains("renderWorld")
-                        && generator.contains("getMouseOver"));
+                        && generator.contains("getMouseOver")
+                        && generator.contains("updateCameraAndRender"));
         assertTrue("A custom renderer may not be silently skipped after the dynamic hook is available",
                 !entityRenderer.contains("current.getClass() != EntityRenderer.class"));
+        assertTrue("The world-only framebuffer must be captured before Lunar composites its native HotBar",
+                entityRenderer.contains("HotBar.captureLunarBackground()"));
+        assertTrue("The captured world region must replace Lunar's HotBar before custom HUD dispatch",
+                entityRenderer.contains("HotBar.restoreLunarBackground()"));
+        assertTrue("All non-container screens must keep the complete HUD instead of using the HotBar-only path",
+                entityRenderer.contains("!(minecraft.currentScreen instanceof GuiContainer)"));
     }
 
     private static String source(String path) throws IOException {
@@ -146,6 +164,7 @@ public class LunarRuntimeEntityRendererHookContractTest {
     public static class PublicRendererShape {
         private static int renderWorldCalls;
         private static int mouseOverCalls;
+        private static int frameCalls;
         private static boolean throwFromRenderWorld;
 
         public void renderWorld(float partialTicks, long finishTimeNano) {
@@ -159,9 +178,14 @@ public class LunarRuntimeEntityRendererHookContractTest {
             mouseOverCalls++;
         }
 
+        public void updateCameraAndRender(float partialTicks, long nanoTime) {
+            frameCalls++;
+        }
+
         private static void reset() {
             renderWorldCalls = 0;
             mouseOverCalls = 0;
+            frameCalls = 0;
             throwFromRenderWorld = false;
         }
     }
@@ -179,10 +203,16 @@ public class LunarRuntimeEntityRendererHookContractTest {
         private static int finishCalls;
         private static int abortCalls;
         private static int mouseOverCalls;
+        private static int frameBeginCalls;
+        private static int frameFinishCalls;
+        private static float beginPartialTicks;
         private static Object finishedRenderer;
+        private static Object finishedFrameToken;
+        private static final Object frameToken = new Object();
 
-        public static void beginRuntimeRenderWorld() {
+        public static void beginRuntimeRenderWorld(float partialTicks) {
             beginCalls++;
+            beginPartialTicks = partialTicks;
         }
 
         public static void finishRuntimeRenderWorld(Object renderer, float partialTicks) {
@@ -198,12 +228,30 @@ public class LunarRuntimeEntityRendererHookContractTest {
             mouseOverCalls++;
         }
 
+        public static Object beginRuntimeFrame(float partialTicks) {
+            frameBeginCalls++;
+            return frameToken;
+        }
+
+        public static void finishRuntimeFrame(Object renderer, Object token, float partialTicks) {
+            frameFinishCalls++;
+            finishedFrameToken = token;
+        }
+
+        public static void abortRuntimeFrame(Object token) {
+            finishedFrameToken = token;
+        }
+
         private static void reset() {
             beginCalls = 0;
             finishCalls = 0;
             abortCalls = 0;
             mouseOverCalls = 0;
+            frameBeginCalls = 0;
+            frameFinishCalls = 0;
+            beginPartialTicks = -1.0F;
             finishedRenderer = null;
+            finishedFrameToken = null;
         }
     }
 

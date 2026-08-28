@@ -21,6 +21,11 @@ public final class SneakInputEvent implements Event {
     private final boolean physicalSneak;
     private SneakIntent intent = SneakIntent.KEEP;
     private int intentPriority = Integer.MIN_VALUE;
+    private float resolvedForward;
+    private float resolvedStrafe;
+    private boolean resolvedJump;
+    private int movementPriority = Integer.MIN_VALUE;
+    private boolean movementOverride;
 
     public SneakInputEvent(int tick, float rawForward, float rawStrafe, boolean jump,
                            boolean sampledSneak, boolean physicalSneak) {
@@ -30,6 +35,9 @@ public final class SneakInputEvent implements Event {
         this.jump = jump;
         this.sampledSneak = sampledSneak;
         this.physicalSneak = physicalSneak;
+        this.resolvedForward = rawForward;
+        this.resolvedStrafe = rawStrafe;
+        this.resolvedJump = jump;
     }
 
     public int getTick() {
@@ -65,5 +73,33 @@ public final class SneakInputEvent implements Event {
 
     public SneakIntent getIntent() {
         return intent;
+    }
+
+    /** Lets one high-priority controller own the final movement input frame. */
+    public void requestMovement(float forward, float strafe, boolean jump, int priority) {
+        if (priority < movementPriority) {
+            return;
+        }
+        resolvedForward = forward;
+        resolvedStrafe = strafe;
+        resolvedJump = jump;
+        movementPriority = priority;
+        movementOverride = true;
+    }
+
+    public boolean hasMovementOverride() {
+        return movementOverride;
+    }
+
+    public float getResolvedForward() {
+        return resolvedForward;
+    }
+
+    public float getResolvedStrafe() {
+        return resolvedStrafe;
+    }
+
+    public boolean isResolvedJump() {
+        return resolvedJump;
     }
 }

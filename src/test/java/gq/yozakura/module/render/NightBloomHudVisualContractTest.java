@@ -142,7 +142,7 @@ public class NightBloomHudVisualContractTest {
     }
 
     @Test
-    public void arrayListUsesIndependentRightAlignedRoundedRows() throws IOException {
+    public void arrayListUsesIndependentAutoAnchoredRoundedRows() throws IOException {
         String source = new String(Files.readAllBytes(Paths.get(HUD_SOURCE)), StandardCharsets.UTF_8);
         String list = between(source, "private void drawNightBloomModuleList(",
                 "private void drawNightBloomModuleRow(");
@@ -166,7 +166,12 @@ public class NightBloomHudVisualContractTest {
                 + " + NightBloomHudLayout.MODULE_ROW_GAP"));
         assertTrue("the independent surface pass owns the row radius",
                 list.contains("NIGHT_BLOOM_RADIUS"));
+        assertTrue("Night Bloom must reverse its row and text anchor on the left half",
+                list.contains("ModuleListAnchor.isRightSide(")
+                        && list.contains("ModuleListAnchor.rowX("));
+        assertTrue(row.contains("if (rightSide)"));
         assertTrue(row.contains("contentRight = rowRight - 3.0F"));
+        assertTrue(row.contains("nameX = x + 3.0F"));
         assertTrue(row.contains("NIGHT_BLOOM_PRIMARY"));
         assertTrue(row.contains("NIGHT_BLOOM_SECONDARY"));
         assertTrue(row.contains("drawNightBloomArrayListGradientText("));
@@ -181,7 +186,7 @@ public class NightBloomHudVisualContractTest {
         assertFalse("the connector helper itself must be removed so it cannot draw a horizontal seam",
                 source.contains("private void drawNightBloomModuleConnector("));
         assertFalse(list.contains("RenderServices.stencil()"));
-        assertTrue(list.contains("withNightBloomAlpha(NIGHT_BLOOM_SURFACE, 0.68F)"));
+        assertTrue(list.contains("withNightBloomAlpha(NIGHT_BLOOM_SURFACE, 0.82F)"));
 
         String shadow = between(source, "private void drawNightBloomModuleShadow(",
                 "private static void drawNightBloomArrayListGradientText(");
@@ -192,8 +197,13 @@ public class NightBloomHudVisualContractTest {
 
         String gradient = between(source, "private static void drawNightBloomArrayListGradientText(",
                 "private void drawNightBloomPanel(");
-        assertTrue("gradient glow must use the same moving color as its glyph",
-                gradient.contains("int gradientGlow = withNightBloomAlpha(color"));
+        assertTrue("visible module text must keep its moving per-glyph gradient in one font batch",
+                gradient.contains("font.drawColoredString(text"));
+        assertTrue("the label must queue one representative moving glow color instead of one FBO command per glyph",
+                gradient.contains("int glowSample = NightBloomArrayListGradient.colorAt("));
+        assertTrue(gradient.contains("queueNightBloomTextGlow(font, text"));
+        assertFalse("per-glyph glow commands multiply mask draw calls and allocations",
+                gradient.contains("drawNightBloomText(font, glyph"));
     }
 
     @Test
@@ -208,8 +218,8 @@ public class NightBloomHudVisualContractTest {
                 surfaces.contains("index < rows.size()"));
         assertEquals("every row is rendered through the one independent rounded-surface call site",
                 1, occurrences(surfaces, "drawNightBloomModuleSurface("));
-        assertTrue("every row, including the last, keeps the same total background height",
-                surfaces.contains("float bottom = NightBloomHudLayout.moduleRowBottom("));
+        assertTrue("every standalone row and every final equal-width run keeps the same total background height",
+                surfaces.contains("float equalRunBottom = NightBloomHudLayout.moduleRowBottom("));
         assertFalse("surface fusion rectangles caused the visible connecting line",
                 surfaces.contains("RenderServices.shapes().rect("));
         assertTrue("touching rows must decide their shared right corners from actual animated positions",
@@ -246,6 +256,20 @@ public class NightBloomHudVisualContractTest {
     }
 
     @Test
+    public void equalWidthArrayListRowsCollapseIntoOneContinuousSurfaceRun() throws IOException {
+        String source = source(HUD_SOURCE);
+        String surfaces = between(source, "private void drawNightBloomModuleSurfaces(",
+                "private void drawNightBloomModuleSurface(");
+
+        assertTrue("equal animated bounds must be detected at their final physical-pixel scale before drawing",
+                surfaces.contains("NightBloomHudLayout.moduleRowsSharePhysicalBounds("));
+        assertTrue("the first row in an equal-width run must own the whole uninterrupted rectangle",
+                surfaces.contains("equalRunBottom"));
+        assertTrue("covered rows must not be drawn again with a second translucent edge",
+                surfaces.contains("index = equalRunEnd"));
+    }
+
+    @Test
     public void arrayListShadowMaskFusesTheActualSharedWidthWithoutDrawingAVisibleConnector() throws IOException {
         String source = new String(Files.readAllBytes(Paths.get(HUD_SOURCE)), StandardCharsets.UTF_8);
         String shadows = between(source, "private void drawNightBloomModuleShadows(",
@@ -253,6 +277,12 @@ public class NightBloomHudVisualContractTest {
 
         assertTrue("a mask-only bridge must close the rounded notches across the rows' shared width",
                 shadows.contains("drawNightBloomModuleShadowBridge("));
+        assertTrue("equal-width rows need one uninterrupted shadow mask rather than stacked rounded masks",
+                shadows.contains("shadowRunBottom"));
+        assertTrue("the shadow run must use the same physical-pixel equality as the visible surface",
+                shadows.contains("NightBloomHudLayout.moduleRowsSharePhysicalBounds("));
+        assertTrue("rows covered by the continuous shadow run must not be queued again",
+                shadows.contains("index = shadowRunEnd"));
         assertFalse("fusion belongs to the shadow mask and must never add a visible surface rectangle",
                 shadows.contains("RenderServices.shapes().rect("));
     }

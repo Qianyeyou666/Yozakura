@@ -1,6 +1,10 @@
 package gq.yozakura.module.combat;
 
 import gq.yozakura.bridge.PacketPipelineAnchors;
+import gq.yozakura.bridge.PacketWriteDisposition;
+import gq.yozakura.bridge.util.ReflectionUtils;
+import gq.yozakura.event.bus.EventTarget;
+import gq.yozakura.event.bridge.TeleportBoundaryEvent;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.Module;
 import gq.yozakura.value.Mode;
@@ -23,7 +27,6 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.input.Keyboard;
 
-import java.lang.reflect.Field;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ThreadLocalRandom;
@@ -48,10 +51,12 @@ public class FakeLag extends Module {
     private final Queue<QueuedPacket> queuedPackets = new ConcurrentLinkedQueue<QueuedPacket>();
     private final Object deliveryLock = new Object();
     private int pendingDeliveryTasks;
+    private long deliveryEpoch;
     private Channel channel;
     private volatile long nextBurstAt;
     private volatile long releaseAfterAttackAt;
     private volatile boolean lagAllowed;
+    private boolean teleportConfirmationPending;
 
     public FakeLag() {
         super("FakeLag", Keyboard.KEY_NONE, ModuleType.Combat, "Delay outgoing packets to simulate latency");
@@ -69,6 +74,17 @@ public class FakeLag extends Module {
             releaseAfterAttackAt = 0L;
         }
         injectHandler();
+    }
+
+    @EventTarget
+    public void onTeleportBoundary(TeleportBoundaryEvent event) {
+        synchronized (deliveryLock) {
+            deliveryEpoch++;
+            discardQueuedPacketsLocked();
+            teleportConfirmationPending = true;
+            releaseAfterAttackAt = 0L;
+            nextBurstAt = System.currentTimeMillis() + offsetMillis();
+        }
     }
 
     @Override
@@ -177,7 +193,7 @@ public class FakeLag extends Module {
         }
         try {
             NetworkManager manager = mc.getNetHandler().getNetworkManager();
-            Channel current = getChannel(manager);
+            Channel current = ReflectionUtils.getChannel(manager);
             if (current == null || !current.isOpen()) {
                 return;
             }
@@ -205,22 +221,6 @@ public class FakeLag extends Module {
             }
         } catch (Throwable ignored) {
         }
-    }
-
-    private Channel getChannel(NetworkManager manager) {
-        String[] names = new String[]{"channel", "field_150746_k", "k"};
-        for (String name : names) {
-            try {
-                Field field = NetworkManager.class.getDeclaredField(name);
-                field.setAccessible(true);
-                Object value = field.get(manager);
-                if (value instanceof Channel) {
-                    return (Channel) value;
-                }
-            } catch (Throwable ignored) {
-            }
-        }
-        return null;
     }
 
     private boolean shouldQueuePacket(Object packet) {
@@ -262,19 +262,34 @@ public class FakeLag extends Module {
 
     private boolean queuePacket(ChannelHandlerContext ctx, Object packet, ChannelPromise promise) {
         synchronized (deliveryLock) {
+            if (shouldBypassForTeleport(packet)) {
+                return false;
+            }
             if (!shouldQueuePacket(packet)) {
                 return false;
             }
             int max = maxQueuedPackets();
             if (queuedPackets.size() >= max) {
                 releaseQueuedPacketsLocked();
-                writePacketLocked(new QueuedPacket(ctx, packet, promise, System.currentTimeMillis()));
+                writePacketLocked(new QueuedPacket(ctx, packet, promise, System.currentTimeMillis(), deliveryEpoch));
                 return true;
             }
             long delay = queueDelay(packet);
-            queuedPackets.offer(new QueuedPacket(ctx, packet, promise, System.currentTimeMillis() + delay));
+            queuedPackets.offer(new QueuedPacket(ctx, packet, promise, System.currentTimeMillis() + delay, deliveryEpoch));
             return true;
         }
+    }
+
+    private boolean shouldBypassForTeleport(Object packet) {
+        if (!teleportConfirmationPending || !(packet instanceof C03PacketPlayer)) {
+            return false;
+        }
+        C03PacketPlayer playerPacket = (C03PacketPlayer) packet;
+        if (!playerPacket.isMoving()) {
+            return false;
+        }
+        teleportConfirmationPending = false;
+        return true;
     }
 
     private long queueDelay(Object packet) {
@@ -362,6 +377,13 @@ public class FakeLag extends Module {
         }
     }
 
+    private void discardQueuedPacketsLocked() {
+        QueuedPacket queued;
+        while ((queued = queuedPackets.poll()) != null) {
+            PacketWriteDisposition.completeDropped(queued.promise);
+        }
+    }
+
     private void schedulePostAttackRelease() {
         synchronized (deliveryLock) {
             long now = System.currentTimeMillis();
@@ -376,7 +398,7 @@ public class FakeLag extends Module {
                 ctx.write(packet, promise);
                 return;
             }
-            writePacketLocked(new QueuedPacket(ctx, packet, promise, System.currentTimeMillis()));
+            writePacketLocked(new QueuedPacket(ctx, packet, promise, System.currentTimeMillis(), deliveryEpoch));
         }
     }
 
@@ -394,6 +416,12 @@ public class FakeLag extends Module {
                 @Override
                 public void run() {
                     try {
+                        synchronized (deliveryLock) {
+                            if (queued.epoch != deliveryEpoch) {
+                                PacketWriteDisposition.completeDropped(queued.promise);
+                                return;
+                            }
+                        }
                         queued.ctx.writeAndFlush(queued.packet, queued.promise);
                     } finally {
                         synchronized (deliveryLock) {
@@ -413,12 +441,14 @@ public class FakeLag extends Module {
         final Object packet;
         final ChannelPromise promise;
         final long releaseAt;
+        final long epoch;
 
-        QueuedPacket(ChannelHandlerContext ctx, Object packet, ChannelPromise promise, long releaseAt) {
+        QueuedPacket(ChannelHandlerContext ctx, Object packet, ChannelPromise promise, long releaseAt, long epoch) {
             this.ctx = ctx;
             this.packet = packet;
             this.promise = promise;
             this.releaseAt = releaseAt;
+            this.epoch = epoch;
         }
     }
 

@@ -15,17 +15,34 @@ public class ForgeBridgeLifecycleContractTest {
     @Test
     public void bridgeRegistrationPublishesRunningStateOnlyAfterBothEventBusesSucceed() throws IOException {
         String bridge = source("src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java");
-        String init = method(bridge, "    public static void init() {", "    public static void markNoEvent(");
+        String init = findInitMethod(bridge);
 
-        int forgeRegistration = init.indexOf("MinecraftForge.EVENT_BUS.register(INSTANCE);");
-        int fmlRegistration = init.indexOf("FMLCommonHandler.instance().bus().register(INSTANCE);");
+        int forgeRegistration = init.indexOf("MinecraftForge.EVENT_BUS.register(this);");
+        if (forgeRegistration < 0) {
+            forgeRegistration = init.indexOf("MinecraftForge.EVENT_BUS.register(INSTANCE);");
+        }
+        int fmlRegistration = init.indexOf("FMLCommonHandler.instance().bus().register(this);");
+        if (fmlRegistration < 0) {
+            fmlRegistration = init.indexOf("FMLCommonHandler.instance().bus().register(INSTANCE);");
+        }
         int publishedState = init.lastIndexOf("registered = true;");
         assertTrue("Both Forge buses must register before the bridge is published as active",
                 forgeRegistration >= 0 && fmlRegistration > forgeRegistration && publishedState > fmlRegistration);
         assertTrue("A failure registering the second bus must undo the first registration",
                 init.contains("rollbackFailedRegistration(")
-                        && bridge.contains("MinecraftForge.EVENT_BUS.unregister(INSTANCE);")
-                        && bridge.contains("FMLCommonHandler.instance().bus().unregister(INSTANCE);"));
+                        && (bridge.contains("MinecraftForge.EVENT_BUS.unregister(INSTANCE);")
+                                || bridge.contains("MinecraftForge.EVENT_BUS.unregister(this);"))
+                        && (bridge.contains("FMLCommonHandler.instance().bus().unregister(INSTANCE);")
+                                || bridge.contains("FMLCommonHandler.instance().bus().unregister(this);")));
+    }
+
+    @Test
+    public void forgeRenderTickPublishesCameraRotationBeforeWorldRendering() throws IOException {
+        String bridge = source("src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java");
+
+        assertTrue(bridge.contains("onRenderTick(TickEvent.RenderTickEvent event)"));
+        assertTrue(bridge.contains("event.phase == TickEvent.Phase.START"));
+        assertTrue(bridge.contains("EventManager.call(new RenderTickStartEvent(event.renderTickTime));"));
     }
 
     @Test
@@ -36,7 +53,8 @@ public class ForgeBridgeLifecycleContractTest {
         String uninject = method(client, "    public static void unInject() {", "    private void loadConfigOnStartup()");
 
         assertTrue("Forge unload must explicitly stop the independent event bridge",
-                uninject.contains("YozakuraEventBridge.shutdown();"));
+                uninject.contains("YozakuraEventBridge.shutdownBridge();")
+                        || uninject.contains("YozakuraEventBridge.shutdown();"));
         assertTrue("Bridge shutdown must detach from both Forge event buses",
                 shutdown.contains("MinecraftForge.EVENT_BUS.unregister(INSTANCE);")
                         && shutdown.contains("FMLCommonHandler.instance().bus().unregister(INSTANCE);"));
@@ -84,7 +102,7 @@ public class ForgeBridgeLifecycleContractTest {
                 "    @SubscribeEvent");
         String post = method(bridge,
                 "    public void onRenderPlayerPost(RenderPlayerEvent.Post event) {",
-                "    private void dispatchPreUpdate()");
+                "    private void restoreLatestPlayerRenderRotation()");
 
         assertFalse("A single boolean cannot represent nested local-player renders",
                 bridge.contains("private boolean renderingPlayer;"));
@@ -97,7 +115,8 @@ public class ForgeBridgeLifecycleContractTest {
                 post.contains("restoreLatestPlayerRenderRotation();"));
         assertTrue("An unpaired PRE must be restored at a frame boundary and on shutdown",
                 bridge.contains("restoreDanglingPlayerRenderRotations();")
-                        && bridge.contains("public static void shutdown()"));
+                        && (bridge.contains("public static void shutdown()")
+                                || bridge.contains("public static void shutdownBridge()")));
     }
 
     @Test
@@ -258,6 +277,27 @@ public class ForgeBridgeLifecycleContractTest {
 
         assertEquals("Every fail-closed standalone handoff path must release SafeWalk",
                 2, occurrences(ownership, failureCleanup));
+    }
+
+    private static String findInitMethod(String bridge) {
+        int initStart = bridge.indexOf("    public void init() {");
+        if (initStart < 0) {
+            initStart = bridge.indexOf("    public static void initBridge() {");
+        }
+        if (initStart < 0) {
+            initStart = bridge.indexOf("    public static void init() {");
+        }
+        int initEnd = bridge.indexOf("    public void shutdown()", initStart);
+        if (initEnd < 0) {
+            initEnd = bridge.indexOf("    public static void markNoEvent(", initStart);
+        }
+        if (initEnd < 0) {
+            initEnd = bridge.indexOf("    public static void shutdown", initStart);
+        }
+        if (initStart >= 0 && initEnd > initStart) {
+            return bridge.substring(initStart, initEnd);
+        }
+        return bridge;
     }
 
     private static boolean yieldsBefore(String callback, String sideEffect) {

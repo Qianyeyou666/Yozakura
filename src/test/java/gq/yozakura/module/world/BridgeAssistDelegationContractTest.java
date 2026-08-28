@@ -38,7 +38,7 @@ public class BridgeAssistDelegationContractTest {
         String bridgeAssist = source("src/main/java/gq/yozakura/module/world/BridgeAssist.java");
         String prePlaceController = source("src/main/java/gq/yozakura/module/world/BridgeAssistPrePlaceController.java");
 
-        assertFalse(bridgeAssist.contains("event.setCancelled(true)"));
+        assertFalse(prePlaceController.contains("event.setCancelled(true)"));
         assertFalse(prePlaceController.contains("onPlayerRightClick("));
         assertFalse(prePlaceController.contains("MinecraftAccessor"));
     }
@@ -51,8 +51,8 @@ public class BridgeAssistDelegationContractTest {
 
         assertTrue(bridgeAssist.contains("event.getType() != EventType.PRE"));
         assertTrue(bridgeAssist.contains("packet.getPlacedBlockDirection() != 255"));
-        assertTrue(bridgeAssist.contains("sneakController.onPlacementPacketAccepted(event.getWriteId());"));
-        assertTrue(bridgeAssist.contains("sneakController.onPlacementPacketCompleted(event.getWriteId(), event.isSuccess());"));
+        assertFalse(bridgeAssist.contains("sneakController.onPlacementPacketAccepted(event.getWriteId());"));
+        assertFalse(bridgeAssist.contains("sneakController.onPlacementPacketCompleted(event.getWriteId(), event.isSuccess());"));
         assertTrue(bridgeAssist.contains("prePlaceController.onRightClick();"));
         assertTrue(sneakController.contains("event.getRawForward"));
         assertTrue(sneakController.contains("event.isJump"));
@@ -68,7 +68,7 @@ public class BridgeAssistDelegationContractTest {
     }
 
     @Test
-    public void acceptedPlacementsCanBeClaimedByTheFirstSneakSession() throws IOException {
+    public void acceptedPlacementsRemainScopedToTellyInsteadOfDrivingLegitSneak() throws IOException {
         String bridgeAssist = source("src/main/java/gq/yozakura/module/world/BridgeAssist.java");
         String sneakController = source("src/main/java/gq/yozakura/module/world/BridgeAssistSneakController.java");
         int acceptedBegin = bridgeAssist.indexOf("public void onPacketAccepted(PacketAcceptedEvent event)");
@@ -77,11 +77,10 @@ public class BridgeAssistDelegationContractTest {
 
         assertTrue(acceptedHandler.contains("if (!getState() || !canPreservePlacementOrder())"));
         assertTrue(acceptedHandler.contains("event.requestOriginalPacketOrder();"));
-        assertTrue(acceptedHandler.contains("if (packet.getPlacedBlockDirection() != 255)"));
-        assertTrue(acceptedHandler.contains("if (canAssist())"));
-        assertTrue(sneakController.contains("unclaimedPlacementWriteIds"));
-        assertTrue(sneakController.contains("claimUnclaimedPlacementSessions"));
-        assertTrue(sneakController.contains("hasPendingPlacementForActiveSession"));
+        assertTrue(acceptedHandler.contains("tellyRuntime.onPacketAccepted(event);"));
+        assertFalse(acceptedHandler.contains("sneakController.onPlacementPacketAccepted"));
+        assertFalse(sneakController.contains("PlacementSessionTracker"));
+        assertFalse(sneakController.contains("placementPending"));
     }
 
     @Test
@@ -131,6 +130,17 @@ public class BridgeAssistDelegationContractTest {
 
         assertTrue(sneakController.contains("if (shouldClearSneak(forward)) {"));
         assertFalse(sneakController.contains("shouldClearSneak(forward) && !activePlacementPending"));
+    }
+
+    @Test
+    public void legitModeUsesTheReferenceMotionBoxProbeWithoutPlacementDrivenSneaking() throws IOException {
+        String sneakController = source("src/main/java/gq/yozakura/module/world/BridgeAssistSneakController.java");
+
+        assertTrue(sneakController.contains("forward > 0.0F"));
+        assertTrue(sneakController.contains("contract(0.2D, 0.0D, 0.2D)"));
+        assertTrue(sneakController.contains("offset(mc.thePlayer.motionX, -1.0D, mc.thePlayer.motionZ)"));
+        assertFalse(sneakController.contains("calculateInputMotion("));
+        assertFalse(sneakController.contains("placementSessions"));
     }
 
     private static String source(String path) throws IOException {

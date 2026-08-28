@@ -7,7 +7,7 @@ final class JumpResetController {
         RELEASE
     }
 
-    private static final int JUMP_TICKS = 2;
+    private static final int JUMP_TICKS = 1;
     private static final int FORWARD_TICKS = 3;
 
     private int ticksSinceVelocity = -1;
@@ -24,6 +24,21 @@ final class JumpResetController {
     }
 
     boolean acceptVelocity(boolean requireHurtConfirmation, int chance) {
+        return acceptEligibleVelocity(requireHurtConfirmation, chance);
+    }
+
+    boolean acceptVelocity(boolean requireHurtConfirmation, int chance,
+                           int motionX, int motionY, int motionZ) {
+        if ((motionX == 0 && motionZ == 0) || motionY < 0) {
+            return false;
+        }
+        return acceptEligibleVelocity(requireHurtConfirmation, chance);
+    }
+
+    private boolean acceptEligibleVelocity(boolean requireHurtConfirmation, int chance) {
+        if (jumpPressed) {
+            return false;
+        }
         if (requireHurtConfirmation && !hurtConfirmed) {
             return false;
         }
@@ -47,6 +62,10 @@ final class JumpResetController {
                 return JumpAction.PRESS;
             }
             return JumpAction.NONE;
+        }
+        if (ticksSinceVelocity == JUMP_TICKS + 1 && jumpPressed) {
+            jumpPressed = false;
+            return JumpAction.RELEASE;
         }
         if (ticksSinceVelocity == FORWARD_TICKS + 1) {
             return closeWindow();

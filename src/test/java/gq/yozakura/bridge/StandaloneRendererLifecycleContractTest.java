@@ -26,6 +26,11 @@ public class StandaloneRendererLifecycleContractTest {
         assertTrue("An unavailable runtime subclass hook must fail explicitly rather than silently skip rendering",
                 entityRenderer.contains("throw reportInstallFailure(current, throwable)")
                         && entityRenderer.contains("Render2D/Render3D bridge is unavailable"));
+        int restorePhysicsYaw = entityRenderer.indexOf("MovementInputBridge.prepareRotationForRender();");
+        int renderTickStart = entityRenderer.indexOf("EventManager.call(new RenderTickStartEvent(partialTicks, true));",
+                restorePhysicsYaw);
+        assertTrue("Standalone frame rotation must run before world rendering and after temporary physics yaw is restored",
+                restorePhysicsYaw >= 0 && renderTickStart > restorePhysicsYaw);
         assertTrue("The entity renderer hook must keep both sides of its reversible ownership pair",
                 entityRenderer.contains("private static EntityRenderer originalRenderer;")
                         && entityRenderer.contains("private static EntityRenderer installedRenderer;")

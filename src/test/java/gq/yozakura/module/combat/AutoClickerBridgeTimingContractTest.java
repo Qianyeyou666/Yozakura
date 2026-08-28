@@ -32,6 +32,14 @@ public class AutoClickerBridgeTimingContractTest {
     }
 
     @Test
+    public void inventoryStartDelayKeepsItsTenMillisecondSliderStep() throws IOException {
+        String source = source();
+
+        assertTrue(source.contains("100.0D, 0.0D, 250.0D, 10.0D"));
+        assertFalse(source.contains("100.0D, 0.0D, 250.0D, 1.0D"));
+    }
+
+    @Test
     public void clickerUsesOnlyTheVanillaClickPathWithoutRandomOrCatchUpBursts() throws IOException {
         String source = source();
 
@@ -42,7 +50,8 @@ public class AutoClickerBridgeTimingContractTest {
         assertFalse(source.contains("while (inventoryNextClickTime <= now)"));
         assertFalse(source.contains("for (int i = 0; i < clicks; i++)"));
         assertFalse(source.contains("keyBindUseItem"));
-        assertTrue(source.contains("if (isPointingAtBlock()"
+        assertTrue(source.contains("blockBreakPolicy.shouldPause"));
+        assertFalse(source.contains("if (isPointingAtBlock()"
                 + " && !Boolean.TRUE.equals(breakBlocks.getValue()))"));
     }
 

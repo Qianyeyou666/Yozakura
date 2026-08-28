@@ -1,11 +1,11 @@
 package gq.yozakura.bridge;
 
+import gq.yozakura.bridge.util.ReflectionUtils;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelPromise;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.Packet;
 
-import java.lang.reflect.Field;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.IdentityHashMap;
@@ -19,7 +19,8 @@ public final class PacketBridgeSupport {
             new IdentityHashMap<Packet<?>, Deque<NoEventMarker>>();
     private static final Map<Packet<?>, Boolean> NON_CANONICAL_PLAYER_PACKETS =
             new IdentityHashMap<Packet<?>, Boolean>();
-    private static volatile Field channelField;
+    private static final Map<Packet<?>, Boolean> PRESERVE_PLAYER_LOOK_PACKETS =
+            new IdentityHashMap<Packet<?>, Boolean>();
 
     private PacketBridgeSupport() {
     }
@@ -72,6 +73,25 @@ public final class PacketBridgeSupport {
         }
     }
 
+    /** Preserves the explicit yaw and pitch of a one-shot synthetic look packet. */
+    public static void markPreservePlayerLook(Packet<?> packet) {
+        if (packet == null) {
+            return;
+        }
+        synchronized (NO_EVENT_PACKETS) {
+            PRESERVE_PLAYER_LOOK_PACKETS.put(packet, Boolean.TRUE);
+        }
+    }
+
+    static boolean consumePreservePlayerLook(Packet<?> packet) {
+        if (packet == null) {
+            return false;
+        }
+        synchronized (NO_EVENT_PACKETS) {
+            return PRESERVE_PLAYER_LOOK_PACKETS.remove(packet) != null;
+        }
+    }
+
     private static NoEventMarker storeNoEventMarker(Packet<?> packet, long writeId,
                                                      boolean alreadyBridgeProcessed) {
         if (packet == null) {
@@ -109,6 +129,7 @@ public final class PacketBridgeSupport {
         synchronized (NO_EVENT_PACKETS) {
             NO_EVENT_PACKETS.clear();
             NON_CANONICAL_PLAYER_PACKETS.clear();
+            PRESERVE_PLAYER_LOOK_PACKETS.clear();
         }
     }
 
@@ -122,7 +143,7 @@ public final class PacketBridgeSupport {
         if (manager == null || packet == null) {
             throw new IllegalArgumentException("Network manager and packet are required");
         }
-        final Channel channel = getChannel(manager);
+        final Channel channel = ReflectionUtils.getChannel(manager);
         if (channel == null || !channel.isOpen()) {
             IllegalStateException failure = new IllegalStateException("Network channel is unavailable for a no-event send");
             completeFailedWrite(promise, failure);
@@ -198,27 +219,5 @@ public final class PacketBridgeSupport {
     private static boolean hasPacketBridge(Channel channel) {
         return channel.pipeline().get(FORGE_HANDLER_NAME) != null
                 || channel.pipeline().get(STANDALONE_HANDLER_NAME) != null;
-    }
-
-    private static Channel getChannel(NetworkManager manager) {
-        try {
-            Field field = channelField;
-            if (field == null) {
-                for (String name : new String[]{"channel", "field_150746_k", "k"}) {
-                    try {
-                        field = NetworkManager.class.getDeclaredField(name);
-                        field.setAccessible(true);
-                        channelField = field;
-                        break;
-                    } catch (NoSuchFieldException ignored) {
-                    }
-                }
-            }
-            Object value = field == null ? null : field.get(manager);
-            return value instanceof Channel ? (Channel) value : null;
-        } catch (Throwable ignored) {
-            channelField = null;
-            return null;
-        }
     }
 }

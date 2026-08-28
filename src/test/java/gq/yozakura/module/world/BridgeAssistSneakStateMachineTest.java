@@ -6,6 +6,28 @@ import static org.junit.Assert.assertEquals;
 
 public class BridgeAssistSneakStateMachineTest {
     @Test
+    public void legitProbeCanSneakAtTheEdgeWithoutDirectionalInput() {
+        BridgeAssistSneakStateMachine machine = new BridgeAssistSneakStateMachine();
+
+        assertEquals(BridgeAssistSneakStateMachine.Decision.FORCE_ON,
+                machine.update(new BridgeAssistSneakStateMachine.Frame(
+                        100, true, false, false, false, false, true,
+                        true, false, false, false, 2, 0)));
+        assertEquals(BridgeAssistSneakStateMachine.State.EDGE_HELD, machine.getState());
+    }
+
+    @Test
+    public void doesNotForceLegitSneakForAnAirborneEdgeProbe() {
+        BridgeAssistSneakStateMachine machine = new BridgeAssistSneakStateMachine();
+
+        assertEquals(BridgeAssistSneakStateMachine.Decision.KEEP,
+                machine.update(new BridgeAssistSneakStateMachine.Frame(
+                        100, true, true, false, false, false, false,
+                        true, true, false, false, 2, 0)));
+        assertEquals(BridgeAssistSneakStateMachine.State.IDLE, machine.getState());
+    }
+
+    @Test
     public void keepsSneakingUntilTheConfiguredReleaseTick() {
         BridgeAssistSneakStateMachine machine = new BridgeAssistSneakStateMachine();
 
@@ -38,25 +60,17 @@ public class BridgeAssistSneakStateMachineTest {
     }
 
     @Test
-    public void releasesAHeldPhysicalSneakOnlyAfterPlacementWasCommitted() {
+    public void placementCompletionDoesNotChangeTheReferenceReleaseDelay() {
         BridgeAssistSneakStateMachine machine = new BridgeAssistSneakStateMachine();
 
-        machine.update(frame(100, true, true, true));
         assertEquals(BridgeAssistSneakStateMachine.Decision.FORCE_ON,
-                machine.update(frame(101, false, true, false)));
+                machine.update(frame(100, true, true, false)));
+        assertEquals(BridgeAssistSneakStateMachine.Decision.FORCE_ON,
+                machine.update(frame(101, false, true, true)));
         assertEquals(BridgeAssistSneakStateMachine.Decision.FORCE_ON,
                 machine.update(frame(102, false, true, false)));
         assertEquals(BridgeAssistSneakStateMachine.Decision.KEEP,
                 machine.update(frame(103, false, true, false)));
-
-        machine.update(frame(104, true, true, false));
-        assertEquals(BridgeAssistSneakStateMachine.Decision.FORCE_ON,
-                machine.update(frame(105, false, true, true)));
-        assertEquals(BridgeAssistSneakStateMachine.Decision.FORCE_ON,
-                machine.update(frame(106, false, true, false)));
-        assertEquals(BridgeAssistSneakStateMachine.Decision.FORCE_OFF,
-                machine.update(frame(107, false, true, false)));
-        assertEquals(BridgeAssistSneakStateMachine.State.PHYSICAL_RELEASE_HELD, machine.getState());
     }
 
     @Test
@@ -82,23 +96,34 @@ public class BridgeAssistSneakStateMachineTest {
     }
 
     @Test
-    public void keepsSneakingUntilAnAcceptedPlacementHasReachedTheNetwork() {
+    public void acceptedPlacementDoesNotExtendTheReferenceReleaseDelay() {
         BridgeAssistSneakStateMachine machine = new BridgeAssistSneakStateMachine();
 
         assertEquals(BridgeAssistSneakStateMachine.Decision.FORCE_ON,
                 machine.update(packetFrame(100, true, false, false)));
-        assertEquals(BridgeAssistSneakStateMachine.Decision.FORCE_ON,
-                machine.update(packetFrame(101, false, true, false)));
         assertEquals(BridgeAssistSneakStateMachine.Decision.KEEP,
-                machine.update(packetFrame(102, false, false, true)));
+                machine.update(packetFrame(101, false, true, false)));
     }
 
     @Test
-    public void startsSneakingForAnAcceptedPlacementBeforeTheEdgeProbeTurnsPositive() {
+    public void committedPlacementDoesNotReleaseSneakWhileLegitProbeStillSeesTheEdge() {
         BridgeAssistSneakStateMachine machine = new BridgeAssistSneakStateMachine();
 
         assertEquals(BridgeAssistSneakStateMachine.Decision.FORCE_ON,
+                machine.update(frame(100, true, false, false)));
+
+        assertEquals(BridgeAssistSneakStateMachine.Decision.FORCE_ON,
+                machine.update(frame(101, true, false, true)));
+        assertEquals(BridgeAssistSneakStateMachine.State.EDGE_HELD, machine.getState());
+    }
+
+    @Test
+    public void acceptedPlacementDoesNotStartSneakingBeforeTheLegitProbeReachesTheEdge() {
+        BridgeAssistSneakStateMachine machine = new BridgeAssistSneakStateMachine();
+
+        assertEquals(BridgeAssistSneakStateMachine.Decision.KEEP,
                 machine.update(packetFrame(100, false, true, false)));
+        assertEquals(BridgeAssistSneakStateMachine.State.IDLE, machine.getState());
     }
 
     @Test

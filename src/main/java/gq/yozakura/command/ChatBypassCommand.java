@@ -254,19 +254,16 @@ public class ChatBypassCommand implements ICommand {
 
 	@Override
 	public int compareTo(ICommand arg0) {
-		// TODO Auto-generated method stub
 		return this.getCommandName().compareTo(arg0.getCommandName());
 	}
 
 	@Override
 	public List<String> getCommandAliases() {
-		// TODO Auto-generated method stub
 		return Collections.<String>emptyList();
 	}
 
 	@Override
 	public boolean isUsernameIndex(String[] args, int index) {
-		// TODO Auto-generated method stub
 		return false;
 	}
 }

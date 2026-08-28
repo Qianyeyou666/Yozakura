@@ -21,7 +21,6 @@ final class BridgeAssistSneakStateMachine {
     private State state = State.IDLE;
     private int releaseTick = NO_TICK;
     private int jumpHoldUntilTick = NO_TICK;
-    private boolean placementObserved;
 
     Decision update(Frame frame) {
         if (!frame.available) {
@@ -34,24 +33,7 @@ final class BridgeAssistSneakStateMachine {
             return Decision.KEEP;
         }
 
-        if (frame.placementPending) {
-            if (!holdsModuleSneak()) {
-                state = State.EDGE_HELD;
-                releaseTick = NO_TICK;
-                jumpHoldUntilTick = NO_TICK;
-                placementObserved = false;
-            }
-            return Decision.FORCE_ON;
-        }
-
-        if (frame.placementCommitted && holdsModuleSneak()) {
-            placementObserved = true;
-        }
-
         if (needsSneak(frame)) {
-            if (state != State.EDGE_HELD && state != State.UNSNEAK_DELAY) {
-                placementObserved = false;
-            }
             state = State.EDGE_HELD;
             releaseTick = NO_TICK;
             jumpHoldUntilTick = NO_TICK;
@@ -93,8 +75,7 @@ final class BridgeAssistSneakStateMachine {
     }
 
     private Decision finishHold(Frame frame) {
-        if (frame.requirePhysicalSneak && frame.physicalSneak
-                && (placementObserved || !frame.onGround)) {
+        if (frame.requirePhysicalSneak && frame.physicalSneak && !frame.onGround) {
             state = State.PHYSICAL_RELEASE_HELD;
             return Decision.FORCE_OFF;
         }
@@ -107,7 +88,6 @@ final class BridgeAssistSneakStateMachine {
         state = State.IDLE;
         releaseTick = NO_TICK;
         jumpHoldUntilTick = NO_TICK;
-        placementObserved = false;
     }
 
     State getState() {
@@ -115,9 +95,6 @@ final class BridgeAssistSneakStateMachine {
     }
 
     private boolean canControl(Frame frame) {
-        if (!frame.moving) {
-            return false;
-        }
         if (frame.requirePhysicalSneak) {
             return frame.physicalSneak;
         }
@@ -136,10 +113,13 @@ final class BridgeAssistSneakStateMachine {
     }
 
     private boolean needsSneak(Frame frame) {
+        if (!frame.onGround) {
+            return false;
+        }
         if (frame.edge) {
             return true;
         }
-        return frame.voidBelow && frame.onGround && !frame.jump;
+        return frame.voidBelow && !frame.jump;
     }
 
     private int holdUntilTick() {

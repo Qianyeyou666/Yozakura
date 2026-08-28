@@ -19,6 +19,8 @@ public class NameTagsNightBloomVisualContractTest {
         String source = source(SOURCE);
 
         assertTrue(source.contains("0xDC16161A"));
+        assertTrue(source.contains("Background Alpha"));
+        assertTrue(source.contains("backgroundAlpha.getValue()"));
         assertTrue(source.contains("HUD.drawNightBloomShadow("));
         assertTrue(source.contains("RenderServices.shapes().rounded("));
         assertTrue(source.contains("HUD.drawNightBloomText("));

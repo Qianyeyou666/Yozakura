@@ -1,77 +1,49 @@
 package gq.yozakura.module.render;
 
 import gq.yozakura.bridge.YozakuraEventBridge;
-import gq.yozakura.engine.font.CFontRenderer;
-import gq.yozakura.engine.font.FontLoaders;
-import gq.yozakura.engine.render.ui.LiquidGlassSettings;
 import gq.yozakura.engine.render.ui.RenderServices;
+import gq.yozakura.event.bridge.AttackEvent;
 import gq.yozakura.event.bridge.Render2DEvent;
 import gq.yozakura.event.bus.EventTarget;
 import gq.yozakura.module.Module;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.combat.Backtrack;
 import gq.yozakura.module.combat.KillAura;
+import gq.yozakura.module.combat.AntiBot;
 import gq.yozakura.util.render.HudDrag;
-import gq.yozakura.util.render.RenderUtil;
 import gq.yozakura.value.Mode;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
-import net.minecraft.client.entity.AbstractClientPlayer;
-import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.network.NetworkPlayerInfo;
-import net.minecraft.client.renderer.GlStateManager;
-import net.minecraft.client.renderer.entity.Render;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
-import net.minecraft.entity.monster.EntityMob;
-import net.minecraft.entity.monster.EntitySlime;
-import net.minecraft.entity.monster.IMob;
-import net.minecraft.entity.passive.EntityAmbientCreature;
-import net.minecraft.entity.passive.EntityAnimal;
-import net.minecraft.entity.passive.EntityWaterMob;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.MovingObjectPosition;
-import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
+import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.event.entity.player.AttackEntityEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.lwjgl.input.Keyboard;
-import org.lwjgl.opengl.GL11;
 
-import java.lang.reflect.Method;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
 
 public class TargetHUD extends Module {
     private static final int NIGHT_BLOOM_PREVIEW_TARGET_ID = Integer.MIN_VALUE;
-    private static final int TEXT = 0xFFF5F0F5;
-    private static final int MUTED = 0xFFB8AEB8;
-    private static final int SAKURA = 0xFFFFB7D1;
-    private static final int SAKURA_STRONG = 0xFFFF80B3;
-    private static final int GLASS_FILL = 0xFF08080D;
-    private static final int GLASS_BORDER = 0xFFFFB7D1;
-    private static final LiquidGlassSettings GLASS_SETTINGS = LiquidGlassSettings.defaults()
-            .withBlurRadius(18.0f)
-            .withBlurDownscale(0.92f)
-            .withNoise(0.018f)
-            .withRefractionScale(1.16f)
-            .withHighlight(1.05f);
-    private static final float[][] SAKURA_PETAL_POINTS = new float[][]{
-            {0.00f, -0.18f}, {-0.30f, -0.07f}, {-0.64f, 0.25f}, {-0.66f, 0.62f},
-            {-0.36f, 0.94f}, {-0.10f, 0.82f}, {0.00f, 0.74f}, {0.10f, 0.82f},
-            {0.36f, 0.94f}, {0.66f, 0.62f}, {0.64f, 0.25f}, {0.30f, -0.07f},
-            {0.00f, -0.18f}
+    private static final long RISE_TARGET_HOLD_MS = 1000L;
+    private static final double AIM_TARGET_RANGE = 6.0D;
+    private static final long RISE_ENTER_MS = 180L;
+    private static final long RISE_EXIT_MS = 140L;
+    private static final TargetHudStyle[] SELECTABLE_STYLES = new TargetHudStyle[]{
+            TargetHudStyle.NYMPHILILA,
+            TargetHudStyle.COOL,
+            TargetHudStyle.RISE,
+            TargetHudStyle.NIGHT_BLOOM
     };
-    private static final Map<Class<?>, Method> ENTITY_TEXTURE_METHODS = new HashMap<Class<?>, Method>();
-    private static final Set<Class<?>> ENTITY_TEXTURE_MISSES = new HashSet<Class<?>>();
 
     private final Mode<TargetHudStyle> style = new Mode<TargetHudStyle>("Style", "Style",
-            TargetHudStyle.values(), TargetHudStyle.AUTO);
+            SELECTABLE_STYLES, TargetHudStyle.NYMPHILILA);
     private final Numbers<Double> xPosition = new Numbers<Double>("X", "X", -1.0, -1.0, 2000.0, 1.0);
     private final Numbers<Double> yPosition = new Numbers<Double>("Y", "Y", -1.0, -1.0, 1200.0, 1.0);
     private final Numbers<Double> scale = new Numbers<Double>("Scale", "Scale", 1.0, 0.65, 1.8, 0.05);
@@ -79,24 +51,49 @@ public class TargetHUD extends Module {
     private final Numbers<Double> yOffset = new Numbers<Double>("Y Offset", "YOffset", 28.0, -180.0, 180.0, 1.0);
     private final Option<Boolean> showAvatar = new Option<Boolean>("Avatar", "Avatar", true);
     private final Option<Boolean> auraTarget = new Option<Boolean>("Aura Target", "AuraTarget", true);
+    private final Option<Boolean> follow = new Option<Boolean>("Follow", "Follow", false);
     private final Option<Boolean> frostedGlass = new Option<Boolean>("Frosted Glass", "FrostedGlass", true);
+    private final Numbers<Double> nymphBackgroundAlpha = new Numbers<Double>(
+            "Background Alpha", "NymphBackgroundAlpha", 120.0, 0.0, 255.0, 1.0);
+    private final Numbers<Double> coolBackgroundAlpha = new Numbers<Double>(
+            "Cool Background Alpha", "CoolBackgroundAlpha", 120.0, 0.0, 255.0, 1.0);
+    private final Numbers<Double> coolCornerRadius = new Numbers<Double>(
+            "Cool Corner Radius", "CoolCornerRadius", 8.0, 0.0, 16.0, 0.5);
+    private final Mode<RiseTargetHudBackground> riseBackground = new Mode<RiseTargetHudBackground>(
+            "Background", "RiseBackground", RiseTargetHudBackground.values(), RiseTargetHudBackground.GLASS);
+    private final Option<Boolean> riseParticles = new Option<Boolean>("Particles", "RiseParticles", true);
+
     private final TargetHudMotion nightBloomMotion = new TargetHudMotion();
     private final NightBloomTargetHudRenderer nightBloomRenderer = new NightBloomTargetHudRenderer();
+    private final AppleTargetHudMotion appleMotion = new AppleTargetHudMotion();
+    private final AppleTargetHudRenderer appleRenderer = new AppleTargetHudRenderer();
+    private final RiseTargetHudRenderer riseRenderer = new RiseTargetHudRenderer();
+    private final NymphTargetHudMotion nymphMotion = new NymphTargetHudMotion();
+    private final NymphTargetHudRenderer nymphRenderer = new NymphTargetHudRenderer();
+    private final NymphTargetHudMotion coolMotion = new NymphTargetHudMotion();
+    private final CoolTargetHudHurtMotion coolHurtMotion = new CoolTargetHudHurtMotion();
+    private final CoolTargetHudNumberMotion coolNumberMotion = new CoolTargetHudNumberMotion();
+    private final CoolTargetHudRenderer coolRenderer = new CoolTargetHudRenderer();
+    private final TargetHudFollowProjection followProjection = new TargetHudFollowProjection();
+    private final RiseTargetHudAnimation riseOpeningAnimation = new RiseTargetHudAnimation(
+            RiseTargetHudAnimation.Easing.EASE_OUT_CUBIC, 180L);
+    private final RiseTargetHudAnimation riseHealthAnimation = new RiseTargetHudAnimation(
+            RiseTargetHudAnimation.Easing.EASE_OUT_SINE, 500L);
 
     private EntityLivingBase displayTarget;
     private EntityLivingBase attackedTarget;
     private long attackedTargetUntil;
-    private long lastFrameMS = System.currentTimeMillis();
-    private int lastTargetId = -1;
-    private float visibility;
-    private float healthAnimation = 0.88f;
-    private float damageAnimation = 0.88f;
-    private float flowerAnimation = 0.88f;
-    private float switchPulse;
+    private long riseTargetSeenAt;
+    private TargetHudStyle renderedStyle;
+
     private NightBloomTargetHudRenderer.Content nightBloomCurrent;
     private NightBloomTargetHudRenderer.Content nightBloomPrevious;
     private long lastNightBloomFrameMS = System.currentTimeMillis();
-    private TargetHudStyle renderedStyle;
+    private AppleTargetHudRenderer.Content appleCurrent;
+    private AppleTargetHudRenderer.Content applePrevious;
+    private long lastAppleFrameMS = System.currentTimeMillis();
+    private long lastNymphFrameMS = System.currentTimeMillis();
+    private long lastCoolFrameMS = System.currentTimeMillis();
 
     public TargetHUD() {
         super("TargetHUD", Keyboard.KEY_NONE, ModuleType.Render, "Show target info when aiming at an entity");
@@ -106,35 +103,44 @@ public class TargetHUD extends Module {
         scale.visibleWhen(() -> false);
         xOffset.visibleWhen(() -> false);
         yOffset.visibleWhen(() -> false);
-        this.addValues(xPosition, yPosition, scale, xOffset, yOffset, showAvatar, auraTarget, frostedGlass, style);
+        frostedGlass.visibleWhen(() -> false);
+        nymphBackgroundAlpha.visibleWhen(() -> getSelectedStyle() == TargetHudStyle.NYMPHILILA);
+        coolBackgroundAlpha.visibleWhen(() -> getSelectedStyle() == TargetHudStyle.COOL);
+        coolCornerRadius.visibleWhen(() -> getSelectedStyle() == TargetHudStyle.COOL);
+        riseBackground.visibleWhen(() -> isRiseStyle(getSelectedStyle()));
+        riseParticles.visibleWhen(() -> isRiseStyle(getSelectedStyle()));
+        this.addValues(xPosition, yPosition, scale, xOffset, yOffset, showAvatar, auraTarget, follow,
+                frostedGlass, nymphBackgroundAlpha, coolBackgroundAlpha, coolCornerRadius,
+                riseBackground, riseParticles, style);
     }
 
     @Override
     public void enable() {
-        visibility = 0.0f;
-        healthAnimation = 0.88f;
-        damageAnimation = 0.88f;
-        flowerAnimation = 0.88f;
-        switchPulse = 0.0f;
         displayTarget = null;
         attackedTarget = null;
         attackedTargetUntil = 0L;
-        lastTargetId = -1;
-        lastFrameMS = System.currentTimeMillis();
-        resetNightBloomState();
         renderedStyle = null;
+        resetNightBloomState();
+        resetAppleState();
+        resetNymphState();
+        resetCoolState();
+        resetRiseState();
+        followProjection.clear();
     }
 
     @Override
     public void disable() {
         HudDrag.unregisterDocked("target_hud");
-        visibility = 0.0f;
         displayTarget = null;
         attackedTarget = null;
         attackedTargetUntil = 0L;
-        lastTargetId = -1;
-        resetNightBloomState();
         renderedStyle = null;
+        resetNightBloomState();
+        resetAppleState();
+        resetNymphState();
+        resetCoolState();
+        resetRiseState();
+        followProjection.clear();
     }
 
     @SubscribeEvent
@@ -142,106 +148,338 @@ public class TargetHUD extends Module {
         if (!isInGame() || event.entityPlayer != mc.thePlayer) {
             return;
         }
-        EntityLivingBase attacked = asTarget(event.target);
-        if (attacked == null) {
+        rememberRiseAttackTarget(event.target);
+    }
+
+    @EventTarget
+    public void onClientAttack(AttackEvent event) {
+        if (!isInGame() || event == null) {
             return;
         }
-        attackedTarget = attacked;
-        attackedTargetUntil = System.currentTimeMillis() + 1600L;
-        displayTarget = attacked;
-        switchPulse = 1.0f;
+        rememberRiseAttackTarget(event.getTarget());
     }
 
     @EventTarget
     public void onRender(Render2DEvent event) {
-        renderOverlay();
+        renderOverlay(event.getPartialTicks());
+    }
+
+    @SubscribeEvent
+    public void onWorld(RenderWorldLastEvent event) {
+        if (!isInGame() || !Boolean.TRUE.equals(follow.getValue()) || HudDrag.isEditMode()) {
+            followProjection.clear();
+            return;
+        }
+        EntityLivingBase target = resolveTarget();
+        if (target == null) {
+            target = displayTarget;
+        }
+        followProjection.capture(target, event.partialTicks, mc);
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onRender(RenderGameOverlayEvent.Text event) {
-        if (!YozakuraEventBridge.hasRenderedOverlayThisFrame()) {
-            boolean ownsEffectsFrame = !RenderServices.shadows().isFrameOpen()
-                    && !RenderServices.glow().isFrameOpen();
-            if (ownsEffectsFrame) {
-                RenderServices.beginHudEffectsFrame();
-                try {
-                    renderOverlay();
-                } finally {
-                    RenderServices.flushHudEffectsFrame();
-                }
-                return;
-            }
-            renderOverlay();
+        if (YozakuraEventBridge.hasRenderedOverlayThisFrame()) {
+            return;
+        }
+        boolean ownsEffectsFrame = !RenderServices.shadows().isFrameOpen()
+                && !RenderServices.glow().isFrameOpen();
+        if (!ownsEffectsFrame) {
+            renderOverlay(1.0F);
+            return;
+        }
+        RenderServices.beginHudEffectsFrame();
+        try {
+            renderOverlay(1.0F);
+        } finally {
+            RenderServices.flushHudEffectsFrame();
         }
     }
 
-    private void renderOverlay() {
+    private void renderOverlay(float partialTicks) {
         if (!isInGame()) {
             resetNightBloomState();
+            resetAppleState();
+            resetNymphState();
+            resetCoolState();
+            resetRiseState();
             return;
         }
 
         TargetHudStyle selectedStyle = getSelectedStyle();
         if (renderedStyle != selectedStyle) {
-            if (renderedStyle != null) {
-                if (selectedStyle == TargetHudStyle.NIGHT_BLOOM) {
-                    resetNightBloomState();
-                } else {
-                    resetLegacyState();
-                }
-            }
+            resetNightBloomState();
+            resetAppleState();
+            resetNymphState();
+            resetCoolState();
+            resetRiseState();
             renderedStyle = selectedStyle;
         }
         if (selectedStyle == TargetHudStyle.NIGHT_BLOOM) {
             renderNightBloomOverlay();
             return;
         }
+        if (selectedStyle == TargetHudStyle.NYMPHILILA) {
+            renderNymphOverlay(new ScaledResolution(mc));
+            return;
+        }
+        if (selectedStyle == TargetHudStyle.COOL) {
+            renderCoolOverlay(new ScaledResolution(mc));
+            return;
+        }
+        renderRiseOverlay(new ScaledResolution(mc), partialTicks);
+    }
 
+    private void renderNymphOverlay(ScaledResolution resolution) {
         long now = System.currentTimeMillis();
-        float factor = animationFactor(now);
+        float deltaSeconds = Math.max(0.0F, Math.min(0.1F,
+                (now - lastNymphFrameMS) / 1000.0F));
+        lastNymphFrameMS = now;
         boolean editMode = HudDrag.isEditMode();
-        EntityLivingBase target = mc.currentScreen == null ? resolveTarget() : null;
-
-        if (target != null) {
-            if (target.getEntityId() != lastTargetId) {
-                lastTargetId = target.getEntityId();
-                healthAnimation = healthRatio(target);
-                damageAnimation = healthRatio(target);
-                flowerAnimation = healthRatio(target);
-                switchPulse = 1.0f;
+        EntityLivingBase resolved = editMode ? mc.thePlayer : resolveTarget();
+        if (resolved != null) {
+            boolean switched = displayTarget == null
+                    || displayTarget.getEntityId() != resolved.getEntityId();
+            displayTarget = resolved;
+            nymphMotion.setVisible(true, now);
+            if (switched) {
+                nymphMotion.snapHealth(healthRatio(resolved));
             }
-            displayTarget = target;
-        } else if (!editMode) {
-            lastTargetId = -1;
+        } else {
+            nymphMotion.setVisible(false, now);
         }
 
-        float wanted = target == null && !editMode ? 0.0f : 1.0f;
-        visibility += (wanted - visibility) * factor;
-        if (visibility <= 0.02f && target == null && !editMode) {
-            displayTarget = null;
+        nymphMotion.updateHealth(resolved == null ? 0.0F : healthRatio(resolved), deltaSeconds);
+        NymphTargetHudMotion.Snapshot snapshot = nymphMotion.snapshot(now);
+        if (!snapshot.isRetained() || displayTarget == null) {
+            if (!snapshot.isRetained()) {
+                displayTarget = null;
+            }
             return;
         }
 
-        float targetHealth = displayTarget == null ? 0.0f : healthRatio(displayTarget);
-        float healthFactor = targetHealth < healthAnimation ? Math.min(1.0f, factor * 0.48f)
-                : Math.min(1.0f, factor * 1.35f);
-        healthAnimation += (targetHealth - healthAnimation) * healthFactor;
-        float damageFactor = targetHealth < damageAnimation ? Math.min(1.0f, factor * 0.18f)
-                : Math.min(1.0f, factor * 1.15f);
-        damageAnimation += (targetHealth - damageAnimation) * damageFactor;
-        flowerAnimation += (healthAnimation - flowerAnimation) * Math.min(1.0f, factor * 0.72f);
-        switchPulse += (0.0f - switchPulse) * factor;
+        float uiScale = Math.max(0.1F, scale.getValue().floatValue());
+        NymphTargetHudRenderer.Layout layout = nymphRenderer.measure(displayTarget);
+        float defaultX = resolution.getScaledWidth() / 2.0F + xOffset.getValue().floatValue();
+        float defaultY = resolution.getScaledHeight() / 2.0F + yOffset.getValue().floatValue();
+        float[] position = resolveHudPosition(displayTarget, layout.width * uiScale,
+                layout.height * uiScale, defaultX, defaultY, resolution, false,
+                NymphTargetHudLayout.RADIUS * uiScale);
+        if (position == null) {
+            return;
+        }
+        nymphRenderer.draw(displayTarget, position[0], position[1], uiScale, snapshot,
+                nymphMotion.getHealth(), nymphBackgroundAlpha.getValue().intValue(),
+                Boolean.TRUE.equals(showAvatar.getValue()));
+        HudDrag.drawHint("target_hud", position[0], position[1],
+                layout.width * uiScale, layout.height * uiScale,
+                NymphTargetHudLayout.RADIUS * uiScale);
+        HudDrag.handleScroll("target_hud", scale, position[0], position[1],
+                layout.width * uiScale, layout.height * uiScale, 0.65F, 1.8F);
+    }
 
-        drawHud(new ScaledResolution(mc), displayTarget, visibility);
+    private void renderCoolOverlay(ScaledResolution resolution) {
+        long now = System.currentTimeMillis();
+        float deltaSeconds = Math.max(0.0F, Math.min(0.1F,
+                (now - lastCoolFrameMS) / 1000.0F));
+        lastCoolFrameMS = now;
+        boolean editMode = HudDrag.isEditMode();
+        EntityLivingBase resolved = editMode ? mc.thePlayer : resolveTarget();
+        if (resolved != null) {
+            boolean switched = displayTarget == null
+                    || displayTarget.getEntityId() != resolved.getEntityId();
+            displayTarget = resolved;
+            coolMotion.setVisible(true, now);
+            if (switched) {
+                coolMotion.snapHealth(healthRatio(resolved));
+                coolNumberMotion.snap(resolved.getEntityId(), resolved.getHealth());
+            }
+        } else {
+            coolMotion.setVisible(false, now);
+        }
+
+        coolMotion.updateHealth(resolved == null ? 0.0F : healthRatio(resolved), deltaSeconds);
+        NymphTargetHudMotion.Snapshot snapshot = coolMotion.snapshot(now);
+        if (!snapshot.isRetained() || displayTarget == null) {
+            if (!snapshot.isRetained()) {
+                displayTarget = null;
+            }
+            return;
+        }
+
+        float uiScale = Math.max(0.1F, scale.getValue().floatValue());
+        CoolTargetHudRenderer.Layout layout = coolRenderer.measure(displayTarget);
+        float defaultX = resolution.getScaledWidth() / 2.0F + xOffset.getValue().floatValue();
+        float defaultY = resolution.getScaledHeight() / 2.0F + yOffset.getValue().floatValue();
+        float[] position = resolveHudPosition(displayTarget, layout.width * uiScale,
+                layout.height * uiScale, defaultX, defaultY, resolution, false,
+                coolCornerRadius.getValue().floatValue() * uiScale);
+        if (position == null) {
+            return;
+        }
+        CoolTargetHudHurtMotion.Snapshot hurt = coolHurtMotion.update(displayTarget, now);
+        CoolTargetHudNumberMotion.Snapshot numberMotion = coolNumberMotion.update(
+                displayTarget.getEntityId(), displayTarget.getHealth(), deltaSeconds);
+        coolRenderer.draw(displayTarget, position[0], position[1], uiScale, snapshot,
+                coolMotion.getHealth(), coolBackgroundAlpha.getValue().intValue(),
+                coolCornerRadius.getValue().floatValue(),
+                hurt, numberMotion,
+                Boolean.TRUE.equals(showAvatar.getValue()));
+        HudDrag.drawHint("target_hud", position[0], position[1],
+                layout.width * uiScale, layout.height * uiScale,
+                coolCornerRadius.getValue().floatValue() * uiScale);
+        HudDrag.handleScroll("target_hud", scale, position[0], position[1],
+                layout.width * uiScale, layout.height * uiScale, 0.65F, 1.8F);
+    }
+
+    private void renderAppleOverlay(ScaledResolution resolution, float partialTicks) {
+        long now = System.currentTimeMillis();
+        float deltaSeconds = Math.max(0.0F, Math.min(0.05F, (now - lastAppleFrameMS) / 1000.0F));
+        lastAppleFrameMS = now;
+        boolean editMode = HudDrag.isEditMode();
+        EntityLivingBase resolved = editMode ? mc.thePlayer : resolveTarget();
+        if (resolved != null) {
+            AppleTargetHudRenderer.Content next = appleContent(resolved);
+            boolean switched = appleCurrent == null
+                    || appleCurrent.getEntityId() != next.getEntityId()
+                    || !appleMotion.isPresent();
+            if (switched && appleCurrent != null
+                    && appleCurrent.getEntityId() != next.getEntityId()) {
+                applePrevious = appleCurrent;
+            }
+            appleCurrent = next;
+            if (switched) {
+                appleMotion.acquire(next.getEntityId(), next.getHealthRatio());
+            }
+            displayTarget = resolved;
+            riseTargetSeenAt = now;
+        }
+
+        boolean inWorld = isRiseTargetInWorld(displayTarget);
+        boolean timedOut = !editMode && (displayTarget == null || now - riseTargetSeenAt >= RISE_TARGET_HOLD_MS);
+        boolean out = !editMode && (!inWorld || timedOut);
+        if (out) {
+            appleMotion.release();
+        }
+
+        float health = appleCurrent == null ? 0.0F : appleCurrent.getHealthRatio();
+        boolean hurt = appleCurrent != null && appleCurrent.isHurt();
+        appleMotion.update(deltaSeconds, health, hurt);
+        if (!appleMotion.hasRetainedTarget()) {
+            appleCurrent = null;
+            applePrevious = null;
+            return;
+        }
+
+        float uiScale = Math.max(0.1F, scale.getValue().floatValue());
+        boolean avatar = Boolean.TRUE.equals(showAvatar.getValue());
+        AppleTargetHudRenderer.Layout layout = appleRenderer.measure(displayTarget, uiScale, avatar);
+        float defaultX = resolution.getScaledWidth() / 2.0F + xOffset.getValue().floatValue();
+        float defaultY = resolution.getScaledHeight() / 2.0F + yOffset.getValue().floatValue();
+        float[] position = resolveHudPosition(displayTarget, layout.width * uiScale,
+                layout.height * uiScale, defaultX, defaultY, resolution, false,
+                AppleTargetHudRenderer.RADIUS * uiScale);
+        if (position == null) {
+            return;
+        }
+
+        appleRenderer.draw(displayTarget, position[0], position[1], uiScale, appleMotion,
+                appleCurrent, applePrevious, layout, avatar);
+        HudDrag.drawHint("target_hud", position[0], position[1], layout.width * uiScale,
+                layout.height * uiScale, AppleTargetHudRenderer.RADIUS * uiScale);
+        HudDrag.handleScroll("target_hud", scale, position[0], position[1], layout.width * uiScale,
+                layout.height * uiScale, 0.65F, 1.8F);
+    }
+
+    private void renderRiseOverlay(ScaledResolution resolution, float partialTicks) {
+        long now = System.currentTimeMillis();
+        boolean editMode = HudDrag.isEditMode();
+        EntityLivingBase resolved = editMode ? mc.thePlayer : resolveTarget();
+        boolean switchedTarget = false;
+        if (resolved != null) {
+            switchedTarget = displayTarget == null
+                    || displayTarget.getEntityId() != resolved.getEntityId();
+            displayTarget = resolved;
+            riseTargetSeenAt = now;
+            if (switchedTarget) {
+                riseRenderer.onTargetChanged(resolved);
+            }
+        }
+
+        boolean inWorld = isRiseTargetInWorld(displayTarget);
+        boolean timedOut = !editMode && (displayTarget == null || now - riseTargetSeenAt >= RISE_TARGET_HOLD_MS);
+        boolean out = !editMode && (!inWorld || timedOut);
+        riseOpeningAnimation.setDuration(out ? RISE_EXIT_MS : RISE_ENTER_MS);
+        riseOpeningAnimation.setEasing(RiseTargetHudAnimation.Easing.EASE_OUT_CUBIC);
+        riseOpeningAnimation.run(out ? 0.0D : 1.0D);
+        float openingScale = (float) riseOpeningAnimation.getValue();
+        if (openingScale <= 0.001F) {
+            if (out) {
+                displayTarget = null;
+            }
+            return;
+        }
+
+        float uiScale = Math.max(0.1F, scale.getValue().floatValue());
+        boolean avatar = Boolean.TRUE.equals(showAvatar.getValue());
+        RiseTargetHudRenderer.Layout layout = riseRenderer.measure(displayTarget, uiScale, avatar);
+        float defaultX = resolution.getScaledWidth() / 2.0F + xOffset.getValue().floatValue();
+        float defaultY = resolution.getScaledHeight() / 2.0F + yOffset.getValue().floatValue();
+        float[] position = resolveHudPosition(displayTarget, layout.width * uiScale,
+                layout.height * uiScale, defaultX, defaultY, resolution, false,
+                RiseTargetHudRenderer.RADIUS * uiScale);
+        if (position == null) {
+            return;
+        }
+
+        float health = displayTarget == null || !inWorld ? 0.0F : healthRatio(displayTarget);
+        riseHealthAnimation.setEasing(RiseTargetHudAnimation.Easing.EASE_OUT_QUINT);
+        riseHealthAnimation.setDuration(250L);
+        if (switchedTarget) {
+            riseHealthAnimation.snap(health * layout.healthBarWidth);
+        }
+        riseHealthAnimation.run(health * layout.healthBarWidth);
+        riseRenderer.draw(displayTarget, position[0], position[1], uiScale, openingScale,
+                (float) riseHealthAnimation.getValue(), layout, riseBackground.getValue(), avatar,
+                Boolean.TRUE.equals(riseParticles.getValue()), partialTicks);
+        HudDrag.drawHint("target_hud", position[0], position[1], layout.width * uiScale,
+                layout.height * uiScale, RiseTargetHudRenderer.RADIUS * uiScale);
+        HudDrag.handleScroll("target_hud", scale, position[0], position[1], layout.width * uiScale,
+                layout.height * uiScale, 0.65F, 1.8F);
+    }
+
+    private void rememberRiseAttackTarget(Entity entity) {
+        EntityLivingBase attacked = asTarget(entity);
+        if (attacked == null) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        attackedTarget = attacked;
+        attackedTargetUntil = now + RISE_TARGET_HOLD_MS;
+        displayTarget = attacked;
+        riseTargetSeenAt = now;
+    }
+
+    private boolean isRiseTargetInWorld(EntityLivingBase target) {
+        return target != null && mc.theWorld != null && mc.theWorld.loadedEntityList.contains(target)
+                && !target.isDead && target.deathTime <= 0;
+    }
+
+    private void resetRiseState() {
+        riseOpeningAnimation.snap(0.0D);
+        riseHealthAnimation.snap(0.0D);
+        riseTargetSeenAt = 0L;
+        riseRenderer.reset();
     }
 
     private TargetHudStyle getSelectedStyle() {
-        TargetHudStyle selected = style.getValue() == null ? TargetHudStyle.AUTO : style.getValue();
-        if (selected == TargetHudStyle.AUTO) {
-            return HUD.getActiveStyle() == HUD.HudStyle.NIGHT_BLOOM
-                    ? TargetHudStyle.NIGHT_BLOOM : TargetHudStyle.LEGACY;
-        }
-        return selected;
+        TargetHudStyle selected = style.getValue();
+        return selected == null || selected == TargetHudStyle.APPLE
+                ? TargetHudStyle.NYMPHILILA : selected;
+    }
+
+    private static boolean isRiseStyle(TargetHudStyle style) {
+        return style == TargetHudStyle.RISE;
     }
 
     private void renderNightBloomOverlay() {
@@ -252,6 +490,7 @@ public class TargetHUD extends Module {
         EntityLivingBase target = mc.currentScreen == null ? resolveTarget() : null;
 
         if (target != null) {
+            displayTarget = target;
             NightBloomTargetHudRenderer.Content next = nightBloomContent(target);
             if (nightBloomCurrent == null || next.getEntityId() != nightBloomCurrent.getEntityId()) {
                 nightBloomPrevious = nightBloomCurrent;
@@ -281,7 +520,6 @@ public class TargetHUD extends Module {
             nightBloomPrevious = null;
             return;
         }
-
         drawNightBloomHud(new ScaledResolution(mc), editMode);
     }
 
@@ -291,8 +529,11 @@ public class TargetHUD extends Module {
         float defaultY = resolution.getScaledHeight() / 2.0F + yOffset.getValue().floatValue();
         float width = NightBloomTargetHudRenderer.WIDTH * uiScale;
         float height = NightBloomTargetHudRenderer.HEIGHT * uiScale;
-        float[] position = HudDrag.updateDocked("target_hud", xPosition, yPosition, scale, defaultX, defaultY,
-                width, height, NightBloomHudLayout.PANEL_RADIUS * uiScale, resolution);
+        float[] position = resolveHudPosition(displayTarget, width, height, defaultX, defaultY,
+                resolution, true, NightBloomHudLayout.PANEL_RADIUS * uiScale);
+        if (position == null) {
+            return;
+        }
 
         nightBloomRenderer.draw(position[0], position[1], uiScale, nightBloomCurrent, nightBloomPrevious,
                 nightBloomMotion, editMode, Boolean.TRUE.equals(showAvatar.getValue()));
@@ -318,438 +559,6 @@ public class TargetHUD extends Module {
         return String.format(Locale.ROOT, "%.1fm", mc.thePlayer.getDistanceToEntity(target));
     }
 
-    private void resetLegacyState() {
-        visibility = 0.0F;
-        healthAnimation = 0.88F;
-        damageAnimation = 0.88F;
-        flowerAnimation = 0.88F;
-        switchPulse = 0.0F;
-        displayTarget = null;
-        lastTargetId = -1;
-        lastFrameMS = System.currentTimeMillis();
-    }
-
-    private void resetNightBloomState() {
-        nightBloomMotion.reset();
-        nightBloomCurrent = null;
-        nightBloomPrevious = null;
-        lastNightBloomFrameMS = System.currentTimeMillis();
-    }
-
-    private void drawHud(ScaledResolution sr, EntityLivingBase target, float alpha) {
-        float uiScale = Math.max(0.1f, scale.getValue().floatValue());
-        float width = 200.0f;
-        float height = 42.0f;
-        float defaultX = sr.getScaledWidth() / 2.0f + xOffset.getValue().floatValue();
-        float defaultY = sr.getScaledHeight() / 2.0f + yOffset.getValue().floatValue();
-        float[] pos = HudDrag.update("target_hud", xPosition, yPosition, scale, defaultX, defaultY,
-                width * uiScale, height * uiScale, sr);
-
-        float rawAlpha = clamp01(alpha);
-        float easedAlpha = smoothStep(rawAlpha);
-        float x = pos[0];
-        boolean editMode = HudDrag.isEditMode();
-        float contentAlpha = editMode ? easedAlpha : foregroundAlpha(rawAlpha);
-        float y = pos[1] + (editMode ? 0.0f : (1.0f - rawAlpha) * 10.0f);
-        float w = width * uiScale;
-        float h = height * uiScale;
-        float radius = 8.0f * uiScale;
-        float pulse = clamp01(switchPulse);
-        float panelScale = editMode ? 1.0f : 0.88f + 0.12f * easeOutBack(rawAlpha) + pulse * 0.018f;
-
-        int fill = useFrostedGlass()
-                ? withAlpha(GLASS_FILL, Math.round((158.0f + pulse * 18.0f) * easedAlpha))
-                : HUD.getSolidPanelFillColor(easedAlpha);
-        int border = useFrostedGlass()
-                ? withAlpha(GLASS_BORDER, Math.round((24.0f + pulse * 18.0f) * easedAlpha))
-                : HUD.getSolidPanelBorderColor(easedAlpha);
-
-        GlStateManager.pushMatrix();
-        if (Math.abs(panelScale - 1.0f) > 0.001f) {
-            float centerX = x + w * 0.5f;
-            float centerY = y + h * 0.5f;
-            GlStateManager.translate(centerX, centerY, 0.0f);
-            GlStateManager.scale(panelScale, panelScale, 1.0f);
-            GlStateManager.translate(-centerX, -centerY, 0.0f);
-        }
-        if (useFrostedGlass()) {
-            RenderServices.shapes().shadow(x, y, x + w, y + h, radius,
-                    withAlpha(0xFF000000, Math.round(96.0f * easedAlpha)), 8, 3.4f * uiScale);
-            RenderServices.shapes().shadow(x, y, x + w, y + h, radius,
-                    withAlpha(SAKURA, Math.round((28.0f + 26.0f * pulse) * easedAlpha)), 5, 2.2f * uiScale);
-        }
-        drawPanelBackground(x, y, x + w, y + h, radius, 0.55f * uiScale, fill, border, easedAlpha);
-        drawBackgroundAccent(x, y, w, h, radius, uiScale, easedAlpha);
-
-        drawAvatar(target, x + 14.0f * uiScale, y + 8.0f * uiScale, 26.0f * uiScale, uiScale, contentAlpha);
-        drawText(target, x, y, w, uiScale, contentAlpha);
-        drawHealth(target, x, y, w, uiScale, contentAlpha);
-        HudDrag.drawHint("target_hud", x, y, w, h, radius);
-        HudDrag.handleScroll("target_hud", scale, x, y, w, h, 0.65f, 1.8f);
-        GlStateManager.popMatrix();
-    }
-
-    private void drawPanelBackground(float x, float y, float x2, float y2, float radius,
-                                     float borderWidth, int fill, int border, float opacity) {
-        if (useFrostedGlass()) {
-            RenderServices.liquidGlass().roundedBorder(x, y, x2, y2, radius, borderWidth,
-                    fill, border, GLASS_SETTINGS);
-        } else {
-            RenderServices.shapes().shadow(x, y, x2, y2, radius,
-                    HUD.getSolidPanelShadowColor(opacity), 8, 4.8f);
-            RenderServices.shapes().roundedBorder(x, y, x2, y2, radius, Math.min(borderWidth, 0.65f), fill, border);
-            RenderServices.shapes().horizontalGradient(x + 1.0f, y + 1.0f, x2 - 1.0f,
-                    Math.min(y2 - 1.0f, y + 10.0f), withAlpha(0xFFFFFFFF, 22), 0x00FFFFFF);
-        }
-    }
-
-    private boolean useFrostedGlass() {
-        return Boolean.TRUE.equals(frostedGlass.getValue());
-    }
-
-    private int textColor(int alpha) {
-        return withAlpha(useFrostedGlass() ? TEXT : HUD.getThemeTextColor(), alpha);
-    }
-
-    private int mutedTextColor(int alpha) {
-        return withAlpha(useFrostedGlass() ? MUTED : HUD.getThemeMutedTextColor(), alpha);
-    }
-
-    private int accentTextColor(int alpha) {
-        return useFrostedGlass() ? withAlpha(SAKURA, alpha) : textColor(alpha);
-    }
-
-    private void drawBackgroundAccent(float x, float y, float width, float height, float radius,
-                                      float uiScale, float alpha) {
-        int accent = useFrostedGlass() ? SAKURA : HUD.getThemeAccentColor();
-        if (useFrostedGlass()) {
-            RenderServices.shapes().shadow(x + 16.0f * uiScale, y + 5.0f * uiScale,
-                    x + width - 18.0f * uiScale, y + height - 5.0f * uiScale,
-                    radius, withAlpha(SAKURA, Math.round(24.0f * alpha)), 3, 1.8f * uiScale);
-        }
-        RenderServices.shapes().rounded(x + 8.0f * uiScale, y + height - 9.0f * uiScale,
-                x + 72.0f * uiScale, y + height - 4.0f * uiScale,
-                3.0f * uiScale, withAlpha(accent, Math.round(14.0f * alpha)));
-    }
-
-    private void drawText(EntityLivingBase target, float x, float y, float width, float uiScale, float alpha) {
-        if (alpha <= 0.018f) {
-            return;
-        }
-        CFontRenderer nameFont = FontLoaders.regular(Math.max(12, Math.round(18.0f * uiScale)));
-        CFontRenderer smallFont = FontLoaders.regular(Math.max(9, Math.round(11.0f * uiScale)));
-        String name = target == null ? "Steve" : target.getName();
-        String ping = target == null ? "--" : pingText(target);
-        float nameX = textStartX(x, uiScale);
-        float nameY = y + 9.0f * uiScale;
-        float right = x + width - 11.0f * uiScale;
-        float pingWidth = smallFont.getStringWidth(ping);
-        float nameMaxWidth = Math.max(48.0f * uiScale, right - nameX - pingWidth - 8.0f * uiScale);
-
-        nameFont.drawString(trim(name, nameFont, nameMaxWidth), nameX, nameY,
-                textColor(Math.round(248.0f * alpha)));
-        smallFont.drawString(ping, right - pingWidth, y + 8.0f * uiScale,
-                accentTextColor(Math.round(218.0f * alpha)));
-    }
-
-    private void drawTextGlow(CFontRenderer font, String text, float x, float y, float uiScale, float alpha) {
-        if (alpha <= 0.018f) {
-            return;
-        }
-        int wideGlow = withAlpha(SAKURA, Math.round(28.0f * alpha));
-        int nearGlow = withAlpha(0xFFFFBED8, Math.round(48.0f * alpha));
-        float wide = Math.max(0.72f, 0.88f * uiScale);
-        float near = Math.max(0.38f, 0.50f * uiScale);
-        font.drawString(text, x - wide, y, wideGlow);
-        font.drawString(text, x + wide, y, wideGlow);
-        font.drawString(text, x, y - wide, wideGlow);
-        font.drawString(text, x, y + wide, wideGlow);
-        font.drawString(text, x - near, y - near, nearGlow);
-        font.drawString(text, x + near, y - near, nearGlow);
-        font.drawString(text, x - near, y + near, nearGlow);
-        font.drawString(text, x + near, y + near, nearGlow);
-    }
-
-    private void drawHealth(EntityLivingBase target, float x, float y, float width, float uiScale, float alpha) {
-        float barX = x + 54.0f * uiScale;
-        float barY = y + 28.2f * uiScale;
-        float barW = 110.0f * uiScale;
-        float centerY = barY + 0.5f * uiScale;
-        float lineWidth = Math.max(0.75f, 0.8f * uiScale);
-        float health = target == null ? 0.0f : clamp01(healthAnimation);
-        float delayed = clamp01(Math.max(health, damageAnimation));
-
-        RenderServices.shapes().line(barX, centerY, barX + barW, centerY, lineWidth,
-                withAlpha(0xFFFFD3E3, Math.round(34.0f * alpha)));
-        RenderServices.shapes().line(barX, centerY + Math.max(0.45f, 0.35f * uiScale),
-                barX + barW, centerY + Math.max(0.45f, 0.35f * uiScale), Math.max(0.45f, 0.48f * uiScale),
-                withAlpha(0xFF09090D, Math.round(72.0f * alpha)));
-        if (delayed > health + 0.003f) {
-            RenderServices.shapes().line(barX, centerY, barX + barW * delayed, centerY, lineWidth,
-                    withAlpha(0xFFFF6F9A, Math.round(72.0f * alpha)));
-        }
-        float fillW = Math.max(0.0f, barW * health);
-        if (fillW > 0.75f) {
-            RenderServices.shapes().line(barX, centerY, barX + fillW, centerY, Math.max(lineWidth, 1.05f * uiScale),
-                    withAlpha(SAKURA, Math.round(218.0f * alpha)));
-            RenderServices.shapes().line(barX, centerY - Math.max(0.45f, 0.32f * uiScale),
-                    barX + fillW, centerY - Math.max(0.45f, 0.32f * uiScale), Math.max(0.35f, 0.35f * uiScale),
-                    withAlpha(0xFFFFF3F8, Math.round(56.0f * alpha)));
-        }
-        if (health > 0.035f) {
-            float markerSize = 3.2f * uiScale;
-            float markerOffset = Math.max(markerSize, Math.min(barW - markerSize, barW * clamp01(flowerAnimation)));
-            drawSakuraFlower(barX + markerOffset, centerY, markerSize, alpha);
-        }
-    }
-
-    private void drawCapsule(float x, float y, float width, float height, int color) {
-        if (width <= 0.0f || height <= 0.0f || ((color >>> 24) & 255) <= 0) {
-            return;
-        }
-        float radius = height * 0.5f;
-        if (width <= height) {
-            RenderServices.shapes().circle(x + width * 0.5f, y + radius, 0, 360, width * 0.5f, color);
-        } else {
-            RenderServices.shapes().rounded(x, y, x + width, y + height, radius, color);
-        }
-        resetTextRenderState();
-    }
-
-    private float textStartX(float x, float uiScale) {
-        return x + (Boolean.TRUE.equals(showAvatar.getValue()) ? 54.0f : 14.0f) * uiScale;
-    }
-
-    private void drawMovingBarSheen(float x, float y, float width, float height, float alpha) {
-        if (width <= height || alpha <= 0.002f) {
-            return;
-        }
-        float t = (System.currentTimeMillis() % 2600L) / 2600.0f;
-        float bandW = Math.max(height * 3.2f, width * 0.22f);
-        float start = x - bandW + (width + bandW * 2.0f) * t;
-        GlStateManager.enableBlend();
-        GlStateManager.disableTexture2D();
-        GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0);
-        GL11.glBegin(GL11.GL_QUADS);
-        glColor(0xFFFFD8E8, alpha * 0.00f);
-        GL11.glVertex2f(start - bandW * 0.48f, y + height);
-        GL11.glVertex2f(start - bandW * 0.24f, y);
-        glColor(0xFFFFD8E8, alpha * 0.28f);
-        GL11.glVertex2f(start, y);
-        GL11.glVertex2f(start - bandW * 0.24f, y + height);
-
-        glColor(0xFFFFD8E8, alpha * 0.28f);
-        GL11.glVertex2f(start, y);
-        GL11.glVertex2f(start - bandW * 0.24f, y + height);
-        glColor(0xFFFFD8E8, alpha * 0.00f);
-        GL11.glVertex2f(start + bandW * 0.42f, y + height);
-        GL11.glVertex2f(start + bandW * 0.66f, y);
-        GL11.glEnd();
-        GlStateManager.enableTexture2D();
-        resetTextRenderState();
-    }
-
-    private void drawAvatar(EntityLivingBase target, float x, float y, float size, float uiScale, float alpha) {
-        if (!Boolean.TRUE.equals(showAvatar.getValue()) || alpha <= 0.018f) {
-            return;
-        }
-        float frameRadius = 7.0f * uiScale;
-        RenderServices.shapes().shadow(x, y, x + size, y + size, frameRadius,
-                withAlpha(0xFF000000, Math.round(86.0f * alpha)), 5, 1.8f * uiScale);
-        RenderServices.shapes().roundedBorder(x, y, x + size, y + size, frameRadius, 0.8f * uiScale,
-                withAlpha(0xFF20171C, Math.round(190.0f * alpha)),
-                withAlpha(SAKURA, Math.round(62.0f * alpha)));
-
-        ResourceLocation skin = skin(target);
-        if (skin != null) {
-            float pad = 2.5f * uiScale;
-            drawRoundedHead(skin, x + pad, y + pad, size - pad * 2.0f, 5.0f * uiScale, alpha);
-        } else {
-            ResourceLocation entityTexture = entityTexture(target);
-            if (entityTexture != null) {
-                float pad = 2.5f * uiScale;
-                drawRoundedHead(entityTexture, x + pad, y + pad, size - pad * 2.0f,
-                        5.0f * uiScale, alpha, 64.0f, 64.0f, false);
-            } else {
-                drawEntityBadge(target, x, y, size, uiScale, alpha);
-            }
-        }
-        resetTextRenderState();
-    }
-
-    private void drawRoundedHead(ResourceLocation skin, float x, float y, float size, float radius, float alpha) {
-        drawRoundedHead(skin, x, y, size, radius, alpha, 64.0f, 64.0f, true);
-    }
-
-    private void drawRoundedHead(ResourceLocation skin, float x, float y, float size, float radius, float alpha,
-                                 float textureWidth, float textureHeight, boolean overlay) {
-        int ix = Math.round(x);
-        int iy = Math.round(y);
-        int is = Math.max(1, Math.round(size));
-        float fx = ix;
-        float fy = iy;
-        float fs = is;
-        GlStateManager.pushMatrix();
-        try {
-            RenderServices.stencil().initWrite();
-            RenderServices.shapes().rounded(fx, fy, fx + fs, fy + fs, radius, 0xFFFFFFFF);
-            RenderServices.stencil().read(1);
-            GlStateManager.enableBlend();
-            GlStateManager.enableTexture2D();
-            GlStateManager.color(1.0f, 1.0f, 1.0f, alpha);
-            mc.getTextureManager().bindTexture(skin);
-            Gui.drawScaledCustomSizeModalRect(ix, iy, 8.0f, 8.0f, 8, 8,
-                    is, is, textureWidth, textureHeight);
-            if (overlay) {
-                Gui.drawScaledCustomSizeModalRect(ix, iy, 40.0f, 8.0f, 8, 8,
-                        is, is, textureWidth, textureHeight);
-            }
-        } finally {
-            RenderServices.stencil().end();
-            GlStateManager.popMatrix();
-            resetTextRenderState();
-        }
-    }
-
-    private void drawEntityBadge(EntityLivingBase target, float x, float y, float size, float uiScale, float alpha) {
-        float pad = 2.5f * uiScale;
-        float ix = x + pad;
-        float iy = y + pad;
-        float inner = size - pad * 2.0f;
-        RenderServices.shapes().rounded(ix, iy, ix + inner, iy + inner, 5.0f * uiScale,
-                withAlpha(0xFF160F15, Math.round(150.0f * alpha)));
-        RenderServices.shapes().shadow(ix + 2.0f * uiScale, iy + 2.0f * uiScale,
-                ix + inner - 2.0f * uiScale, iy + inner - 2.0f * uiScale, 4.0f * uiScale,
-                withAlpha(SAKURA, Math.round(34.0f * alpha)), 3, 1.2f * uiScale);
-        CFontRenderer iconFont = FontLoaders.icon(Math.max(13, Math.round(16.0f * uiScale)));
-        String icon = target instanceof EntityPlayer ? FontLoaders.ICON_USER
-                : target instanceof EntityAnimal || target instanceof EntityWaterMob || target instanceof EntityAmbientCreature
-                ? FontLoaders.ICON_HEARTBEAT
-                : target instanceof EntityMob || target instanceof EntitySlime || target instanceof IMob
-                ? FontLoaders.ICON_WARNING : FontLoaders.ICON_CUBE;
-        iconFont.drawString(icon, x + size / 2.0f - iconFont.getStringWidth(icon) / 2.0f,
-                y + size / 2.0f - iconFont.getHeight() / 2.0f + 1.3f * uiScale,
-                withAlpha(SAKURA, Math.round(232.0f * alpha)));
-    }
-
-    private void drawSakuraFlower(float centerX, float centerY, float size, float alpha) {
-        if (alpha <= 0.002f || size <= 0.002f) {
-            return;
-        }
-        RenderServices.shapes().shadow(centerX - size, centerY - size, centerX + size, centerY + size,
-                size, withAlpha(SAKURA, Math.round(74.0f * alpha)), 4, size * 0.70f);
-        GlStateManager.pushMatrix();
-        GlStateManager.translate(centerX, centerY, 0.0f);
-        GlStateManager.rotate((System.currentTimeMillis() % 2400L) / 2400.0f * 24.0f, 0.0f, 0.0f, 1.0f);
-        GlStateManager.enableBlend();
-        GlStateManager.disableTexture2D();
-        GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0);
-        for (int i = 0; i < 5; i++) {
-            GL11.glPushMatrix();
-            GL11.glRotatef(i * 72.0f, 0.0f, 0.0f, 1.0f);
-            GL11.glTranslatef(0.0f, size * 0.20f, 0.0f);
-            drawSakuraPetal2D(size, alpha);
-            GL11.glPopMatrix();
-        }
-        GlStateManager.enableTexture2D();
-        GlStateManager.popMatrix();
-        RenderServices.shapes().circle(centerX, centerY, 0, 360, size * 0.30f,
-                withAlpha(0xFFFFF3FA, Math.round(235.0f * alpha)));
-        resetTextRenderState();
-    }
-
-    private void drawSakuraPetal2D(float size, float alpha) {
-        float width = size * 0.58f;
-        float length = size * 1.12f;
-        GL11.glBegin(GL11.GL_TRIANGLE_FAN);
-        glColor(0xFFFFEAF3, alpha * 0.96f);
-        GL11.glVertex2f(0.0f, length * 0.36f);
-        for (float[] point : SAKURA_PETAL_POINTS) {
-            glColor(SAKURA, alpha * 0.70f);
-            GL11.glVertex2f(point[0] * width, point[1] * length);
-        }
-        GL11.glEnd();
-
-        GL11.glLineWidth(0.75f);
-        GL11.glBegin(GL11.GL_LINE_STRIP);
-        glColor(0xFFFFF6FA, alpha * 0.45f);
-        for (float[] point : SAKURA_PETAL_POINTS) {
-            GL11.glVertex2f(point[0] * width, point[1] * length);
-        }
-        GL11.glEnd();
-    }
-
-    private void glColor(int color, float alpha) {
-        float a = ((color >>> 24) & 255) / 255.0f * clamp01(alpha);
-        float r = ((color >>> 16) & 255) / 255.0f;
-        float g = ((color >>> 8) & 255) / 255.0f;
-        float b = (color & 255) / 255.0f;
-        GlStateManager.color(r, g, b, a);
-    }
-
-    private ResourceLocation skin(EntityLivingBase target) {
-        if (target instanceof AbstractClientPlayer) {
-            return ((AbstractClientPlayer) target).getLocationSkin();
-        }
-        return null;
-    }
-
-    private ResourceLocation entityTexture(EntityLivingBase target) {
-        if (target == null || mc.getRenderManager() == null) {
-            return null;
-        }
-        try {
-            Render render = mc.getRenderManager().getEntityRenderObject(target);
-            if (render == null) {
-                return null;
-            }
-            Method method = findEntityTextureMethod(render.getClass());
-            if (method == null) {
-                return null;
-            }
-            Object texture = method.invoke(render, target);
-            return texture instanceof ResourceLocation ? (ResourceLocation) texture : null;
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
-
-    private Method findEntityTextureMethod(Class<?> type) {
-        if (type == null) {
-            return null;
-        }
-        Method cached = ENTITY_TEXTURE_METHODS.get(type);
-        if (cached != null) {
-            return cached;
-        }
-        if (ENTITY_TEXTURE_MISSES.contains(type)) {
-            return null;
-        }
-        Class<?> current = type;
-        while (current != null) {
-            try {
-                Method method = current.getDeclaredMethod("getEntityTexture", Entity.class);
-                method.setAccessible(true);
-                ENTITY_TEXTURE_METHODS.put(type, method);
-                return method;
-            } catch (NoSuchMethodException ignored) {
-                Method[] methods = current.getDeclaredMethods();
-                for (Method method : methods) {
-                    if ("getEntityTexture".equals(method.getName())
-                            && method.getParameterTypes().length == 1
-                            && Entity.class.isAssignableFrom(method.getParameterTypes()[0])) {
-                        method.setAccessible(true);
-                        ENTITY_TEXTURE_METHODS.put(type, method);
-                        return method;
-                    }
-                }
-                current = current.getSuperclass();
-            }
-        }
-        ENTITY_TEXTURE_MISSES.add(type);
-        return null;
-    }
-
     private String pingText(EntityLivingBase target) {
         if (target instanceof EntityPlayer && mc.getNetHandler() != null) {
             NetworkPlayerInfo info = mc.getNetHandler().getPlayerInfo(((EntityPlayer) target).getUniqueID());
@@ -770,15 +579,28 @@ public class TargetHUD extends Module {
         if (mc.objectMouseOver != null
                 && mc.objectMouseOver.typeOfHit == MovingObjectPosition.MovingObjectType.ENTITY) {
             EntityLivingBase direct = asTarget(mc.objectMouseOver.entityHit);
-            if (direct != null) {
+            if (direct != null && mc.thePlayer.getDistanceSqToEntity(direct) <= AIM_TARGET_RANGE * AIM_TARGET_RANGE) {
                 return direct;
             }
         }
         EntityLivingBase recentAttack = recentAttackTarget();
-        if (recentAttack != null) {
-            return recentAttack;
+        return recentAttack != null ? recentAttack : asTarget(Backtrack.getAimedTarget());
+    }
+
+    private float[] resolveHudPosition(EntityLivingBase target, float width, float height,
+                                       float defaultX, float defaultY, ScaledResolution resolution,
+                                       boolean docked, float radius) {
+        if (Boolean.TRUE.equals(follow.getValue()) && !HudDrag.isEditMode()) {
+            TargetHudFollowProjection.Position position = followProjection.position(
+                    target, width, height, resolution);
+            return position == null ? null : new float[]{position.getX(), position.getY()};
         }
-        return Backtrack.getAimedTarget();
+        if (docked) {
+            return HudDrag.updateDocked("target_hud", xPosition, yPosition, scale,
+                    defaultX, defaultY, width, height, radius, resolution);
+        }
+        return HudDrag.update("target_hud", xPosition, yPosition, scale,
+                defaultX, defaultY, width, height, resolution);
     }
 
     private EntityLivingBase asTarget(Entity entity) {
@@ -786,10 +608,8 @@ public class TargetHUD extends Module {
             return null;
         }
         EntityLivingBase living = (EntityLivingBase) entity;
-        if (living.isDead || living.deathTime > 0 || living.getHealth() <= 0.0f) {
-            return null;
-        }
-        return living;
+        return living.isDead || living.deathTime > 0 || living.getHealth() <= 0.0F
+                || AntiBot.isServerBot(living) ? null : living;
     }
 
     private EntityLivingBase recentAttackTarget() {
@@ -811,61 +631,41 @@ public class TargetHUD extends Module {
 
     private float healthRatio(EntityLivingBase target) {
         if (target == null) {
-            return 0.0f;
+            return 0.0F;
         }
-        return clamp01(target.getHealth() / Math.max(1.0f, target.getMaxHealth()));
+        return Math.max(0.0F, Math.min(1.0F,
+                target.getHealth() / Math.max(1.0F, target.getMaxHealth())));
     }
 
-    private float animationFactor(long now) {
-        float delta = Math.max(1.0f, Math.min(50.0f, now - lastFrameMS));
-        lastFrameMS = now;
-        return 1.0f - (float) Math.pow(0.001D, delta / 220.0D);
+    private void resetNightBloomState() {
+        nightBloomMotion.reset();
+        nightBloomCurrent = null;
+        nightBloomPrevious = null;
+        lastNightBloomFrameMS = System.currentTimeMillis();
     }
 
-    private String trim(String text, CFontRenderer font, float maxWidth) {
-        if (text == null || maxWidth <= 0.0f) {
-            return "";
-        }
-        if (font.getStringWidth(text) <= maxWidth) {
-            return text;
-        }
-        String result = text;
-        while (result.length() > 1 && font.getStringWidth(result + "...") > maxWidth) {
-            result = result.substring(0, result.length() - 1);
-        }
-        return result.length() <= 1 ? "..." : result + "...";
+    private AppleTargetHudRenderer.Content appleContent(EntityLivingBase target) {
+        return new AppleTargetHudRenderer.Content(target, target.getEntityId(), target.getName(),
+                distanceText(target) + "  ·  " + pingText(target), healthRatio(target),
+                target.hurtTime > 0);
     }
 
-    private void resetTextRenderState() {
-        GlStateManager.disableDepth();
-        GlStateManager.disableRescaleNormal();
-        GlStateManager.enableTexture2D();
-        GlStateManager.enableAlpha();
-        GlStateManager.enableBlend();
-        GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0);
-        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+    private void resetAppleState() {
+        appleMotion.reset();
+        appleCurrent = null;
+        applePrevious = null;
+        lastAppleFrameMS = System.currentTimeMillis();
     }
 
-    private int withAlpha(int color, int alpha) {
-        return (color & 0x00FFFFFF) | (Math.max(0, Math.min(255, alpha)) << 24);
+    private void resetNymphState() {
+        nymphMotion.reset();
+        lastNymphFrameMS = System.currentTimeMillis();
     }
 
-    private float clamp01(float value) {
-        return Math.max(0.0f, Math.min(1.0f, value));
-    }
-
-    private float smoothStep(float value) {
-        float t = clamp01(value);
-        return t * t * (3.0f - 2.0f * t);
-    }
-
-    private float foregroundAlpha(float value) {
-        return smoothStep((clamp01(value) - 0.055f) / 0.945f);
-    }
-
-    private float easeOutBack(float value) {
-        float t = clamp01(value) - 1.0f;
-        float c = 1.55f;
-        return 1.0f + t * t * ((c + 1.0f) * t + c);
+    private void resetCoolState() {
+        coolMotion.reset();
+        coolHurtMotion.reset();
+        coolNumberMotion.reset();
+        lastCoolFrameMS = System.currentTimeMillis();
     }
 }

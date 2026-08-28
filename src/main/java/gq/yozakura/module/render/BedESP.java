@@ -14,6 +14,7 @@ import net.minecraft.block.Block;
 import net.minecraft.block.BlockBed;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.gui.ScaledResolution;
+import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.RenderHelper;
 import net.minecraft.init.Blocks;
@@ -74,6 +75,8 @@ public class BedESP extends Module {
             BedEspMode.values(), BedEspMode.BOTH);
     private final Numbers<Double> glowStrength = new Numbers<Double>("Glow Strength", "GlowStrength",
             0.88D, 0.20D, 1.0D, 0.02D);
+    private final Numbers<Double> backgroundAlpha = new Numbers<Double>(
+            "Background Alpha", "BackgroundAlpha", 224.0D, 0.0D, 255.0D, 1.0D);
     private final Set<BedEspBlockSelector.Position> scannedBeds =
             new HashSet<BedEspBlockSelector.Position>();
 
@@ -89,7 +92,7 @@ public class BedESP extends Module {
     public BedESP() {
         super("BedESP", Keyboard.KEY_NONE, ModuleType.Render, "Highlight BedWars bed defenses");
         glowStrength.visibleWhen(() -> mode.getValue() == BedEspMode.GLOWESP);
-        addValues(mode, glowStrength);
+        addValues(mode, glowStrength, backgroundAlpha);
         Chinese = "床透视";
     }
 
@@ -131,7 +134,7 @@ public class BedESP extends Module {
 
     @SubscribeEvent
     public void onWorld(RenderWorldLastEvent event) {
-        if (!isInGame() || bedBlocks.isEmpty()) {
+        if (!isInGame() || isClickGuiOpen() || bedBlocks.isEmpty()) {
             overlayEntries.clear();
             return;
         }
@@ -365,13 +368,19 @@ public class BedESP extends Module {
     }
 
     private void renderDefensePanels() {
-        if (!isInGame() || overlayEntries.isEmpty()) {
+        if (!isInGame() || isClickGuiOpen() || overlayEntries.isEmpty()) {
             return;
         }
         ScaledResolution resolution = new ScaledResolution(mc);
         for (BedDefensePanelOverlayEntry entry : overlayEntries) {
             renderDefensePanel(entry, resolution);
         }
+    }
+
+    private boolean isClickGuiOpen() {
+        GuiScreen currentScreen = mc.currentScreen;
+        return currentScreen != null
+                && currentScreen.getClass().getName().startsWith("gq.yozakura.ui.click.");
     }
 
     private void renderDefensePanel(BedDefensePanelOverlayEntry entry, ScaledResolution resolution) {
@@ -390,11 +399,11 @@ public class BedESP extends Module {
                 resolution.getScaledWidth() - PANEL_MARGIN - width);
         float y = clamp(entry.y - height - PANEL_OFFSET_Y * entry.scale, PANEL_MARGIN,
                 resolution.getScaledHeight() - PANEL_MARGIN - height);
-        int surface = withAlpha(ClickGUI.currentPalette().getSurfaceRaised(), 224);
+        int surface = withAlpha(ClickGUI.currentPalette().getSurfaceRaised(),
+                backgroundAlpha.getValue().intValue());
         int border = withAlpha(ClickGUI.currentPalette().getAccentAlt(), 98);
         float radius = 4.0F * entry.scale;
-        RenderServices.shapes().shadow(x, y, x + width, y + height, radius,
-                withAlpha(ClickGUI.currentPalette().getShadow(), 118), 4, 1.8F * entry.scale);
+        HUD.drawNightBloomShadow(x, y, x + width, y + height, radius, 0.72F);
         RenderServices.shapes().roundedBorder(x, y, x + width, y + height, radius,
                 Math.max(0.4F, 0.65F * entry.scale), surface, border);
         for (int index = 0; index < iconCount; index++) {
@@ -410,24 +419,26 @@ public class BedESP extends Module {
             GlStateManager.translate(Math.round(x), Math.round(y), 0.0F);
             GlStateManager.scale(scale, scale, 1.0F);
             GlStateManager.enableTexture2D();
-            GlStateManager.enableBlend();
             GlStateManager.enableAlpha();
+            GlStateManager.enableDepth();
+            GlStateManager.depthMask(true);
             GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
             RenderHelper.enableGUIStandardItemLighting();
             try {
                 GlStateManager.enableRescaleNormal();
-                GlStateManager.enableDepth();
                 mc.getRenderItem().renderItemAndEffectIntoGUI(stack, 0, 0);
             } finally {
-                GlStateManager.disableDepth();
-                GlStateManager.disableRescaleNormal();
                 RenderHelper.disableStandardItemLighting();
+                GlStateManager.disableRescaleNormal();
+                GlStateManager.disableDepth();
             }
         } finally {
+            GlStateManager.depthMask(true);
             GlStateManager.popMatrix();
             GlStateManager.enableTexture2D();
             GlStateManager.enableBlend();
             GlStateManager.enableAlpha();
+            GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0);
             GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
         }
     }

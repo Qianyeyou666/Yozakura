@@ -21,6 +21,12 @@ public class RotationResolutionLifecycleContractTest {
     }
 
     @Test
+    public void bothBridgesPublishAClientThreadBoundaryAfterTheFinalRotationSnapshot() throws IOException {
+        assertPublishedDispatch(source("src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java"));
+        assertPublishedDispatch(source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java"));
+    }
+
+    @Test
     public void bridgeAssistPublishesPrePlaceOnlyFromTheResolvedRotationBoundary() throws IOException {
         String bridgeAssist = source("src/main/java/gq/yozakura/module/world/BridgeAssist.java");
         String controller = source("src/main/java/gq/yozakura/module/world/BridgeAssistPrePlaceController.java");
@@ -39,6 +45,18 @@ public class RotationResolutionLifecycleContractTest {
         assertTrue(rotationExit >= 0);
         assertTrue(resolution > rotationExit);
         assertTrue(rotationState > resolution);
+    }
+
+    private static void assertPublishedDispatch(String source) {
+        int rotationState = source.indexOf("RotationState.applyState");
+        int publication = source.indexOf("rotationPublication.publish(", rotationState);
+        int publishedEvent = source.indexOf("EventManager.call(new RotationPublishedEvent(update))", publication);
+        int preRelease = source.indexOf("activePreUpdate = null;", publishedEvent);
+
+        assertTrue(rotationState >= 0);
+        assertTrue(publication > rotationState);
+        assertTrue(publishedEvent > publication);
+        assertTrue(preRelease > publishedEvent);
     }
 
     private static String source(String path) throws IOException {

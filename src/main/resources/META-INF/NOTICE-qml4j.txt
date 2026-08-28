@@ -1,0 +1,17 @@
+Yozakura includes the following third-party components for its QML ClickGUI:
+
+qml4j (https://github.com/TIMER-err/qml4j)
+Copyright TIMER-err and contributors
+Licensed under the Apache License 2.0.
+
+Skija / Skia
+Skija is licensed under the Apache License 2.0.
+Skia is licensed under the BSD 3-Clause license.
+
+Mozilla Rhino 1.7.15 is licensed under the Mozilla Public License 2.0.
+ANTLR runtime is licensed under the BSD 3-Clause license.
+ASM is licensed under its BSD-style license.
+
+The corresponding license texts remain embedded from the dependency artifacts
+where supplied. Project source and license details are available from each
+component's upstream distribution.

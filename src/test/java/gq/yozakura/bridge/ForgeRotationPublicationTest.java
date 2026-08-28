@@ -40,6 +40,19 @@ public class ForgeRotationPublicationTest {
         assertEquals(first.getGeneration(), publication.getSentGeneration());
     }
 
+    @Test
+    public void teleportInvalidationCannotBeUndoneByAnInterruptedPrePublish() {
+        ForgeRotationPublication publication = new ForgeRotationPublication();
+        ForgeRotationPublication.Snapshot inProgress = publication.beginPre();
+
+        publication.invalidateForTeleport();
+        ForgeRotationPublication.Snapshot published = publication.publish(true, 91.0F, 42.0F);
+
+        assertFalse(publication.snapshot().isActive());
+        assertFalse(published.isActive());
+        assertEquals(inProgress.getGeneration(), published.getGeneration());
+    }
+
     @Test(expected = IllegalStateException.class)
     public void publishRequiresAnExplicitPreGeneration() {
         new ForgeRotationPublication().publish(true, 1.0F, 2.0F);

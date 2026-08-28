@@ -48,4 +48,18 @@ public class PlayerPacketTickGateTest {
         assertTrue(gate.consumeNextCanonicalPlayerPacket(true));
         assertFalse(gate.consumeNextCanonicalPlayerPacket(true));
     }
+
+    @Test
+    public void teleportInvalidationDropsOnlyTheUnconsumedTickMarker() {
+        PlayerPacketTickGate gate = new PlayerPacketTickGate();
+        gate.markNextPlayerPacket(41L);
+        assertTrue(gate.consumeNextPlayerPacket());
+        gate.markNextPlayerPacket(42L);
+
+        gate.invalidatePending();
+
+        assertFalse(gate.consumeNextPlayerPacket());
+        gate.markNextPlayerPacket(43L);
+        assertTrue(gate.consumeNextPlayerPacket());
+    }
 }

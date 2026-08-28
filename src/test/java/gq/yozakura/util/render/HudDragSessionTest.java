@@ -76,6 +76,19 @@ public class HudDragSessionTest {
     }
 
     @Test
+    public void releaseBlocksAnotherHudUntilThePhysicalPointerIsUp() {
+        HudDragSession session = new HudDragSession();
+        session.arm("first", new HudDragSession.Position(20.0F, 30.0F), 30.0F, 40.0F);
+
+        session.release();
+        session.acknowledgeRelease();
+
+        assertTrue(session.isPointerBlockedUntilRelease());
+        session.releasePointerBlock();
+        assertFalse(session.isPointerBlockedUntilRelease());
+    }
+
+    @Test
     public void convertsMouseCoordinatesWithoutDriftAcrossGuiScalesOneThroughFour() {
         for (int scale = 1; scale <= 4; scale++) {
             float x = HudDragSession.toLogicalCoordinate(673.0F * scale, 1280 * scale, 1280);

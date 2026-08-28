@@ -2,8 +2,7 @@ package gq.yozakura.module.combat.aim;
 
 public final class AimAssistController {
     public enum Profile {
-        REGULAR,
-        BLATANT
+        REGULAR
     }
 
     private static final float MIN_FRAME_SECONDS = 0.0001F;
@@ -81,18 +80,18 @@ public final class AimAssistController {
         }
 
         float quantum = mouseQuantum(settings.mouseSensitivity);
-        dampForExternalViewChange(currentYaw, safePitch, quantum, settings.profile);
+        dampForExternalViewChange(currentYaw, safePitch, quantum);
         float frameSeconds = clamp(deltaSeconds, MIN_FRAME_SECONDS, MAX_FRAME_SECONDS);
 
         AxisStep yawStep = stepAxis(wrapDegrees(targetYaw - currentYaw), yawVelocity, yawResidual,
-                settings.maxYawSpeed, frameSeconds, quantum, settings.profile);
+                settings.maxYawSpeed, frameSeconds, quantum);
         yawVelocity = yawStep.velocity;
         yawResidual = yawStep.residual;
 
         AxisStep pitchStep;
         if (settings.verticalAim) {
             pitchStep = stepAxis(targetPitch - safePitch, pitchVelocity, pitchResidual,
-                    settings.maxPitchSpeed, frameSeconds, quantum, settings.profile);
+                    settings.maxPitchSpeed, frameSeconds, quantum);
         } else {
             pitchStep = new AxisStep(0.0F, pitchVelocity * 0.5F, 0.0F);
         }
@@ -105,6 +104,32 @@ public final class AimAssistController {
         lastOutputPitch = nextPitch;
         outputInitialized = true;
         return new Rotation(currentYaw, safePitch, nextYaw, nextPitch);
+    }
+
+    public void holdCurrentPitch(float pitch) {
+        requireFinite(pitch, "pitch");
+        if (targetId < 0) {
+            return;
+        }
+        targetPitch = clampPitch(pitch);
+        targetRotationInitialized = true;
+        pitchVelocity = 0.0F;
+        pitchResidual = 0.0F;
+    }
+
+    public void holdCurrentRotation(float yaw, float pitch) {
+        requireFinite(yaw, "yaw");
+        requireFinite(pitch, "pitch");
+        if (targetId < 0) {
+            return;
+        }
+        targetYaw = yaw;
+        targetPitch = clampPitch(pitch);
+        targetRotationInitialized = true;
+        yawVelocity = 0.0F;
+        pitchVelocity = 0.0F;
+        yawResidual = 0.0F;
+        pitchResidual = 0.0F;
     }
 
     public boolean isTrackingTarget(int entityId) {
@@ -140,6 +165,34 @@ public final class AimAssistController {
         return scaled * scaled * scaled * 8.0F * 0.15F;
     }
 
+    public boolean hasExternalViewChange(float currentYaw, float currentPitch, float sensitivity) {
+        requireFinite(currentYaw, "currentYaw");
+        requireFinite(currentPitch, "currentPitch");
+        requireFinite(sensitivity, "sensitivity");
+        if (!outputInitialized) {
+            return false;
+        }
+        float threshold = Math.max(0.08F, mouseQuantum(sensitivity) * 1.5F);
+        return Math.abs(wrapDegrees(currentYaw - lastOutputYaw)) > threshold
+                || Math.abs(clampPitch(currentPitch) - lastOutputPitch) > threshold;
+    }
+
+    public void synchronizeExternalView(float currentYaw, float currentPitch, Profile profile) {
+        requireFinite(currentYaw, "currentYaw");
+        requireFinite(currentPitch, "currentPitch");
+        if (profile == null) {
+            throw new IllegalArgumentException("profile cannot be null");
+        }
+        float damping = 0.22F;
+        yawVelocity *= damping;
+        pitchVelocity *= damping;
+        yawResidual *= damping;
+        pitchResidual *= damping;
+        lastOutputYaw = currentYaw;
+        lastOutputPitch = clampPitch(currentPitch);
+        outputInitialized = true;
+    }
+
     private Rotation idleRotation(float currentYaw, float currentPitch) {
         yawVelocity = 0.0F;
         pitchVelocity = 0.0F;
@@ -151,7 +204,7 @@ public final class AimAssistController {
         return new Rotation(currentYaw, currentPitch, currentYaw, currentPitch);
     }
 
-    private void dampForExternalViewChange(float currentYaw, float currentPitch, float quantum, Profile profile) {
+    private void dampForExternalViewChange(float currentYaw, float currentPitch, float quantum) {
         if (!outputInitialized) {
             return;
         }
@@ -162,26 +215,31 @@ public final class AimAssistController {
             return;
         }
 
-        float damping = profile == Profile.BLATANT ? 0.45F : 0.22F;
+        float damping = 0.22F;
         yawVelocity *= damping;
         pitchVelocity *= damping;
         yawResidual *= damping;
         pitchResidual *= damping;
     }
 
-    private static AxisStep stepAxis(float error, float velocity, float residual, float maxSpeed,
-                                     float deltaSeconds, float quantum, Profile profile) {
-        float deadZone = Math.max(0.01F, quantum * (profile == Profile.BLATANT ? 0.20F : 0.35F));
-        float response = profile == Profile.BLATANT ? 14.0F : 8.5F;
-        float acceleration = profile == Profile.BLATANT ? 18.0F : 10.0F;
+    private static float exponentialBlend(float response, float deltaSeconds) {
+        return 1.0F - (float) Math.exp(-response * deltaSeconds);
+    }
+
+    private static AxisStep stepAxis(float error, float velocity, float residual,
+                                     float maxSpeed, float deltaSeconds, float quantum) {
+        float deadZone = Math.max(0.01F, quantum * 0.35F);
+        float response = 8.5F;
+        float acceleration = 10.0F;
         float desiredVelocity = Math.abs(error) <= deadZone
                 ? 0.0F
                 : clamp(error * response, -maxSpeed, maxSpeed);
-        float velocityBlend = 1.0F - (float) Math.exp(-acceleration * deltaSeconds);
+        float velocityBlend = exponentialBlend(acceleration, deltaSeconds);
         float nextVelocity = velocity + (desiredVelocity - velocity) * velocityBlend;
         float rawDelta = nextVelocity * deltaSeconds;
         if (Math.abs(rawDelta) > Math.abs(error)) {
             rawDelta = error;
+            nextVelocity = 0.0F;
         }
 
         QuantizedStep quantized = quantize(rawDelta, residual, error, quantum);

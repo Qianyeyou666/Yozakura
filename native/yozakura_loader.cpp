@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "yozakura_native_auth.h"
+#include "yozakura_webview2.h"
 #include "yozakura_string_obfuscation.h"
 
 #define IDR_YOZAKURA_JAR 101
@@ -16,53 +17,8 @@
 #define JAR_TO_DLL_CLIENT_CLASS "gq.yozakura.YozakuraBootstrap"
 #endif
 
-#if defined(YOZAKURA_NATIVE_DIAGNOSTICS) && !defined(JAR_TO_DLL_LOG_NAME)
-#define JAR_TO_DLL_LOG_NAME "JarToDllLoader.log"
-#endif
-
 #ifndef JAR_TO_DLL_TEMP_PREFIX
 #define JAR_TO_DLL_TEMP_PREFIX L"j8c"
-#endif
-
-#if defined(YOZAKURA_NATIVE_DIAGNOSTICS)
-static void debug(const char* message) {
-    if (!message) {
-        message = "(null)";
-    }
-    OutputDebugStringA("[JarToDllLoader] ");
-    OutputDebugStringA(message);
-    OutputDebugStringA("\n");
-
-    char tempPath[MAX_PATH] = {};
-    if (GetTempPathA(MAX_PATH, tempPath)) {
-        std::string logPath = std::string(tempPath) + JAR_TO_DLL_LOG_NAME;
-        HANDLE file = CreateFileA(logPath.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (file != INVALID_HANDLE_VALUE) {
-            DWORD written = 0;
-            SYSTEMTIME time = {};
-            GetLocalTime(&time);
-            char prefix[64] = {};
-            int prefixLength = sprintf_s(prefix, "[%04u-%02u-%02u %02u:%02u:%02u] ",
-                time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond);
-            if (prefixLength > 0) {
-                WriteFile(file, prefix, static_cast<DWORD>(prefixLength), &written, nullptr);
-            }
-            DWORD messageLength = static_cast<DWORD>(strlen(message));
-            WriteFile(file, message, messageLength, &written, nullptr);
-            WriteFile(file, "\r\n", 2, &written, nullptr);
-            CloseHandle(file);
-        }
-    }
-}
-
-static void debugLastError(const char* message) {
-    char line[512] = {};
-    sprintf_s(line, "%s GetLastError=%lu", message, GetLastError());
-    debug(line);
-}
-#else
-#define debug(...) ((void)0)
-#define debugLastError(...) ((void)0)
 #endif
 
 class ProcessInjectionGuard {
@@ -96,16 +52,13 @@ static HANDLE acquireProcessInjectionGuard() {
     HANDLE guard = CreateMutexW(nullptr, FALSE, guardName);
     DWORD createError = GetLastError();
     if (!guard) {
-        debugLastError("failed to create process injection guard");
         return nullptr;
     }
     if (createError == ERROR_ALREADY_EXISTS) {
         CloseHandle(guard);
-        debug("Yozakura loader is already active in this process; duplicate injection rejected");
         return nullptr;
     }
 
-    debug("process injection guard acquired");
     return guard;
 }
 
@@ -121,54 +74,15 @@ static std::wstring tempJarPath() {
     return std::wstring(fileName);
 }
 
-#if defined(YOZAKURA_NATIVE_DIAGNOSTICS)
-static void logJavaException(JNIEnv* env, const char* context) {
-    if (!env->ExceptionCheck()) {
-        return;
-    }
-
-    jthrowable throwable = env->ExceptionOccurred();
-    env->ExceptionClear();
-
-    jclass stringWriterClass = env->FindClass("java/io/StringWriter");
-    jmethodID stringWriterCtor = env->GetMethodID(stringWriterClass, "<init>", "()V");
-    jobject stringWriter = env->NewObject(stringWriterClass, stringWriterCtor);
-
-    jclass printWriterClass = env->FindClass("java/io/PrintWriter");
-    jmethodID printWriterCtor = env->GetMethodID(printWriterClass, "<init>", "(Ljava/io/Writer;)V");
-    jobject printWriter = env->NewObject(printWriterClass, printWriterCtor, stringWriter);
-
-    jclass throwableClass = env->FindClass("java/lang/Throwable");
-    jmethodID printStackTrace = env->GetMethodID(throwableClass, "printStackTrace", "(Ljava/io/PrintWriter;)V");
-    env->CallVoidMethod(throwable, printStackTrace, printWriter);
-
-    jmethodID toString = env->GetMethodID(stringWriterClass, "toString", "()Ljava/lang/String;");
-    jstring stack = static_cast<jstring>(env->CallObjectMethod(stringWriter, toString));
-    const char* stackChars = env->GetStringUTFChars(stack, nullptr);
-
-    debug(context);
-    if (stackChars) {
-        debug(stackChars);
-        env->ReleaseStringUTFChars(stack, stackChars);
-    }
-
-    if (env->ExceptionCheck()) {
-        env->ExceptionClear();
-    }
-}
-#else
 static void clearJavaException(JNIEnv* env) {
     if (env && env->ExceptionCheck()) {
         env->ExceptionClear();
     }
 }
-#define logJavaException(env, ...) clearJavaException(env)
-#endif
 
 static bool writeEmbeddedJar(HMODULE module, const std::wstring& path) {
     HRSRC res = FindResourceW(module, MAKEINTRESOURCEW(IDR_YOZAKURA_JAR), MAKEINTRESOURCEW(10));
     if (!res) {
-        debug("embedded jar resource not found");
         return false;
     }
 
@@ -176,7 +90,6 @@ static bool writeEmbeddedJar(HMODULE module, const std::wstring& path) {
     DWORD size = SizeofResource(module, res);
     void* data = LockResource(loaded);
     if (!loaded || !size || !data) {
-        debug("failed to read embedded jar resource");
         return false;
     }
 
@@ -189,7 +102,6 @@ static bool writeEmbeddedJar(HMODULE module, const std::wstring& path) {
         FILE_ATTRIBUTE_TEMPORARY,
         nullptr);
     if (file == INVALID_HANDLE_VALUE) {
-        debugLastError("failed to create temp jar");
         return false;
     }
 
@@ -198,11 +110,9 @@ static bool writeEmbeddedJar(HMODULE module, const std::wstring& path) {
     CloseHandle(file);
 
     if (!ok || written != size) {
-        debugLastError("failed to write complete temp jar");
         return false;
     }
 
-    debug("embedded jar written");
     return true;
 }
 
@@ -218,7 +128,6 @@ static std::string jniString(JNIEnv* env, const std::wstring& value) {
 }
 
 static jobject findClientThreadClassLoader(JNIEnv* env) {
-    debug("searching Minecraft classloader");
     jclass threadClass = env->FindClass("java/lang/Thread");
     jmethodID getAllStackTraces = env->GetStaticMethodID(threadClass, "getAllStackTraces", "()Ljava/util/Map;");
     jmethodID getName = env->GetMethodID(threadClass, "getName", "()Ljava/lang/String;");
@@ -260,7 +169,6 @@ static jobject findClientThreadClassLoader(JNIEnv* env) {
 
         if (isClientThread && loader) {
             env->DeleteLocalRef(thread);
-            debug("Minecraft classloader found by thread name");
             return loader;
         }
 
@@ -282,7 +190,6 @@ static jobject findClientThreadClassLoader(JNIEnv* env) {
                 env->ExceptionClear();
             } else if (minecraftClass) {
                 minecraftLoader = env->NewGlobalRef(loader);
-                debug("Minecraft classloader found by loadClass probe");
             }
         }
 
@@ -325,7 +232,6 @@ static jobject findAddUrlMethod(JNIEnv* env, jclass loaderClass, jobjectArray pa
 }
 
 static bool addJarToClassLoader(JNIEnv* env, jobject loader, const std::wstring& jarPath) {
-    debug("adding jar to classloader");
     std::string pathUtf8 = jniString(env, jarPath);
 
     jclass fileClass = env->FindClass("java/io/File");
@@ -347,7 +253,6 @@ static bool addJarToClassLoader(JNIEnv* env, jobject loader, const std::wstring&
     jobjectArray params = env->NewObjectArray(1, classClass, urlClass);
     jobject method = findAddUrlMethod(env, loaderClass, params);
     if (!method) {
-        debug("classloader does not expose addURL");
         return false;
     }
 
@@ -358,11 +263,9 @@ static bool addJarToClassLoader(JNIEnv* env, jobject loader, const std::wstring&
     if (env->ExceptionCheck()) {
         env->ExceptionDescribe();
         env->ExceptionClear();
-        debug("addURL invocation failed");
         return false;
     }
 
-    debug("jar added to classloader");
     return true;
 }
 
@@ -382,7 +285,6 @@ static bool canLoadClass(JNIEnv* env, jobject loader, const char* className) {
 }
 
 static jobject createChildClassLoader(JNIEnv* env, jobject parent, const std::wstring& jarPath) {
-    debug("creating child URLClassLoader");
     std::string pathUtf8 = jniString(env, jarPath);
 
     jclass fileClass = env->FindClass("java/io/File");
@@ -404,15 +306,13 @@ static jobject createChildClassLoader(JNIEnv* env, jobject parent, const std::ws
     jmethodID ctor = env->GetMethodID(urlClassLoaderClass, "<init>", "([Ljava/net/URL;Ljava/lang/ClassLoader;)V");
     jobject child = env->NewObject(urlClassLoaderClass, ctor, urls, parent);
     if (env->ExceptionCheck() || !child) {
-        logJavaException(env, "failed to create child URLClassLoader");
+        clearJavaException(env);
         return nullptr;
     }
-    debug("child URLClassLoader created");
     return child;
 }
 
 static jobject createIsolatedClassLoader(JNIEnv* env, jobject parent, const std::wstring& jarPath) {
-    debug("creating isolated Yozakura classloader");
     std::string pathUtf8 = jniString(env, jarPath);
 
     jclass fileClass = env->FindClass("java/io/File");
@@ -434,7 +334,7 @@ static jobject createIsolatedClassLoader(JNIEnv* env, jobject parent, const std:
     jmethodID urlClassLoaderCtor = env->GetMethodID(urlClassLoaderClass, "<init>", "([Ljava/net/URL;Ljava/lang/ClassLoader;)V");
     jobject helperLoader = env->NewObject(urlClassLoaderClass, urlClassLoaderCtor, urls, parent);
     if (env->ExceptionCheck() || !helperLoader) {
-        logJavaException(env, "failed to create helper URLClassLoader");
+        clearJavaException(env);
         return nullptr;
     }
 
@@ -445,23 +345,21 @@ static jobject createIsolatedClassLoader(JNIEnv* env, jobject parent, const std:
     jstring isolatedName = env->NewStringUTF(isolatedClassName.c_str());
     jclass isolatedClass = static_cast<jclass>(env->CallObjectMethod(helperLoader, loadClass, isolatedName));
     if (env->ExceptionCheck() || !isolatedClass) {
-        logJavaException(env, "failed to load isolated classloader class");
+        clearJavaException(env);
         return nullptr;
     }
 
     jmethodID isolatedCtor = env->GetMethodID(isolatedClass, "<init>", "([Ljava/net/URL;Ljava/lang/ClassLoader;)V");
     jobject isolatedLoader = env->NewObject(isolatedClass, isolatedCtor, urls, parent);
     if (env->ExceptionCheck() || !isolatedLoader) {
-        logJavaException(env, "failed to instantiate isolated classloader");
+        clearJavaException(env);
         return nullptr;
     }
 
-    debug("isolated Yozakura classloader created");
     return isolatedLoader;
 }
 
 static bool instantiateClient(JNIEnv* env, jobject loader, bool* constructorAttempted) {
-    debug("loading client entry class");
     jclass threadClass = env->FindClass("java/lang/Thread");
     jmethodID currentThread = env->GetStaticMethodID(threadClass, "currentThread", "()Ljava/lang/Thread;");
     jmethodID setContextClassLoader = env->GetMethodID(threadClass, "setContextClassLoader", "(Ljava/lang/ClassLoader;)V");
@@ -474,15 +372,13 @@ static bool instantiateClient(JNIEnv* env, jobject loader, bool* constructorAtte
     jstring clientName = env->NewStringUTF(clientClassName.c_str());
     jclass clientClass = static_cast<jclass>(env->CallObjectMethod(loader, loadClass, clientName));
     if (env->ExceptionCheck() || !clientClass) {
-        logJavaException(env, "failed to load client class");
-        debug("failed to load client class");
+        clearJavaException(env);
         return false;
     }
 
     jmethodID ctor = env->GetMethodID(clientClass, "<init>", "()V");
     if (env->ExceptionCheck() || !ctor) {
-        logJavaException(env, "failed to resolve client constructor");
-        debug("failed to resolve client constructor");
+        clearJavaException(env);
         return false;
     }
     if (constructorAttempted) {
@@ -490,17 +386,14 @@ static bool instantiateClient(JNIEnv* env, jobject loader, bool* constructorAtte
     }
     jobject client = env->NewObject(clientClass, ctor);
     if (env->ExceptionCheck() || !client) {
-        logJavaException(env, "failed to instantiate client exception");
-        debug("failed to instantiate client");
+        clearJavaException(env);
         return false;
     }
 
-    debug("client instantiated");
     return true;
 }
 
 static DWORD WINAPI loaderThread(LPVOID param) {
-    debug("loader thread started");
     HANDLE guardHandle = acquireProcessInjectionGuard();
     if (!guardHandle) {
         return ERROR_ALREADY_EXISTS;
@@ -515,7 +408,6 @@ static DWORD WINAPI loaderThread(LPVOID param) {
 
     HMODULE jvmModule = GetModuleHandleW(L"jvm.dll");
     if (!jvmModule) {
-        debug("jvm.dll is not loaded in this process");
         return 1;
     }
 
@@ -523,14 +415,12 @@ static DWORD WINAPI loaderThread(LPVOID param) {
     GetCreatedJavaVMsFn getCreatedJavaVMs = reinterpret_cast<GetCreatedJavaVMsFn>(
         GetProcAddress(jvmModule, "JNI_GetCreatedJavaVMs"));
     if (!getCreatedJavaVMs) {
-        debug("JNI_GetCreatedJavaVMs not found");
         return 1;
     }
 
     JavaVM* vm = nullptr;
     jsize vmCount = 0;
     if (getCreatedJavaVMs(&vm, 1, &vmCount) != JNI_OK || vmCount == 0 || !vm) {
-        debug("no running JVM found");
         return 1;
     }
 
@@ -538,32 +428,25 @@ static DWORD WINAPI loaderThread(LPVOID param) {
     bool attached = false;
     jint envStatus = vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_8);
     if (envStatus == JNI_EDETACHED) {
-        debug("attaching native thread to JVM");
         if (vm->AttachCurrentThread(reinterpret_cast<void**>(&env), nullptr) != JNI_OK) {
-            debug("failed to attach native thread to JVM");
             return 1;
         }
         attached = true;
     } else if (envStatus != JNI_OK) {
-        debug("failed to get JNI environment");
         return 1;
     } else {
-        debug("native thread already attached to JVM");
     }
 
     bool clientLoaded = false;
     bool constructorAttempted = false;
     jobject loader = findClientThreadClassLoader(env);
     if (!loader) {
-        debug("client thread classloader not found");
     } else {
         jobject entryLoader = nullptr;
         if (canLoadClass(env, loader, "net.minecraftforge.common.MinecraftForge")) {
-            debug("Forge environment detected, using Minecraft classloader");
             if (addJarToClassLoader(env, loader, jarPath)) {
                 entryLoader = loader;
             } else {
-                debug("failed to add Yozakura jar to Forge classloader");
                 entryLoader = createIsolatedClassLoader(env, loader, jarPath);
                 if (!entryLoader) {
                     entryLoader = createChildClassLoader(env, loader, jarPath);
@@ -576,12 +459,16 @@ static DWORD WINAPI loaderThread(LPVOID param) {
             }
         }
         if (entryLoader && !registerYozakuraNativeAuth(env, entryLoader)) {
-            logJavaException(env, "failed to register native authentication bridge");
-            debug("native authentication bridge registration failed; client startup rejected");
+            clearJavaException(env);
+            entryLoader = nullptr;
+        }
+        if (entryLoader && !registerYozakuraWebView2(env, entryLoader)) {
+            entryLoader = nullptr;
+        }
+        if (entryLoader && !registerYozakuraPanelClickGuiCursor(env, entryLoader)) {
             entryLoader = nullptr;
         }
         if (entryLoader && instantiateClient(env, entryLoader, &constructorAttempted)) {
-            debug("client loaded");
             clientLoaded = true;
         }
     }
@@ -590,9 +477,6 @@ static DWORD WINAPI loaderThread(LPVOID param) {
         vm->DetachCurrentThread();
     }
     if (clientLoaded || constructorAttempted) {
-        if (!clientLoaded) {
-            debug("client constructor entered but did not complete; restart required before reinjection");
-        }
         injectionGuard.retainForProcessLifetime();
         return clientLoaded ? 0 : 1;
     }
@@ -602,7 +486,6 @@ static DWORD WINAPI loaderThread(LPVOID param) {
 static void startLoader(HMODULE module) {
     static volatile LONG started = 0;
     if (InterlockedExchange(&started, 1) != 0) {
-        debug("loader already started");
         return;
     }
 
@@ -610,7 +493,6 @@ static void startLoader(HMODULE module) {
     if (thread) {
         CloseHandle(thread);
     } else {
-        debugLastError("failed to create loader thread");
     }
 }
 
@@ -619,6 +501,7 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
         DisableThreadLibraryCalls(module);
         startLoader(module);
     } else if (reason == DLL_PROCESS_DETACH) {
+        shutdownYozakuraWebView2();
         signalYozakuraNativeAuthShutdown();
     }
     return TRUE;

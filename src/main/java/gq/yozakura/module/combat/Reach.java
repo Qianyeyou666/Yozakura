@@ -6,6 +6,7 @@ import gq.yozakura.event.bus.EventTarget;
 import gq.yozakura.event.bus.types.EventType;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.module.Module;
+import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
 import net.minecraft.entity.Entity;
@@ -99,8 +100,19 @@ public class Reach extends Module {
             lastReachHit = null;
             return;
         }
-        if (isAttackHeld()) {
-            applyReach(event.getPartialTicks());
+        applyReach(event.getPartialTicks());
+    }
+
+    /** Final post-Lunar mouse-over writer; Lunar's vanilla pass must not win later in the frame. */
+    public static void applyRuntimeMouseOverOverride(float partialTicks) {
+        Module module = ModuleManager.getModule("Reach");
+        if (module instanceof Reach && module.getState()) {
+            Reach reach = (Reach) module;
+            if (reach.lastReachHit != null) {
+                reach.applyHit(reach.lastReachHit);
+            } else {
+                reach.applyReach(partialTicks);
+            }
         }
     }
 
@@ -114,6 +126,7 @@ public class Reach extends Module {
 
     private void applyReach(float partialTicks) {
         if (!canReach()) {
+            lastReachHit = null;
             return;
         }
         MovingObjectPosition hit = rayTraceEntity(getReachDistance(), expand.getValue(), partialTicks);

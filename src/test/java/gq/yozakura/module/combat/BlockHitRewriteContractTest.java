@@ -89,8 +89,10 @@ public class BlockHitRewriteContractTest {
         String blockHit = source("src/main/java/gq/yozakura/module/combat/BlockHit.java");
         String settings = source("src/main/java/gq/yozakura/module/combat/BlockHitSettings.java");
 
-        assertTrue(settings.contains("\"Manual\", \"Predict\", \"Auto\", \"Lag\""));
-        assertTrue(settings.contains("Require Mouse Down"));
+        assertTrue(settings.contains(
+                "\"Manual\", \"Predict\", \"Auto\", \"Lag\", \"Hypixel\", \"noprehyp\""));
+        assertTrue(settings.contains("Stop Ticks"));
+        assertFalse(settings.contains("Require Mouse Down"));
         assertTrue(settings.contains("Ignore Manual Block"));
         assertTrue(settings.contains("Angle"));
         assertTrue(settings.contains("Distance"));

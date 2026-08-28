@@ -60,6 +60,10 @@ public class KillAura extends Module {
     private static final int AUTOBLOCK_INTERACT = 2;
     private static final int AUTOBLOCK_SWITCH = 3;
     private static final int AUTOBLOCK_BLINK = 4;
+    private static final int AUTOBLOCK_LEGIT = 5;
+    private static final int AUTOBLOCK_FULL_AB = 6;
+    private static final int AUTOBLOCK_BYPASS_ALL = 7;
+    private static final int AUTOBLOCK_HYPIXEL = 8;
     public final ModeProperty mode;
     public final ModeProperty sort;
     public ModeProperty autoBlock;
@@ -98,24 +102,34 @@ public class KillAura extends Module {
     private AttackData attackTarget = null;
     private int switchTick = 0;
     private boolean hitRegistered = false;
-    private boolean blockingState = false;
-    private boolean isBlocking = false;
-    private boolean fakeBlockState = false;
     private long attackDelayMS = 0L;
     private long lastAttackAt = 0L;
-    private long lastBlockAt = 0L;
-    public int blockTick = 0;
-    private boolean blockAnimationActive = false;
-    private int blockAnimationSlot = -1;
     private final Random attackRandom = new Random();
     private boolean attackedThisTick = false;
-    private int spoofSlotPackets = 0;
-    private int spoofSlot = -1;
-    private int autoBlockState = 0;
+    private boolean submittingOwnedAttackPackets = false;
     private boolean manualAttackQueued = false;
+    private final KillAuraConfirmedRotationTracker attackRotationTracker =
+            new KillAuraConfirmedRotationTracker();
+    private final KillAuraRotationController rotationController =
+            new KillAuraRotationController();
     private boolean rotationSmoothActive = false;
     private float smoothYaw = 0.0F;
     private float smoothPitch = 0.0F;
+    private boolean hypixelAnimationBlockPose = false;
+    private int activeAutoBlockMode = AUTOBLOCK_NONE;
+    private static final long OWNED_PACKET_TIMEOUT_MILLIS = 350L;
+    private volatile boolean awaitingOwnedBlockPacket;
+    private volatile boolean awaitingOwnedReleasePacket;
+    private volatile long ownedBlockAwaitStartedAt;
+    private volatile long ownedReleaseAwaitStartedAt;
+    private volatile long ownedBlockWriteId = PacketAcceptedEvent.NO_WRITE_ID;
+    private volatile long ownedReleaseWriteId = PacketAcceptedEvent.NO_WRITE_ID;
+    private final KillAuraAutoBlockController autoBlockController =
+            new KillAuraAutoBlockController();
+    private final KillAuraLeaderAutoBlockCycle leaderAutoBlockCycle =
+            new KillAuraLeaderAutoBlockCycle();
+    private final BlockHitRenderPose hypixelAnimationRenderPose =
+            new BlockHitRenderPose();
 
     public KillAura() {
         super("KillAura", false);
@@ -129,10 +143,13 @@ public class KillAura extends Module {
 
         this.autoBlock = new ModeProperty(
                 "AutoBlock", AUTOBLOCK_NONE,
-                new String[]{"None", "RELEASE", "INTERACT", "SWITCH", "BLINK"}
-        );
+                new String[]{"None", "RELEASE", "INTERACT", "SWITCH", "BLINK", "LEGIT", "FullAB", "BypassAll", "Hypixel"},
+                new String[]{"None", "RELEASE", "INTERACT", "SWITCH", "BLINK", "FullAB", "BypassAll", "Hypixel"}
+        ).addStoredAlias("Hypixel(Without NoSlow)", AUTOBLOCK_FULL_AB)
+                .addStoredAlias("HypixelLag", AUTOBLOCK_HYPIXEL);
         this.autoBlockRequirePress = new BooleanProperty("AutoBlock Require Press", false);
-        this.autoBlockCPS = new IntProperty("AutoBlock Aps", 10, 1, 20);
+        this.autoBlockCPS = new IntProperty("AutoBlock Aps", 10, 1, 20,
+                () -> this.autoBlock.getValue() != AUTOBLOCK_NONE);
         this.autoBlockRange = new FloatProperty("AutoBlock Range", 6.0F, 3.0F, 8.0F);
         this.swingRange = new FloatProperty("Swing Range", 3.5F, 3.0F, 6.0F);
         this.attackRange = new FloatProperty("Attack Range", 3.0F, 3.0F, 6.0F);
@@ -178,23 +195,36 @@ public class KillAura extends Module {
         if (this.attackRandom.nextInt(100) < 5) {
             delay -= 6 + this.attackRandom.nextInt(14);
         }
-        if (this.isBlocking) {
+        if (this.autoBlockController.shouldRenderBlockPose()) {
             delay += this.attackRandom.nextInt(9);
         }
         return Math.max(50L, Math.min(260L, delay));
     }
 
     private boolean performAttack(float yaw, float pitch) {
-        if (YozakuraRuntime.playerStateManager.isDigging()
+        return this.performAttack(yaw, pitch, false);
+    }
+
+    private boolean performAttack(float yaw, float pitch, boolean allowReferenceRelease) {
+        if (this.attackTarget == null
+                || YozakuraRuntime.playerStateManager.isDigging()
                 || YozakuraRuntime.playerStateManager.isPlacing()) {
             return false;
         }
-        if (this.isPlayerBlocking()) {
+        this.releaseStandaloneAutoBlockForAttack();
+        if (this.autoBlockController.isBlocking()
+                || this.autoBlockController.isReleasePending() && !allowReferenceRelease) {
             return false;
         }
-        this.prepareLocalAttackUseState();
-        if ((this.rotations.getValue() != 0 || !this.isBoxInAttackRange(this.attackTarget.getBox()))
-                && RotationUtil.rayTrace(this.attackTarget.getBox(), yaw, pitch, this.attackRange.getValue()) == null) {
+        if (allowReferenceRelease && this.autoBlockController.isReleasePending()) {
+            this.autoBlockController.prepareReferenceAttack();
+        }
+        AxisAlignedBB liveTargetBox = this.getLiveTargetBox();
+        if (liveTargetBox == null || !this.isBoxInAttackRange(liveTargetBox)) {
+            return false;
+        }
+        if ((this.rotations.getValue() != 0 || !this.isBoxInAttackRange(liveTargetBox))
+                && RotationUtil.rayTrace(liveTargetBox, yaw, pitch, this.attackRange.getValue()) == null) {
             return false;
         }
         AttackEvent event = new AttackEvent(this.attackTarget.getEntity());
@@ -203,10 +233,18 @@ public class KillAura extends Module {
             return false;
         }
         this.attackDelayMS = this.getAttackDelay();
-        this.lastAttackAt = System.currentTimeMillis();
-        mc.thePlayer.swingItem();
-        MinecraftAccessor.syncCurrentPlayItem(mc.playerController);
-        PacketUtil.sendPacket(new C02PacketUseEntity(this.attackTarget.getEntity(), Action.ATTACK));
+        this.lastAttackAt = monotonicTimeMillis();
+        this.submittingOwnedAttackPackets = true;
+        try {
+            if (this.shouldKeepReferenceBlockPose()) {
+                PacketUtil.sendPacket(new C0APacketAnimation());
+            } else {
+                mc.thePlayer.swingItem();
+            }
+            PacketUtil.sendPacket(new C02PacketUseEntity(this.attackTarget.getEntity(), Action.ATTACK));
+        } finally {
+            this.submittingOwnedAttackPackets = false;
+        }
         if (mc.playerController.getCurrentGameType() != GameType.SPECTATOR) {
             PlayerUtil.attackEntity(this.attackTarget.getEntity());
         }
@@ -214,144 +252,80 @@ public class KillAura extends Module {
         return true;
     }
 
-    private boolean sendUseItem() {
-        MinecraftAccessor.syncCurrentPlayItem(mc.playerController);
-        return this.startBlock(mc.thePlayer.getHeldItem());
-    }
-    private boolean startBlock(ItemStack itemStack) {
-        if (itemStack == null) {
+    private boolean startBlock() {
+        if (mc.thePlayer == null || mc.theWorld == null || mc.playerController == null) {
+            this.autoBlockController.onBlockStartFailed();
             return false;
         }
-        PacketUtil.sendPacket(new C08PacketPlayerBlockPlacement(itemStack));
-        this.refreshBlockAnimation(itemStack, true);
-        this.blockingState = true;
-        this.lastBlockAt = System.currentTimeMillis();
-        return true;
+        ItemStack itemStack = mc.thePlayer.getHeldItem();
+        if (itemStack == null || !(itemStack.getItem() instanceof ItemSword)) {
+            this.autoBlockController.onBlockStartFailed();
+            return false;
+        }
+        this.awaitingOwnedBlockPacket = true;
+        this.ownedBlockAwaitStartedAt = monotonicTimeMillis();
+        this.ownedBlockWriteId = PacketAcceptedEvent.NO_WRITE_ID;
+        boolean started = mc.playerController.sendUseItem(mc.thePlayer, mc.theWorld, itemStack);
+        if (started) {
+            this.resetBlockItemRenderer();
+        } else {
+            this.awaitingOwnedBlockPacket = false;
+            this.ownedBlockAwaitStartedAt = 0L;
+            this.autoBlockController.onBlockStartFailed();
+        }
+        return started;
     }
 
     private boolean stopBlock() {
-        if (mc.thePlayer == null || !this.isPlayerBlocking()) {
+        if (mc.thePlayer == null || mc.playerController == null) {
+            this.autoBlockController.onBlockStopFailed();
             return false;
         }
-        PacketUtil.sendPacket(new C07PacketPlayerDigging(C07PacketPlayerDigging.Action.RELEASE_USE_ITEM, BlockPos.ORIGIN, EnumFacing.DOWN));
-        this.blockingState = false;
+        this.awaitingOwnedReleasePacket = true;
+        this.ownedReleaseAwaitStartedAt = monotonicTimeMillis();
+        this.ownedReleaseWriteId = PacketAcceptedEvent.NO_WRITE_ID;
+        mc.playerController.onStoppedUsingItem(mc.thePlayer);
         return true;
     }
 
-    private void sendSpoofHeldItemChange(int slot) {
-        this.spoofSlotPackets++;
-        PacketUtil.sendPacket(new C09PacketHeldItemChange(slot));
-    }
-
-    private boolean spoofSlot(boolean allowUi) {
-        if (mc.thePlayer == null || this.spoofSlot >= 0) {
-            return this.spoofSlot >= 0;
-        }
-        if (mc.currentScreen instanceof GuiContainer && !allowUi) {
-            return false;
-        }
-        this.spoofSlot = this.getNearbySpoofSlot();
-        this.sendSpoofHeldItemChange(this.spoofSlot);
-        return true;
-    }
-
-    private int getNearbySpoofSlot() {
-        int current = mc.thePlayer.inventory.currentItem;
-        int right = (current + 1) % 9;
-        int left = (current + 8) % 9;
-        return right != current ? right : left;
-    }
-
-    private void restoreSpoofSlot() {
-        if (mc.thePlayer == null || this.spoofSlot < 0) {
-            return;
-        }
-        this.sendSpoofHeldItemChange(mc.thePlayer.inventory.currentItem);
-        this.spoofSlot = -1;
-    }
-
-    private boolean startExpoBlock() {
-        return this.sendUseItem();
-    }
-
-    private void releaseAutoBlock(boolean sendPacket) {
+    private void releaseAutoBlock(boolean releaseOwnedUse) {
         YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
-        if (sendPacket && mc.thePlayer != null && this.isPlayerBlocking()) {
+        if (releaseOwnedUse && (this.autoBlockController.isBlocking()
+                || this.autoBlockController.isBlockPending()
+                || this.autoBlockController.isReleasePending())) {
             this.stopBlock();
-        } else if (mc.thePlayer != null && this.blockAnimationActive) {
-            this.clearUseAnimation();
         }
-        this.blockingState = false;
-        this.isBlocking = false;
-        this.fakeBlockState = false;
-        this.restoreSpoofSlot();
-        this.blockTick = 0;
-        this.autoBlockState = 0;
-        this.clearBlockAnimationState();
+        this.awaitingOwnedBlockPacket = false;
+        this.awaitingOwnedReleasePacket = false;
+        this.ownedBlockAwaitStartedAt = 0L;
+        this.ownedReleaseAwaitStartedAt = 0L;
+        this.ownedBlockWriteId = PacketAcceptedEvent.NO_WRITE_ID;
+        this.ownedReleaseWriteId = PacketAcceptedEvent.NO_WRITE_ID;
+        this.autoBlockController.reset();
+        this.leaderAutoBlockCycle.reset();
+        this.hypixelAnimationRenderPose.end();
+        this.hypixelAnimationBlockPose = false;
+        this.activeAutoBlockMode = AUTOBLOCK_NONE;
     }
 
-    private void refreshBlockAnimation(ItemStack itemStack, boolean resetRenderer) {
-        if (mc.thePlayer == null || itemStack == null || !(itemStack.getItem() instanceof ItemSword)) {
-            this.clearBlockAnimationState();
-            return;
-        }
-        int slot = mc.thePlayer.inventory.currentItem;
-        boolean resetSlot = !this.blockAnimationActive || this.blockAnimationSlot != slot;
-        if (resetSlot || !mc.thePlayer.isUsingItem()) {
-            mc.thePlayer.setItemInUse(itemStack, itemStack.getMaxItemUseDuration());
-        }
-        if (resetRenderer && (!this.blockAnimationActive || this.blockAnimationSlot != slot)) {
-            this.resetBlockItemRenderer();
-        }
-        this.blockAnimationActive = true;
-        this.blockAnimationSlot = slot;
-    }
-
-    private void maintainBlockAnimation() {
-        if (mc.thePlayer == null) {
-            this.clearBlockAnimationState();
-            return;
-        }
-        if (this.shouldShowBlockAnimation()) {
-            this.refreshBlockAnimation(mc.thePlayer.getHeldItem(), false);
-        } else {
-            this.clearBlockAnimationState();
-        }
-    }
-
-    private boolean shouldShowBlockAnimation() {
-        return ItemUtil.isHoldingSword()
-                && (this.blockingState || this.isBlocking || this.fakeBlockState)
-                && (this.attackTarget != null || target != null);
-    }
-
-    private boolean shouldKeepLocalBlockAnimation() {
-        return mc.thePlayer != null
-                && ItemUtil.isHoldingSword()
-                && (this.isBlocking || this.fakeBlockState)
-                && (this.attackTarget != null || target != null);
+    private boolean shouldKeepReferenceBlockPose() {
+        int mode = this.autoBlock.getValue();
+        return (mode == AUTOBLOCK_LEGIT || mode == AUTOBLOCK_FULL_AB)
+                && this.autoBlockController.shouldRenderBlockPose();
     }
 
     private boolean hasValidTarget() {
         return this.attackTarget != null
                 && this.isValidTarget(this.attackTarget.getEntity())
-                && (this.isBoxInSwingRange(this.attackTarget.getBox()) || this.isBoxInAttackRange(this.attackTarget.getBox()));
+                && (this.isBoxInBlockRange(this.attackTarget.getBox())
+                || this.isBoxInSwingRange(this.attackTarget.getBox())
+                || this.isBoxInAttackRange(this.attackTarget.getBox()));
     }
 
-    private void clearBlockAnimationState() {
-        this.blockAnimationActive = false;
-        this.blockAnimationSlot = -1;
-    }
-
-    private void clearUseAnimation() {
-        if (mc.thePlayer != null) {
-            mc.thePlayer.clearItemInUse();
-        }
-    }
-
-    private void prepareLocalAttackUseState() {
-        if (mc.thePlayer != null && mc.thePlayer.isUsingItem()) {
-            mc.thePlayer.clearItemInUse();
+    private void releaseStandaloneAutoBlockForAttack() {
+        gq.yozakura.module.Module module = gq.yozakura.manager.ModuleManager.getModule("AutoBlock");
+        if (module instanceof AutoBlock && module.getState()) {
+            ((AutoBlock) module).releaseForAttack();
         }
     }
 
@@ -370,21 +344,34 @@ public class KillAura extends Module {
         }
         this.attackDelayMS = 0L;
         this.lastAttackAt = 0L;
-        this.lastBlockAt = 0L;
+        this.submittingOwnedAttackPackets = false;
+        this.attackRotationTracker.clear();
         this.manualAttackQueued = false;
-        this.spoofSlot = -1;
-        this.autoBlockState = 0;
         this.setAttackTarget(null);
     }
 
     private void setAttackTarget(AttackData nextTarget) {
-        if (nextTarget == null) {
+        EntityLivingBase previousEntity = this.attackTarget == null
+                ? null : this.attackTarget.getEntity();
+        EntityLivingBase nextEntity = nextTarget == null ? null : nextTarget.getEntity();
+        if (previousEntity != nextEntity) {
+            this.attackRotationTracker.clear();
             this.resetRotationSmoothing();
-        } else {
+        }
+        if (nextTarget != null) {
             RotationExitState.clearSource("KillAura");
         }
         this.attackTarget = nextTarget;
-        target = nextTarget == null ? null : nextTarget.getEntity();
+        target = nextEntity;
+    }
+
+    private AxisAlignedBB getLiveTargetBox() {
+        if (this.attackTarget == null || this.attackTarget.getEntity() == null) {
+            return null;
+        }
+        EntityLivingBase entity = this.attackTarget.getEntity();
+        float border = entity.getCollisionBorderSize();
+        return entity.getEntityBoundingBox().expand(border, border, border);
     }
 
     private void clearRotations() {
@@ -397,6 +384,7 @@ public class KillAura extends Module {
         this.rotationSmoothActive = false;
         this.smoothYaw = 0.0F;
         this.smoothPitch = 0.0F;
+        this.rotationController.reset();
     }
 
     private boolean requestExitRotation() {
@@ -415,7 +403,7 @@ public class KillAura extends Module {
                 maxStep,
                 smoothFactor,
                 2,
-                this.moveFix.getValue() != 0 || this.rotations.getValue() == 3,
+                this.moveFix.getValue() == 1 || this.rotations.getValue() == 3,
                 false
         );
         return true;
@@ -472,13 +460,8 @@ public class KillAura extends Module {
     private boolean canAutoBlock() {
         if (this.autoBlock.getValue() == AUTOBLOCK_NONE || !ItemUtil.isHoldingSword()) {
             return false;
-        } else {
-            return !this.autoBlockRequirePress.getValue() || PlayerUtil.isUsingItem();
         }
-    }
-
-    private long getBlockInterval() {
-        return Math.max(45L, Math.round(1000.0D / Math.max(1.0D, this.autoBlockCPS.getValue())));
+        return !this.autoBlockRequirePress.getValue() || PlayerUtil.isUsingItem();
     }
 
     private void updateExpoTarget() {
@@ -557,63 +540,237 @@ public class KillAura extends Module {
         return now - this.lastAttackAt >= this.attackDelayMS || this.manualAttackQueued;
     }
 
-    private boolean isBlockReady(long now) {
-        return now - this.lastBlockAt > this.getBlockInterval();
+    private int getAutoBlockCadence() {
+        return this.autoBlockCPS.getValue();
     }
 
-    private boolean shouldSpoofAutoBlockSlot(int mode, boolean attackReady) {
-        return attackReady && (mode == AUTOBLOCK_SWITCH || mode == AUTOBLOCK_BLINK);
+    private void updateAutoBlockBlink(int mode, boolean shouldBlock) {
+        if (mode != AUTOBLOCK_FULL_AB && mode != AUTOBLOCK_HYPIXEL) {
+            YozakuraRuntime.blinkManager.setBlinkState(
+                    shouldBlock && mode == AUTOBLOCK_BLINK,
+                    BlinkModules.AUTO_BLOCK);
+        }
     }
 
-    private void setExpoBlockVisualState(int mode) {
-        this.isBlocking = true;
-        this.fakeBlockState = mode != AUTOBLOCK_RELEASE;
-        this.autoBlockState = this.isPlayerBlocking() ? 1 : 0;
+    private void startReferenceBlink() {
+        YozakuraRuntime.blinkManager.setBlinkState(true, BlinkModules.AUTO_BLOCK);
     }
 
-    private boolean tryExpoAutoBlockAttack(int mode, boolean attackReady, boolean blockReady, float yaw, float pitch) {
-        if (!attackReady || !blockReady || !this.isBoxInSwingRange(this.attackTarget.getBox())) {
+    private void stopReferenceBlink() {
+        YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
+    }
+
+    private long remainingAttackDelay(long now) {
+        if (this.manualAttackQueued) {
+            return 0L;
+        }
+        return Math.max(0L, this.attackDelayMS - Math.max(0L, now - this.lastAttackAt));
+    }
+
+    private boolean interactBlockAfterAttack(float yaw, float pitch) {
+        if (this.attackTarget == null || mc.thePlayer == null || mc.playerController == null) {
             return false;
         }
-
-        boolean spoofed = false;
-        if (this.shouldSpoofAutoBlockSlot(mode, true)) {
-            spoofed = this.spoofSlot(false);
+        MovingObjectPosition hit = RotationUtil.rayTrace(
+                this.attackTarget.getBox(), yaw, pitch, 8.0D);
+        if (hit == null || hit.hitVec == null) {
+            return false;
         }
-        if (this.isPlayerBlocking()) {
+        EntityLivingBase entity = this.attackTarget.getEntity();
+        PacketUtil.sendPacket(new C02PacketUseEntity(entity,
+                new Vec3(hit.hitVec.xCoord - this.attackTarget.getX(),
+                        hit.hitVec.yCoord - this.attackTarget.getY(),
+                        hit.hitVec.zCoord - this.attackTarget.getZ())));
+        PacketUtil.sendPacket(new C02PacketUseEntity(entity, Action.INTERACT));
+        return this.startBlock();
+    }
+
+    private boolean updateLeaderLegitAutoBlockCycle(boolean shouldBlock, boolean canAttackTarget,
+                                                    boolean attackReady, long now,
+                                                    float yaw, float pitch) {
+        if (this.awaitingOwnedBlockPacket || this.awaitingOwnedReleasePacket) {
+            return false;
+        }
+        KillAuraLeaderAutoBlockCycle.LegitStep step = this.leaderAutoBlockCycle.nextLegit(
+                shouldBlock && canAttackTarget,
+                this.autoBlockController.isBlocking(),
+                this.remainingAttackDelay(now),
+                attackReady);
+        switch (step) {
+            case ATTACK_AND_BLOCK:
+                if (!attackReady) {
+                    return false;
+                }
+                boolean attacked = this.performAttack(yaw, pitch);
+                this.leaderAutoBlockCycle.onLegitInitialAttackResult(attacked);
+                if (attacked && !this.autoBlockController.isBlocking()
+                        && !this.autoBlockController.isBlockPending()) {
+                    this.autoBlockController.requestReferenceBlockStart(now);
+                    if (!this.interactBlockAfterAttack(yaw, pitch)) {
+                        this.autoBlockController.onBlockStartFailed();
+                    }
+                }
+                return attacked;
+            case RELEASE_AND_WAIT:
+                this.autoBlockController.requestReferenceRelease(now);
+                this.stopBlock();
+                return false;
+            case RESET:
+                this.stopReferenceBlink();
+                if (this.autoBlockController.isBlocking()
+                        || this.autoBlockController.isBlockPending()
+                        || this.autoBlockController.isReleasePending()) {
+                    this.stopBlock();
+                }
+                this.autoBlockController.reset();
+                return false;
+            case WAIT:
+            default:
+                return false;
+        }
+    }
+
+    private boolean updateHypixelWithoutNoSlowCycle(boolean shouldBlock, boolean canAttackTarget,
+                                                     boolean attackReady, long now,
+                                                     float yaw, float pitch) {
+        this.hypixelAnimationBlockPose = shouldBlock;
+        if (this.awaitingOwnedBlockPacket || this.awaitingOwnedReleasePacket) {
+            return false;
+        }
+        KillAuraLeaderAutoBlockCycle.HypixelStep step = this.leaderAutoBlockCycle.nextHypixel(
+                shouldBlock && canAttackTarget, attackReady);
+        switch (step) {
+            case FLUSH_ATTACK_AND_BLOCK:
+                this.stopReferenceBlink();
+                if (!attackReady) {
+                    return false;
+                }
+                boolean attacked = this.performAttack(yaw, pitch);
+                this.leaderAutoBlockCycle.onHypixelInitialAttackResult(attacked);
+                if (attacked && !this.autoBlockController.isBlocking()
+                        && !this.autoBlockController.isBlockPending()) {
+                    this.autoBlockController.requestReferenceBlockStart(now);
+                    if (!this.interactBlockAfterAttack(yaw, pitch)) {
+                        this.autoBlockController.onBlockStartFailed();
+                    }
+                }
+                return attacked;
+            case WAIT:
+                return false;
+            case BLINK_RELEASE_AND_ATTACK:
+                this.startReferenceBlink();
+                if (this.autoBlockController.isBlocking()) {
+                    this.autoBlockController.requestReferenceRelease(now);
+                    this.stopBlock();
+                }
+                return attackReady && this.performAttack(yaw, pitch, true);
+            case RESET:
+                this.stopReferenceBlink();
+                if (this.autoBlockController.isBlocking()
+                        || this.autoBlockController.isBlockPending()
+                        || this.autoBlockController.isReleasePending()) {
+                    this.stopBlock();
+                }
+                this.autoBlockController.reset();
+                return false;
+            default:
+                return false;
+        }
+    }
+
+    private boolean updateHypixelLagCycle(boolean shouldBlock, boolean canAttackTarget,
+                                         boolean attackReady, long now,
+                                         float yaw, float pitch) {
+        this.hypixelAnimationBlockPose = shouldBlock;
+        if (this.awaitingOwnedBlockPacket || this.awaitingOwnedReleasePacket) {
+            return false;
+        }
+        KillAuraLeaderAutoBlockCycle.HypixelLagStep step = this.leaderAutoBlockCycle.nextHypixelLag(
+                shouldBlock && canAttackTarget,
+                this.autoBlockController.isBlocking(),
+                this.remainingAttackDelay(now),
+                attackReady);
+        switch (step) {
+            case ATTACK_AND_BLOCK:
+                if (!attackReady) {
+                    return false;
+                }
+                boolean attacked = this.performAttack(yaw, pitch);
+                this.leaderAutoBlockCycle.onHypixelLagInitialAttackResult(attacked);
+                if (attacked && !this.autoBlockController.isBlocking()
+                        && !this.autoBlockController.isBlockPending()) {
+                    this.autoBlockController.requestReferenceBlockStart(now);
+                    if (!this.interactBlockAfterAttack(yaw, pitch)) {
+                        this.autoBlockController.onBlockStartFailed();
+                    }
+                }
+                this.stopReferenceBlink();
+                this.startReferenceBlink();
+                return attacked;
+            case RELEASE_AND_SUPPRESS_ATTACK:
+                if (this.autoBlockController.isBlocking()) {
+                    this.autoBlockController.requestReferenceRelease(now);
+                    this.stopBlock();
+                }
+                return false;
+            case FLUSH_AND_WAIT:
+                this.stopReferenceBlink();
+                this.remainingAttackDelay(now);
+                return false;
+            case RESET:
+                this.stopReferenceBlink();
+                if (this.autoBlockController.isBlocking()
+                        || this.autoBlockController.isBlockPending()
+                        || this.autoBlockController.isReleasePending()) {
+                    this.stopBlock();
+                }
+                this.autoBlockController.reset();
+                return false;
+            case WAIT:
+            default:
+                return false;
+        }
+    }
+
+    private boolean updateHypixelAnimationMode(boolean shouldBlock, boolean attackReady,
+                                               float yaw, float pitch) {
+        this.hypixelAnimationBlockPose = shouldBlock;
+        return attackReady && this.performAttack(yaw, pitch);
+    }
+
+    private boolean applyAutoBlockAction(KillAuraAutoBlockController.Action action,
+                                         int mode, long now, float yaw, float pitch) {
+        boolean attacked = false;
+        if (action == KillAuraAutoBlockController.Action.START_BLOCK) {
+            this.startBlock();
+        } else if (action == KillAuraAutoBlockController.Action.RELEASE_FOR_ATTACK
+                || action == KillAuraAutoBlockController.Action.RELEASE) {
             this.stopBlock();
-        }
-
-        boolean attacked = this.performAttack(yaw, pitch);
-        if (attacked) {
-            this.autoBlockState = 2;
-        }
-        if (attacked || !this.isPlayerBlocking()) {
-            boolean started = this.startExpoBlock();
-            if (started) {
-                this.autoBlockState = attacked ? 3 : 1;
-            }
-        }
-        if (spoofed || this.spoofSlot >= 0) {
-            this.restoreSpoofSlot();
+        } else if (action == KillAuraAutoBlockController.Action.ATTACK) {
+            attacked = this.performAttack(yaw, pitch);
+            this.autoBlockController.onAttackResult(attacked, now, this.attackDelayMS);
         }
         return attacked;
     }
 
-    private void maintainExpoAutoBlock(int mode, boolean blockReady, float yaw, float pitch) {
-        YozakuraRuntime.blinkManager.setBlinkState(mode == AUTOBLOCK_BLINK, BlinkModules.AUTO_BLOCK);
-        this.setExpoBlockVisualState(mode);
-        if (!this.isPlayerBlocking() && blockReady) {
-            boolean spoofed = false;
-            if (mode == AUTOBLOCK_SWITCH) {
-                spoofed = this.spoofSlot(false);
-            }
-            if (this.startExpoBlock()) {
-                this.autoBlockState = 1;
-            }
-            if (spoofed || this.spoofSlot >= 0) {
-                this.restoreSpoofSlot();
-            }
+    private static long monotonicTimeMillis() {
+        return System.nanoTime() / 1_000_000L;
+    }
+
+    private void recoverOwnedPacketTimeouts(long now) {
+        if (this.awaitingOwnedBlockPacket
+                && now - this.ownedBlockAwaitStartedAt >= OWNED_PACKET_TIMEOUT_MILLIS) {
+            this.awaitingOwnedBlockPacket = false;
+            this.ownedBlockAwaitStartedAt = 0L;
+            this.ownedBlockWriteId = PacketAcceptedEvent.NO_WRITE_ID;
+            this.autoBlockController.onBlockStartFailed();
+        }
+        if (this.awaitingOwnedReleasePacket
+                && now - this.ownedReleaseAwaitStartedAt >= OWNED_PACKET_TIMEOUT_MILLIS) {
+            this.awaitingOwnedReleasePacket = false;
+            this.ownedReleaseAwaitStartedAt = 0L;
+            this.ownedReleaseWriteId = PacketAcceptedEvent.NO_WRITE_ID;
+            this.autoBlockController.onBlockStopFailed();
         }
     }
 
@@ -635,7 +792,7 @@ public class KillAura extends Module {
                 } else if (TeamUtil.isFriend((EntityPlayer) entityLivingBase)) {
                     return false;
                 } else {
-                    return (!this.teams.getValue() || !TeamUtil.isSameTeam((EntityPlayer) entityLivingBase)) && (!this.botCheck.getValue() || !TeamUtil.isBot((EntityPlayer) entityLivingBase));
+                    return (!this.teams.getValue() || !TeamUtil.isSameTeam((EntityPlayer) entityLivingBase)) && (!this.botCheck.getValue() || !AntiBot.isServerBot(entityLivingBase));
                 }
             } else if (entityLivingBase instanceof EntityDragon || entityLivingBase instanceof EntityWither) {
                 return this.bosses.getValue();
@@ -666,6 +823,10 @@ public class KillAura extends Module {
 
     private boolean isInBlockRange(EntityLivingBase entityLivingBase) {
         return RotationUtil.distanceToEntity(entityLivingBase) <= (double) this.autoBlockRange.getValue();
+    }
+
+    private boolean isBoxInBlockRange(AxisAlignedBB axisAlignedBB) {
+        return RotationUtil.distanceToBox(axisAlignedBB) <= (double) this.autoBlockRange.getValue();
     }
 
     private boolean isInSwingRange(EntityLivingBase entityLivingBase) {
@@ -708,11 +869,10 @@ public class KillAura extends Module {
     }
 
     public boolean shouldAutoBlock() {
-        if (this.isPlayerBlocking() && this.isBlocking) {
-            return !mc.thePlayer.isInWater() && !mc.thePlayer.isInLava();
-        } else {
-            return false;
-        }
+        return mc.thePlayer != null
+                && this.autoBlockController.isBlocking()
+                && !mc.thePlayer.isInWater()
+                && !mc.thePlayer.isInLava();
     }
 
     public boolean canReduceVelocityAttack() {
@@ -720,144 +880,269 @@ public class KillAura extends Module {
     }
 
     public boolean isBlocking() {
-        return this.fakeBlockState && ItemUtil.isHoldingSword();
+        return ItemUtil.isHoldingSword()
+                && (this.hypixelAnimationBlockPose || this.autoBlockController.shouldRenderBlockPose());
     }
 
     public boolean isPlayerBlocking() {
-        return this.blockingState && ItemUtil.isHoldingSword();
+        return ItemUtil.isHoldingSword() && this.autoBlockController.isBlocking();
+    }
+
+    private boolean shouldCancelBlockInput() {
+        return ItemUtil.isHoldingSword() && this.autoBlockController.shouldRenderBlockPose();
+    }
+
+    @EventTarget(Priority.HIGHEST)
+    public void onRenderTickStart(RenderTickStartEvent event) {
+        if (event != null && this.isEnabled() && this.hypixelAnimationBlockPose) {
+            this.hypixelAnimationRenderPose.begin(mc.thePlayer);
+        }
+    }
+
+    @EventTarget(Priority.LOWEST)
+    public void onRenderTickEnd(RenderTickEndEvent event) {
+        this.hypixelAnimationRenderPose.end();
     }
 
     @EventTarget(Priority.LOW)
     public void onUpdate(UpdateEvent event) {
-        if (!this.isEnabled()) {
+        if (!this.isEnabled() || event == null) {
             return;
         }
         if (mc.thePlayer == null || mc.theWorld == null) {
             this.resetCombatState();
             return;
         }
-        if (event.getType() == EventType.PRE) {
-            RotationDebug.setSourceEnabled("KillAura", this.rotationDebug.getValue());
+        if (event.getType() == EventType.POST) {
             this.attackedThisTick = false;
-            this.updateExpoTarget();
+            return;
+        }
+        if (event.getType() != EventType.PRE) {
+            return;
+        }
 
-            boolean attack = this.attackTarget != null && this.canAttack() && this.hasValidTarget();
-            boolean block = attack && this.canAutoBlock();
-            long now = System.currentTimeMillis();
-            if (!block) {
-                if (this.blockingState || this.isBlocking || this.fakeBlockState) {
-                    this.releaseAutoBlock(this.blockingState && this.isPlayerBlocking());
-                } else {
-                    YozakuraRuntime.blinkManager.setBlinkState(false, BlinkModules.AUTO_BLOCK);
-                    this.blockTick = 0;
-                }
-            }
-            if (!attack) {
-                this.clearRotations();
-                this.manualAttackQueued = false;
-            }
-            if (attack) {
-                int autoBlockMode = this.autoBlock.getValue();
-                boolean attackReady = this.isAttackReady(now) && this.isBoxInSwingRange(this.attackTarget.getBox());
-                boolean blockReady = !block || this.isBlockReady(now);
-                float yaw = event.getNewYaw();
-                float pitch = event.getNewPitch();
+        RotationDebug.setSourceEnabled("KillAura", this.rotationDebug.getValue());
+        this.attackedThisTick = false;
+        this.updateExpoTarget();
 
-                if (this.isBoxInSwingRange(this.attackTarget.getBox())) {
-                    if (this.rotations.getValue() == 2 || this.rotations.getValue() == 3) {
-                        float[] rotations = this.calculateTargetRotations(event);
-                        if (event.trySetRotation(rotations[0], rotations[1], 1)) {
-                            VisualRotationState.publish("KillAura", rotations[0], rotations[1], 1);
-                            if (this.rotations.getValue() == 3) {
-                                YozakuraRuntime.rotationManager.setRotation(rotations[0], rotations[1], 1, true);
-                            }
-                            if (this.moveFix.getValue() != 0 || this.rotations.getValue() == 3) {
-                                event.setPervRotation(rotations[0], 1);
-                            }
-                            yaw = rotations[0];
-                            pitch = rotations[1];
-                        }
-                    }
+        boolean targetPresent = this.attackTarget != null && this.hasValidTarget();
+        boolean shouldBlock = targetPresent && this.canAutoBlock()
+                && this.isBoxInBlockRange(this.attackTarget.getBox());
+        boolean canAttackTarget = targetPresent && this.canAttack()
+                && this.isBoxInSwingRange(this.attackTarget.getBox())
+                && this.isBoxInAttackRange(this.attackTarget.getBox());
+        long now = monotonicTimeMillis();
+        this.recoverOwnedPacketTimeouts(now);
+        int autoBlockMode = this.autoBlock.getValue();
 
-                    if (block) {
-                        if (attackReady && blockReady) {
-                            this.attackedThisTick = this.tryExpoAutoBlockAttack(autoBlockMode, true, true, yaw, pitch);
-                        } else {
-                            this.maintainExpoAutoBlock(autoBlockMode, blockReady, yaw, pitch);
-                        }
-                    } else if (attackReady) {
-                        this.attackedThisTick = this.performAttack(yaw, pitch);
-                    }
+        if (this.activeAutoBlockMode != autoBlockMode) {
+            this.releaseAutoBlock(true);
+            this.activeAutoBlockMode = autoBlockMode;
+        }
+        this.updateAutoBlockBlink(autoBlockMode, shouldBlock);
+
+        if (!targetPresent) {
+            this.clearRotations();
+            this.attackRotationTracker.clear();
+            this.manualAttackQueued = false;
+        }
+
+        boolean silentRotation = this.rotations.getValue() == 2 || this.rotations.getValue() == 3;
+        this.attackRotationTracker.drain(this.isEnabled(), silentRotation);
+        KillAuraConfirmedRotationTracker.Rotation confirmedRotation =
+                this.attackRotationTracker.getConfirmed();
+        float yaw = event.getNewYaw();
+        float pitch = event.getNewPitch();
+        boolean rotationClaimedThisTick = false;
+        if (targetPresent && this.isBoxInSwingRange(this.attackTarget.getBox())
+                && silentRotation) {
+            float[] rotations = this.calculateTargetRotations(event);
+            if (event.trySetRotation(rotations[0], rotations[1], 1)) {
+                VisualRotationState.publish("KillAura", rotations[0], rotations[1], 1);
+                if (this.rotations.getValue() == 3) {
+                    YozakuraRuntime.rotationManager.setRotation(rotations[0], rotations[1], 1, true);
                 }
-                if (attackReady) {
-                    this.manualAttackQueued = false;
+                if (this.moveFix.getValue() == 1) {
+                    event.setPervRotation(rotations[0], 1);
+                } else if (this.moveFix.getValue() == 2 || this.rotations.getValue() == 3) {
+                    event.setPervRotation(rotations[0], 1, false);
                 }
+                this.commitTargetRotations(rotations);
+                yaw = rotations[0];
+                pitch = rotations[1];
+                rotationClaimedThisTick = true;
+                this.attackRotationTracker.claim(rotations[0], rotations[1]);
             }
         }
-        if (event.getType() == EventType.POST){
-            this.maintainBlockAnimation();
-            this.attackedThisTick = false;
+        if (silentRotation && confirmedRotation != null) {
+            yaw = confirmedRotation.yaw;
+            pitch = confirmedRotation.pitch;
+        }
+        boolean attackReady = canAttackTarget && this.isAttackReady(now)
+                && (!silentRotation || rotationClaimedThisTick && confirmedRotation != null);
+        if (autoBlockMode == AUTOBLOCK_LEGIT) {
+            this.attackedThisTick = this.updateLeaderLegitAutoBlockCycle(
+                    shouldBlock, canAttackTarget, attackReady, now, yaw, pitch);
+        } else if (autoBlockMode == AUTOBLOCK_FULL_AB) {
+            this.attackedThisTick = this.updateHypixelWithoutNoSlowCycle(
+                    shouldBlock, canAttackTarget, attackReady, now, yaw, pitch);
+        } else if (autoBlockMode == AUTOBLOCK_BYPASS_ALL) {
+            this.attackedThisTick = this.updateHypixelAnimationMode(shouldBlock, attackReady, yaw, pitch);
+        } else if (autoBlockMode == AUTOBLOCK_HYPIXEL) {
+            this.attackedThisTick = this.updateHypixelLagCycle(
+                    shouldBlock, canAttackTarget, attackReady, now, yaw, pitch);
+        } else if (shouldBlock) {
+            KillAuraAutoBlockController.Action action = this.autoBlockController.update(
+                    now, true, canAttackTarget, attackReady,
+                    this.getAutoBlockCadence());
+            this.attackedThisTick = this.applyAutoBlockAction(
+                    action, autoBlockMode, now, yaw, pitch);
+        } else {
+            KillAuraAutoBlockController.Action action = this.autoBlockController.update(
+                    now, false, false, false, this.getAutoBlockCadence());
+            this.applyAutoBlockAction(action, autoBlockMode, now, yaw, pitch);
+            if (canAttackTarget && attackReady) {
+                this.attackedThisTick = this.performAttack(yaw, pitch);
+            }
+        }
+
+        if (this.attackedThisTick) {
+            this.manualAttackQueued = false;
         }
     }
 
     private float[] calculateTargetRotations(UpdateEvent event) {
-        if (!this.rotationSmoothActive) {
-            this.smoothYaw = event.getNewYaw();
-            this.smoothPitch = event.getNewPitch();
-            this.rotationSmoothActive = true;
-        }
-        float smoothFactor = Math.max(0.20F, (float) this.smoothing.getValue() / 100.0F);
-        float[] rotations = RotationUtil.getRotationsToBox(
-                this.attackTarget.getBox(),
-                this.smoothYaw,
-                this.smoothPitch,
-                (float) this.angleStep.getValue() + RandomUtil.nextFloat(-5.0F, 5.0F),
-                smoothFactor
-        );
+        float sourceYaw = this.rotationSmoothActive ? this.smoothYaw : event.getYaw();
+        float sourcePitch = this.rotationSmoothActive ? this.smoothPitch : event.getPitch();
+        AxisAlignedBB box = this.attackTarget.getBox();
+        Vec3 eye = mc.thePlayer.getPositionEyes(1.0F);
+        KillAuraAimPoint.Point point = KillAuraAimPoint.closest(
+                eye.xCoord, eye.yCoord, eye.zCoord,
+                box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
+        double deltaX = point.getX() - eye.xCoord;
+        double deltaY = point.getY() - eye.yCoord;
+        double deltaZ = point.getZ() - eye.zCoord;
+        double horizontalDistance = Math.sqrt(deltaX * deltaX + deltaZ * deltaZ);
+        float targetYaw = (float) Math.toDegrees(Math.atan2(deltaZ, deltaX)) - 90.0F;
+        float targetPitch = MathHelper.clamp_float(
+                (float) -Math.toDegrees(Math.atan2(deltaY, horizontalDistance)), -90.0F, 90.0F);
+        KillAuraRotationController.Rotation controlled = rotationController.step(
+                sourceYaw, sourcePitch, targetYaw, targetPitch,
+                this.angleStep.getValue(), this.smoothing.getValue());
+        float sensitivity = mc.gameSettings.mouseSensitivity;
+        return new float[]{
+                KillAuraRotationQuantizer.quantizeYaw(sourceYaw, controlled.getYaw(), sensitivity),
+                KillAuraRotationQuantizer.quantizePitch(sourcePitch, controlled.getPitch(), sensitivity)
+        };
+    }
+
+    private void commitTargetRotations(float[] rotations) {
         this.smoothYaw = rotations[0];
-        this.smoothPitch = MathHelper.clamp_float(rotations[1], -90.0F, 90.0F);
-        return new float[]{this.smoothYaw, this.smoothPitch};
+        this.smoothPitch = rotations[1];
+        this.rotationSmoothActive = true;
     }
 
     @EventTarget
     public void onTick(TickEvent event) {
-        if (this.isEnabled()) {
-            if (mc.thePlayer == null || mc.theWorld == null) {
-                this.resetCombatState();
-            }
+        if ((mc.thePlayer == null || mc.theWorld == null) && this.isEnabled()) {
+            this.resetCombatState();
         }
     }
 
     @EventTarget(Priority.LOWEST)
     public void onPacket(PacketEvent event) {
-        if (this.isEnabled() && !event.isCancelled() && mc.thePlayer != null) {
-            if (event.getPacket() instanceof C07PacketPlayerDigging) {
-                C07PacketPlayerDigging packet = (C07PacketPlayerDigging) event.getPacket();
-                if (packet.getStatus() == C07PacketPlayerDigging.Action.RELEASE_USE_ITEM) {
-                    this.blockingState = false;
-                    if (!this.shouldKeepLocalBlockAnimation()) {
-                        this.clearUseAnimation();
-                        this.clearBlockAnimationState();
-                    }
-                }
+        if (!this.isEnabled() || event == null || mc.thePlayer == null) {
+            return;
+        }
+        if (event.isCancelled()) {
+            if (this.awaitingOwnedBlockPacket && isUseItemPacket(event.getPacket())) {
+                this.awaitingOwnedBlockPacket = false;
+                this.ownedBlockAwaitStartedAt = 0L;
+                this.autoBlockController.onBlockStartFailed();
+            } else if (this.awaitingOwnedReleasePacket && isReleaseUsePacket(event.getPacket())) {
+                this.awaitingOwnedReleasePacket = false;
+                this.ownedReleaseAwaitStartedAt = 0L;
+                this.autoBlockController.onBlockStopFailed();
             }
-            if (event.getPacket() instanceof C09PacketHeldItemChange) {
-                if (this.spoofSlotPackets > 0) {
-                    this.spoofSlotPackets--;
-                    return;
-                }
-                this.blockingState = false;
-                if (this.isBlocking) {
-                    this.clearUseAnimation();
-                }
-                this.clearBlockAnimationState();
+            return;
+        }
+        if (event.getPacket() instanceof C09PacketHeldItemChange) {
+            this.releaseAutoBlock(true);
+        }
+    }
+
+    @EventTarget(Priority.LOWEST)
+    public void onPlayerPacketBoundary(PlayerPacketBoundaryEvent event) {
+        if (event == null) {
+            return;
+        }
+        this.attackRotationTracker.acceptBoundary(
+                event.isPacketAccepted(), event.isRotated(), event.getYaw(), event.getPitch());
+    }
+
+    @EventTarget(Priority.LOWEST)
+    public void onPacketAccepted(PacketAcceptedEvent event) {
+        if (event == null) {
+            return;
+        }
+        if (this.submittingOwnedAttackPackets && isOwnedAttackActionPacket(event.getPacket())) {
+            event.requestStrictOriginalPacketOrder();
+        }
+        if (this.awaitingOwnedBlockPacket && isUseItemPacket(event.getPacket())) {
+            this.awaitingOwnedBlockPacket = false;
+            this.ownedBlockAwaitStartedAt = 0L;
+            this.ownedBlockWriteId = event.getWriteId();
+            this.autoBlockController.onBlockStarted();
+            return;
+        }
+        if (this.awaitingOwnedReleasePacket && isReleaseUsePacket(event.getPacket())) {
+            this.awaitingOwnedReleasePacket = false;
+            this.ownedReleaseAwaitStartedAt = 0L;
+            this.ownedReleaseWriteId = event.getWriteId();
+            this.autoBlockController.onBlockStopped();
+        }
+    }
+
+    @EventTarget(Priority.LOWEST)
+    public void onPacketWritten(PacketWriteEvent event) {
+        if (event == null || !event.isPacketAccepted()) {
+            return;
+        }
+        if (event.getWriteId() == this.ownedBlockWriteId) {
+            this.ownedBlockWriteId = PacketAcceptedEvent.NO_WRITE_ID;
+            if (!event.isSuccess()) {
+                this.autoBlockController.onBlockWriteFailed();
+            }
+            return;
+        }
+        if (event.getWriteId() == this.ownedReleaseWriteId) {
+            this.ownedReleaseWriteId = PacketAcceptedEvent.NO_WRITE_ID;
+            if (!event.isSuccess()) {
+                this.autoBlockController.onReleaseWriteFailed();
             }
         }
     }
 
+    private static boolean isOwnedAttackActionPacket(net.minecraft.network.Packet<?> packet) {
+        return packet instanceof C0APacketAnimation
+                || packet instanceof C02PacketUseEntity
+                && ((C02PacketUseEntity) packet).getAction() == Action.ATTACK;
+    }
+
+    private static boolean isUseItemPacket(net.minecraft.network.Packet<?> packet) {
+        return packet instanceof C08PacketPlayerBlockPlacement
+                && ((C08PacketPlayerBlockPlacement) packet).getPlacedBlockDirection() == 255;
+    }
+
+    private static boolean isReleaseUsePacket(net.minecraft.network.Packet<?> packet) {
+        return packet instanceof C07PacketPlayerDigging
+                && ((C07PacketPlayerDigging) packet).getStatus()
+                == C07PacketPlayerDigging.Action.RELEASE_USE_ITEM;
+    }
+
     @EventTarget
     public void onLeftClick(LeftClickMouseEvent event) {
-        if (this.isBlocking) {
+        if (this.shouldCancelBlockInput()) {
             event.setCancelled(true);
         } else {
             if (this.isEnabled() && this.attackTarget != null && this.canAttack()) {
@@ -869,7 +1154,7 @@ public class KillAura extends Module {
 
     @EventTarget
     public void onRightClick(RightClickMouseEvent event) {
-        if (this.isBlocking) {
+        if (this.shouldCancelBlockInput()) {
             event.setCancelled(true);
         } else {
             if (this.isEnabled() && this.attackTarget != null && this.canAttack()) {
@@ -880,7 +1165,7 @@ public class KillAura extends Module {
 
     @EventTarget
     public void onHitBlock(HitBlockEvent event) {
-        if (this.isBlocking) {
+        if (this.shouldCancelBlockInput()) {
             event.setCancelled(true);
         } else {
             if (this.isEnabled() && this.attackTarget != null && this.canAttack()) {
@@ -891,7 +1176,7 @@ public class KillAura extends Module {
 
     @EventTarget
     public void onCancelUse(CancelUseEvent event) {
-        if (this.isBlocking) {
+        if (this.shouldCancelBlockInput()) {
             event.setCancelled(true);
         }
     }
@@ -905,12 +1190,20 @@ public class KillAura extends Module {
         this.hitRegistered = false;
         this.attackDelayMS = 0L;
         this.lastAttackAt = 0L;
-        this.lastBlockAt = 0L;
-        this.blockTick = 0;
+        this.attackedThisTick = false;
         this.manualAttackQueued = false;
-        this.spoofSlot = -1;
-        this.autoBlockState = 0;
-        this.clearBlockAnimationState();
+        this.attackRotationTracker.clear();
+        this.hypixelAnimationRenderPose.end();
+        this.hypixelAnimationBlockPose = false;
+        this.activeAutoBlockMode = AUTOBLOCK_NONE;
+        this.awaitingOwnedBlockPacket = false;
+        this.awaitingOwnedReleasePacket = false;
+        this.ownedBlockAwaitStartedAt = 0L;
+        this.ownedReleaseAwaitStartedAt = 0L;
+        this.ownedBlockWriteId = PacketAcceptedEvent.NO_WRITE_ID;
+        this.ownedReleaseWriteId = PacketAcceptedEvent.NO_WRITE_ID;
+        this.autoBlockController.reset();
+        this.leaderAutoBlockCycle.reset();
     }
 
     @Override

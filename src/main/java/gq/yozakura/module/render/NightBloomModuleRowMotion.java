@@ -5,7 +5,7 @@ import gq.yozakura.util.animation.MotionValue;
 /**
  * Retains one Night Bloom ArrayList row while it enters, exits, and moves during a reorder.
  */
-final class NightBloomModuleRowMotion {
+public final class NightBloomModuleRowMotion {
     static final float VISIBILITY_DURATION_SECONDS = 0.16F;
     static final float REORDER_DURATION_SECONDS = 0.20F;
 
@@ -40,7 +40,7 @@ final class NightBloomModuleRowMotion {
         return visibility.getTarget() == 0.0F && visibility.get() <= 0.01F;
     }
 
-    static final class Snapshot {
+    public static final class Snapshot {
         private final float visibility;
         private final float y;
 
@@ -49,11 +49,11 @@ final class NightBloomModuleRowMotion {
             this.y = y;
         }
 
-        float getVisibility() {
+        public float getVisibility() {
             return visibility;
         }
 
-        float getY() {
+        public float getY() {
             return y;
         }
     }

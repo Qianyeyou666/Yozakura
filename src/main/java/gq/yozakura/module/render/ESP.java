@@ -12,12 +12,14 @@ import gq.yozakura.module.combat.AntiBot;
 import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.engine.render.ui.VisualPalette;
 import gq.yozakura.util.color.ColorUtil;
+import gq.yozakura.util.render.RectBatcher;
 import gq.yozakura.util.render.RenderUtil;
 import gq.yozakura.util.render.ScreenSpaceGlowRenderer;
 import gq.yozakura.value.Mode;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
 import net.minecraft.client.gui.ScaledResolution;
+import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.monster.EntityMob;
@@ -51,6 +53,7 @@ public class ESP extends Module {
         FILLED,
         BOTH,
         GLOWESP,
+        BODY_GLOW,
         TWO_D,
         TWO_D_CORNERS,
         TWO_D_HALF_CORNERS
@@ -84,10 +87,38 @@ public class ESP extends Module {
             0.88D, 0.20D, 1.0D, 0.02D);
     private final Numbers<Double> lineWidth = new Numbers<Double>("Line Width", "LineWidth", 1.0D, 0.5D, 3.0D, 0.5D);
     private final List<OverlayEntry> overlayEntries = new ArrayList<OverlayEntry>();
+    /**
+     * Batches the axis-aligned solid rectangles emitted by
+     * {@link #drawRectangleBorder}, {@link #drawCorner} and the two rect draws
+     * inside {@link #drawHealthBar} across the whole {@link #renderOverlayEntries}
+     * loop. Without batching each rect pays for a full
+     * {@code GLStateManager.begin2D/end2D} pair (glPushAttrib + glPushMatrix +
+     * syncToCurrent's 7 glGet* queries); with ~14 rects/entity * 30 entities
+     * that is 420+ state syncs/frame. The batcher amortizes that to exactly one
+     * begin/end pair per frame plus one glBegin/glEnd per color bucket.
+     */
+    private final RectBatcher rectBatcher = new RectBatcher();
+    /**
+     * Reused while projecting the eight corners of one entity's world box.
+     * The final visible entity still owns one immutable Bounds instance, while
+     * intermediate points no longer allocate a float[][] plus eight float[].
+     */
+    private final EspOverlayGeometry.BoundsAccumulator projectionBounds =
+            new EspOverlayGeometry.BoundsAccumulator();
+    /**
+     * Per-frame scale factor cache. Historically {@code project()} called
+     * {@code new ScaledResolution(mc)} for every projected vertex (8× per entity),
+     * and ScaledResolution's constructor re-reads displayWidth/Height + framebuffer
+     * and re-runs the GUI-scale computation. On a 50-entity ESP frame that is 400
+     * redundant constructions/frame. The value cannot change mid-frame, so we
+     * refresh it once at the top of {@link #collectOverlayEntries(float)}.
+     */
+    private int cachedScaleFactor = 1;
 
     public ESP() {
         super("ESP", Keyboard.KEY_NONE, ModuleType.Render, "Draw entity boxes");
-        glowStrength.visibleWhen(() -> boxMode.getValue() == EspBoxMode.GLOWESP);
+        glowStrength.visibleWhen(() -> boxMode.getValue() == EspBoxMode.GLOWESP
+                || boxMode.getValue() == EspBoxMode.BODY_GLOW);
         distanceFade.visibleWhen(this::is2DMode);
         nameTags.visibleWhen(this::is2DMode);
         healthBarGlow.visibleWhen(() -> Boolean.TRUE.equals(healthBar.getValue()));
@@ -106,7 +137,8 @@ public class ESP extends Module {
 
     @SubscribeEvent
     public void onWorld(RenderWorldLastEvent event) {
-        if (!isInGame()) {
+        if (!isInGame() || isClickGuiOpen()) {
+            overlayEntries.clear();
             return;
         }
 
@@ -119,8 +151,8 @@ public class ESP extends Module {
         if (is2DMode()) {
             return;
         }
-        if (currentMode == EspBoxMode.GLOWESP) {
-            renderScreenSpaceGlow(event.partialTicks);
+        if (currentMode == EspBoxMode.GLOWESP || currentMode == EspBoxMode.BODY_GLOW) {
+            renderScreenSpaceGlow(event.partialTicks, currentMode == EspBoxMode.BODY_GLOW);
             return;
         }
         int renderType = getRenderType();
@@ -151,7 +183,7 @@ public class ESP extends Module {
 
     @SubscribeEvent
     public void onRenderNameTag(RenderLivingEvent.Specials.Pre event) {
-        if (!isInGame() || !is2DMode() || !Boolean.TRUE.equals(nameTags.getValue())
+        if (!isInGame() || isClickGuiOpen() || !is2DMode() || !Boolean.TRUE.equals(nameTags.getValue())
                 || !(event.entity instanceof EntityLivingBase)) {
             return;
         }
@@ -160,9 +192,9 @@ public class ESP extends Module {
         }
     }
 
-    private void renderScreenSpaceGlow(float partialTicks) {
+    private void renderScreenSpaceGlow(float partialTicks, boolean fillCore) {
         ScreenSpaceGlowRenderer renderer = ScreenSpaceGlowRenderer.shared();
-        renderer.beginFrame(ClickGUI.currentPalette(), glowStrength.getValue().floatValue());
+        renderer.beginFrame(ClickGUI.currentPalette(), glowStrength.getValue().floatValue(), fillCore);
         try {
             for (Object object : mc.theWorld.loadedEntityList) {
                 if (!(object instanceof EntityLivingBase)) {
@@ -180,6 +212,10 @@ public class ESP extends Module {
                 renderer.discard();
             }
         }
+    }
+
+    private void renderScreenSpaceGlow(float partialTicks) {
+        renderScreenSpaceGlow(partialTicks, false);
     }
 
     private boolean isValidTarget(EntityLivingBase entity) {
@@ -208,6 +244,10 @@ public class ESP extends Module {
 
     private void collectOverlayEntries(float partialTicks) {
         overlayEntries.clear();
+        // Refresh the per-frame scale factor once here; project() then reads
+        // cachedScaleFactor instead of constructing a fresh ScaledResolution
+        // per vertex. See field doc on cachedScaleFactor for the rationale.
+        cachedScaleFactor = new ScaledResolution(mc).getScaleFactor();
         if (!captureProjectionState()) {
             return;
         }
@@ -254,47 +294,55 @@ public class ESP extends Module {
         double interpolatedY = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks;
         double interpolatedZ = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * partialTicks;
         AxisAlignedBB rawBox = entity.getEntityBoundingBox();
-        AxisAlignedBB box = new AxisAlignedBB(
-                rawBox.minX - entity.posX + interpolatedX - 0.05D,
-                rawBox.minY - entity.posY + interpolatedY,
-                rawBox.minZ - entity.posZ + interpolatedZ - 0.05D,
-                rawBox.maxX - entity.posX + interpolatedX + 0.05D,
-                rawBox.maxY - entity.posY + interpolatedY + 0.10D,
-                rawBox.maxZ - entity.posZ + interpolatedZ + 0.05D);
+        double minX = rawBox.minX - entity.posX + interpolatedX - 0.05D;
+        double minY = rawBox.minY - entity.posY + interpolatedY;
+        double minZ = rawBox.minZ - entity.posZ + interpolatedZ - 0.05D;
+        double maxX = rawBox.maxX - entity.posX + interpolatedX + 0.05D;
+        double maxY = rawBox.maxY - entity.posY + interpolatedY + 0.10D;
+        double maxZ = rawBox.maxZ - entity.posZ + interpolatedZ + 0.05D;
         double viewerX = mc.getRenderManager().viewerPosX;
         double viewerY = mc.getRenderManager().viewerPosY;
         double viewerZ = mc.getRenderManager().viewerPosZ;
-        float[][] points = new float[][]{
-                project(box.minX - viewerX, box.minY - viewerY, box.minZ - viewerZ),
-                project(box.minX - viewerX, box.minY - viewerY, box.maxZ - viewerZ),
-                project(box.minX - viewerX, box.maxY - viewerY, box.minZ - viewerZ),
-                project(box.minX - viewerX, box.maxY - viewerY, box.maxZ - viewerZ),
-                project(box.maxX - viewerX, box.minY - viewerY, box.minZ - viewerZ),
-                project(box.maxX - viewerX, box.minY - viewerY, box.maxZ - viewerZ),
-                project(box.maxX - viewerX, box.maxY - viewerY, box.minZ - viewerZ),
-                project(box.maxX - viewerX, box.maxY - viewerY, box.maxZ - viewerZ)
-        };
-        return EspOverlayGeometry.bounds(points);
+        projectionBounds.reset();
+        if (!project(minX - viewerX, minY - viewerY, minZ - viewerZ)
+                || !project(minX - viewerX, minY - viewerY, maxZ - viewerZ)
+                || !project(minX - viewerX, maxY - viewerY, minZ - viewerZ)
+                || !project(minX - viewerX, maxY - viewerY, maxZ - viewerZ)
+                || !project(maxX - viewerX, minY - viewerY, minZ - viewerZ)
+                || !project(maxX - viewerX, minY - viewerY, maxZ - viewerZ)
+                || !project(maxX - viewerX, maxY - viewerY, minZ - viewerZ)
+                || !project(maxX - viewerX, maxY - viewerY, maxZ - viewerZ)) {
+            return null;
+        }
+        return projectionBounds.toBounds();
     }
 
-    private float[] project(double x, double y, double z) {
+    private boolean project(double x, double y, double z) {
         PROJECTED_POINT.clear();
         MODEL_VIEW.rewind();
         PROJECTION.rewind();
         VIEWPORT.rewind();
         if (!GLU.gluProject((float) x, (float) y, (float) z, MODEL_VIEW, PROJECTION, VIEWPORT, PROJECTED_POINT)) {
-            return null;
+            return false;
         }
-        int scaleFactor = new ScaledResolution(mc).getScaleFactor();
-        return new float[]{PROJECTED_POINT.get(0) / scaleFactor,
-                (mc.displayHeight - PROJECTED_POINT.get(1)) / scaleFactor, PROJECTED_POINT.get(2)};
+        // Use the per-frame cached scale factor instead of constructing a
+        // ScaledResolution on every vertex. Refresh happens once at the top of
+        // collectOverlayEntries(). Guards against a stale value (e.g. if project()
+        // is ever called outside the collectOverlayEntries path) by falling back
+        // to a fresh ScaledResolution when cachedScaleFactor <= 0.
+        int scaleFactor = cachedScaleFactor > 0
+                ? cachedScaleFactor
+                : new ScaledResolution(mc).getScaleFactor();
+        return projectionBounds.include(PROJECTED_POINT.get(0) / scaleFactor,
+                (mc.displayHeight - PROJECTED_POINT.get(1)) / scaleFactor, PROJECTED_POINT.get(2));
     }
 
     private void renderOverlayEntries() {
         boolean shouldDraw2DBox = is2DMode();
         boolean shouldDrawHealthBar = Boolean.TRUE.equals(healthBar.getValue());
         boolean shouldGlowHealthBar = shouldDrawHealthBar && Boolean.TRUE.equals(healthBarGlow.getValue());
-        if (!isInGame() || (!shouldDraw2DBox && !shouldDrawHealthBar) || overlayEntries.isEmpty()) {
+        if (!isInGame() || isClickGuiOpen()
+                || (!shouldDraw2DBox && !shouldDrawHealthBar) || overlayEntries.isEmpty()) {
             return;
         }
         GlowRenderer glowRenderer = shouldGlowHealthBar ? RenderServices.glow() : null;
@@ -303,29 +351,39 @@ public class ESP extends Module {
             glowRenderer.beginFrame();
         }
         try {
-            for (OverlayEntry entry : overlayEntries) {
-                if (entry.entity.isDead || entry.entity.deathTime > 0) {
-                    continue;
-                }
-                int color = EspOverlayGeometry.applyOpacity(getColor(entry.entity, 0), entry.opacity);
-                if (shouldDraw2DBox) {
-                    draw2DBox(entry.bounds, color, entry.opacity);
-                }
-                if (shouldDrawHealthBar) {
-                    drawHealthBar(entry, glowRenderer);
-                }
-                if (shouldDraw2DBox && Boolean.TRUE.equals(nameTags.getValue())
-                        && !isStandaloneNameTagsEnabled()) {
-                    drawCenteredText(entry.entity.getDisplayName().getFormattedText(), entry.bounds.minX,
-                            entry.bounds.maxX, entry.bounds.minY - mc.fontRendererObj.FONT_HEIGHT - 3.0f, entry.opacity, true);
-                }
-                if (shouldDraw2DBox && Boolean.TRUE.equals(heldItem.getValue())) {
-                    ItemStack stack = entry.entity.getHeldItem();
-                    if (stack != null) {
-                        drawCenteredText(stack.getDisplayName(), entry.bounds.minX, entry.bounds.maxX,
-                                entry.bounds.maxY + 3.0f, entry.opacity, false);
+            // All axis-aligned solid rects inside the loop (draw2DBox ->
+            // drawRectangleBorder/drawCornerBox, plus drawHealthBar's two
+            // rects) are routed through rectBatcher so we pay one 2D-state
+            // acquisition per frame instead of one per rect. Text/glow draws
+            // are not rectangles and keep their own state management.
+            rectBatcher.begin();
+            try {
+                for (OverlayEntry entry : overlayEntries) {
+                    if (entry.entity.isDead || entry.entity.deathTime > 0) {
+                        continue;
+                    }
+                    int color = EspOverlayGeometry.applyOpacity(getColor(entry.entity, 0), entry.opacity);
+                    if (shouldDraw2DBox) {
+                        draw2DBox(entry.bounds, color, entry.opacity);
+                    }
+                    if (shouldDrawHealthBar) {
+                        drawHealthBar(entry, glowRenderer);
+                    }
+                    if (shouldDraw2DBox && Boolean.TRUE.equals(nameTags.getValue())
+                            && !isStandaloneNameTagsEnabled()) {
+                        drawCenteredText(entry.entity.getDisplayName().getFormattedText(), entry.bounds.minX,
+                                entry.bounds.maxX, entry.bounds.minY - mc.fontRendererObj.FONT_HEIGHT - 3.0f, entry.opacity, true);
+                    }
+                    if (shouldDraw2DBox && Boolean.TRUE.equals(heldItem.getValue())) {
+                        ItemStack stack = entry.entity.getHeldItem();
+                        if (stack != null) {
+                            drawCenteredText(stack.getDisplayName(), entry.bounds.minX, entry.bounds.maxX,
+                                    entry.bounds.maxY + 3.0f, entry.opacity, false);
+                        }
                     }
                 }
+            } finally {
+                rectBatcher.flush();
             }
         } finally {
             if (isolatedGlowFrame) {
@@ -337,6 +395,12 @@ public class ESP extends Module {
     private boolean isStandaloneNameTagsEnabled() {
         Module module = ModuleManager.getModule("NameTags");
         return module != null && module.getState();
+    }
+
+    private boolean isClickGuiOpen() {
+        GuiScreen currentScreen = mc.currentScreen;
+        return currentScreen != null
+                && currentScreen.getClass().getName().startsWith("gq.yozakura.ui.click.");
     }
 
     private void draw2DBox(EspOverlayGeometry.Bounds bounds, int color, float opacity) {
@@ -354,10 +418,10 @@ public class ESP extends Module {
     }
 
     private void drawRectangleBorder(float minX, float minY, float maxX, float maxY, float thickness, int color) {
-        RenderUtil.drawRect(minX - thickness, minY - thickness, maxX + thickness, minY, color);
-        RenderUtil.drawRect(minX - thickness, maxY, maxX + thickness, maxY + thickness, color);
-        RenderUtil.drawRect(minX - thickness, minY, minX, maxY, color);
-        RenderUtil.drawRect(maxX, minY, maxX + thickness, maxY, color);
+        rectBatcher.add(minX - thickness, minY - thickness, maxX + thickness, minY, color);
+        rectBatcher.add(minX - thickness, maxY, maxX + thickness, maxY + thickness, color);
+        rectBatcher.add(minX - thickness, minY, minX, maxY, color);
+        rectBatcher.add(maxX, minY, maxX + thickness, maxY, color);
     }
 
     private void drawCornerBox(EspOverlayGeometry.Bounds bounds, float thickness, int color, boolean opposite) {
@@ -380,9 +444,9 @@ public class ESP extends Module {
                             float horizontalLength, float verticalLength, float thickness, int color) {
         float horizontalEnd = x + horizontalLength * horizontalDirection;
         float verticalEnd = y + verticalLength * verticalDirection;
-        RenderUtil.drawRect(Math.min(x, horizontalEnd), y - thickness * 0.5f,
+        rectBatcher.add(Math.min(x, horizontalEnd), y - thickness * 0.5f,
                 Math.max(x, horizontalEnd), y + thickness * 0.5f, color);
-        RenderUtil.drawRect(x - thickness * 0.5f, Math.min(y, verticalEnd),
+        rectBatcher.add(x - thickness * 0.5f, Math.min(y, verticalEnd),
                 x + thickness * 0.5f, Math.max(y, verticalEnd), color);
     }
 
@@ -394,8 +458,8 @@ public class ESP extends Module {
         float fillTop = bottom - (bottom - top) * health;
         int shadow = EspOverlayGeometry.applyOpacity(0xD9000000, entry.opacity);
         int fillColor = EspOverlayGeometry.applyOpacity(healthColor(health), entry.opacity);
-        RenderUtil.drawRect(barX - 1.0f, top - 1.0f, barX + 2.0f, bottom + 1.0f, shadow);
-        RenderUtil.drawRect(barX, fillTop, barX + 1.0f, bottom, fillColor);
+        rectBatcher.add(barX - 1.0f, top - 1.0f, barX + 2.0f, bottom + 1.0f, shadow);
+        rectBatcher.add(barX, fillTop, barX + 1.0f, bottom, fillColor);
         if (glowRenderer != null && fillTop < bottom) {
             glowRenderer.queueRoundedRect(barX - 0.5f, fillTop - 0.5f, barX + 1.5f, bottom + 0.5f,
                     0.75f, EspOverlayGeometry.applyOpacity(fillColor, 0.62f), 0.50f, GlowProfile.ACCENT);

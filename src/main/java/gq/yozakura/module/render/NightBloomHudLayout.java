@@ -6,9 +6,9 @@ package gq.yozakura.module.render;
 final class NightBloomHudLayout {
     static final float WATERMARK_HEIGHT = 18.0F;
     static final float WATERMARK_SEGMENT_GAP = 2.0F;
-    static final float MODULE_ROW_HEIGHT = 16.0F;
+    static final float MODULE_ROW_HEIGHT = 18.0F;
     static final float MODULE_ROW_GAP = 2.0F;
-    static final float MODULE_TEXT_GAP = 1.0F;
+    static final float MODULE_TEXT_GAP = 3.0F;
     static final float POTION_WIDTH = 166.0F;
     static final float POTION_ROW_HEIGHT = 23.0F;
     static final float INVENTORY_WIDTH = 178.0F;
@@ -49,7 +49,7 @@ final class NightBloomHudLayout {
     }
 
     static float watermarkMetadataWidth(float textWidth) {
-        return moduleRowWidth(textWidth, 0.0F);
+        return 2.0F + nonNegative(textWidth) + 3.0F;
     }
 
     static float watermarkBrandIconCenterY(float watermarkY) {
@@ -69,7 +69,7 @@ final class NightBloomHudLayout {
     }
 
     static float moduleRowWidth(float nameWidth, float metaWidth) {
-        float width = 2.0F + nonNegative(nameWidth) + 3.0F;
+        float width = 3.0F + nonNegative(nameWidth) + 4.0F;
         if (metaWidth > 0.0F) {
             width += MODULE_TEXT_GAP + metaWidth;
         }
@@ -115,16 +115,33 @@ final class NightBloomHudLayout {
         return end > start;
     }
 
+    static boolean moduleRowsShareBounds(float firstLeft, float firstRight,
+                                         float secondLeft, float secondRight) {
+        return Math.abs(firstLeft - secondLeft) <= MODULE_ROW_JOIN_EPSILON
+                && Math.abs(firstRight - secondRight) <= MODULE_ROW_JOIN_EPSILON;
+    }
+
+    static boolean moduleRowsSharePhysicalBounds(float firstLeft, float firstRight,
+                                                 float secondLeft, float secondRight,
+                                                 float uiScale) {
+        float scale = Math.max(0.01F, uiScale);
+        float halfPhysicalPixel = 0.5F;
+        return Math.abs(firstLeft - secondLeft) * scale <= halfPhysicalPixel
+                && Math.abs(firstRight - secondRight) * scale <= halfPhysicalPixel;
+    }
+
     static boolean moduleJoinReachesRight(float rowWidth, float joinEnd) {
         return joinEnd >= nonNegative(rowWidth) - MODULE_ROW_JOIN_EPSILON;
     }
 
     static float moduleTopLeftRadius(float rowLeft, float aboveLeft, float radius, boolean joinsAbove) {
-        return joinsAbove && rowLeft >= aboveLeft - MODULE_ROW_JOIN_EPSILON ? 0.0F : nonNegative(radius);
+        return joinsAbove && rowLeft >= aboveLeft - MODULE_ROW_JOIN_EPSILON
+                ? 0.0F : nonNegative(radius);
     }
 
     static float moduleBottomLeftRadius(float rowLeft, float belowLeft, float radius, boolean joinsBelow) {
-        return joinsBelow && rowLeft >= belowLeft - MODULE_ROW_JOIN_EPSILON ? 0.0F : nonNegative(radius);
+        return joinsBelow && rowLeft >= belowLeft - MODULE_ROW_JOIN_EPSILON
+                ? 0.0F : nonNegative(radius);
     }
 
     static float moduleFusionShadowRadius(float radius) {

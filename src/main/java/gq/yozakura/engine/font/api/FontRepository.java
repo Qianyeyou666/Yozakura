@@ -27,8 +27,12 @@ public final class FontRepository {
         add(FontFamilyId.CIRCULAR);
         add(FontFamilyId.CIRCULAR_MEDIUM);
         add(FontFamilyId.PRODUCT_SANS);
+        add(FontFamilyId.PRODUCT_SANS_LIGHT);
+        add(FontFamilyId.PRODUCT_SANS_MEDIUM);
         add(FontFamilyId.BAD_CACHE);
         add(FontFamilyId.INTER);
+        add(FontFamilyId.BRICOLAGE);
+        add(FontFamilyId.JETBRAINS_MONO);
         add(FontFamilyId.ALIBABA);
         add(FontFamilyId.TENACITY_BOLD);
         add(FontFamilyId.ICON);
@@ -107,7 +111,8 @@ public final class FontRepository {
             return new Font[]{derive(FontFamilyId.SF, Font.PLAIN, size), derive(FontFamilyId.ALIBABA, Font.PLAIN, size), SYSTEM_FALLBACK};
         }
         if (family == FontFamilyId.SF || family == FontFamilyId.CIRCULAR
-                || family == FontFamilyId.CIRCULAR_MEDIUM || family == FontFamilyId.PRODUCT_SANS) {
+                || family == FontFamilyId.CIRCULAR_MEDIUM || family == FontFamilyId.PRODUCT_SANS
+                || family == FontFamilyId.PRODUCT_SANS_LIGHT || family == FontFamilyId.PRODUCT_SANS_MEDIUM) {
             return new Font[]{derive(FontFamilyId.ALIBABA, Font.PLAIN, size), SYSTEM_FALLBACK};
         }
         return new Font[]{derive(FontFamilyId.ALIBABA, Font.PLAIN, size), SYSTEM_FALLBACK};

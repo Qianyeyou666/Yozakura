@@ -1,15 +1,18 @@
 package gq.yozakura.core;
 
-import gq.yozakura.auth.YozakuraAuthGate;
-import gq.yozakura.auth.token.TokenAuthStandaloneBridge;
+import gq.yozakura.k.B;
+import gq.yozakura.k.t.I;
 import gq.yozakura.bridge.StandaloneEventBridge;
 import gq.yozakura.manager.BridgeDebug;
 import gq.yozakura.manager.ModuleManager;
 import gq.yozakura.module.Module;
 import gq.yozakura.runtime.YozakuraRuntime;
 import gq.yozakura.ui.overlay.InjectionSuccessAnimation;
+import gq.yozakura.ui.click.yozakura.PanelModuleKeybind;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiMainMenu;
 import org.lwjgl.input.Keyboard;
+import org.lwjgl.input.Mouse;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -35,9 +38,10 @@ public final class StandaloneClient {
     private static volatile StandaloneClient activeClient;
     private static volatile boolean terminalBridgeFailure;
     private final StandaloneEventBridge bridge = new StandaloneEventBridge();
-    private final TokenAuthStandaloneBridge tokenAuthBridge = new TokenAuthStandaloneBridge();
+    private final I tokenAuthBridge = new I();
     private final AtomicBoolean tickQueued = new AtomicBoolean();
     private final Set<Integer> pressedKeys = new HashSet<Integer>();
+    private final Set<Integer> pressedMouseButtons = new HashSet<Integer>();
     private final String instanceId = Long.toHexString(System.nanoTime());
     private volatile boolean running;
     private volatile boolean pumpStarted;
@@ -53,8 +57,8 @@ public final class StandaloneClient {
         }
         stopExistingStandalonePumps();
         throwIfPreviousStandaloneBridgeIsStillActive();
-        YozakuraAuthGate.verifyOrThrow("standalone");
-        Client.username = YozakuraAuthGate.getVerifiedUsername();
+        B.verifyOrThrow("standalone");
+        Client.username = B.getVerifiedUsername();
         boolean initialized = false;
         try {
             shutdownCompleted = false;
@@ -183,6 +187,9 @@ public final class StandaloneClient {
     }
 
     private void completeSuccessfulShutdown() {
+        ConfigBridge.saveModulesQuietly();
+        pressedKeys.clear();
+        pressedMouseButtons.clear();
         shutdownCompleted = true;
         if (activeClient == this) {
             activeClient = null;
@@ -229,7 +236,7 @@ public final class StandaloneClient {
                 try {
                     while (running && state && instanceId.equals(System.getProperty(ACTIVE_INSTANCE_PROPERTY))) {
                         queueTick();
-                        sleep(10L);
+                        sleep(50L);
                     }
                     if (!terminalBridgeFailure) {
                         if (!shutdownCompleted) {
@@ -377,15 +384,18 @@ public final class StandaloneClient {
                 skippedPlayerTicks++;
             }
             BridgeDebug.logTick("standalone", "PUMP_TICK", playerTick, skippedPlayerTicks);
+            if (!playerTick) {
+                // The POST-update handoff may still be pending, but expensive
+                // authorization and input work belongs to the 20 TPS path.
+                bridge.tick(false);
+                return;
+            }
             tokenAuthBridge.tick();
             handleKeys();
-            bridge.tick(playerTick);
-            if (playerTick) {
-                skippedPlayerTicks = 0;
-            }
-            if (playerTick) {
-                ConfigBridge.autoSaveTick();
-            }
+            handleMouseButtons();
+            bridge.tick(true);
+            skippedPlayerTicks = 0;
+            ConfigBridge.autoSaveTick();
         } catch (Throwable throwable) {
             stopForTickFailure(throwable);
         }
@@ -411,7 +421,13 @@ public final class StandaloneClient {
     }
 
     private void handleKeys() {
-        if (mc.currentScreen != null || !Keyboard.isCreated()) {
+        boolean mainMenu = mc.currentScreen instanceof GuiMainMenu;
+        if ((mc.currentScreen != null && !mainMenu) || !Keyboard.isCreated()) {
+            // Release HOLD modules before dropping key state so a screen
+            // opening mid-hold never leaves them stuck enabled.
+            for (Integer pressed : pressedKeys) {
+                releaseHoldModulesBoundTo(pressed.intValue());
+            }
             pressedKeys.clear();
             return;
         }
@@ -419,9 +435,31 @@ public final class StandaloneClient {
             boolean down = Keyboard.isKeyDown(key);
             if (down && pressedKeys.add(Integer.valueOf(key))) {
                 dispatchKeyPress(key);
-                toggleModulesBoundTo(key);
-            } else if (!down) {
-                pressedKeys.remove(Integer.valueOf(key));
+                boolean clickGuiOpened = ClickGuiKeyDispatcher.handleKeyPress(key, mc.currentScreen);
+                if (!mainMenu && !clickGuiOpened) {
+                    toggleModulesBoundTo(key);
+                }
+            } else if (!down && pressedKeys.remove(Integer.valueOf(key))) {
+                releaseHoldModulesBoundTo(key);
+            }
+        }
+    }
+
+    private void handleMouseButtons() {
+        if (mc.currentScreen != null || !Mouse.isCreated()) {
+            for (Integer pressed : pressedMouseButtons) {
+                releaseHoldModulesBoundTo(PanelModuleKeybind.encodeMouseButton(pressed.intValue()));
+            }
+            pressedMouseButtons.clear();
+            return;
+        }
+        for (int button = 0; button < Mouse.getButtonCount(); button++) {
+            boolean down = Mouse.isButtonDown(button);
+            int keyBind = PanelModuleKeybind.encodeMouseButton(button);
+            if (down && pressedMouseButtons.add(Integer.valueOf(button))) {
+                toggleModulesBoundTo(keyBind);
+            } else if (!down && pressedMouseButtons.remove(Integer.valueOf(button))) {
+                releaseHoldModulesBoundTo(keyBind);
             }
         }
     }
@@ -436,7 +474,23 @@ public final class StandaloneClient {
         }
         for (Module module : ModuleManager.getModules()) {
             if (module.getKey() == key) {
-                module.toggle();
+                if (module.getBindMode() == Module.BindMode.HOLD) {
+                    // Epsilon HOLD: enabled exactly while the key is held.
+                    module.setState(true);
+                } else {
+                    module.toggle();
+                }
+            }
+        }
+    }
+
+    private void releaseHoldModulesBoundTo(int key) {
+        if (key == Keyboard.KEY_NONE) {
+            return;
+        }
+        for (Module module : ModuleManager.getModules()) {
+            if (module.getKey() == key && module.getBindMode() == Module.BindMode.HOLD) {
+                module.setState(false);
             }
         }
     }

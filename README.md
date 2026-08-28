@@ -1,6 +1,20 @@
 # Yozakura
 
-Free Forge-based Minecraft 1.8.9 client mod.
+Yozakura is a Forge-based Minecraft 1.8.9 client mod.
+
+Repository: https://github.com/Qianyeyou666/Yozakura
+
+## Repository Layout
+
+- `src/`: Java client source, resources, and tests.
+- `native/`: Windows native loader, injector, and authentication bridge.
+- `web/`: Optional Yozakura Club website and release service.
+- `obfuscation/`: Release obfuscation configuration and verification notes.
+- `tools/`: Build, packaging, and artifact verification scripts.
+- `docs/`: Design specifications and engineering notes.
+
+Generated files belong in `build/` or `outputs/` and should not be committed
+unless they are explicitly needed as release artifacts.
 
 ## Requirements
 

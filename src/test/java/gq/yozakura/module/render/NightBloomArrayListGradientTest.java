@@ -42,6 +42,8 @@ public class NightBloomArrayListGradientTest {
             }
         }
         assertTrue(maximumGreen - minimumGreen >= 130);
+        assertTrue("the darkest gradient stop must remain readable on the Night Bloom surface",
+                minimumGreen >= 64);
     }
 
     private static int changedSampleCount(long firstTick, long secondTick) {

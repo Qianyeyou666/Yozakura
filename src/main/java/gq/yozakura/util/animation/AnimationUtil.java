@@ -12,7 +12,8 @@ public final class AnimationUtil {
         OUT_CUBIC,
         OUT_QUART,
         IN_OUT_CUBIC,
-        OUT_BACK
+        OUT_BACK,
+        OUT_ELASTIC
     }
 
     public static float approach(float current, float target, float speed, float frameScale) {
@@ -40,6 +41,14 @@ public final class AnimationUtil {
             float c1 = 1.70158f;
             float c3 = c1 + 1.0f;
             return 1.0f + c3 * (float) Math.pow(v - 1.0f, 3.0D) + c1 * (float) Math.pow(v - 1.0f, 2.0D);
+        }
+        if (ease == Ease.OUT_ELASTIC) {
+            if (v == 0.0f || v == 1.0f) {
+                return v;
+            }
+            double c4 = (2.0D * Math.PI) / 3.0D;
+            return (float) (Math.pow(2.0D, -10.0D * v)
+                    * Math.sin((v * 10.0D - 0.75D) * c4) + 1.0D);
         }
         return v;
     }

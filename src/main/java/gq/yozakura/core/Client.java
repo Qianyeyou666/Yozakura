@@ -4,9 +4,8 @@ import gq.yozakura.manager.FileManager;
 import gq.yozakura.manager.NotificationManager;
 import gq.yozakura.module.Module;
 import gq.yozakura.manager.ModuleManager;
-import gq.yozakura.module.render.ClickGUI;
-import gq.yozakura.ui.click.material.MaterialClickGui;
 import gq.yozakura.ui.click.web.WebClickGuiService;
+import gq.yozakura.ui.click.yozakura.PanelModuleKeybind;
 import gq.yozakura.util.color.ColorUtils;
 import gq.yozakura.util.minecraft.Helper;
 import gq.yozakura.command.Bind;
@@ -15,8 +14,8 @@ import gq.yozakura.command.ChatBypassCommand;
 import gq.yozakura.command.WaterMark;
 import gq.yozakura.engine.font.FontLoaders;
 import gq.yozakura.bridge.YozakuraEventBridge;
-import gq.yozakura.auth.YozakuraAuthGate;
-import gq.yozakura.auth.token.TokenAuthGuiHandler;
+import gq.yozakura.k.B;
+import gq.yozakura.k.t.F;
 import gq.yozakura.ui.overlay.InjectionSuccessAnimation;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.play.client.C03PacketPlayer;
@@ -28,6 +27,7 @@ import net.minecraftforge.fml.common.gameevent.InputEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.common.network.FMLNetworkEvent;
 import org.lwjgl.input.Keyboard;
+import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.GL11;
 
 import java.awt.*;
@@ -59,8 +59,8 @@ public class Client {
     public static Client instance;
     public static boolean state = false;
     private static boolean shutdownHookRegistered;
-    private boolean materialClickGuiResourcesWarmed;
-    private TokenAuthGuiHandler tokenAuthGuiHandler;
+    private F tokenAuthGuiHandler;
+    private boolean mainMenuClickGuiKeyDown;
     public static Random rand=new Random();
     public final FileManager fileManager = new FileManager();
     public static ModuleManager moduleManager = new ModuleManager();
@@ -80,14 +80,14 @@ public class Client {
             showInjectionSuccessAnimation();
             return;
         }
-        YozakuraAuthGate.verifyOrThrow("forge");
-        username = YozakuraAuthGate.getVerifiedUsername();
+        B.verifyOrThrow("forge");
+        username = B.getVerifiedUsername();
         state = true;
         MinecraftForge.EVENT_BUS.register(this);
-        tokenAuthGuiHandler = new TokenAuthGuiHandler();
+        tokenAuthGuiHandler = new F();
         MinecraftForge.EVENT_BUS.register(tokenAuthGuiHandler);
         FMLCommonHandler.instance().bus().register(this);
-        YozakuraEventBridge.init();
+        YozakuraEventBridge.initBridge();
         instance = this;
         CommandInit();
         loadConfigOnStartup();
@@ -115,20 +115,50 @@ public class Client {
 
     @SubscribeEvent
     public void keyInput(InputEvent.KeyInputEvent event) {
-        if (!Keyboard.getEventKeyState() || Keyboard.isRepeatEvent() || mc.currentScreen != null) {
+        if (Keyboard.isRepeatEvent()) {
             return;
         }
+        boolean pressed = Keyboard.getEventKeyState();
         int key = Keyboard.getEventKey();
         if (key == Keyboard.KEY_NONE) {
             return;
         }
-        for(Module m : moduleManager.getModules()) {
-            if(m.getKey() == key) {
-                m.toggle();
-                break;
+        if (pressed && ClickGuiKeyDispatcher.handleKeyPress(key, mc.currentScreen)) {
+            mainMenuClickGuiKeyDown = true;
+            return;
+        }
+        // Other module presses are ignored while a screen is open, but releases
+        // still reach HOLD modules so they never stay stuck enabled.
+        if (pressed && mc.currentScreen != null) {
+            return;
+        }
+        applyModuleBindInput(key, pressed);
+    }
+
+    @SubscribeEvent
+    public void mouseInput(InputEvent.MouseInputEvent event) {
+        int button = Mouse.getEventButton();
+        if (button < 0) {
+            return;
+        }
+        boolean pressed = Mouse.getEventButtonState();
+        if (pressed && mc.currentScreen != null) {
+            return;
+        }
+        applyModuleBindInput(PanelModuleKeybind.encodeMouseButton(button), pressed);
+    }
+
+    private void applyModuleBindInput(int key, boolean pressed) {
+        for (Module module : moduleManager.getModules()) {
+            if (module.getKey() != key) {
+                continue;
             }
-//            if(Keyboard.isKeyDown(m.key) && Keyboard.isKeyDown(Keyboard.KEY_LCONTROL)) {
-//            }
+            if (module.getBindMode() == Module.BindMode.HOLD) {
+                module.setState(pressed);
+            } else if (pressed) {
+                module.toggle();
+            }
+            break;
         }
     }
 
@@ -145,22 +175,27 @@ public class Client {
     }
 
     @SubscribeEvent
-    public void onRenderTick(TickEvent.RenderTickEvent event) {
-        if (materialClickGuiResourcesWarmed || event.phase != TickEvent.Phase.END
-                || mc.theWorld == null || mc.thePlayer == null || mc.currentScreen != null
-                || ClickGUI.guiStyle.getValue() != ClickGUI.GuiStyle.MATERIAL) {
+    public void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) {
             return;
         }
-        MaterialClickGui.warmResources();
-        materialClickGuiResourcesWarmed = true;
+        fileManager.autoSaveTick();
+        pollMainMenuClickGuiBind();
     }
 
-
-    @SubscribeEvent
-    public void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase == TickEvent.Phase.END) {
-            fileManager.autoSaveTick();
+    private void pollMainMenuClickGuiBind() {
+        if (!(mc.currentScreen instanceof net.minecraft.client.gui.GuiMainMenu)
+                || !Keyboard.isCreated()) {
+            mainMenuClickGuiKeyDown = false;
+            return;
         }
+        Module clickGui = ModuleManager.getModule("ClickGUI");
+        int key = clickGui == null ? Keyboard.KEY_NONE : clickGui.getKey();
+        boolean down = key != Keyboard.KEY_NONE && Keyboard.isKeyDown(key);
+        if (down && !mainMenuClickGuiKeyDown) {
+            ClickGuiKeyDispatcher.handleKeyPress(key, mc.currentScreen);
+        }
+        mainMenuClickGuiKeyDown = down;
     }
 
     @SubscribeEvent
@@ -184,7 +219,7 @@ public class Client {
             }
         } finally {
             try {
-                YozakuraEventBridge.shutdown();
+                YozakuraEventBridge.shutdownBridge();
             } finally {
                 try {
                     if (client != null) {
@@ -233,7 +268,7 @@ public class Client {
             @Override
             public void run() {
                 if (Client.instance != null) {
-                    Client.instance.fileManager.saveIfDirtyQuietly();
+                    Client.instance.fileManager.saveModulesQuietly();
                 }
             }
         }, "Yozakura Config Save"));

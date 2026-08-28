@@ -23,6 +23,10 @@ public class EventManagerConcurrencyContractTest {
                 source.contains("REGISTRY.computeIfPresent(eventClass"));
         assertFalse("ConcurrentHashMap iteration must not depend on iterator.remove",
                 source.contains("iterator.remove();"));
+        assertTrue("Hot event dispatch must use allocation-free indexed snapshot traversal",
+                source.contains("for (int i = 0; i < list.size(); i++)"));
+        assertFalse("Hot event dispatch must not allocate a foreach iterator",
+                source.contains("for (MethodData data : list)"));
     }
 
     private static String source(String path) throws IOException {

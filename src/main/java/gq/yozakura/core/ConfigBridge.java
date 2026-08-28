@@ -43,6 +43,22 @@ public final class ConfigBridge {
         getFileManager().loadProfile(name);
     }
 
+    public static String readProfileSnapshot(String name) throws IOException {
+        return getFileManager().readProfileSnapshot(name);
+    }
+
+    public static void saveProfileSnapshot(String name, String snapshot) throws IOException {
+        getFileManager().saveProfileSnapshot(name, snapshot);
+    }
+
+    public static String exportSnapshot() {
+        return getFileManager().exportSnapshot();
+    }
+
+    public static void importSnapshot(String snapshot) throws IOException {
+        getFileManager().importSnapshot(snapshot);
+    }
+
     public static File getProfileDirectory() throws IOException {
         return getFileManager().getProfileDirectory();
     }
@@ -76,6 +92,10 @@ public final class ConfigBridge {
 
     public static void saveIfDirtyQuietly() {
         getFileManager().saveIfDirtyQuietly();
+    }
+
+    public static void saveModulesQuietly() {
+        getFileManager().saveModulesQuietly();
     }
 
     public static void setAutoSaveSuspended(boolean suspended) {

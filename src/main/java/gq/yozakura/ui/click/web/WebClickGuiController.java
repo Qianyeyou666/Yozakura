@@ -50,6 +50,11 @@ final class WebClickGuiController {
         builder.append(',');
         appendProperty(builder, "moduleCount", ModuleManager.getModules().size());
         builder.append(',');
+        Module clickGui = ModuleManager.getModule("ClickGUI");
+        appendProperty(builder, "clickGuiKeyName", keyName(clickGui == null ? Keyboard.KEY_RSHIFT : clickGui.getKey()));
+        builder.append(',');
+        appendProperty(builder, "language", Client.CHINESE ? "zh" : "en");
+        builder.append(',');
         appendPalette(builder);
         builder.append(',');
         builder.append("\"categories\":[");

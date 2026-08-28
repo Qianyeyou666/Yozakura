@@ -1,5 +1,6 @@
 package gq.yozakura.module.render;
 
+import gq.yozakura.engine.render.ShaderRenderer;
 import gq.yozakura.engine.render.ui.RenderServices;
 import gq.yozakura.util.render.HudDockingCoordinator;
 import gq.yozakura.util.render.HudDrag;
@@ -25,29 +26,39 @@ public final class NightBloomHudDockRenderer {
         if (snapshot == null) {
             return;
         }
-        for (HudDockingCoordinator.Bridge bridge : snapshot.getBridges()) {
-            float individualOpacity = 1.0F - bridge.getCompositeProgress();
-            float opacity = bridge.getOpacity() * individualOpacity;
-            if (!bridge.isVisible() || opacity <= 0.01F) {
-                continue;
+        // Bracket all joinedRounded panel draws in a single shader batch so
+        // the per-draw push/pop-attrib and texture-0 save/restore run only
+        // once for the whole HUD dock surface pass. drawNightBloomShadow()
+        // goes through GlowRenderer's queue and does not touch ShaderRenderer
+        // state, so it remains safe inside the batch.
+        ShaderRenderer.beginShapeBatch();
+        try {
+            for (HudDockingCoordinator.Bridge bridge : snapshot.getBridges()) {
+                float individualOpacity = 1.0F - bridge.getCompositeProgress();
+                float opacity = bridge.getOpacity() * individualOpacity;
+                if (!bridge.isVisible() || opacity <= 0.01F) {
+                    continue;
+                }
+                HUD.drawNightBloomShadow(bridge.getX(), bridge.getY(), bridge.getRight(), bridge.getBottom(),
+                        bridge.getRadius(), opacity);
+                RenderServices.shapes().joinedRounded(bridge.getX(), bridge.getY(), bridge.getRight(), bridge.getBottom(),
+                        bridge.getRadius(), bridge.getRadius(), bridge.getRadius(), bridge.getRadius(),
+                        multiplyAlpha(SHARED_SURFACE, opacity));
             }
-            HUD.drawNightBloomShadow(bridge.getX(), bridge.getY(), bridge.getRight(), bridge.getBottom(),
-                    bridge.getRadius(), opacity);
-            RenderServices.shapes().joinedRounded(bridge.getX(), bridge.getY(), bridge.getRight(), bridge.getBottom(),
-                    bridge.getRadius(), bridge.getRadius(), bridge.getRadius(), bridge.getRadius(),
-                    multiplyAlpha(SHARED_SURFACE, opacity));
-        }
-        for (HudDockingCoordinator.Composite composite : snapshot.getComposites()) {
-            if (composite.getProgress() <= 0.01F) {
-                continue;
+            for (HudDockingCoordinator.Composite composite : snapshot.getComposites()) {
+                if (composite.getProgress() <= 0.01F) {
+                    continue;
+                }
+                HUD.drawNightBloomShadow(composite.getX(), composite.getY(), composite.getRight(), composite.getBottom(),
+                        composite.getRadius(), composite.getProgress());
+                RenderServices.shapes().joinedRounded(composite.getX(), composite.getY(),
+                        composite.getRight(), composite.getBottom(), composite.getRadius(), composite.getRadius(),
+                        composite.getRadius(), composite.getRadius(),
+                        multiplyAlpha(SHARED_SURFACE, fusedCompositeSurfaceOpacity(
+                                sourceAlpha(SHARED_SURFACE), composite.getProgress())));
             }
-            HUD.drawNightBloomShadow(composite.getX(), composite.getY(), composite.getRight(), composite.getBottom(),
-                    composite.getRadius(), composite.getProgress());
-            RenderServices.shapes().joinedRounded(composite.getX(), composite.getY(),
-                    composite.getRight(), composite.getBottom(), composite.getRadius(), composite.getRadius(),
-                    composite.getRadius(), composite.getRadius(),
-                    multiplyAlpha(SHARED_SURFACE, fusedCompositeSurfaceOpacity(
-                            sourceAlpha(SHARED_SURFACE), composite.getProgress())));
+        } finally {
+            ShaderRenderer.endShapeBatch();
         }
     }
 
@@ -57,25 +68,42 @@ public final class NightBloomHudDockRenderer {
             return;
         }
         HudDockingCoordinator.Surface surface = surface(id, x, y, width, height);
-        if (surface == null) {
-            HUD.drawNightBloomShadow(x, y, x + width, y + height, radius, alpha);
-            RenderServices.shapes().rounded(x, y, x + width, y + height, radius, multiplyAlpha(fill, alpha));
-            drawRaisedBand(x, y, width, height, radius, alpha, raisedFill);
-            return;
+        // Wrap this widget's panel draws in a shape batch so the shadow fill,
+        // joined rounded surface and raised band share one attrib-stack frame
+        // and one texture/cull state setup. RenderUtil.draw*Rect skips its
+        // per-call begin2D/end2D while the batch is active (see isBatchActive),
+        // saving ~31 GL calls per shape. drawNightBloomShadow goes through the
+        // GlowRenderer queue and does not touch ShaderRenderer state, so it is
+        // safe inside the batch. ownsBatch guards nested callers that already
+        // opened a batch (batches must not be nested — see ShaderRenderer).
+        boolean ownsBatch = !ShaderRenderer.isBatchActive();
+        if (ownsBatch) {
+            ShaderRenderer.beginShapeBatch();
         }
-        float individualOpacity = alpha * surface.getIndividualOpacity();
-        if (individualOpacity <= 0.01F) {
-            return;
+        try {
+            if (surface == null) {
+                HUD.drawNightBloomShadow(x, y, x + width, y + height, radius, alpha);
+                RenderServices.shapes().rounded(x, y, x + width, y + height, radius, multiplyAlpha(fill, alpha));
+                drawRaisedBand(x, y, width, height, radius, alpha, raisedFill);
+            } else {
+                float individualOpacity = alpha * surface.getIndividualOpacity();
+                if (individualOpacity > 0.01F) {
+                    HUD.drawNightBloomShadow(x, y, x + width, y + height, radius, individualOpacity);
+                    RenderServices.shapes().joinedRounded(x, y, x + width, y + height,
+                            surface.getTopLeft(), surface.getTopRight(), surface.getBottomRight(), surface.getBottomLeft(),
+                            surface.getTopJoinStart(), surface.getTopJoinEnd(),
+                            surface.getBottomJoinStart(), surface.getBottomJoinEnd(),
+                            surface.getLeftJoinStart(), surface.getLeftJoinEnd(),
+                            surface.getRightJoinStart(), surface.getRightJoinEnd(),
+                            multiplyAlpha(fill, individualOpacity));
+                    drawRaisedBand(x, y, width, height, radius, individualOpacity, raisedFill);
+                }
+            }
+        } finally {
+            if (ownsBatch) {
+                ShaderRenderer.endShapeBatch();
+            }
         }
-        HUD.drawNightBloomShadow(x, y, x + width, y + height, radius, individualOpacity);
-        RenderServices.shapes().joinedRounded(x, y, x + width, y + height,
-                surface.getTopLeft(), surface.getTopRight(), surface.getBottomRight(), surface.getBottomLeft(),
-                surface.getTopJoinStart(), surface.getTopJoinEnd(),
-                surface.getBottomJoinStart(), surface.getBottomJoinEnd(),
-                surface.getLeftJoinStart(), surface.getLeftJoinEnd(),
-                surface.getRightJoinStart(), surface.getRightJoinEnd(),
-                multiplyAlpha(fill, individualOpacity));
-        drawRaisedBand(x, y, width, height, radius, individualOpacity, raisedFill);
     }
 
     public static void drawPanel(String id, float x, float y, float width, float height, float radius,

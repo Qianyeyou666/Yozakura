@@ -24,7 +24,7 @@ public class LunarStandaloneBridgeContractTest {
         assertTrue("Neko's n.* classes must be defined by the remap loader before Lunar linkage",
                 ((Boolean) predicate.invoke(null, "n.l")).booleanValue());
         assertFalse("The JNIC-bound authentication gate must stay in the parent isolated loader",
-                ((Boolean) predicate.invoke(null, "gq.yozakura.auth.YozakuraAuthGate")).booleanValue());
+                ((Boolean) predicate.invoke(null, "gq.yozakura.k.B")).booleanValue());
     }
 
     @Test
@@ -79,22 +79,127 @@ public class LunarStandaloneBridgeContractTest {
     }
 
     @Test
-    public void nativeInjectorsRejectDuplicateInjectionInsteadOfStagingAnotherLoader() throws IOException {
-        String script = source("tools/InjectMod.ps1");
+    public void nativeInjectorsShareOneCoreInsteadOfDuplicatingRemoteLoading() throws IOException {
+        String build = source("build-injector-ui.bat");
+        String core = source("native/injector_core.cpp");
         String ui = source("native/yozakura_injector_ui.cpp");
         String cli = source("native/injector.cpp");
+
+        assertTrue("The graphical injector must use the shared native core",
+                ui.contains("#include \"injector_core.h\""));
+        assertTrue("The command-line injector must use the shared native core",
+                cli.contains("#include \"injector_core.h\""));
+        assertFalse("The graphical shell must not own CreateRemoteThread directly",
+                ui.contains("CreateRemoteThread("));
+        assertFalse("The command-line shell must not own CreateRemoteThread directly",
+                cli.contains("CreateRemoteThread("));
+        assertTrue("The shared core must own the remote-thread lifecycle",
+                core.contains("CreateRemoteThread(")
+                        && core.contains("DWORD waitResult = WaitForSingleObject")
+                        && core.contains("releaseRemotePath = false"));
+        assertTrue("The injector build must compile and link the shared core for UI and CLI",
+                build.contains("native\\injector_core.cpp")
+                        && build.contains("YozakuraInjectorCli.exe"));
+    }
+
+    @Test
+    public void graphicalInjectorSeparatesUiStateFromRenderingAndWindowMessages() throws IOException {
+        String build = source("build-injector-ui.bat");
+        String uiApp = source("native/yozakura_injector_ui_entry.cpp");
+        String uiRender = source("native/yozakura_injector_ui.cpp");
+        String stateHeader = source("native/yozakura_injector_ui_state.h");
+        String stateSource = source("native/yozakura_injector_ui_state.cpp");
+
+        assertTrue("The UI application shell must depend on the UI application boundary",
+                uiApp.contains("#include \"yozakura_injector_ui_app.h\""));
+        assertTrue("The UI renderer must consume the explicit state model",
+                uiRender.contains("#include \"yozakura_injector_ui_state.h\""));
+        assertFalse("The UI renderer must not declare its state model inline",
+                uiRender.contains("struct AppState") || uiRender.contains("enum UiState"));
+        assertTrue("The window entry point must be separated from the renderer",
+                uiApp.contains("wWinMain(")
+                        && uiApp.contains("runInjectorApplication(instance)")
+                        && !uiRender.contains("wWinMain("));
+        assertTrue("The state module must define the injector lifecycle transitions",
+                stateHeader.contains("beginExpansion")
+                        && stateHeader.contains("beginInjection")
+                        && stateHeader.contains("completeInjection")
+                        && stateHeader.contains("resetToReady"));
+        assertTrue("State transitions must be implemented outside the renderer",
+                stateSource.contains("void beginExpansion(")
+                        && stateSource.contains("void beginInjection(")
+                        && stateSource.contains("void completeInjection(")
+                        && stateSource.contains("void resetToReady("));
+        assertTrue("The injector build must compile the UI state and entry modules",
+                build.contains("native\\yozakura_injector_ui_state.cpp")
+                        && build.contains("native\\yozakura_injector_ui_entry.cpp"));
+    }
+
+    @Test
+    public void graphicalInjectorUsesAnAutomaticTerminalWorkflow() throws IOException {
+        String build = source("build-injector-ui.bat");
+        String core = source("native/injector_core.cpp");
+        String app = source("native/yozakura_injector_ui.cpp");
+        String design = source("native/yozakura_injector_ui_design.cpp");
+        String designHeader = source("native/yozakura_injector_ui_design.h");
+        String views = source("native/yozakura_injector_ui_views.cpp");
+
+        assertTrue("Terminal geometry and motion must live in a renderer-independent design module",
+                design.contains("const TerminalMetrics kMetrics")
+                        && design.contains("TerminalLayout calculateTerminalLayout")
+                        && design.contains("float sampleMotion(")
+                        && design.contains("void redirectMotion("));
+        assertTrue("Every lifecycle state must map to a terminal session phase",
+                designHeader.contains("enum class TerminalPhase")
+                        && designHeader.contains("Waiting")
+                        && designHeader.contains("Injecting")
+                        && designHeader.contains("Success")
+                        && designHeader.contains("Failure")
+                        && design.contains("case UiState::Ready:")
+                        && design.contains("case UiState::Injecting:"));
+        assertTrue("The terminal must render one continuous ASCII and log session",
+                views.contains("void drawAsciiBrand(")
+                        && views.contains("void drawSession(")
+                        && views.contains("void drawScrollRail(")
+                        && views.contains("AUTO DETECT / X64"));
+        assertTrue("The application must detect a target automatically and inject the locked PID",
+                core.contains("DetectedTarget findBestMinecraftTarget()")
+                        && core.contains("chooseBestMinecraftTarget(")
+                        && app.contains("startScan(window)")
+                        && app.contains("startDetectedInjection(window, result->target)")
+                        && app.contains("work->pid = detected.process.pid"));
+        assertFalse("Automatic mode must not require a profile selection or Inject button",
+                views.contains("Select client")
+                        || views.contains("Inject Yozakura")
+                        || app.contains("selectedProfile"));
+        assertTrue("Closing must be blocked while the worker owns the injection lifecycle",
+                app.contains("case WM_CLOSE:")
+                        && app.contains("g_app.uiState == UiState::Injecting"));
+        assertTrue("Closing during process discovery must wait until the scan result is reclaimed",
+                app.contains("bool g_closeRequested = false;")
+                        && app.contains("if (g_scanRunning)")
+                        && app.contains("g_closeRequested = true;")
+                        && app.contains("if (g_closeRequested) {")
+                        && app.contains("DestroyWindow(window);"));
+        assertTrue("The build must distribute the licensed terminal font",
+                build.contains("JetBrainsMono.ttf")
+                        && build.contains("LICENSE-JetBrainsMono.txt"));
+    }
+
+    @Test
+    public void nativeInjectorsRejectDuplicateInjectionInsteadOfStagingAnotherLoader() throws IOException {
+        String script = source("tools/InjectMod.ps1");
+        String core = source("native/injector_core.cpp");
         String loader = source("native/yozakura_loader.cpp");
 
         assertTrue("The PowerShell injector must clearly reject an already injected target",
                 script.contains("Yozakura is already injected into target PID"));
         assertTrue("The PowerShell injector must not stage another DLL copy",
                 !script.contains("using staged copy") && !script.contains("Copy-Item -LiteralPath $dllPath -Destination $staged"));
-        assertTrue("The graphical injector must clearly reject an already injected target",
-                ui.contains("Yozakura is already injected into this process"));
-        assertTrue("The graphical injector must not stage another DLL copy",
-                !ui.contains("stagedDllCopy"));
-        assertTrue("The command-line injector must reject an already loaded Yozakura module",
-                cli.contains("Yozakura is already injected into pid"));
+        assertTrue("The shared core must clearly reject an already injected target",
+                core.contains("Yozakura is already injected into this process"));
+        assertFalse("The shared native core must not stage another DLL copy",
+                core.contains("stagedDllCopy"));
         assertTrue("The loader itself must guard against concurrent or third-party reinjection",
                 loader.contains("CreateMutexW") && loader.contains("ERROR_ALREADY_EXISTS"));
     }
@@ -126,15 +231,11 @@ public class LunarStandaloneBridgeContractTest {
     @Test
     public void nativeInjectorsKeepRemoteArgumentsAliveUntilLoadLibraryFinishes() throws IOException {
         String script = source("tools/InjectMod.ps1");
-        String ui = source("native/yozakura_injector_ui.cpp");
-        String cli = source("native/injector.cpp");
+        String core = source("native/injector_core.cpp");
 
-        assertTrue("The CLI must distinguish a completed remote thread from timeout/failure",
-                cli.contains("DWORD waitResult = WaitForSingleObject")
-                        && cli.contains("waitResult != WAIT_OBJECT_0"));
-        assertTrue("The UI must distinguish a completed remote thread from timeout/failure",
-                ui.contains("DWORD waitResult = WaitForSingleObject")
-                        && ui.contains("waitResult != WAIT_OBJECT_0"));
+        assertTrue("The shared native core must distinguish a completed remote thread from timeout/failure",
+                core.contains("DWORD waitResult = WaitForSingleObject")
+                        && core.contains("waitResult != WAIT_OBJECT_0"));
         assertTrue("PowerShell must retain the remote path when LoadLibrary is still running",
                 script.contains("$releaseRemotePath = $false")
                         && script.contains("$waitResult -ne $WAIT_OBJECT_0"));
@@ -143,17 +244,12 @@ public class LunarStandaloneBridgeContractTest {
     @Test
     public void nativeDuplicateDetectionCoversLegacyLoadersAndEnumerationFailures() throws IOException {
         String script = source("tools/InjectMod.ps1");
-        String ui = source("native/yozakura_injector_ui.cpp");
-        String cli = source("native/injector.cpp");
+        String core = source("native/injector_core.cpp");
 
         assertTrue("Every injector must recognize older YozakuraReobf loader names",
-                script.contains("YozakuraReobf")
-                        && ui.contains("YozakuraReobf")
-                        && cli.contains("YozakuraReobf"));
-        assertTrue("The CLI must reject a partial module enumeration",
-                cli.contains("DWORD enumerationError = GetLastError()"));
-        assertTrue("The UI must reject a partial module enumeration",
-                ui.contains("DWORD enumerationError = GetLastError()"));
+                script.contains("YozakuraReobf") && core.contains("YozakuraReobf"));
+        assertTrue("The shared native core must reject a partial module enumeration",
+                core.contains("DWORD enumerationError = GetLastError()"));
     }
 
     @Test

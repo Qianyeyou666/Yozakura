@@ -1,6 +1,6 @@
 package gq.yozakura.bridge;
 
-import gq.yozakura.auth.YozakuraAuthGate;
+import gq.yozakura.k.B;
 import gq.yozakura.event.bus.EventManager;
 import gq.yozakura.event.bridge.LivingUpdateEvent;
 import gq.yozakura.event.bridge.MoveInputEvent;
@@ -149,7 +149,7 @@ final class MovementInputBridge {
     }
 
     private static void afterVanillaInput(HookedMovementInput input) {
-        if (!YozakuraAuthGate.permitMovementDispatch()) {
+        if (!B.permitMovementDispatch()) {
             restoreRotation();
             sneakInputCoordinator.clear();
             return;
@@ -187,11 +187,14 @@ final class MovementInputBridge {
                 sampledSneak, physicalSneak);
         EventManager.call(event);
 
+        float finalForward = event.hasMovementOverride() ? event.getResolvedForward() : rawForward;
+        float finalStrafe = event.hasMovementOverride() ? event.getResolvedStrafe() : rawStrafe;
         SneakInputCoordinator.ResolvedInput resolved = sneakInputCoordinator.resolve(sampledSneak,
-                rawForward, rawStrafe, event.getIntent());
+                finalForward, finalStrafe, event.getIntent());
         input.sneak = resolved.isSneaking();
         input.moveForward = resolved.getForward();
         input.moveStrafe = resolved.getStrafe();
+        input.jump = event.isResolvedJump();
     }
 
     private static void applyMoveFix(MovementInput input) {
@@ -214,8 +217,7 @@ final class MovementInputBridge {
         EntityPlayerSP player = mc.thePlayer;
         if (player == null
                 || !hasMovementRotation()
-                || !directYawPhysics
-                || (input.moveForward == 0.0F && input.moveStrafe == 0.0F)) {
+                || !directYawPhysics) {
             return;
         }
         if (!rotationApplied) {

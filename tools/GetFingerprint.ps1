@@ -67,7 +67,7 @@ function Get-IdeClasspath {
         return $null
     }
 
-    $wrapperClass = "gq\yozakura\auth\vendor\tech\skidonion\obfuscator\inline\Wrapper.class"
+    $wrapperClass = "gq\yozakura\auth\vendor\tech\skidonion\obfuscator\inline\C.class"
     foreach ($entry in $entries) {
         if (Test-Path -LiteralPath (Join-Path $entry $wrapperClass)) {
             return ($entries -join ";")
@@ -83,11 +83,11 @@ function Get-Fingerprint([string]$displayName, [string]$classPath, [string]$java
     $sourcePath = Join-Path $tmp "PrintYozakuraFingerprint.java"
     $source = @'
 import java.lang.reflect.Method;
-import gq.yozakura.auth.vendor.tech.skidonion.obfuscator.inline.Wrapper;
+import gq.yozakura.k.vendor.tech.skidonion.obfuscator.inline.C;
 
 public class PrintYozakuraFingerprint {
     public static void main(String[] args) throws Exception {
-        Method method = Wrapper.class.getDeclaredMethod("clientFingerprint");
+        Method method = C.class.getDeclaredMethod("clientFingerprint");
         method.setAccessible(true);
         System.out.println(method.invoke(null));
     }

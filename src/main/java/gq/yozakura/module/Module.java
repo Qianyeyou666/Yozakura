@@ -1,6 +1,6 @@
 package gq.yozakura.module;
 
-import gq.yozakura.auth.YozakuraAuthGate;
+import gq.yozakura.k.B;
 import gq.yozakura.bridge.ForgeEnvironment;
 import gq.yozakura.core.YozakuraClientState;
 import gq.yozakura.event.bus.EventManager;
@@ -14,9 +14,22 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Module {
+    /**
+     * Keybind activation semantics, mirroring Epsilon's Module.BindMode:
+     * TOGGLE flips the module on key press; HOLD keeps it enabled only
+     * while the key is held down.
+     */
+    public enum BindMode {
+        TOGGLE,
+        HOLD
+    }
+
     public static final Minecraft mc = Minecraft.getMinecraft();
     public boolean state = false;
     public int key;
+    private BindMode bindMode = BindMode.TOGGLE;
+    /** Hidden modules stay functional but are excluded from HUD module lists. */
+    private boolean hidden;
     public List<Value> values = new ArrayList<>();
     public String Chinese;
     public String About;
@@ -84,7 +97,7 @@ public class Module {
         if (this.state == state && !NoToggle) {
             return;
         }
-        if (state && !YozakuraAuthGate.permitModuleActivation()) {
+        if (state && !B.permitModuleActivation()) {
             return;
         }
         if (state) {
@@ -183,6 +196,33 @@ public class Module {
             return;
         }
         this.key = key;
+        YozakuraClientState.markConfigDirty();
+    }
+
+    public BindMode getBindMode() {
+        return bindMode;
+    }
+
+    public void setBindMode(BindMode bindMode) {
+        if (bindMode == null) {
+            return;
+        }
+        if (this.bindMode == bindMode) {
+            return;
+        }
+        this.bindMode = bindMode;
+        YozakuraClientState.markConfigDirty();
+    }
+
+    public boolean isHidden() {
+        return hidden;
+    }
+
+    public void setHidden(boolean hidden) {
+        if (this.hidden == hidden) {
+            return;
+        }
+        this.hidden = hidden;
         YozakuraClientState.markConfigDirty();
     }
 

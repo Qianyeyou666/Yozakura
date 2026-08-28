@@ -1,5 +1,7 @@
 package gq.yozakura.bridge;
 
+import gq.yozakura.bridge.util.ReflectionUtils;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
@@ -15,7 +17,7 @@ public final class ForgeEnvironment {
         if (forgeAvailable != null) {
             return forgeAvailable.booleanValue();
         }
-        forgeAvailable = Boolean.valueOf(classExists("net.minecraftforge.common.MinecraftForge")
+        forgeAvailable = Boolean.valueOf(ReflectionUtils.classExists("net.minecraftforge.common.MinecraftForge")
                 && (isLegacyForgeAvailable() || isModernForgeAvailable()));
         return forgeAvailable.booleanValue();
     }
@@ -24,7 +26,7 @@ public final class ForgeEnvironment {
         if (legacyForgeAvailable != null) {
             return legacyForgeAvailable.booleanValue();
         }
-        legacyForgeAvailable = Boolean.valueOf(classExists("net.minecraftforge.fml.common.FMLCommonHandler"));
+        legacyForgeAvailable = Boolean.valueOf(ReflectionUtils.classExists("net.minecraftforge.fml.common.FMLCommonHandler"));
         return legacyForgeAvailable.booleanValue();
     }
 
@@ -32,9 +34,9 @@ public final class ForgeEnvironment {
         if (modernForgeAvailable != null) {
             return modernForgeAvailable.booleanValue();
         }
-        modernForgeAvailable = Boolean.valueOf(classExists("net.minecraftforge.fml.ModList")
-                || classExists("net.minecraftforge.fml.loading.FMLLoader")
-                || classExists("net.minecraftforge.eventbus.api.IEventBus"));
+        modernForgeAvailable = Boolean.valueOf(ReflectionUtils.classExists("net.minecraftforge.fml.ModList")
+                || ReflectionUtils.classExists("net.minecraftforge.fml.loading.FMLLoader")
+                || ReflectionUtils.classExists("net.minecraftforge.eventbus.api.IEventBus"));
         return modernForgeAvailable.booleanValue();
     }
 
@@ -67,8 +69,8 @@ public final class ForgeEnvironment {
             return true;
         }
         try {
-            Class<?> hooks = findClass("net.minecraftforge.common.ForgeHooks");
-            Method method = findMethod(hooks, "onPlayerAttackTarget", 2);
+            Class<?> hooks = ReflectionUtils.classForName("net.minecraftforge.common.ForgeHooks");
+            Method method = ReflectionUtils.findMethodByCount(hooks, "onPlayerAttackTarget", 2);
             if (method == null) {
                 return true;
             }
@@ -79,26 +81,9 @@ public final class ForgeEnvironment {
         }
     }
 
-    private static boolean classExists(String name) {
-        try {
-            findClass(name);
-            return true;
-        } catch (Throwable ignored) {
-            return false;
-        }
-    }
-
-    private static Class<?> findClass(String name) throws ClassNotFoundException {
-        ClassLoader loader = Thread.currentThread().getContextClassLoader();
-        if (loader == null) {
-            loader = ForgeEnvironment.class.getClassLoader();
-        }
-        return Class.forName(name, false, loader);
-    }
-
     private static boolean callEventBus(String ownerName, String fieldName, Object owner, String methodName, Object listener) {
         try {
-            Class<?> ownerClass = findClass(ownerName);
+            Class<?> ownerClass = ReflectionUtils.classForName(ownerName);
             Field field = ownerClass.getField(fieldName);
             Object bus = field.get(owner);
             callBusMethod(bus, methodName, listener);
@@ -110,7 +95,7 @@ public final class ForgeEnvironment {
 
     private static boolean callFmlBus(String methodName, Object listener) {
         try {
-            Class<?> commonHandler = findClass("net.minecraftforge.fml.common.FMLCommonHandler");
+            Class<?> commonHandler = ReflectionUtils.classForName("net.minecraftforge.fml.common.FMLCommonHandler");
             Object handler = commonHandler.getMethod("instance").invoke(null);
             Object bus = handler.getClass().getMethod("bus").invoke(handler);
             callBusMethod(bus, methodName, listener);
@@ -123,20 +108,5 @@ public final class ForgeEnvironment {
     private static void callBusMethod(Object bus, String methodName, Object listener) throws Exception {
         Method method = bus.getClass().getMethod(methodName, Object.class);
         method.invoke(bus, listener);
-    }
-
-    private static Method findMethod(Class<?> owner, String name, int parameterCount) {
-        for (Method method : owner.getMethods()) {
-            if (method.getName().equals(name) && method.getParameterTypes().length == parameterCount) {
-                return method;
-            }
-        }
-        for (Method method : owner.getDeclaredMethods()) {
-            if (method.getName().equals(name) && method.getParameterTypes().length == parameterCount) {
-                method.setAccessible(true);
-                return method;
-            }
-        }
-        return null;
     }
 }

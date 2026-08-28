@@ -30,10 +30,16 @@ public class PlayerStateManager {
             setState(ATTACKING);
         }
         if (packet instanceof C07PacketPlayerDigging) {
-            setState(DIGGING);
+            C07PacketPlayerDigging digging = (C07PacketPlayerDigging) packet;
+            if (digging.getStatus() != C07PacketPlayerDigging.Action.RELEASE_USE_ITEM) {
+                setState(DIGGING);
+            }
         }
         if (packet instanceof C08PacketPlayerBlockPlacement) {
-            setState(PLACING);
+            C08PacketPlayerBlockPlacement placement = (C08PacketPlayerBlockPlacement) packet;
+            if (placement.getPlacedBlockDirection() != 255) {
+                setState(PLACING);
+            }
         }
         if (packet instanceof C09PacketHeldItemChange) {
             setState(SWAPPING);

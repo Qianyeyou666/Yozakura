@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Yozakura is a lightweight client experience built for Minecraft Forge 1.8.9.">
+  <title>Yozakura — Lightweight, without compromise</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/account.css">
+</head>
+<body>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="Yozakura home">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <span><strong>Yozakura</strong><small>v1.5.0</small></span>
+    </a>
+    <nav aria-label="Primary navigation">
+      <a href="#client" data-i18n="nav.client">Client</a>
+      <a href="#features" data-i18n="nav.features">Features</a>
+      <a href="#configs" data-i18n="nav.configs">Configs</a>
+      <a href="#pricing" data-i18n="nav.pricing">Pricing</a>
+    </nav>
+    <div class="header-actions">
+      <button class="language-toggle" id="languageToggle" type="button" aria-label="Switch language"><span class="active">EN</span><i></i><span>中文</span></button>
+      <button class="ghost-button account-trigger" id="loginButton" type="button" data-i18n="auth.login">Log in</button>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="hero-copy reveal">
+        <div class="eyebrow"><span></span> FORGE 1.8.9 / JAVA 8</div>
+        <h1 data-i18n-html="hero.title">Lightweight,<br><em>without compromise.</em></h1>
+        <p data-i18n="hero.description">A native Minecraft client experience. Modules, settings, and configs live in one restrained and responsive ClickGUI panel.</p>
+        <div class="hero-actions">
+          <button class="primary-button" id="heroAccountButton" type="button" data-i18n="hero.download">Download client</button>
+          <a class="text-button" href="#client"><span data-i18n="hero.preview">Explore the client</span> <span>→</span></a>
+        </div>
+        <div class="compatibility">
+          <span data-i18n="hero.compatible">Compatible</span>
+          <strong>Forge 1.8.9</strong><i></i><strong>Vanilla 1.8.9</strong><i></i><strong>Lunar 1.8.9</strong>
+        </div>
+      </div>
+
+      <div class="hero-stage reveal" id="client">
+        <div class="world-backdrop" aria-hidden="true">
+          <div class="sky"></div><div class="cloud c1"></div><div class="cloud c2"></div>
+          <div class="mountain m1"></div><div class="mountain m2"></div><div class="ground"></div>
+        </div>
+        <section class="client-window" aria-label="Interactive Yozakura ClickGUI preview">
+          <aside class="client-rail">
+            <div class="client-brand"><button class="menu-icon" type="button" aria-label="Menu"><span></span><span></span><span></span></button><div><b>Yozakura</b><small>v1.5.0</small></div></div>
+            <div class="rail-divider"></div>
+            <div class="category-list" id="categoryList"></div>
+            <div class="rail-bottom">
+              <button class="rail-item" type="button" data-page="configs"><span class="icon icon-folder"></span><b data-i18n="panel.configManager">Config Manager</b></button>
+              <button class="rail-item" type="button" data-page="settings"><span class="icon icon-settings">✦</span><b data-i18n="panel.settings">Settings</b></button>
+            </div>
+          </aside>
+          <div class="client-content">
+            <div class="panel-page active" id="modulesPage">
+              <div class="panel-heading"><div><p class="panel-kicker">MODULE LIBRARY</p><h2 id="panelTitle">Combat</h2></div><label class="search-box"><span></span><input id="moduleSearch" type="search" placeholder="Search" data-i18n-placeholder="panel.search"></label></div>
+              <div class="module-list" id="moduleList"></div>
+            </div>
+            <div class="panel-page" id="detailPage">
+              <div class="detail-heading"><div><p class="panel-kicker">MODULE SETTINGS</p><h2 id="detailTitle">AimAssist</h2></div><button class="close-button" id="closeDetail" type="button" aria-label="Close">×</button></div>
+              <div class="segmented"><button class="active" type="button" data-i18n="panel.noKey">No key</button><button type="button" data-i18n="panel.toggle">Toggle</button><button type="button" data-i18n="panel.hold">Hold</button><button class="active" type="button" data-i18n="panel.visible">Visible</button><button type="button" data-i18n="panel.hidden">Hidden</button></div>
+              <div class="setting-list" id="settingList"></div>
+            </div>
+            <div class="panel-page" id="configsPage">
+              <div class="detail-heading"><div><p class="panel-kicker">LOCAL PROFILES</p><h2 data-i18n="panel.configManager">Config Manager</h2></div><button class="close-button page-close" type="button" aria-label="Close">×</button></div>
+              <div class="config-list"><button class="config-row active" type="button">hypixel.yzk <span data-i18n="panel.current">Current</span></button><button class="config-row" type="button">LFbanbaoli.yzk <span data-i18n="panel.local">Local</span></button><button class="config-row" type="button">bedwars-clean.yzk <span data-i18n="panel.cloud">Cloud</span></button></div>
+              <div class="config-actions"><input type="text" value="hypixel" aria-label="Config name"><button type="button" data-i18n="panel.save">Save</button><button type="button" data-i18n="panel.load">Load</button><button type="button" data-i18n="panel.refresh">Refresh</button></div>
+            </div>
+            <div class="panel-page" id="settingsPage">
+              <div class="detail-heading"><div><p class="panel-kicker">CLIENT SETTINGS</p><h2 data-i18n="panel.settings">Settings</h2></div><button class="close-button page-close" type="button" aria-label="Close">×</button></div>
+              <div class="settings-cards"><div class="settings-card"><span data-i18n="panel.language">Language</span><div class="segmented compact"><button class="active" type="button">English</button><button type="button">中文</button></div></div><div class="settings-card"><span data-i18n="panel.palette">Palette</span><strong>Night Bloom</strong></div><div class="settings-card"><span data-i18n="panel.glass">Glass background</span><button class="switch on" type="button" aria-label="Glass background"></button></div></div>
+            </div>
+          </div>
+        </section>
+        <div class="stage-caption"><span>INTERACTIVE PREVIEW</span><strong data-i18n="panel.caption">Try categories, modules, switches, and settings</strong></div>
+      </div>
+    </section>
+
+    <section class="feature-intro section" id="features">
+      <p class="section-label" data-i18n="features.label">REIMAGINED FROM A PUBLIC INFORMATION ARCHITECTURE</p>
+      <h2 data-i18n-html="features.title">One interface,<em> across every touchpoint.</em></h2>
+      <p data-i18n="features.description">The website is not a separate product. It carries the client's layout, spacing, color, and interaction language into every visit.</p>
+    </section>
+
+    <section class="feature-grid section" id="featureGrid">
+      <article class="feature-card large reveal"><span class="feature-number">01</span><div><small>PANEL</small><h3 data-i18n="features.panelTitle">Native and consistent.</h3><p data-i18n="features.panelBody">A two-column panel, clear categories, dedicated settings, and compact controls preserve the client's rhythm.</p></div><div class="mini-panel"><span></span><span></span><span></span><b></b></div></article>
+      <article class="feature-card reveal"><span class="feature-number">02</span><div><small>CUSTOMIZATION</small><h3 data-i18n="features.customTitle">Precise down to every control.</h3><p data-i18n="features.customBody">Values, modes, binds, visibility, and color retain one shared meaning.</p></div><div class="slider-art"><i style="--p:64%"></i><i style="--p:38%"></i><i style="--p:82%"></i></div></article>
+      <article class="feature-card reveal" id="configs"><span class="feature-number">03</span><div><small>CONFIGS</small><h3 data-i18n="features.configTitle">Save, sync, and share.</h3><p data-i18n="features.configBody">Local .yzk profiles stay available, while signed-in accounts can sync to a private cloud space.</p></div><div class="config-art"><i>hypixel.yzk</i><i>bedwars-clean.yzk</i><i data-i18n="features.newConfig">+ New config</i></div></article>
+    </section>
+
+    <section class="modules-showcase section">
+      <div class="showcase-copy reveal"><p class="section-label">MODULES</p><h2 data-i18n-html="modules.title">The capabilities you need,<br><em>right where they belong.</em></h2><p data-i18n="modules.description">Organized around real client categories, without oversized effects obscuring the information.</p><div class="category-pills"><button class="active" type="button" data-showcase-category="All" data-i18n="modules.all">All</button><button type="button" data-showcase-category="Combat" data-i18n="modules.combat">Combat</button><button type="button" data-showcase-category="Movement" data-i18n="modules.movement">Movement</button><button type="button" data-showcase-category="Render" data-i18n="modules.render">Render</button></div></div>
+      <div class="showcase-list reveal" id="showcaseList"></div>
+    </section>
+
+    <section class="pricing section" id="pricing">
+      <div class="pricing-heading reveal"><p class="section-label" data-i18n="pricing.label">TRANSPARENT PRICING</p><h2 data-i18n="pricing.title">Choose the plan that fits.</h2><p data-i18n="pricing.description">Every plan includes the full client and future versions. Payments are not connected in this preview environment.</p></div>
+      <div class="pricing-grid" id="pricingGrid"></div>
+    </section>
+
+    <section class="closing section reveal">
+      <p class="section-label">YOZAKURA v1.5.0</p><h2 data-i18n-html="closing.title">Ready to open<br><em>your Panel?</em></h2><div><button class="primary-button" id="closingDownload" type="button" data-i18n="hero.download">Download client</button><button class="ghost-button large" id="closingLogin" type="button" data-i18n="auth.login">Log in</button></div>
+    </section>
+  </main>
+
+  <footer><a class="brand footer-brand" href="#top"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span><strong>Yozakura</strong><small>Lightweight retained-mode client</small></span></a><div><a href="#client" data-i18n="nav.client">Client</a><a href="#features" data-i18n="nav.features">Features</a><a href="#configs" data-i18n="nav.configs">Configs</a><a href="#pricing" data-i18n="nav.pricing">Pricing</a></div><p>© 2026 Yozakura. Original implementation inspired by the public information architecture of timewarp.club.</p></footer>
+
+  <dialog class="account-dialog" id="accountDialog">
+    <div class="account-shell">
+      <button class="dialog-close" id="accountClose" type="button" aria-label="Close">×</button>
+      <header class="account-heading">
+        <div class="account-avatar" aria-hidden="true">Y</div>
+        <div><p class="panel-kicker">YOZAKURA CLUB</p><h2 id="accountUsername">Account</h2><span class="account-plan" id="accountPlanBadge">FREE</span></div>
+        <button class="text-button account-logout" id="logoutButton" type="button" data-i18n="account.logout">Log out</button>
+      </header>
+
+      <section class="account-overview" aria-labelledby="accountOverviewTitle">
+        <div class="account-section-title"><div><p class="section-label" data-i18n="account.overviewLabel">MEMBERSHIP</p><h3 id="accountOverviewTitle" data-i18n="account.overviewTitle">Subscription overview</h3></div><span class="status-dot" id="subscriptionState"><i></i><b data-i18n="account.inactive">Inactive</b></span></div>
+        <div class="account-stat-grid">
+          <article><small data-i18n="account.plan">Plan</small><strong id="subscriptionPlan">Free</strong></article>
+          <article><small data-i18n="account.expiry">Expires</small><strong id="subscriptionExpiry">—</strong></article>
+          <article class="remaining-stat"><small data-i18n="account.remaining">Time remaining</small><strong id="subscriptionRemaining">—</strong></article>
+          <article><small>HWID</small><strong id="accountHwid">—</strong><span id="accountHwidState" data-i18n="account.notBound">Not bound</span></article>
+        </div>
+      </section>
+
+      <div class="account-action-grid">
+        <section class="account-card download-card" aria-labelledby="accountDownloadTitle">
+          <div class="account-card-heading"><span class="account-card-icon">↓</span><div><p class="section-label">CLIENT DOWNLOAD</p><h3 id="accountDownloadTitle" data-i18n="download.title">Download Yozakura</h3></div></div>
+          <p data-i18n="download.description">The protected release is available only through your signed-in session.</p>
+          <dl class="compact-meta"><div><dt data-i18n="download.version">Version</dt><dd id="downloadVersion">v1.5.0</dd></div><div><dt data-i18n="download.environment">Environment</dt><dd id="downloadMinecraft">Minecraft 1.8.9 · Java 8</dd></div></dl>
+          <button class="primary-button full disabled" id="clientDownload" type="button" disabled data-i18n="download.preparing">Build in progress</button>
+          <p class="form-message" id="downloadStatus" role="status" data-i18n="download.waiting">The verified build is being prepared.</p>
+        </section>
+
+        <section class="account-card redeem-card" aria-labelledby="licenseRedeemTitle">
+          <div class="account-card-heading"><span class="account-card-icon">✦</span><div><p class="section-label">SUBSCRIPTION CODE</p><h3 id="licenseRedeemTitle" data-i18n="redeem.title">Activate a subscription</h3></div></div>
+          <p data-i18n="redeem.description">Enter a one-time subscription code linked to this website account.</p>
+          <form id="licenseRedeemForm">
+            <label for="licenseKey" data-i18n="redeem.code">Subscription code</label>
+            <input id="licenseKey" name="licenseKey" type="text" autocomplete="off" spellcheck="false" maxlength="64" placeholder="YOZA-..." required>
+            <button class="ghost-button full" id="licenseRedeemButton" type="submit" data-i18n="redeem.activate">Activate subscription</button>
+            <p class="form-message" id="licenseRedeemMessage" role="status"></p>
+          </form>
+        </section>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="auth-dialog" id="authDialog">
+    <form method="dialog" class="dialog-shell" id="authForm">
+      <button class="dialog-close" id="authClose" type="button" aria-label="Close">×</button>
+      <p class="panel-kicker">YOZAKURA CLUB</p><h2 id="authTitle">Log in</h2><p class="dialog-note" data-i18n="auth.note">Sign in to access your account, protected downloads, and cloud configs.</p>
+      <label><span data-i18n="auth.username">Username</span><input id="authUsername" name="username" autocomplete="username" minlength="3" maxlength="24" required></label>
+      <label><span data-i18n="auth.password">Password</span><input id="authPassword" name="password" type="password" autocomplete="current-password" minlength="6" maxlength="128" required></label>
+      <p class="form-message" id="formMessage" role="status"></p>
+      <button class="primary-button full" id="authSubmit" type="button">Log in</button>
+      <button class="text-button auth-switch" id="authSwitch" type="button">No account? Create one</button>
+    </form>
+  </dialog>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

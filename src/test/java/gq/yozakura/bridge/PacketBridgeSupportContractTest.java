@@ -61,10 +61,8 @@ public class PacketBridgeSupportContractTest {
         String support = source();
         String blink = new String(Files.readAllBytes(Paths.get(
                 "src/main/java/gq/yozakura/manager/BlinkManager.java")), StandardCharsets.UTF_8);
-        String forge = new String(Files.readAllBytes(Paths.get(
-                "src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java")), StandardCharsets.UTF_8);
-        String standalone = new String(Files.readAllBytes(Paths.get(
-                "src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java")), StandardCharsets.UTF_8);
+        String forge = combinedForgeSource();
+        String standalone = combinedStandaloneSource();
 
         assertTrue("No-event replay must carry an optional accepted write id alongside its marker",
                 support.contains("class NoEventMarker")
@@ -84,5 +82,28 @@ public class PacketBridgeSupportContractTest {
     private static String source() throws IOException {
         return new String(Files.readAllBytes(Paths.get(
                 "src/main/java/gq/yozakura/bridge/PacketBridgeSupport.java")), StandardCharsets.UTF_8);
+    }
+
+    private static String baseSource() throws IOException {
+        return new String(Files.readAllBytes(Paths.get(
+                "src/main/java/gq/yozakura/bridge/BasePacketBridgeHandler.java")), StandardCharsets.UTF_8);
+    }
+
+    private static String forgeSource() throws IOException {
+        return new String(Files.readAllBytes(Paths.get(
+                "src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java")), StandardCharsets.UTF_8);
+    }
+
+    private static String standaloneSource() throws IOException {
+        return new String(Files.readAllBytes(Paths.get(
+                "src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java")), StandardCharsets.UTF_8);
+    }
+
+    private static String combinedForgeSource() throws IOException {
+        return baseSource() + "\n" + forgeSource();
+    }
+
+    private static String combinedStandaloneSource() throws IOException {
+        return baseSource() + "\n" + standaloneSource();
     }
 }

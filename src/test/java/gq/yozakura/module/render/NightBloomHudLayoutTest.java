@@ -14,7 +14,7 @@ public class NightBloomHudLayoutTest {
     @Test
     public void keepsTheCompactNightBloomRhythm() {
         assertEquals(18.0F, NightBloomHudLayout.WATERMARK_HEIGHT, EPSILON);
-        assertEquals(16.0F, NightBloomHudLayout.MODULE_ROW_HEIGHT, EPSILON);
+        assertEquals(18.0F, NightBloomHudLayout.MODULE_ROW_HEIGHT, EPSILON);
         assertEquals(2.0F, NightBloomHudLayout.MODULE_ROW_GAP, EPSILON);
     }
 
@@ -39,9 +39,9 @@ public class NightBloomHudLayoutTest {
 
     @Test
     public void moduleRowsShareOneRightAnchorAtEveryVisibility() {
-        assertEquals(15.0F, NightBloomHudLayout.moduleRowWidth(10.0F, 0.0F), EPSILON);
-        assertEquals(83.0F, NightBloomHudLayout.moduleRowWidth(44.0F, 33.0F), EPSILON);
-        assertEquals(139.0F, NightBloomHudLayout.moduleRowWidth(100.0F, 33.0F), EPSILON);
+        assertEquals(17.0F, NightBloomHudLayout.moduleRowWidth(10.0F, 0.0F), EPSILON);
+        assertEquals(87.0F, NightBloomHudLayout.moduleRowWidth(44.0F, 33.0F), EPSILON);
+        assertEquals(143.0F, NightBloomHudLayout.moduleRowWidth(100.0F, 33.0F), EPSILON);
         assertEquals(200.0F, NightBloomHudLayout.moduleRowX(300.0F, 100.0F, 0.0F), EPSILON);
         assertEquals(200.0F, NightBloomHudLayout.moduleRowX(300.0F, 100.0F, 0.5F), EPSILON);
         assertEquals(200.0F, NightBloomHudLayout.moduleRowX(300.0F, 100.0F, 1.0F), EPSILON);
@@ -50,8 +50,8 @@ public class NightBloomHudLayoutTest {
 
     @Test
     public void moduleOrderingUsesTheFinalNightBloomNameAndMetadataWidths() {
-        assertEquals(52.0F, NightBloomHudLayout.moduleRowWidth(38.0F, 8.0F), EPSILON);
-        assertEquals(56.0F, NightBloomHudLayout.moduleRowWidth(51.0F, 0.0F), EPSILON);
+        assertEquals(56.0F, NightBloomHudLayout.moduleRowWidth(38.0F, 8.0F), EPSILON);
+        assertEquals(58.0F, NightBloomHudLayout.moduleRowWidth(51.0F, 0.0F), EPSILON);
         assertTrue("JumpReset must sort before the visually narrower BlockHit 6r row",
                 NightBloomHudLayout.compareModuleRowsByRenderedWidth(52.0F, 56.0F) > 0);
         assertTrue(NightBloomHudLayout.compareModuleRowsByRenderedWidth(56.0F, 52.0F) < 0);
@@ -60,18 +60,18 @@ public class NightBloomHudLayoutTest {
 
     @Test
     public void moduleNameAndMetadataUseCompactOpticalAlignment() {
-        assertEquals(1.0F, NightBloomHudLayout.MODULE_TEXT_GAP, EPSILON);
-        assertEquals(4.0F, NightBloomHudLayout.moduleNameY(0.0F, 10.0F), EPSILON);
-        assertEquals(6.0F, NightBloomHudLayout.moduleMetadataY(0.0F, 8.0F), EPSILON);
-        assertEquals(36.0F, NightBloomHudLayout.moduleNameY(32.0F, 10.0F), EPSILON);
-        assertEquals(38.0F, NightBloomHudLayout.moduleMetadataY(32.0F, 8.0F), EPSILON);
+        assertEquals(3.0F, NightBloomHudLayout.MODULE_TEXT_GAP, EPSILON);
+        assertEquals(5.0F, NightBloomHudLayout.moduleNameY(0.0F, 10.0F), EPSILON);
+        assertEquals(7.0F, NightBloomHudLayout.moduleMetadataY(0.0F, 8.0F), EPSILON);
+        assertEquals(37.0F, NightBloomHudLayout.moduleNameY(32.0F, 10.0F), EPSILON);
+        assertEquals(39.0F, NightBloomHudLayout.moduleMetadataY(32.0F, 8.0F), EPSILON);
     }
 
     @Test
     public void moduleListHeightUsesAStableEmptyPreviewAndCapsVisibleRows() {
-        assertEquals(18.0F, NightBloomHudLayout.moduleListHeight(0), EPSILON);
-        assertEquals(54.0F, NightBloomHudLayout.moduleListHeight(3), EPSILON);
-        assertEquals(324.0F, NightBloomHudLayout.moduleListHeight(99), EPSILON);
+        assertEquals(20.0F, NightBloomHudLayout.moduleListHeight(0), EPSILON);
+        assertEquals(60.0F, NightBloomHudLayout.moduleListHeight(3), EPSILON);
+        assertEquals(360.0F, NightBloomHudLayout.moduleListHeight(99), EPSILON);
     }
 
     @Test
@@ -85,11 +85,11 @@ public class NightBloomHudLayoutTest {
                 "moduleRowsTouch", float.class, float.class);
         rowsTouch.setAccessible(true);
 
-        assertTrue((Boolean) rowsTouch.invoke(null, 10.0F, 28.0F));
-        assertTrue((Boolean) rowsTouch.invoke(null, 10.0F, 27.98F));
-        assertFalse((Boolean) rowsTouch.invoke(null, 10.0F, 27.5F));
-        assertFalse((Boolean) rowsTouch.invoke(null, 10.0F, 29.0F));
-        assertFalse((Boolean) rowsTouch.invoke(null, 10.0F, 25.0F));
+        assertTrue((Boolean) rowsTouch.invoke(null, 10.0F, 30.0F));
+        assertTrue((Boolean) rowsTouch.invoke(null, 10.0F, 29.98F));
+        assertFalse((Boolean) rowsTouch.invoke(null, 10.0F, 29.5F));
+        assertFalse((Boolean) rowsTouch.invoke(null, 10.0F, 31.0F));
+        assertFalse((Boolean) rowsTouch.invoke(null, 10.0F, 27.0F));
     }
 
     @Test
@@ -111,25 +111,63 @@ public class NightBloomHudLayoutTest {
         assertFalse("an animated row that extends farther right must keep its exposed corner rounded",
                 NightBloomHudLayout.moduleJoinReachesRight(200.0F, 195.0F));
 
-        assertEquals(27.98F, NightBloomHudLayout.moduleRowBottom(10.0F, 27.98F, true), EPSILON);
-        assertEquals(28.0F, NightBloomHudLayout.moduleRowBottom(10.0F, 27.98F, false), EPSILON);
+        assertEquals(29.98F, NightBloomHudLayout.moduleRowBottom(10.0F, 29.98F, true), EPSILON);
+        assertEquals(30.0F, NightBloomHudLayout.moduleRowBottom(10.0F, 29.98F, false), EPSILON);
     }
 
     @Test
-    public void fusedModuleStepsFlattenOnlyTheInsetLeftCorners() {
+    public void equalModuleRowsShareOneContinuousSurfaceBounds() {
+        assertTrue(NightBloomHudLayout.moduleRowsShareBounds(
+                90.0F, 300.0F, 90.0F, 300.0F));
+        assertTrue("subpixel animation noise must not split an otherwise equal column",
+                NightBloomHudLayout.moduleRowsShareBounds(
+                        90.02F, 299.98F, 90.0F, 300.0F));
+        assertFalse("different left extents form a rounded step rather than one column",
+                NightBloomHudLayout.moduleRowsShareBounds(
+                        90.0F, 300.0F, 94.0F, 300.0F));
+        assertFalse("different right extents must not be merged into one rectangle",
+                NightBloomHudLayout.moduleRowsShareBounds(
+                        90.0F, 300.0F, 90.0F, 296.0F));
+    }
+
+    @Test
+    public void physicalPixelEqualityAbsorbsScaledSubpixelWidthNoise() {
+        assertTrue("edges within half a framebuffer pixel must form one visual column",
+                NightBloomHudLayout.moduleRowsSharePhysicalBounds(
+                        90.0F, 300.0F, 90.35F, 299.65F, 1.0F));
+        assertTrue("logical differences shrink further when the HUD is scaled down",
+                NightBloomHudLayout.moduleRowsSharePhysicalBounds(
+                        90.0F, 300.0F, 90.55F, 299.45F, 0.75F));
+        assertFalse("a full physical-pixel step must keep its own rounded shoulder",
+                NightBloomHudLayout.moduleRowsSharePhysicalBounds(
+                        90.0F, 300.0F, 91.0F, 299.0F, 1.0F));
+    }
+
+    @Test
+    public void fusedModuleStepsKeepRoundedOuterShouldersAndFlattenInsetCorners() {
         float radius = NightBloomHudLayout.PANEL_RADIUS;
 
-        assertEquals(0.0F, NightBloomHudLayout.moduleTopLeftRadius(
-                110.0F, 90.0F, radius, true), EPSILON);
-        assertEquals(radius, NightBloomHudLayout.moduleTopLeftRadius(
-                90.0F, 110.0F, radius, true), EPSILON);
+        assertEquals("an inset row must flatten into the wider row above",
+                0.0F, NightBloomHudLayout.moduleTopLeftRadius(
+                        110.0F, 90.0F, radius, true), EPSILON);
+        assertEquals("the wider row keeps the rounded outer shoulder shown by the reference",
+                radius, NightBloomHudLayout.moduleTopLeftRadius(
+                        90.0F, 110.0F, radius, true), EPSILON);
+        assertEquals("equal-width rows become one continuous left edge",
+                0.0F, NightBloomHudLayout.moduleTopLeftRadius(
+                        90.0F, 90.0F, radius, true), EPSILON);
         assertEquals(radius, NightBloomHudLayout.moduleTopLeftRadius(
                 110.0F, 90.0F, radius, false), EPSILON);
 
-        assertEquals(0.0F, NightBloomHudLayout.moduleBottomLeftRadius(
-                110.0F, 90.0F, radius, true), EPSILON);
-        assertEquals(radius, NightBloomHudLayout.moduleBottomLeftRadius(
-                90.0F, 110.0F, radius, true), EPSILON);
+        assertEquals("an inset row below must meet the wider row without an inner notch",
+                0.0F, NightBloomHudLayout.moduleBottomLeftRadius(
+                        110.0F, 90.0F, radius, true), EPSILON);
+        assertEquals("the wider row keeps its rounded lower shoulder before the inset row",
+                radius, NightBloomHudLayout.moduleBottomLeftRadius(
+                        90.0F, 110.0F, radius, true), EPSILON);
+        assertEquals("equal-width rows become one continuous left edge",
+                0.0F, NightBloomHudLayout.moduleBottomLeftRadius(
+                        90.0F, 90.0F, radius, true), EPSILON);
         assertEquals(radius, NightBloomHudLayout.moduleBottomLeftRadius(
                 110.0F, 90.0F, radius, false), EPSILON);
     }

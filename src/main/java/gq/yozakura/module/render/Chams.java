@@ -5,8 +5,10 @@ import gq.yozakura.module.Module;
 import gq.yozakura.module.combat.AntiBot;
 import gq.yozakura.engine.render.ui.VisualPalette;
 import gq.yozakura.util.color.ColorUtil;
+import gq.yozakura.util.collection.IntHashSet;
 import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
+import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.monster.EntityMob;
 import net.minecraft.entity.monster.EntitySlime;
@@ -20,9 +22,6 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.GL11;
 
-import java.util.HashSet;
-import java.util.Set;
-
 public class Chams extends Module {
     private final Option<Boolean> throughWalls = new Option<Boolean>("Through Walls", "ThroughWalls", true);
     private final Option<Boolean> textured = new Option<Boolean>("Textured", "Textured", false);
@@ -35,8 +34,20 @@ public class Chams extends Module {
     private final Numbers<Double> red = new Numbers<Double>("Red", "Red", 88.0, 0.0, 255.0, 1.0);
     private final Numbers<Double> green = new Numbers<Double>("Green", "Green", 190.0, 0.0, 255.0, 1.0);
     private final Numbers<Double> blue = new Numbers<Double>("Blue", "Blue", 255.0, 0.0, 255.0, 1.0);
-    private final Numbers<Double> alpha = new Numbers<Double>("Alpha", "Alpha", 115.0, 35.0, 210.0, 5.0);
-    private final Set<Integer> renderedEntities = new HashSet<Integer>();
+    private final Numbers<Double> alpha = new Numbers<Double>("Alpha", "Alpha", 255.0, 35.0, 255.0, 5.0);
+    /**
+     * Tracks which entities currently have an open glPushAttrib from
+     * {@link #onRenderLivingPre} so the matching Post event only issues
+     * glPopAttrib for entities we actually pushed state for.
+     *
+     * <p>Primitive {@link IntHashSet} instead of {@code HashSet<Integer>}: each
+     * entity is added once on Pre and removed once on Post every frame. With
+     * {@code HashSet<Integer>} that is two Integer allocations per entity per
+     * frame (entity ids are outside the -128..127 cache, so real allocations).
+     * The primitive set keeps this bookkeeping allocation-free on the render
+     * hot path.
+     */
+    private final IntHashSet renderedEntities = new IntHashSet();
 
     public Chams() {
         super("Chams", Keyboard.KEY_NONE, ModuleType.Render, "Render entities with colored chams");
@@ -93,7 +104,21 @@ public class Chams extends Module {
         }
         if (renderedEntities.remove(event.entity.getEntityId())) {
             GL11.glPopAttrib();
+            restoreMinecraftRenderState();
         }
+    }
+
+    private void restoreMinecraftRenderState() {
+        GL11.glDisable(GL11.GL_POLYGON_OFFSET_FILL);
+        GL11.glPolygonOffset(0.0F, 0.0F);
+        GlStateManager.depthMask(true);
+        GlStateManager.enableDepth();
+        GlStateManager.enableAlpha();
+        GlStateManager.enableTexture2D();
+        GlStateManager.enableLighting();
+        GlStateManager.disableBlend();
+        GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0);
+        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
     }
 
     private void applyColoredStyle(EntityLivingBase entity) {

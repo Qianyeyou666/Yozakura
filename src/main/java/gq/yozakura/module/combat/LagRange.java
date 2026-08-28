@@ -1,11 +1,14 @@
 package gq.yozakura.module.combat;
 
 import gq.yozakura.bridge.PacketPipelineAnchors;
+import gq.yozakura.bridge.PacketWriteDisposition;
+import gq.yozakura.bridge.util.ReflectionUtils;
 import gq.yozakura.event.bus.EventTarget;
 import gq.yozakura.event.bus.types.EventType;
 import gq.yozakura.event.bridge.AttackEvent;
 import gq.yozakura.event.bridge.Render3DEvent;
 import gq.yozakura.event.bridge.TickEvent;
+import gq.yozakura.event.bridge.TeleportBoundaryEvent;
 import gq.yozakura.module.Module;
 import gq.yozakura.module.ModuleType;
 import gq.yozakura.util.render.RenderUtil;
@@ -47,7 +50,6 @@ import net.minecraft.util.Vec3;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.GL11;
 
-import java.lang.reflect.Field;
 import java.util.ArrayDeque;
 import java.util.Queue;
 
@@ -72,11 +74,13 @@ public class LagRange extends Module {
     private final Queue<QueuedPacket> queuedPackets = new ArrayDeque<QueuedPacket>();
     private final Object deliveryLock = new Object();
     private int pendingDeliveryTasks;
+    private long deliveryEpoch;
 
     private EntityPlayer currentTarget;
     private double lastDistSq = -1.0D;
     private volatile boolean lagging;
     private volatile boolean acceptingPackets;
+    private boolean teleportConfirmationPending;
     private int lastSelfHurtTime;
     private int lastTargetHurtTime;
     private int hitMarkedEntityId = -1;
@@ -131,6 +135,17 @@ public class LagRange extends Module {
         if (lagging) {
             flushLag();
         }
+    }
+
+    @EventTarget
+    public void onTeleportBoundary(TeleportBoundaryEvent event) {
+        synchronized (deliveryLock) {
+            deliveryEpoch++;
+            discardQueuedPacketsLocked();
+            teleportConfirmationPending = true;
+            lagging = false;
+        }
+        clearIndicatorInterp();
     }
 
     @EventTarget
@@ -331,6 +346,13 @@ public class LagRange extends Module {
         }
     }
 
+    private void discardQueuedPacketsLocked() {
+        QueuedPacket queued;
+        while ((queued = queuedPackets.poll()) != null) {
+            PacketWriteDisposition.completeDropped(queued.promise);
+        }
+    }
+
     private void releaseExpiredPackets() {
         long now = System.currentTimeMillis();
         long maxDelay = maximumDelay.getValue();
@@ -373,20 +395,35 @@ public class LagRange extends Module {
     private boolean queuePacketIfLagging(ChannelHandlerContext ctx, Object packet, ChannelPromise promise) {
         boolean overflow = false;
         synchronized (deliveryLock) {
+            if (shouldBypassForTeleport(packet)) {
+                return false;
+            }
             if (!isQueueablePacket(packet)) {
                 return false;
             }
             if (queuedPackets.size() >= maxQueuedPackets()) {
                 flushLagLocked();
-                writePacketLocked(new QueuedPacket(ctx, packet, promise, System.currentTimeMillis()));
+                writePacketLocked(new QueuedPacket(ctx, packet, promise, System.currentTimeMillis(), deliveryEpoch));
                 overflow = true;
             } else {
-                queuedPackets.offer(new QueuedPacket(ctx, packet, promise, System.currentTimeMillis()));
+                queuedPackets.offer(new QueuedPacket(ctx, packet, promise, System.currentTimeMillis(), deliveryEpoch));
             }
         }
         if (overflow) {
             clearIndicatorInterp();
         }
+        return true;
+    }
+
+    private boolean shouldBypassForTeleport(Object packet) {
+        if (!teleportConfirmationPending || !(packet instanceof C03PacketPlayer)) {
+            return false;
+        }
+        C03PacketPlayer playerPacket = (C03PacketPlayer) packet;
+        if (!playerPacket.isMoving()) {
+            return false;
+        }
+        teleportConfirmationPending = false;
         return true;
     }
 
@@ -397,7 +434,7 @@ public class LagRange extends Module {
                 ctx.write(packet, promise);
                 return;
             }
-            writePacketLocked(new QueuedPacket(ctx, packet, promise, System.currentTimeMillis()));
+            writePacketLocked(new QueuedPacket(ctx, packet, promise, System.currentTimeMillis(), deliveryEpoch));
         }
     }
 
@@ -416,6 +453,12 @@ public class LagRange extends Module {
                 @Override
                 public void run() {
                     try {
+                        synchronized (deliveryLock) {
+                            if (queued.epoch != deliveryEpoch) {
+                                PacketWriteDisposition.completeDropped(queued.promise);
+                                return;
+                            }
+                        }
                         queued.ctx.writeAndFlush(queued.packet, queued.promise);
                     } finally {
                         synchronized (deliveryLock) {
@@ -556,7 +599,7 @@ public class LagRange extends Module {
         }
         try {
             NetworkManager manager = mc.getNetHandler().getNetworkManager();
-            Channel current = getChannel(manager);
+            Channel current = ReflectionUtils.getChannel(manager);
             if (current == null || !current.isOpen()) {
                 return;
             }
@@ -586,32 +629,20 @@ public class LagRange extends Module {
         }
     }
 
-    private Channel getChannel(NetworkManager manager) {
-        for (String name : new String[]{"channel", "field_150746_k", "k"}) {
-            try {
-                Field field = NetworkManager.class.getDeclaredField(name);
-                field.setAccessible(true);
-                Object value = field.get(manager);
-                if (value instanceof Channel) {
-                    return (Channel) value;
-                }
-            } catch (Throwable ignored) {
-            }
-        }
-        return null;
-    }
-
     private static final class QueuedPacket {
         private final ChannelHandlerContext ctx;
         private final Object packet;
         private final ChannelPromise promise;
         private final long queuedAt;
+        private final long epoch;
 
-        private QueuedPacket(ChannelHandlerContext ctx, Object packet, ChannelPromise promise, long queuedAt) {
+        private QueuedPacket(ChannelHandlerContext ctx, Object packet, ChannelPromise promise, long queuedAt,
+                             long epoch) {
             this.ctx = ctx;
             this.packet = packet;
             this.promise = promise;
             this.queuedAt = queuedAt;
+            this.epoch = epoch;
         }
     }
 

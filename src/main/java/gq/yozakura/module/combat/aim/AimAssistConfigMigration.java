@@ -11,20 +11,17 @@ public final class AimAssistConfigMigration {
 
     public static String resolveMode(String storedMode, String legacyVapeMode) {
         String mode = normalize(storedMode);
-        if ("BLATANT".equals(mode) || "SILENT_BLATANT".equals(mode)) {
-            return mode;
+        if ("LOCK_ON".equals(mode) || "LOCK-ON".equals(mode)
+                || "BLATANT".equals(mode) || "SILENT_BLATANT".equals(mode)) {
+            return "LOCK_ON";
         }
-        if (!"NORMAL".equals(mode) && !"SILENT".equals(mode)) {
+        if (!"NORMAL".equals(mode) && !"SILENT".equals(mode) && !"ADAPTIVE".equals(mode)) {
             return null;
         }
         if (!"BLATANT".equals(normalize(legacyVapeMode))) {
-            return mode;
+            return "ADAPTIVE";
         }
-        return "SILENT".equals(mode) ? "SILENT_BLATANT" : "BLATANT";
-    }
-
-    public static boolean migrateKeepMoveDirection(boolean legacyValue) {
-        return !legacyValue;
+        return "LOCK_ON";
     }
 
     private static String normalize(String value) {

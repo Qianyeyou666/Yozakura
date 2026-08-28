@@ -1,0 +1,11 @@
+# Public website: presentation, registration, login, and license redemption.
+yozakura.wtf {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:4173
+}
+
+# Client verification and OpenClaw administration only.
+auth.yozakura.wtf {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8080
+}

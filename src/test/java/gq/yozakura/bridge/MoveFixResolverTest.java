@@ -30,29 +30,27 @@ public class MoveFixResolverTest {
     }
 
     @Test
-    public void preservesSneakSpeedWhenAForwardInputMapsToADiagonal() {
+    public void keepsGrimSimulableSneakAxesWhenForwardMapsToDiagonal() {
         MoveFixResolver.ResolvedInput resolved = MoveFixResolver.resolve(0.0F, 45.0F, 0.3F, 0.0F);
-        float diagonalAxis = (float) (0.3D / Math.sqrt(2.0D));
 
-        assertEquals(diagonalAxis, resolved.getForward(), 0.00001F);
-        assertEquals(diagonalAxis, resolved.getStrafe(), 0.00001F);
+        assertEquals(0.3F, resolved.getForward(), 0.00001F);
+        assertEquals(0.3F, resolved.getStrafe(), 0.00001F);
     }
 
     @Test
-    public void preservesSneakSpeedWhenADiagonalInputMapsToForward() {
+    public void keepsGrimSimulableSneakAxisWhenDiagonalMapsToForward() {
         MoveFixResolver.ResolvedInput resolved = MoveFixResolver.resolve(0.0F, -45.0F, 0.3F, 0.3F);
-        float cardinalAxis = (float) (0.3D * Math.sqrt(2.0D));
 
-        assertEquals(cardinalAxis, resolved.getForward(), 0.00001F);
+        assertEquals(0.3F, resolved.getForward(), 0.00001F);
         assertEquals(0.0F, resolved.getStrafe(), 0.00001F);
     }
 
     @Test
-    public void retainsFullSpeedWhenAHighMagnitudeInputMapsToOneAxis() {
+    public void retainsTheSampledAxisScaleInsteadOfManufacturingFullInput() {
         MoveFixResolver.ResolvedInput resolved = MoveFixResolver.resolve(0.0F, 45.0F, 0.8F, 0.8F);
 
         assertEquals(0.0F, resolved.getForward(), 0.00001F);
-        assertEquals(1.0F, resolved.getStrafe(), 0.00001F);
+        assertEquals(0.8F, resolved.getStrafe(), 0.00001F);
     }
 
     @Test
@@ -69,5 +67,13 @@ public class MoveFixResolverTest {
 
         assertEquals(0.0F, resolved.getForward(), 0.00001F);
         assertEquals(0.0F, resolved.getStrafe(), 0.00001F);
+    }
+
+    @Test
+    public void fullForwardMapsToPhysicalDiagonalKeysAtFortyFiveDegrees() {
+        MoveFixResolver.ResolvedInput resolved = MoveFixResolver.resolve(0.0F, 45.0F, 1.0F, 0.0F);
+
+        assertEquals(1.0F, resolved.getForward(), 0.00001F);
+        assertEquals(1.0F, resolved.getStrafe(), 0.00001F);
     }
 }

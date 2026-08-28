@@ -83,6 +83,7 @@ public final class VanillaRemapClassLoader extends URLClassLoader {
         }
         validateOverridableMethod(runtimeRendererType, "renderWorld", Float.TYPE, Long.TYPE);
         validateOverridableMethod(runtimeRendererType, "getMouseOver", Float.TYPE);
+        validateOverridableMethod(runtimeRendererType, "updateCameraAndRender", Float.TYPE, Long.TYPE);
     }
 
     private static void validateOverridableMethod(Class<?> type, String name, Class<?>... parameterTypes) {
@@ -136,8 +137,8 @@ public final class VanillaRemapClassLoader extends URLClassLoader {
     private static boolean shouldLoadChildFirst(String name) {
         return (name.startsWith("gq.yozakura.") || name.startsWith("n."))
                 && !name.equals("gq.yozakura.YozakuraBootstrap")
-                && !name.equals("gq.yozakura.auth.NativeAuthBridge")
-                && !name.equals("gq.yozakura.auth.YozakuraAuthGate")
+                && !name.equals("gq.yozakura.k.A")
+                && !name.equals("gq.yozakura.k.B")
                 && !name.startsWith("gq.yozakura.bridge.VanillaRemapClassLoader");
     }
 

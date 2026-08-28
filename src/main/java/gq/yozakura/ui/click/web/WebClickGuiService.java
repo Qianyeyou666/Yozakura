@@ -5,10 +5,8 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import gq.yozakura.module.render.ClickGUI;
-import gq.yozakura.util.minecraft.Helper;
 import net.minecraft.client.Minecraft;
 
-import java.awt.Desktop;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileWriter;
@@ -17,34 +15,23 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.net.InetSocketAddress;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Locale;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
 
 public final class WebClickGuiService {
     private static final Minecraft MC = Minecraft.getMinecraft();
     private static final int BACKLOG = 4;
     private static final String TOKEN = createToken();
     private static HttpServer server;
-    private static Executor executor;
+    private static ExecutorService executor;
     private static int activePort = -1;
 
     private WebClickGuiService() {
-    }
-
-    public static synchronized void open() {
-        try {
-            ensureStarted();
-            URI uri = new URI("http://127.0.0.1:" + activePort + "/?token=" + TOKEN);
-            openBrowser(uri);
-            Helper.sendMessage("WebClickGUI opened at " + uri);
-        } catch (Throwable throwable) {
-            log("Failed to open WebClickGUI", throwable);
-            Helper.sendMessage("WebClickGUI failed: " + throwable.getClass().getSimpleName());
-        }
     }
 
     public static synchronized void stop() {
@@ -53,52 +40,39 @@ public final class WebClickGuiService {
             server = null;
             activePort = -1;
         }
+        if (executor != null) {
+            executor.shutdownNow();
+            executor = null;
+        }
     }
 
     private static void ensureStarted() throws IOException {
-        int port = Math.max(1024, Math.min(65535, ClickGUI.webPort.getValue().intValue()));
-        if (server != null && activePort == port) {
+        if (server != null) {
             return;
         }
-        if (server != null) {
-            server.stop(0);
-            server = null;
-        }
-
-        HttpServer next = HttpServer.create(new InetSocketAddress("127.0.0.1", port), BACKLOG);
-        next.createContext("/", new PageHandler());
-        next.createContext("/api/state", new StateHandler());
-        next.createContext("/api/module/toggle", new ToggleModuleHandler());
-        next.createContext("/api/value/set", new SetValueHandler());
-        next.createContext("/api/key/set", new SetKeyHandler());
-        if (executor == null) {
-            executor = Executors.newCachedThreadPool(runnable -> {
+        HttpServer created = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), BACKLOG);
+        created.createContext("/", new PageHandler());
+        created.createContext("/api/state", new StateHandler());
+        created.createContext("/api/toggle", new ToggleModuleHandler());
+        created.createContext("/api/value", new SetValueHandler());
+        created.createContext("/api/key", new SetKeyHandler());
+        executor = Executors.newSingleThreadExecutor(new java.util.concurrent.ThreadFactory() {
+            @Override
+            public Thread newThread(Runnable runnable) {
                 Thread thread = new Thread(runnable, "Yozakura WebClickGUI");
                 thread.setDaemon(true);
-                thread.setContextClassLoader(WebClickGuiService.class.getClassLoader());
                 return thread;
-            });
-        }
-        next.setExecutor(executor);
-        next.start();
-        server = next;
-        activePort = port;
+            }
+        });
+        created.setExecutor(executor);
+        created.start();
+        server = created;
+        activePort = created.getAddress().getPort();
     }
 
-    private static void openBrowser(URI uri) {
-        try {
-            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-                Desktop.getDesktop().browse(uri);
-                return;
-            }
-        } catch (Throwable throwable) {
-            log("Desktop browse failed", throwable);
-        }
-        try {
-            Runtime.getRuntime().exec(new String[]{"cmd", "/c", "start", "", uri.toString()});
-        } catch (Throwable throwable) {
-            log("Shell browse failed", throwable);
-        }
+    public static synchronized String embeddedUrl() throws IOException {
+        ensureStarted();
+        return "http://127.0.0.1:" + activePort + "/?token=" + TOKEN + "&embedded=1";
     }
 
     private static String createToken() {
@@ -185,9 +159,13 @@ public final class WebClickGuiService {
     }
 
     private static String loadResource(String path) throws IOException {
+        return new String(loadResourceBytes(path), StandardCharsets.UTF_8);
+    }
+
+    private static byte[] loadResourceBytes(String path) throws IOException {
         InputStream stream = WebClickGuiService.class.getResourceAsStream(path);
         if (stream == null) {
-            return "";
+            return new byte[0];
         }
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         byte[] buffer = new byte[4096];
@@ -199,7 +177,20 @@ public final class WebClickGuiService {
         } finally {
             stream.close();
         }
-        return new String(output.toByteArray(), StandardCharsets.UTF_8);
+        return output.toByteArray();
+    }
+
+    private static void sendBytes(HttpExchange exchange, int code, byte[] bytes, String contentType) throws IOException {
+        Headers headers = exchange.getResponseHeaders();
+        headers.set("Content-Type", contentType);
+        headers.set("Cache-Control", "public, max-age=31536000, immutable");
+        exchange.sendResponseHeaders(code, bytes.length);
+        OutputStream output = exchange.getResponseBody();
+        try {
+            output.write(bytes);
+        } finally {
+            output.close();
+        }
     }
 
     private static void queueOnMainThread(Runnable runnable) {
@@ -208,6 +199,12 @@ public final class WebClickGuiService {
         } catch (Throwable throwable) {
             runnable.run();
         }
+    }
+
+    private static void queueOnMainThreadAndWait(Runnable runnable) throws Exception {
+        FutureTask<Void> task = new FutureTask<Void>(runnable, null);
+        MC.addScheduledTask(task);
+        task.get(2L, TimeUnit.SECONDS);
     }
 
     private static String path(HttpExchange exchange) {
@@ -266,6 +263,12 @@ public final class WebClickGuiService {
                 sendText(exchange, 200, loadResource("/assets/yozakura/webclickgui/styles.css"), "text/css");
             } else if ("/script.js".equals(requestPath)) {
                 sendText(exchange, 200, loadResource("/assets/yozakura/webclickgui/script.js"), "application/javascript");
+            } else if ("/font/inter.ttf".equals(requestPath)) {
+                sendBytes(exchange, 200, loadResourceBytes("/assets/minecraft/font/Inter.ttf"), "font/ttf");
+            } else if ("/font/bricolage.ttf".equals(requestPath)) {
+                sendBytes(exchange, 200, loadResourceBytes("/assets/minecraft/font/BricolageGrotesque.ttf"), "font/ttf");
+            } else if ("/font/mono.ttf".equals(requestPath)) {
+                sendBytes(exchange, 200, loadResourceBytes("/assets/minecraft/font/JetBrainsMono.ttf"), "font/ttf");
             } else {
                 sendText(exchange, 404, "Not Found", "text/plain");
             }
@@ -309,7 +312,7 @@ public final class WebClickGuiService {
                 return;
             }
             final String body = readRequestBody(exchange);
-            queueOnMainThread(new Runnable() {
+            queueOnMainThreadAndWait(new Runnable() {
                 @Override
                 public void run() {
                     WebClickGuiController.setValue(body);

@@ -1,6 +1,7 @@
 package gq.yozakura.engine.render.glow;
 
 import gq.yozakura.engine.font.CFontRenderer;
+import gq.yozakura.engine.font.MinecraftFontRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.gui.FontRenderer;
@@ -66,6 +67,12 @@ public final class GlowRenderer {
     private GlowProfile.Quality quality = GlowProfile.Quality.MEDIUM;
     private float globalStrength = 1.0f;
     private boolean frameOpen;
+    /**
+     * HUD renderers often queue many glyphs while the matrix, viewport and
+     * scissor state is unchanged. Reuse the immutable capture for that run.
+     */
+    private boolean cacheCommandSnapshots;
+    private RenderSnapshot commandSnapshot;
     private String failureReason;
     private boolean failureLogged;
     private Framebuffer maskFramebuffer;
@@ -80,7 +87,30 @@ public final class GlowRenderer {
             throw new IllegalStateException("Glow frame started before the previous frame was flushed");
         }
         frameOpen = true;
+        cacheCommandSnapshots = false;
+        commandSnapshot = null;
         commands.clear();
+    }
+
+    /**
+     * Enables snapshot reuse for a caller that owns explicit render-state
+     * boundaries. Call {@link #markRenderStateChanged()} after a matrix,
+     * viewport or scissor change.
+     */
+    public void beginCommandSnapshotCache() {
+        requireOpenFrame();
+        cacheCommandSnapshots = true;
+        commandSnapshot = null;
+    }
+
+    /**
+     * Invalidates a cached command snapshot after a caller changes a state
+     * captured by {@link RenderSnapshot}. It is safe to call outside a frame.
+     */
+    public void markRenderStateChanged() {
+        if (frameOpen) {
+            commandSnapshot = null;
+        }
     }
 
     public boolean isFrameOpen() {
@@ -134,7 +164,25 @@ public final class GlowRenderer {
             throw new IllegalArgumentException("profile must not be null");
         }
         commands.add(new TextCommand(font, text, x, y, glowColor, resolvedStrength, profile,
-                RenderSnapshot.capture()));
+                captureCommandSnapshot()));
+    }
+
+    public void queueMinecraftText(MinecraftFontRenderer font, String text,
+                                   double x, double y, int glowColor,
+                                   float strength, GlowProfile profile) {
+        requireOpenFrame();
+        if (font == null || text == null || text.length() == 0) {
+            return;
+        }
+        float resolvedStrength = GlowProfile.clampStrength(strength);
+        if (resolvedStrength <= 0.0F || alpha(glowColor) <= 0) {
+            return;
+        }
+        if (profile == null) {
+            throw new IllegalArgumentException("profile must not be null");
+        }
+        commands.add(new MinecraftTextCommand(font, text, x, y, glowColor,
+                resolvedStrength, profile, captureCommandSnapshot()));
     }
 
     public void queueVanillaText(FontRenderer font, String text, double x, double y,
@@ -148,7 +196,7 @@ public final class GlowRenderer {
             return;
         }
         commands.add(new VanillaTextCommand(font, text, x, y, glowColor, resolvedStrength, profile,
-                RenderSnapshot.capture()));
+                captureCommandSnapshot()));
     }
 
     public void queueRoundedRect(float left, float top, float right, float bottom, float radius,
@@ -163,7 +211,24 @@ public final class GlowRenderer {
             throw new IllegalArgumentException("profile must not be null");
         }
         commands.add(new RoundedRectCommand(left, top, right, bottom, radius, glowColor,
-                resolvedStrength, profile, RenderSnapshot.capture()));
+                resolvedStrength, profile, captureCommandSnapshot()));
+    }
+
+    /** Queues a true procedural ring/arc source for the screen-space glow mask. */
+    public void queueRing(float centerX, float centerY, float radius, float ringWidth,
+                          float progress, int glowColor, float strength, GlowProfile profile) {
+        requireOpenFrame();
+        float resolvedStrength = GlowProfile.clampStrength(strength);
+        if (radius <= 0.0f || ringWidth <= 0.0f || resolvedStrength <= 0.0f
+                || alpha(glowColor) <= 0) {
+            return;
+        }
+        if (profile == null) {
+            throw new IllegalArgumentException("profile must not be null");
+        }
+        commands.add(new RingCommand(centerX, centerY, radius, ringWidth,
+                Math.max(0.0f, Math.min(1.0f, progress)), glowColor, resolvedStrength,
+                profile, captureCommandSnapshot()));
     }
 
     public void flush() {
@@ -207,6 +272,8 @@ public final class GlowRenderer {
             gq.yozakura.engine.render.GLStateManager.syncToCurrent();
             GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
             commands.clear();
+            commandSnapshot = null;
+            cacheCommandSnapshots = false;
             frameOpen = false;
         }
     }
@@ -215,6 +282,16 @@ public final class GlowRenderer {
         if (!frameOpen) {
             throw new IllegalStateException("Glow commands require beginFrame() before drawing");
         }
+    }
+
+    private RenderSnapshot captureCommandSnapshot() {
+        if (!cacheCommandSnapshots) {
+            return RenderSnapshot.capture();
+        }
+        if (commandSnapshot == null) {
+            commandSnapshot = RenderSnapshot.capture();
+        }
+        return commandSnapshot;
     }
 
     private void ensureSupported() {
@@ -254,6 +331,17 @@ public final class GlowRenderer {
         ScaledResolution scaledResolution = new ScaledResolution(minecraft);
         int radius = profile.resolveKernelRadius(scaledResolution.getScaleFactor(), quality);
         renderMask(profile, targetWidth, targetHeight, displayWidth, displayHeight);
+        // Set up the shared blur pass state once for both renderBlur calls.
+        // renderMask's snapshot.apply mutates PROJECTION/MODELVIEW per command,
+        // so identity matrices must be reloaded here after the mask pass.
+        // configurePassState(false) is identical across the two blur passes
+        // (clearAndBind only touches framebuffer/scissor/clear, not blend/depth),
+        // so paying for it once per profile cuts 1 sync per profile (x4 = 4/frame).
+        // blurProgram.use() is stable across both passes; renderComposite will
+        // switch to compositeProgram explicitly so it does not need a re-use here.
+        loadIdentityMatrices();
+        configurePassState(false);
+        blurProgram.use();
         renderBlur(maskFramebuffer, horizontalFramebuffer, radius, true);
         renderBlur(horizontalFramebuffer, verticalFramebuffer, radius, false);
         renderComposite(state, profile);
@@ -332,10 +420,27 @@ public final class GlowRenderer {
                 TextCommand text = (TextCommand) command;
                 maskProgram.set1i("mode", 0);
                 text.font.drawStringForGlowMask(text.text, text.x, text.y);
+            } else if (command instanceof MinecraftTextCommand) {
+                MinecraftTextCommand text = (MinecraftTextCommand) command;
+                maskProgram.set1i("mode", 0);
+                text.font.drawStringForGlowMask(text.text, text.x, text.y);
             } else if (command instanceof VanillaTextCommand) {
                 VanillaTextCommand text = (VanillaTextCommand) command;
                 maskProgram.set1i("mode", 0);
                 text.font.drawString(text.text, (float) text.x, (float) text.y, 0xFFFFFFFF, false);
+            } else if (command instanceof RingCommand) {
+                RingCommand ring = (RingCommand) command;
+                float physicalScale = Math.max(0.001f,
+                        ring.snapshot.guiScaleFactor * quality.getDownsample());
+                float padding = Math.max(1.0f / physicalScale, ring.ringWidth * 0.2f);
+                maskProgram.set1i("mode", 2);
+                maskProgram.set1f("ringRadius", ring.radius);
+                maskProgram.set1f("ringWidth", ring.ringWidth);
+                maskProgram.set1f("ringProgress", ring.progress);
+                maskProgram.set1f("padding", padding);
+                maskProgram.set1f("softness", Math.max(0.0001f, 0.75f / physicalScale));
+                drawQuad(ring.centerX - ring.radius, ring.centerY - ring.radius,
+                        ring.centerX + ring.radius, ring.centerY + ring.radius, padding);
             } else {
                 RoundedRectCommand rect = (RoundedRectCommand) command;
                 float physicalScale = Math.max(0.001f,
@@ -353,9 +458,9 @@ public final class GlowRenderer {
 
     private void renderBlur(Framebuffer source, Framebuffer target, int radius, boolean horizontal) {
         clearAndBind(target);
-        configurePassState(false);
-        loadIdentityMatrices();
-        blurProgram.use();
+        // loadIdentityMatrices / configurePassState(false) / blurProgram.use
+        // are set up once per profile by renderProfile; renderBlur only needs
+        // to swap the source texture and update direction/uniforms per pass.
         setActiveTexture(OpenGlHelper.defaultTexUnit);
         bindTexture(source.framebufferTexture);
         blurProgram.set1i("sourceTexture", 0);
@@ -370,7 +475,8 @@ public final class GlowRenderer {
         OpenGlHelper.glBindFramebuffer(OpenGlHelper.GL_FRAMEBUFFER, state.framebuffer);
         GL11.glViewport(state.viewportX, state.viewportY, state.viewportWidth, state.viewportHeight);
         configurePassState(true);
-        loadIdentityMatrices();
+        // Identity matrices were loaded by renderProfile after renderMask and
+        // renderBlur does not mutate them; no need to reload here.
         compositeProgram.use();
         setActiveTexture(OpenGlHelper.defaultTexUnit);
         bindTexture(verticalFramebuffer.framebufferTexture);
@@ -646,6 +752,24 @@ public final class GlowRenderer {
         }
     }
 
+    private static final class MinecraftTextCommand extends GlowCommand {
+        private final MinecraftFontRenderer font;
+        private final String text;
+        private final double x;
+        private final double y;
+
+        private MinecraftTextCommand(MinecraftFontRenderer font, String text,
+                                     double x, double y, int color,
+                                     float strength, GlowProfile profile,
+                                     RenderSnapshot snapshot) {
+            super(color, strength, profile, snapshot);
+            this.font = font;
+            this.text = text;
+            this.x = x;
+            this.y = y;
+        }
+    }
+
     private static final class VanillaTextCommand extends GlowCommand {
         private final FontRenderer font;
         private final String text;
@@ -677,6 +801,25 @@ public final class GlowRenderer {
             this.right = right;
             this.bottom = bottom;
             this.radius = radius;
+        }
+    }
+
+    private static final class RingCommand extends GlowCommand {
+        private final float centerX;
+        private final float centerY;
+        private final float radius;
+        private final float ringWidth;
+        private final float progress;
+
+        private RingCommand(float centerX, float centerY, float radius, float ringWidth,
+                            float progress, int color, float strength, GlowProfile profile,
+                            RenderSnapshot snapshot) {
+            super(color, strength, profile, snapshot);
+            this.centerX = centerX;
+            this.centerY = centerY;
+            this.radius = radius;
+            this.ringWidth = ringWidth;
+            this.progress = progress;
         }
     }
 

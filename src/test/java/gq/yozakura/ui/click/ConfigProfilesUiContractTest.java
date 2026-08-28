@@ -7,6 +7,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
+import gq.yozakura.ui.click.yozakura.PanelClickGuiLayout;
+import gq.yozakura.ui.click.yozakura.PanelConfigManagerGeometry;
+
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -49,15 +52,75 @@ public class ConfigProfilesUiContractTest {
     }
 
     @Test
-    public void yozakuraBottomBarProvidesDirectProfileAndFolderActions() throws IOException {
-        String bottomBar = source("src/main/java/gq/yozakura/ui/click/yozakura/ClickGuiBottomBar.java");
+    public void yozakuraSidebarProvidesProfileEntry() throws IOException {
+        String sidebar = source("src/main/java/gq/yozakura/ui/click/yozakura/ClickGuiSidebar.java");
+        String gui = source("src/main/java/gq/yozakura/ui/click/yozakura/YozakuraClickGui.java");
 
-        assertTrue(bottomBar.contains("gui.openProfileScreen();"));
-        assertTrue(bottomBar.contains("ConfigBridge.openProfileDirectory();"));
+        assertTrue(sidebar.contains("onProfileClicked"));
+        assertTrue(gui.contains("openProfileScreen()"));
+    }
+
+    @Test
+    public void panelExtractsCfgManagerIntoANativeProfilesPage() throws IOException {
+        String panel = source("src/main/java/gq/yozakura/ui/click/yozakura/YozakuraPanelClickGui.java");
+
+        assertTrue(panel.contains("private boolean configManagerMode"));
+        assertTrue(panel.contains("drawConfigManagerPage("));
+        assertTrue(panel.contains("ConfigBridge.listProfiles()"));
+        assertTrue(panel.contains("ConfigBridge.saveProfile("));
+        assertTrue(panel.contains("ConfigBridge.loadProfile("));
+        assertTrue(panel.contains("panelPositionInitialized = false;"));
+        assertTrue(panel.contains("rebuildLayout();"));
+        assertTrue(panel.contains("isConfigManagerModule(module)"));
+        assertTrue(panel.contains("!isConfigManagerModule(module)"));
+        assertTrue(panel.contains("EpsilonPanelGeometry.railConfigManagerItem(rail)"));
+        assertTrue(panel.contains("openConfigManager();"));
+        assertFalse(panel.contains("drawConfigManagerEntry(bounds"));
+        assertFalse(panel.contains("configManagerEntryBounds(layout.modules())"));
+    }
+
+    @Test
+    public void panelProfileNameTextIsClippedInsideItsField() throws IOException {
+        String panel = source("src/main/java/gq/yozakura/ui/click/yozakura/YozakuraPanelClickGui.java");
+        String page = method(panel, "    private void drawConfigManagerPage(",
+                "    private void drawConfigButton(");
+
+        assertTrue(page.contains("GLStateManager.pushScissor(nameField.x()"));
+        assertTrue(page.contains("GLStateManager.popScissor();"));
+    }
+
+    @Test
+    public void panelProfileActionsStayInsideTheMinimumWidthContentColumn() throws Exception {
+        PanelClickGuiLayout.Layout layout = PanelClickGuiLayout.compute(
+                1280.0f, 720.0f, 120.0f,
+                PanelClickGuiLayout.PANEL_MIN_WIDTH,
+                PanelClickGuiLayout.PANEL_MIN_HEIGHT);
+        PanelClickGuiLayout.Rect bounds = layout.detail();
+        PanelClickGuiLayout.Rect[] controls = {
+                PanelConfigManagerGeometry.nameField(bounds),
+                PanelConfigManagerGeometry.saveButton(bounds),
+                PanelConfigManagerGeometry.loadButton(bounds),
+                PanelConfigManagerGeometry.refreshButton(bounds),
+                PanelConfigManagerGeometry.folderButton(bounds)
+        };
+        float previousRight = bounds.x() + 14.0f;
+        for (PanelClickGuiLayout.Rect control : controls) {
+            assertTrue("config action controls overlap",
+                    control.x() >= previousRight);
+            assertTrue("config action control exceeds the content column",
+                    control.right() <= bounds.right() - 14.0f + 0.001f);
+            previousRight = control.right();
+        }
     }
 
     private static String source(String path) throws IOException {
         return new String(Files.readAllBytes(Paths.get(path)), StandardCharsets.UTF_8)
                 .replace("\r\n", "\n");
+    }
+
+    private static String method(String source, String start, String end) {
+        int startIndex = source.indexOf(start);
+        int endIndex = source.indexOf(end, startIndex);
+        return source.substring(startIndex, endIndex);
     }
 }

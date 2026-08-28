@@ -110,6 +110,51 @@ public class BacktrackPacketOrderContractTest {
                 mouseOver.contains("mode.getValue() == BacktrackMode.PACKET"));
     }
 
+    @Test
+    public void historicalFallbackPreservesReliableVanillaHitsAndUsesTheFreshestIntersectingSample() throws IOException {
+        String source = source();
+        String apply = method(source, "    private boolean applyHistoricalHit(float partialTicks) {",
+                "    private MovingObjectPosition findHistoricalHit(");
+        String raycast = method(source, "    private MovingObjectPosition findHistoricalHit(",
+                "    private void renderHistoryBoxes()");
+
+        assertTrue("Backtrack must remain a fallback instead of replacing a real current entity hit",
+                apply.contains("hasReliableCurrentEntityHit()"));
+        assertTrue("A hit previously injected by Backtrack must not be mistaken for a fresh vanilla hit",
+                source.contains("current == lastAppliedHistoricalHit"));
+        assertTrue("Each target must be tested newest-first to avoid choosing a needlessly stale box",
+                raycast.contains("boxes.descendingIterator()"));
+        assertTrue("The first intersecting sample for one target must win before comparing other targets",
+                raycast.contains("break;"));
+        assertTrue("Historical entity hits must not pass through a closer vanilla block hit",
+                raycast.contains("blockObstructionDistance(eyes, end, maxRange)"));
+    }
+
+    @Test
+    public void hybridModeDoesNotStackTheFullHistoryWindowOnTopOfPacketDelay() throws IOException {
+        String source = source();
+        String effectiveHistory = method(source, "    private long effectiveHistoryMillis() {",
+                "    private boolean applyHistoricalHit()");
+
+        assertTrue("Hybrid's local history age must subtract its packet delay to bound total rewind",
+                effectiveHistory.contains("configured - packetDelay.getValue().longValue()"));
+        assertTrue("One tick of history must remain available after the packet-delay budget is removed",
+                effectiveHistory.contains("Math.max(50L"));
+    }
+
+    @Test
+    public void safeReachCapsHistoricalAttackInjectionByDefault() throws IOException {
+        String source = source();
+        String effectiveRange = method(source, "    private double effectiveAttackRange() {",
+                "    private long effectiveHistoryMillis()");
+
+        assertTrue(source.contains("new Option<Boolean>(\"Safe Reach\", \"SafeReach\", true)"));
+        assertTrue("Survival historical hits should default to the server-safe three-block ray",
+                effectiveRange.contains("Math.min(configured, 3.0D)"));
+        assertTrue("Creative extended reach must retain its normal behavior",
+                effectiveRange.contains("mc.playerController.extendedReach()"));
+    }
+
     private static String method(String source, String beginMarker, String endMarker) {
         int begin = source.indexOf(beginMarker);
         int end = source.indexOf(endMarker, begin + beginMarker.length());

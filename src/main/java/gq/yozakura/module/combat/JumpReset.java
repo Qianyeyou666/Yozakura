@@ -142,7 +142,9 @@ public class JumpReset extends Module {
 
     private void handleVelocity(S12PacketEntityVelocity packet) {
         if (packet.getEntityID() == mc.thePlayer.getEntityId()) {
-            controller.acceptVelocity(Boolean.TRUE.equals(fakeCheck.getValue()), chance.getValue());
+            controller.acceptVelocity(
+                    Boolean.TRUE.equals(fakeCheck.getValue()), chance.getValue(),
+                    packet.getMotionX(), packet.getMotionY(), packet.getMotionZ());
         }
     }
 

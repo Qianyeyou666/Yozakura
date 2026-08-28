@@ -144,6 +144,29 @@ public class FakeLagPacketOrderContractTest {
                         && repel.contains("nextBurstAt = now + repelBurstInterval();"));
     }
 
+    @Test
+    public void teleportBoundaryDropsStaleDelayAndBypassesTheRequiredPositionConfirmation() throws IOException {
+        String source = source();
+        String queuePacket = method(source,
+                "    private boolean queuePacket(ChannelHandlerContext ctx, Object packet, ChannelPromise promise) {",
+                "    private long queueDelay(");
+        String boundary = method(source,
+                "    public void onTeleportBoundary(TeleportBoundaryEvent event) {",
+                "    private void setLagAllowed(");
+
+        assertTrue("S08 acceptance must atomically discard pre-teleport packets and arm a confirmation bypass",
+                boundary.contains("discardQueuedPacketsLocked();")
+                        && boundary.contains("teleportConfirmationPending = true;"));
+        assertTrue("The required Vanilla C04/C06 must bypass FakeLag instead of waiting behind a transaction",
+                queuePacket.contains("shouldBypassForTeleport(packet)"));
+        assertTrue("Only a position-bearing player packet may consume the bypass",
+                source.contains("playerPacket.isMoving()")
+                        && source.contains("teleportConfirmationPending = false;"));
+        assertTrue("A pre-teleport delivery already scheduled on Netty must be invalidated by epoch",
+                source.contains("deliveryEpoch++;")
+                        && source.contains("queued.epoch != deliveryEpoch"));
+    }
+
     private static String method(String source, String beginMarker, String endMarker) {
         int begin = source.indexOf(beginMarker);
         int end = source.indexOf(endMarker, begin + beginMarker.length());

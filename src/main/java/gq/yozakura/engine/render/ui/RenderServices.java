@@ -57,7 +57,9 @@ public final class RenderServices {
     public static void beginHudEffectsFrame() {
         SHADOWS.beginFrame();
         try {
+            SHADOWS.beginCommandSnapshotCache();
             GLOW.beginFrame();
+            GLOW.beginCommandSnapshotCache();
             NightBloomHudDockRenderer.drawSharedSurfaces();
         } catch (RuntimeException exception) {
             SHADOWS.flush();
@@ -73,9 +75,18 @@ public final class RenderServices {
         }
     }
 
+    /**
+     * The HUD owns these two effect queues and reports matrix, viewport and
+     * scissor transitions once. The next command then captures the new state.
+     */
+    public static void markHudEffectsStateChanged() {
+        SHADOWS.markRenderStateChanged();
+        GLOW.markRenderStateChanged();
+    }
+
     private static GlowRenderer createShadowRenderer() {
         GlowRenderer renderer = new GlowRenderer();
-        renderer.setQuality(GlowProfile.Quality.HIGH);
+        renderer.setQuality(GlowProfile.Quality.LOW);
         renderer.setGlobalStrength(0.55F);
         return renderer;
     }

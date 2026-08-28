@@ -5,6 +5,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Jar,
 
+    [string]$EmbeddedJarSource,
+
     [string]$Report
 )
 
@@ -16,15 +18,21 @@ function Fail([string]$Message) {
 
 $Dll = (Resolve-Path -LiteralPath $Dll).Path
 $Jar = (Resolve-Path -LiteralPath $Jar).Path
+if ($EmbeddedJarSource) {
+    $EmbeddedJarSource = (Resolve-Path -LiteralPath $EmbeddedJarSource).Path
+}
 
 $dllBytes = [System.IO.File]::ReadAllBytes($Dll)
 $dllAscii = [System.Text.Encoding]::ASCII.GetString($dllBytes)
 $forbiddenNativeStrings = @(
+    "api/v2/verify/challenge"
     "api/v2/verify/login"
     "api/v2/verify/heartbeat"
+    "api/v2/verify/introspect"
     "api/v2/verify/logout"
+    "auth.yozakura.wtf"
     "49.235.166.227"
-    "gq.yozakura.auth.NativeAuthBridge"
+    "gq.yozakura.k.A"
     "login0"
     "logout0"
     "JarToDllLoader.log"
@@ -55,8 +63,11 @@ try {
         Fail "the loader has an invalid PE signature: $Dll"
     }
     $machine = $reader.ReadUInt16()
-    if ($machine -ne 0x8664) {
-        Fail ("the loader machine is 0x{0:X4}; expected AMD64 (0x8664)" -f $machine)
+    $expectedMachine = if ([System.IO.Path]::GetFileName($Dll) -match '-x86(?:-|\.)') { 0x014C } else { 0x8664 }
+    $expectedName = if ($expectedMachine -eq 0x014C) { 'I386' } else { 'AMD64' }
+    if ($machine -ne $expectedMachine) {
+        Fail ("the loader machine is 0x{0:X4}; expected {1} (0x{2:X4})" -f `
+                $machine, $expectedName, $expectedMachine)
     }
 } finally {
     $reader.Dispose()
@@ -120,23 +131,36 @@ public static class YozakuraResourceReader
 
 $embedded = [YozakuraResourceReader]::Read($Dll, 101, 10)
 $jarBytes = [System.IO.File]::ReadAllBytes($Jar)
+$runtimeJarBytes = if ($EmbeddedJarSource) {
+    [System.IO.File]::ReadAllBytes($EmbeddedJarSource)
+} else {
+    $jarBytes
+}
 $sha256 = [System.Security.Cryptography.SHA256]::Create()
 try {
     $embeddedHash = ([BitConverter]::ToString($sha256.ComputeHash($embedded))).Replace('-', '').ToLowerInvariant()
     $jarHash = ([BitConverter]::ToString($sha256.ComputeHash($jarBytes))).Replace('-', '').ToLowerInvariant()
+    $runtimeJarHash = ([BitConverter]::ToString($sha256.ComputeHash($runtimeJarBytes))).Replace('-', '').ToLowerInvariant()
 } finally {
     $sha256.Dispose()
 }
+if ($jarHash -ne $runtimeJarHash) {
+    Fail "named release JAR does not match the runtime JAR used by the resource compiler (release $jarHash, runtime $runtimeJarHash)"
+}
 if ($embeddedHash -ne $jarHash) {
-    Fail "embedded RCDATA 101 does not match the verified JAR (embedded $embeddedHash, JAR $jarHash)"
+    Fail "embedded RCDATA 101 does not match the verified named release JAR (embedded $embeddedHash, release $jarHash)"
 }
 
 $lines = @(
     "Yozakura native payload verification: PASS"
     "Loader: $Dll"
+    "Named release JAR: $Jar"
+    "Runtime JAR source: $(if ($EmbeddedJarSource) { $EmbeddedJarSource } else { $Jar })"
     "Embedded JAR bytes: $($embedded.Length)"
     "Embedded JAR SHA-256: $embeddedHash"
-    "PE machine: AMD64 (0x8664)"
+    "Named release JAR SHA-256: $jarHash"
+    "Runtime JAR SHA-256: $runtimeJarHash"
+    ("PE machine: {0} (0x{1:X4})" -f $expectedName, $machine)
 )
 $lines | ForEach-Object { Write-Host $_ }
 if ($Report) {

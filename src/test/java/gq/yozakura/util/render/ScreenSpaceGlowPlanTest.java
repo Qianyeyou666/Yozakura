@@ -46,6 +46,17 @@ public class ScreenSpaceGlowPlanTest {
         assertEquals(0.65f, ScreenSpaceGlowPlan.clampStrength(0.65f), 0.0f);
     }
 
+    @Test
+    public void mediumWorldGlowUsesHalfResolutionTargetsWithoutCollapsingSmallViewports() {
+        ScreenSpaceGlowPlan plan = ScreenSpaceGlowPlan.forBatch(1, 0,
+                ScreenSpaceGlowPlan.Quality.MEDIUM);
+
+        assertEquals(0.5f, plan.getFramebufferScale(), 0.0f);
+        assertEquals(960, plan.scaleDimension(1920));
+        assertEquals(540, plan.scaleDimension(1080));
+        assertEquals(1, plan.scaleDimension(1));
+    }
+
     @Test(expected = IllegalArgumentException.class)
     public void compositeStrengthRejectsNonFiniteValues() {
         ScreenSpaceGlowPlan.clampStrength(Float.NaN);

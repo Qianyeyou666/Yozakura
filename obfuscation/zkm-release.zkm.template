@@ -1,36 +1,43 @@
 classpath "@ZKM_CLASSPATH@";
 open "@INPUT_JAR@";
 
-// Complete exclusions are intentional at external/reflection boundaries.
-// Everything else remains eligible for ZKM renaming and control-flow changes.
-exclude package gq.yozakura;
-exclude package gq.yozakura.auth;
-exclude package gq.yozakura.bridge;
-exclude package gq.yozakura.bridge.forge;
-exclude package gq.yozakura.core;
-exclude package gq.yozakura.core.modern;
-exclude package gq.yozakura.core.modern.adapter.impl;
-exclude package gq.yozakura.event.api;
-exclude package gq.yozakura.event.bridge;
-exclude package gq.yozakura.event.bus;
-exclude package gq.yozakura.module;
-exclude package gq.yozakura.util.render;
+// Replace the implementation's inherited/default name exclusions with this
+// audited whitelist. Without this reset the test-compatible build keeps every
+// opened class name even though flow and literal transforms still run.
+resetExclusions;
 
+// Keep only manifest, JNI, native digest, reflection and package-access ABI.
+// Unlisted Yozakura classes remain eligible for package collapse and renaming.
 exclude class gq.yozakura(YozakuraAttachPoint);
 exclude class gq.yozakura(YozakuraBootstrap);
 exclude class gq.yozakura(Yozakuraloader);
 exclude class gq.yozakura.bridge(IsolatedClientClassLoader);
 exclude class gq.yozakura.bridge(VanillaRemapClassLoader);
-exclude class gq.yozakura.core(Client);
-exclude class gq.yozakura.core(StandaloneClient);
-exclude class gq.yozakura.core(ModernForgeClient);
-exclude class gq.yozakura.auth(NativeAuthBridge);
-exclude class gq.yozakura.auth.vendor.tech.skidonion.obfuscator.inline(Wrapper);
+exclude class gq.yozakura.util.plugin(ProductPlugin*);
+exclude class gq.yozakura.yozakura(ClassTransformer*);
+exclude class gq.yozakura.core(Client*);
+exclude class gq.yozakura.core(StandaloneClient*);
+exclude class gq.yozakura.core(ModernForgeClient*);
 
-// JNIC selects this exact post-ZKM name and protects its method bodies.
-exclude class gq.yozakura.auth(YozakuraAuthGate);
+// A/B companions have package-private constructors and synthetic accessors.
+// Their names and package must stay with the fixed JNI/JNIC outer classes.
+exclude class gq.yozakura.k(A*);
+exclude class gq.yozakura.k(B*);
+exclude class gq.yozakura.k.vendor.tech.skidonion.obfuscator.inline(C*);
 
-// Method and field exclusions required by manifest, reflection, and JNI.
+// Native exports and native RegisterNatives look these classes up by name.
+exclude class gq.yozakura.ui.click.web(WebView2Bridge*);
+exclude class gq.yozakura.ui.click.yozakura(PanelClickGuiWindowsAlphaCursor*);
+
+// Native runtime digest and explicitly inspected bridge contracts.
+exclude class gq.yozakura.module(Module);
+exclude class gq.yozakura.event.bus(EventManager);
+exclude class gq.yozakura.bridge(MovementInputBridge);
+exclude class gq.yozakura.ui.click.material(MaterialClickGui*);
+exclude class gq.yozakura.ui.click.sakura(SakuraClickGui*);
+exclude class gq.yozakura.ui.click.yozakura(YozakuraClickGui*);
+
+// Manifest, reflection and JNI method/field contracts.
 exclude gq.yozakura.YozakuraAttachPoint^agentmain(*);
 exclude gq.yozakura.YozakuraBootstrap^start(*);
 exclude gq.yozakura.Yozakuraloader^inject(*);
@@ -42,38 +49,64 @@ exclude gq.yozakura.core.StandaloneClient^shutdownForReinjection(*);
 exclude gq.yozakura.core.StandaloneClient^isShutdownComplete(*);
 exclude gq.yozakura.core.ModernForgeClient^showInjectionSuccessAnimation(*);
 exclude gq.yozakura.core.ModernForgeClient^isState(*);
-exclude gq.yozakura.auth.NativeAuthBridge^q0(*);
-exclude gq.yozakura.auth.NativeAuthBridge^q1(*);
-exclude gq.yozakura.auth.NativeAuthBridge^login0(*);
-exclude gq.yozakura.auth.NativeAuthBridge^redeemLicense0(*);
-exclude gq.yozakura.auth.NativeAuthBridge^logout0(*);
-exclude gq.yozakura.auth.NativeAuthBridge^username0(*);
-exclude gq.yozakura.auth.NativeAuthBridge^role0(*);
-exclude gq.yozakura.auth.NativeAuthBridge^expiry0(*);
-exclude gq.yozakura.auth.YozakuraAuthGate^*(*);
-
-// ZKM 26 control-flow analysis rejects this Java 8 constructor's stack map.
-// Keep the focused value holder untouched instead of weakening the full build.
-exclude class gq.yozakura.util.render(HudDockingCoordinator$NodeInput);
-exclude gq.yozakura.util.render.HudDockingCoordinator$NodeInput^*(*);
-
+exclude gq.yozakura.k.A^*(*);
+exclude gq.yozakura.k.B^*(*);
+exclude gq.yozakura.ui.click.web.WebView2Bridge^*(*);
+exclude gq.yozakura.ui.click.yozakura.PanelClickGuiWindowsAlphaCursor^*(*);
 exclude gq.yozakura.core.Client.state;
 exclude gq.yozakura.core.Client.name;
 exclude gq.yozakura.core.Client.config;
 exclude gq.yozakura.core.Client.MessageON;
 exclude gq.yozakura.core.Client.CHINESE;
 
-// These names are inspected explicitly by the event bridges or integrity hash.
-exclude class gq.yozakura.module(Module);
-exclude class gq.yozakura.event.bus(EventManager);
-exclude class gq.yozakura.event.api(EventManager);
-exclude class gq.yozakura.bridge(YozakuraEventBridge);
-exclude class gq.yozakura.bridge(StandaloneEventBridge);
-exclude class gq.yozakura.bridge(MovementInputBridge);
-exclude class gq.yozakura.ui.click.yozakura(YozakuraClickGui);
-exclude class gq.yozakura.core.modern.adapter.impl(Modern1201ClientAdapter);
+// The GL-heavy compatibility overlay is physically removed from the ZKM input
+// because this test-compatible implementation analyzes fixed classes while saving.
+// The pipeline supplies that minimal overlay as library bytecode and restores it unchanged.
+obfuscateFlowExclude gq.yozakura.util.render.HudDockingCoordinator$NodeInput;
+
+// Do not alter flow or literal initialization at native and JNIC boundaries.
+obfuscateFlowExclude gq.yozakura.k.A* and
+        gq.yozakura.k.B* and
+        gq.yozakura.k.vendor.tech.skidonion.obfuscator.inline.C* and
+        gq.yozakura.ui.click.web.WebView2Bridge* and
+        gq.yozakura.ui.click.yozakura.PanelClickGuiWindowsAlphaCursor*;
+stringEncryptionExclude gq.yozakura.k.A* and
+        gq.yozakura.k.B* and
+        gq.yozakura.k.vendor.tech.skidonion.obfuscator.inline.C* and
+        gq.yozakura.ui.click.web.WebView2Bridge* and
+        gq.yozakura.ui.click.yozakura.PanelClickGuiWindowsAlphaCursor*;
+
+// Reference obfuscation is deliberately focused on private login-panel calls.
+// Broad reflective replacement in render/tick paths would add unacceptable cost.
+obfuscateReferencesInclude
+        containedIn{gq.yozakura.k.vendor.skidonion.sWdSl.* *(*)}
+        gq.yozakura.k.vendor.skidonion.sWdSl.* private *(*);
 
 @DYNAMIC_EXCLUDES@
 
-obfuscate obfuscateFlow=none;
+obfuscate changeLogFileOut="@CHANGE_LOG@"
+          aggressiveMethodRenaming=false
+          newNameCharacters=ASCII
+          keepInnerClassInfo=ifNameNotObfuscated
+          keepGenericsInfo=false
+          obfuscateFlow=normal
+          exceptionObfuscation=light
+          encryptStringLiterals=enhanced
+          encryptIntegerConstants=normal
+          encryptLongConstants=normal
+          collapsePackagesWithDefault="n"
+          mixedCaseClassNames=false
+          lineNumbers=delete
+          localVariables=delete
+          methodParameters=delete
+          randomize=true
+          obfuscateReferences=normal
+          obfuscateReferenceStructures=inReferencingClasses
+          autoReflectionHandling=none
+          methodParameterChanges=none
+          obfuscateParameters=none
+          makeClassesPublic=false
+          keepBalancedLocks=true
+          preverify=true
+          assumeRuntimeVersion="8";
 saveAll "@OUTPUT_JAR@";

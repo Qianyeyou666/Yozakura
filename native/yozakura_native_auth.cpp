@@ -5,9 +5,12 @@
 #include <windows.h>
 #include <winhttp.h>
 #include <wincrypt.h>
+#include <bcrypt.h>
+#include <ncrypt.h>
 
 #include <algorithm>
 #include <cctype>
+#include <cwctype>
 #include <cstring>
 #include <cstdio>
 #include <string>
@@ -23,6 +26,7 @@ volatile LONG verified = 0;
 volatile LONG heartbeatStarted = 0;
 volatile LONG lastRequestFailure = 0;
 volatile LONG64 heartbeatSequence = 0;
+volatile LONG64 cloudProofSequence = 0;
 volatile LONG64 lastVerifiedMillis = 0;
 LONGLONG sessionServerTimeMillis = 0;
 LONGLONG sessionServerMonotonicMillis = 0;
@@ -34,7 +38,26 @@ std::string verifiedRole;
 std::string verifiedExpiry;
 std::string clientBuild;
 std::string clientFingerprint;
-std::string machineFingerprint;
+std::string sessionId;
+NCRYPT_PROV_HANDLE deviceProvider = 0;
+NCRYPT_KEY_HANDLE deviceKey = 0;
+JavaVM* authVm = nullptr;
+jclass authBridgeClass = nullptr;
+volatile LONG debuggerTrusted = 0;
+volatile LONG64 lastDebuggerCheckMillis = 0;
+
+const wchar_t* kDeviceKeyName = L"Yozakura.Device.Pop.P256.v1";
+const char* kPopVersion = "YOZAKURA-POP-1";
+const LONGLONG kDebuggerCheckIntervalMillis = 1000;
+// SHA-256 over the SubjectPublicKeyInfo for auth.yozakura.wtf's P-256 certificate.
+// Roll certificates with an overlapping pin release; a trust-store certificate alone
+// must never authorize a verification response.
+const BYTE kAuthServerSpkiSha256[32] = {
+    0x66, 0x34, 0x48, 0x68, 0x22, 0x68, 0x24, 0x36,
+    0xf1, 0xf5, 0x6d, 0xfb, 0x35, 0xe8, 0xf1, 0xe6,
+    0x78, 0xdd, 0x0c, 0xd2, 0x72, 0x8b, 0x33, 0x2a,
+    0x66, 0xa1, 0xdd, 0xc4, 0x94, 0xb3, 0xb1, 0xbf
+};
 
 struct HttpHandle {
     HINTERNET value;
@@ -84,41 +107,6 @@ LONGLONG monotonicTimeMillis() {
     return static_cast<LONGLONG>(GetTickCount64());
 }
 
-#if defined(YOZAKURA_NATIVE_DIAGNOSTICS)
-void authDebug(const char* message) {
-    OutputDebugStringA("[YozakuraNativeAuth] ");
-    OutputDebugStringA(message);
-    OutputDebugStringA("\n");
-
-    char tempPath[MAX_PATH] = {};
-    if (GetTempPathA(MAX_PATH, tempPath)) {
-        std::string logPath = std::string(tempPath) + "JarToDllLoader.log";
-        HANDLE file = CreateFileA(logPath.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ,
-                                  nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (file != INVALID_HANDLE_VALUE) {
-            DWORD written = 0;
-            SYSTEMTIME time = {};
-            GetLocalTime(&time);
-            char line[1024] = {};
-            sprintf_s(line, "[%04u-%02u-%02u %02u:%02u:%02u] native auth: %s\r\n",
-                      time.wYear, time.wMonth, time.wDay, time.wHour,
-                      time.wMinute, time.wSecond, message);
-            WriteFile(file, line, static_cast<DWORD>(std::strlen(line)), &written, nullptr);
-            CloseHandle(file);
-        }
-    }
-}
-
-void authDebugCode(const char* message, LONGLONG value) {
-    char line[256] = {};
-    sprintf_s(line, "%s %lld", message, value);
-    authDebug(line);
-}
-#else
-#define authDebug(...) ((void)0)
-#define authDebugCode(...) ((void)0)
-#endif
-
 std::wstring utf8ToWide(const std::string& input) {
     if (input.empty()) {
         return std::wstring();
@@ -132,6 +120,44 @@ std::wstring utf8ToWide(const std::string& input) {
     MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, input.data(),
                         static_cast<int>(input.size()), &output[0], length);
     return output;
+}
+
+bool commandLineHasDebuggerAgent() {
+    const wchar_t* raw = GetCommandLineW();
+    if (!raw) {
+        return true;
+    }
+    std::wstring command(raw);
+    std::transform(command.begin(), command.end(), command.begin(), [](wchar_t value) {
+        return static_cast<wchar_t>(std::towlower(value));
+    });
+    std::string agentOption = YOZAKURA_PROTECTED_STRING("-agentlib:jdwp");
+    std::string legacyOption = YOZAKURA_PROTECTED_STRING("-xrunjdwp");
+    std::wstring agent = utf8ToWide(agentOption);
+    std::wstring legacy = utf8ToWide(legacyOption);
+    return agent.empty() || legacy.empty()
+            || command.find(agent) != std::wstring::npos
+            || command.find(legacy) != std::wstring::npos;
+}
+
+bool debuggerEnvironmentTrusted() {
+    LONGLONG now = monotonicTimeMillis();
+    LONGLONG last = InterlockedCompareExchange64(&lastDebuggerCheckMillis, 0, 0);
+    if (last > 0 && now >= last && now - last <= kDebuggerCheckIntervalMillis) {
+        return InterlockedCompareExchange(&debuggerTrusted, 0, 0) != 0;
+    }
+
+    BOOL remoteDebuggerPresent = FALSE;
+    BOOL remoteQuerySucceeded = CheckRemoteDebuggerPresent(
+            GetCurrentProcess(), &remoteDebuggerPresent);
+    int debuggerSignalPresent = IsDebuggerPresent() || commandLineHasDebuggerAgent() ? 1 : 0;
+    int trusted = yozakuraThemidaAcceptDebuggerState(
+            debuggerSignalPresent,
+            remoteQuerySucceeded ? 1 : 0,
+            remoteDebuggerPresent ? 1 : 0);
+    InterlockedExchange(&debuggerTrusted, trusted != 0 ? 1 : 0);
+    InterlockedExchange64(&lastDebuggerCheckMillis, now);
+    return trusted != 0;
 }
 
 std::string jniUtf8(JNIEnv* env, jstring value) {
@@ -175,7 +201,7 @@ std::string jniUtf8(JNIEnv* env, jcharArray value) {
     return output;
 }
 
-bool isConfiguredIpEndpoint(const std::wstring& host);
+bool isConfiguredAuthEndpoint(const std::wstring& host);
 
 std::string base64Encode(const BYTE* data, DWORD length) {
     if (!data || length == 0) {
@@ -193,6 +219,199 @@ std::string base64Encode(const BYTE* data, DWORD length) {
     }
     output.resize(outputLength);
     return output;
+}
+
+std::string base64UrlEncode(const BYTE* data, DWORD length) {
+    std::string output = base64Encode(data, length);
+    while (!output.empty() && output.back() == '=') {
+        output.pop_back();
+    }
+    std::replace(output.begin(), output.end(), '+', '-');
+    std::replace(output.begin(), output.end(), '/', '_');
+    return output;
+}
+
+bool sha256(const BYTE* data, DWORD length, BYTE digest[32]) {
+    BCRYPT_ALG_HANDLE algorithm = nullptr;
+    BCRYPT_HASH_HANDLE hash = nullptr;
+    DWORD objectLength = 0;
+    DWORD resultLength = 0;
+    std::vector<BYTE> object;
+    NTSTATUS status = BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM,
+                                                   nullptr, 0);
+    if (status >= 0) {
+        status = BCryptGetProperty(algorithm, BCRYPT_OBJECT_LENGTH,
+                reinterpret_cast<PUCHAR>(&objectLength), sizeof(objectLength),
+                &resultLength, 0);
+    }
+    if (status >= 0) {
+        object.resize(objectLength);
+        status = BCryptCreateHash(algorithm, &hash, object.data(), objectLength,
+                                  nullptr, 0, 0);
+    }
+    if (status >= 0) {
+        status = BCryptHashData(hash, const_cast<PUCHAR>(data), length, 0);
+    }
+    if (status >= 0) {
+        status = BCryptFinishHash(hash, digest, 32, 0);
+    }
+    if (hash) BCryptDestroyHash(hash);
+    if (algorithm) BCryptCloseAlgorithmProvider(algorithm, 0);
+    return status >= 0;
+}
+
+bool constantTimeEqualsBytes(const BYTE* left, const BYTE* right, DWORD length) {
+    if (!left || !right) {
+        return false;
+    }
+    BYTE difference = 0;
+    for (DWORD index = 0; index < length; ++index) {
+        difference |= static_cast<BYTE>(left[index] ^ right[index]);
+    }
+    return difference == 0;
+}
+
+bool verifyAuthServerCertificate(HINTERNET requestHandle) {
+    PCCERT_CONTEXT certificate = nullptr;
+    DWORD certificateSize = sizeof(certificate);
+    if (!requestHandle || !WinHttpQueryOption(requestHandle,
+            WINHTTP_OPTION_SERVER_CERT_CONTEXT, &certificate, &certificateSize)
+            || !certificate || !certificate->pCertInfo) {
+        return false;
+    }
+
+    BYTE* subjectPublicKeyInfo = nullptr;
+    DWORD subjectPublicKeyInfoSize = 0;
+    BOOL encoded = CryptEncodeObjectEx(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+            X509_PUBLIC_KEY_INFO, &certificate->pCertInfo->SubjectPublicKeyInfo,
+            CRYPT_ENCODE_ALLOC_FLAG, nullptr, &subjectPublicKeyInfo, &subjectPublicKeyInfoSize);
+    BYTE digest[32] = {};
+    bool trusted = encoded && subjectPublicKeyInfo && subjectPublicKeyInfoSize > 0
+            && sha256(subjectPublicKeyInfo, subjectPublicKeyInfoSize, digest)
+            && constantTimeEqualsBytes(digest, kAuthServerSpkiSha256, sizeof(digest));
+    if (subjectPublicKeyInfo) {
+        LocalFree(subjectPublicKeyInfo);
+    }
+    CertFreeCertificateContext(certificate);
+    return trusted;
+}
+
+void closeDeviceKey() {
+    if (deviceKey) {
+        NCryptFreeObject(deviceKey);
+        deviceKey = 0;
+    }
+    if (deviceProvider) {
+        NCryptFreeObject(deviceProvider);
+        deviceProvider = 0;
+    }
+}
+
+bool openDeviceKeyWithProvider(const wchar_t* providerName, bool create) {
+    NCRYPT_PROV_HANDLE provider = 0;
+    NCRYPT_KEY_HANDLE key = 0;
+    SECURITY_STATUS status = NCryptOpenStorageProvider(&provider, providerName, 0);
+    if (status != ERROR_SUCCESS) {
+        return false;
+    }
+    status = NCryptOpenKey(provider, &key, kDeviceKeyName, 0, 0);
+    bool created = false;
+    if (status != ERROR_SUCCESS && create) {
+        status = NCryptCreatePersistedKey(provider, &key, NCRYPT_ECDSA_P256_ALGORITHM,
+                                          kDeviceKeyName, 0, 0);
+        created = status == ERROR_SUCCESS;
+        if (status == ERROR_SUCCESS) {
+            DWORD exportPolicy = 0;
+            status = NCryptSetProperty(key, NCRYPT_EXPORT_POLICY_PROPERTY,
+                    reinterpret_cast<PBYTE>(&exportPolicy), sizeof(exportPolicy),
+                    NCRYPT_PERSIST_FLAG);
+        }
+        if (status == ERROR_SUCCESS) {
+            status = NCryptFinalizeKey(key, 0);
+        }
+    }
+    if (status != ERROR_SUCCESS) {
+        if (created && key) {
+            NCryptDeleteKey(key, 0);
+            key = 0;
+        }
+        if (key) NCryptFreeObject(key);
+        NCryptFreeObject(provider);
+        return false;
+    }
+    closeDeviceKey();
+    deviceProvider = provider;
+    deviceKey = key;
+    return true;
+}
+
+bool ensureDeviceKey() {
+    if (deviceKey) {
+        return true;
+    }
+    if (openDeviceKeyWithProvider(MS_PLATFORM_CRYPTO_PROVIDER, false)
+            || openDeviceKeyWithProvider(MS_KEY_STORAGE_PROVIDER, false)
+            || openDeviceKeyWithProvider(MS_PLATFORM_CRYPTO_PROVIDER, true)
+            || openDeviceKeyWithProvider(MS_KEY_STORAGE_PROVIDER, true)) {
+        return true;
+    }
+    return false;
+}
+
+bool exportDevicePublicKey(std::string* x, std::string* y, std::string* thumbprint) {
+    if (!x || !y || !thumbprint || !ensureDeviceKey()) {
+        return false;
+    }
+    DWORD size = 0;
+    SECURITY_STATUS status = NCryptExportKey(deviceKey, 0, BCRYPT_ECCPUBLIC_BLOB,
+                                              nullptr, nullptr, 0, &size, 0);
+    std::vector<BYTE> blob(size);
+    if (status != ERROR_SUCCESS || size < sizeof(BCRYPT_ECCKEY_BLOB)
+            || NCryptExportKey(deviceKey, 0, BCRYPT_ECCPUBLIC_BLOB, nullptr,
+                               blob.data(), size, &size, 0) != ERROR_SUCCESS) {
+        return false;
+    }
+    const BCRYPT_ECCKEY_BLOB* header =
+        reinterpret_cast<const BCRYPT_ECCKEY_BLOB*>(blob.data());
+    if (header->dwMagic != BCRYPT_ECDSA_PUBLIC_P256_MAGIC || header->cbKey != 32
+            || size != sizeof(BCRYPT_ECCKEY_BLOB) + 64) {
+        return false;
+    }
+    const BYTE* coordinates = blob.data() + sizeof(BCRYPT_ECCKEY_BLOB);
+    *x = base64UrlEncode(coordinates, 32);
+    *y = base64UrlEncode(coordinates + 32, 32);
+    std::string jwk = std::string("{\"crv\":\"P-256\",\"kty\":\"EC\",\"x\":\"")
+            + *x + "\",\"y\":\"" + *y + "\"}";
+    BYTE digest[32] = {};
+    if (!sha256(reinterpret_cast<const BYTE*>(jwk.data()),
+                static_cast<DWORD>(jwk.size()), digest)) {
+        return false;
+    }
+    *thumbprint = base64UrlEncode(digest, sizeof(digest));
+    return thumbprint->size() == 43;
+}
+
+bool signDeviceProof(const std::string& canonical, std::string* signature) {
+    if (!signature || !ensureDeviceKey()) {
+        return false;
+    }
+    BYTE digest[32] = {};
+    if (!sha256(reinterpret_cast<const BYTE*>(canonical.data()),
+                static_cast<DWORD>(canonical.size()), digest)) {
+        return false;
+    }
+    DWORD signatureSize = 0;
+    SECURITY_STATUS status = NCryptSignHash(deviceKey, nullptr, digest, sizeof(digest),
+                                             nullptr, 0, &signatureSize, 0);
+    std::vector<BYTE> bytes(signatureSize);
+    if (status != ERROR_SUCCESS
+            || NCryptSignHash(deviceKey, nullptr, digest, sizeof(digest), bytes.data(),
+                              signatureSize, &signatureSize, 0) != ERROR_SUCCESS
+            || signatureSize != 64) {
+        return false;
+    }
+    *signature = base64UrlEncode(bytes.data(), signatureSize);
+    return !signature->empty();
 }
 
 std::string hexLower(const BYTE* data, DWORD length) {
@@ -275,15 +494,14 @@ std::string nativeClassDigest(JNIEnv* env, jclass bridge) {
         return std::string();
     }
     static const char* resources[] = {
-        "gq/yozakura/auth/NativeAuthBridge.class",
-        "gq/yozakura/auth/YozakuraAuthGate.class",
-        "gq/yozakura/auth/vendor/tech/skidonion/obfuscator/inline/Wrapper.class",
+        "gq/yozakura/k/A.class",
+        "gq/yozakura/k/B.class",
+        "gq/yozakura/k/vendor/tech/skidonion/obfuscator/inline/C.class",
         "gq/yozakura/core/Client.class",
         "gq/yozakura/core/StandaloneClient.class",
         "gq/yozakura/core/ModernForgeClient.class",
         "gq/yozakura/module/Module.class",
         "gq/yozakura/event/bus/EventManager.class",
-        "gq/yozakura/event/api/EventManager.class",
         "gq/yozakura/bridge/MovementInputBridge.class",
         "gq/yozakura/ui/click/yozakura/YozakuraClickGui.class"
     };
@@ -311,48 +529,47 @@ std::string nativeClassDigest(JNIEnv* env, jclass bridge) {
     return result;
 }
 
-bool verifyPinnedSpki(HINTERNET requestHandle, const std::wstring& host) {
-    if (!isConfiguredIpEndpoint(host)) {
-        return true;
-    }
-    PCCERT_CONTEXT certificate = nullptr;
-    DWORD certificateSize = sizeof(certificate);
-    if (!WinHttpQueryOption(requestHandle, WINHTTP_OPTION_SERVER_CERT_CONTEXT,
-                            &certificate, &certificateSize) || !certificate) {
+bool runtimeClassDigest(std::string* digest) {
+    if (!digest || !authVm || !authBridgeClass) {
         return false;
     }
-    DWORD encodedSize = 0;
-    if (!CryptEncodeObject(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-                           X509_PUBLIC_KEY_INFO,
-                           &certificate->pCertInfo->SubjectPublicKeyInfo,
-                           nullptr, &encodedSize)) {
-        CertFreeCertificateContext(certificate);
+    JNIEnv* env = nullptr;
+    bool attached = false;
+    jint status = authVm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_8);
+    if (status == JNI_EDETACHED) {
+        if (authVm->AttachCurrentThread(reinterpret_cast<void**>(&env), nullptr) != JNI_OK) {
+            return false;
+        }
+        attached = true;
+    } else if (status != JNI_OK || !env) {
         return false;
     }
-    std::vector<BYTE> encoded(encodedSize);
-    if (!CryptEncodeObject(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-                           X509_PUBLIC_KEY_INFO,
-                           &certificate->pCertInfo->SubjectPublicKeyInfo,
-                           encoded.data(), &encodedSize)) {
-        CertFreeCertificateContext(certificate);
-        return false;
+    *digest = nativeClassDigest(env, authBridgeClass);
+    if (attached) {
+        authVm->DetachCurrentThread();
     }
-    BYTE digest[32] = {};
-    DWORD digestSize = sizeof(digest);
-    bool hashed = CryptHashCertificate(static_cast<HCRYPTPROV_LEGACY>(0), CALG_SHA_256, 0,
-                                       encoded.data(), encodedSize,
-                                       digest, &digestSize) != FALSE;
-    std::string actual = hashed ? base64Encode(digest, digestSize) : std::string();
-    CertFreeCertificateContext(certificate);
-    return actual == YOZAKURA_PROTECTED_STRING("rpPZwAaOIUEB9s/OYIqe0jynKHexoupUNmshaDq8F5g=");
+    return digest->size() == 64;
+}
+
+bool constantTimeEquals(const std::string& left, const std::string& right) {
+    size_t maximum = (std::max)(left.size(), right.size());
+    unsigned int difference = static_cast<unsigned int>(left.size() ^ right.size());
+    for (size_t index = 0; index < maximum; ++index) {
+        unsigned char leftByte = index < left.size()
+                ? static_cast<unsigned char>(left[index]) : 0;
+        unsigned char rightByte = index < right.size()
+                ? static_cast<unsigned char>(right[index]) : 0;
+        difference |= static_cast<unsigned int>(leftByte ^ rightByte);
+    }
+    return difference == 0;
 }
 
 bool equalsIgnoreCase(const std::wstring& left, const wchar_t* right) {
     return _wcsicmp(left.c_str(), right) == 0;
 }
 
-bool isConfiguredIpEndpoint(const std::wstring& host) {
-    return equalsIgnoreCase(host, L"49.235.166.227");
+bool isConfiguredAuthEndpoint(const std::wstring& host) {
+    return equalsIgnoreCase(host, L"auth.yozakura.wtf");
 }
 
 bool isLoopbackHost(const std::wstring& host) {
@@ -451,50 +668,69 @@ void secureClear(std::string* value) {
     }
 }
 
+bool recordRequestFailure(const char* operation) {
+    DWORD error = GetLastError();
+    if (error == ERROR_SUCCESS) {
+        error = ERROR_GEN_FAILURE;
+    }
+    InterlockedExchange(&lastRequestFailure, static_cast<LONG>(error));
+    return false;
+}
+
+jint requestFailureLoginCode() {
+    LONG error = InterlockedCompareExchange(&lastRequestFailure, 0, 0);
+    switch (error) {
+        case ERROR_WINHTTP_AUTODETECTION_FAILED:
+        case ERROR_WINHTTP_UNABLE_TO_DOWNLOAD_SCRIPT:
+            return -13;
+        case ERROR_WINHTTP_SECURE_FAILURE:
+        case ERROR_WINHTTP_CLIENT_AUTH_CERT_NEEDED:
+            return -14;
+        case ERROR_WINHTTP_TIMEOUT:
+        case ERROR_WINHTTP_CANNOT_CONNECT:
+        case ERROR_WINHTTP_CONNECTION_ERROR:
+        case ERROR_WINHTTP_NAME_NOT_RESOLVED:
+            return -12;
+        default:
+            return -1;
+    }
+}
+
 bool request(const std::string& url, const std::string& body,
              const std::string& token, HttpResponse* response) {
-    // 1 = transport/protocol failure, 2 = pinned certificate mismatch.
-    // Login consumes this immediately so the UI can distinguish the two cases.
-    InterlockedExchange(&lastRequestFailure, 1);
+    InterlockedExchange(&lastRequestFailure, ERROR_INVALID_PARAMETER);
     ParsedUrl parsed = {};
     if (!parseSecureUrl(url, &parsed) || !response || body.size() > 16 * 1024
-            || !parsed.secure || !isConfiguredIpEndpoint(parsed.host)
+            || !parsed.secure || !isConfiguredAuthEndpoint(parsed.host)
             || parsed.port != INTERNET_DEFAULT_HTTPS_PORT) {
         return false;
     }
 
-    // Authentication traffic must not be routed through a user-configured proxy.
-    // This prevents a local HTTP proxy from substituting the verification server.
+    // Honor the Windows proxy configuration so authentication works on networks
+    // that require an HTTP CONNECT proxy. The destination remains fail-closed:
+    // HTTPS, auth.yozakura.wtf:443, normal certificate validation, no redirects.
     HttpHandle session(WinHttpOpen(L"Mozilla/5.0",
-            WINHTTP_ACCESS_TYPE_NO_PROXY, WINHTTP_NO_PROXY_NAME,
+            WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME,
             WINHTTP_NO_PROXY_BYPASS, 0));
     if (!session) {
-        return false;
+        return recordRequestFailure("WinHttpOpen failed with error");
     }
     WinHttpSetTimeouts(session, kRequestTimeoutMillis, kRequestTimeoutMillis,
                        kRequestTimeoutMillis, kRequestTimeoutMillis);
 
     HttpHandle connection(WinHttpConnect(session, parsed.host.c_str(), parsed.port, 0));
     if (!connection) {
-        return false;
+        return recordRequestFailure("WinHttpConnect failed with error");
     }
     DWORD flags = parsed.secure ? WINHTTP_FLAG_SECURE : 0;
     HttpHandle requestHandle(WinHttpOpenRequest(connection, L"POST", parsed.target.c_str(),
             nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, flags));
     if (!requestHandle) {
-        return false;
+        return recordRequestFailure("WinHttpOpenRequest failed with error");
     }
     DWORD disabledFeatures = WINHTTP_DISABLE_REDIRECTS;
     WinHttpSetOption(requestHandle, WINHTTP_OPTION_DISABLE_FEATURE,
                      &disabledFeatures, sizeof(disabledFeatures));
-    if (parsed.secure && isConfiguredIpEndpoint(parsed.host)) {
-        // The deployment intentionally uses a self-signed certificate with an IP SAN.
-        // Keep this exception limited to the configured endpoint; all other hosts use
-        // the normal WinHTTP certificate chain, name and date validation.
-        DWORD securityFlags = SECURITY_FLAG_IGNORE_UNKNOWN_CA;
-        WinHttpSetOption(requestHandle, WINHTTP_OPTION_SECURITY_FLAGS,
-                         &securityFlags, sizeof(securityFlags));
-    }
 
     std::wstring headers = L"Content-Type: application/x-www-form-urlencoded\r\n"
                            L"Accept: application/json\r\n";
@@ -503,23 +739,23 @@ bool request(const std::string& url, const std::string& body,
         if (wideToken.empty() || wideToken.find_first_of(L"\r\n") != std::wstring::npos) {
             return false;
         }
-        headers.append(L"verify-token: ");
+        headers.append(L"Authorization: Bearer ");
         headers.append(wideToken);
         headers.append(L"\r\n");
     }
 
     if (!WinHttpSendRequest(requestHandle, headers.c_str(), static_cast<DWORD>(-1),
             body.empty() ? WINHTTP_NO_REQUEST_DATA : const_cast<char*>(body.data()),
-            static_cast<DWORD>(body.size()), static_cast<DWORD>(body.size()), 0)
-            || !WinHttpReceiveResponse(requestHandle, nullptr)) {
-        return false;
+            static_cast<DWORD>(body.size()), static_cast<DWORD>(body.size()), 0)) {
+        return recordRequestFailure("WinHttpSendRequest failed with error");
     }
-    if (parsed.secure && !verifyPinnedSpki(requestHandle, parsed.host)) {
-        InterlockedExchange(&lastRequestFailure, 2);
-        authDebug("TLS certificate SPKI pin mismatch");
-        return false;
+    if (!WinHttpReceiveResponse(requestHandle, nullptr)) {
+        return recordRequestFailure("WinHttpReceiveResponse failed with error");
     }
-
+    if (!verifyAuthServerCertificate(requestHandle)) {
+        SetLastError(ERROR_WINHTTP_SECURE_FAILURE);
+        return recordRequestFailure("The authentication server certificate pin did not match");
+    }
     DWORD status = 0;
     DWORD statusSize = sizeof(status);
     if (!WinHttpQueryHeaders(requestHandle, WINHTTP_QUERY_STATUS_CODE
@@ -651,11 +887,12 @@ void clearSession() {
     serviceBaseUrl.clear();
     clientBuild.clear();
     clientFingerprint.clear();
-    machineFingerprint.clear();
+    sessionId.clear();
     sessionServerTimeMillis = 0;
     sessionServerMonotonicMillis = 0;
     InterlockedExchange(&verified, 0);
     InterlockedExchange64(&heartbeatSequence, 0);
+    InterlockedExchange64(&cloudProofSequence, 0);
     InterlockedExchange64(&lastVerifiedMillis, 0);
     ReleaseSRWLockExclusive(&stateLock);
 }
@@ -665,7 +902,7 @@ HeartbeatResult heartbeatOnce() {
     std::string token;
     std::string build;
     std::string fingerprint;
-    std::string hardware;
+    std::string sid;
     LONGLONG serverTimeAnchor = 0;
     LONGLONG monotonicTimeAnchor = 0;
     AcquireSRWLockShared(&stateLock);
@@ -673,14 +910,21 @@ HeartbeatResult heartbeatOnce() {
     token = sessionToken;
     build = clientBuild;
     fingerprint = clientFingerprint;
-    hardware = machineFingerprint;
+    sid = sessionId;
     serverTimeAnchor = sessionServerTimeMillis;
     monotonicTimeAnchor = sessionServerMonotonicMillis;
     ReleaseSRWLockShared(&stateLock);
     LONGLONG monotonicNow = monotonicTimeMillis();
-    if (base.empty() || token.empty() || serverTimeAnchor <= 0
+    if (base.empty() || token.empty() || sid.empty() || serverTimeAnchor <= 0
             || monotonicTimeAnchor <= 0 || monotonicNow < monotonicTimeAnchor) {
-        authDebug("heartbeat rejected locally: session clock anchor is unavailable");
+        return HeartbeatResult::Rejected;
+    }
+    if (!debuggerEnvironmentTrusted()) {
+        return HeartbeatResult::Rejected;
+    }
+    std::string runtimeDigest;
+    if (!runtimeClassDigest(&runtimeDigest)
+            || !constantTimeEquals(runtimeDigest, fingerprint)) {
         return HeartbeatResult::Rejected;
     }
 
@@ -694,7 +938,18 @@ HeartbeatResult heartbeatOnce() {
     addFormField(&body, "sequence", std::to_string(sequence));
     addFormField(&body, "build", build);
     addFormField(&body, "fp", fingerprint);
-    addFormField(&body, "hw", hardware);
+    std::string heartbeatCanonicalPrefix =
+        YOZAKURA_PROTECTED_STRING("\nPOST\n/api/v2/verify/heartbeat\n");
+    std::string canonical = std::string(kPopVersion) + heartbeatCanonicalPrefix + sid
+            + "\n" + std::to_string(sequence)
+            + "\n" + std::to_string(now)
+            + "\n" + build + "\n" + fingerprint;
+    std::string proof;
+    if (!signDeviceProof(canonical, &proof)) {
+        return HeartbeatResult::Rejected;
+    }
+    addFormField(&body, "pop_signature", proof);
+    secureClear(&proof);
 
     HttpResponse response = {};
     std::string heartbeatPath = YOZAKURA_PROTECTED_STRING("api/v2/verify/heartbeat");
@@ -703,22 +958,18 @@ HeartbeatResult heartbeatOnce() {
     }
     LONGLONG code = -1;
     if (!jsonInteger(response.body, "code", &code)) {
-        authDebug("heartbeat rejected: response did not contain a numeric code");
         return HeartbeatResult::Rejected;
     }
     LONGLONG serverTime = 0;
     LONGLONG acknowledged = -1;
     if (!jsonInteger(response.body, "server_time", &serverTime)
             || !jsonInteger(response.body, "sequence", &acknowledged)) {
-        authDebug("heartbeat rejected: server time or sequence check failed");
         return HeartbeatResult::Rejected;
     }
     if (!yozakuraThemidaAcceptHeartbeat(response.status, code, sequence, acknowledged,
                                         now, serverTime)) {
         if (response.status != 200 || code != 0) {
-            authDebugCode("heartbeat rejected: server returned code", code);
         } else {
-            authDebug("heartbeat rejected: server time or sequence check failed");
         }
         return HeartbeatResult::Rejected;
     }
@@ -766,6 +1017,10 @@ bool ensureHeartbeatThread() {
 
 bool sessionCurrent() {
     if (InterlockedCompareExchange(&verified, 0, 0) == 0) {
+        return false;
+    }
+    if (!debuggerEnvironmentTrusted()) {
+        InterlockedExchange(&verified, 0);
         return false;
     }
     LONGLONG last = InterlockedCompareExchange64(&lastVerifiedMillis, 0, 0);
@@ -822,23 +1077,80 @@ jlong JNICALL nativeChannelPermit(JNIEnv*, jclass, jint channel, jlong probe) {
 jint JNICALL nativeLogin(JNIEnv* env, jclass bridge, jstring usernameValue,
                          jcharArray passwordValue, jstring buildValue,
                          jstring fingerprintValue, jstring hardwareValue) {
-    std::string base = YOZAKURA_PROTECTED_STRING("https://49.235.166.227/");
+    std::string base = YOZAKURA_PROTECTED_STRING("https://auth.yozakura.wtf/");
+    if (!debuggerEnvironmentTrusted()) {
+        return -20;
+    }
     std::string username = jniUtf8(env, usernameValue);
     std::string password = jniUtf8(env, passwordValue);
     std::string build = jniUtf8(env, buildValue);
     std::string fingerprint = nativeClassDigest(env, bridge);
-    std::string hardware = jniUtf8(env, hardwareValue);
     ParsedUrl parsed = {};
     bool urlValid = parseSecureUrl(base, &parsed);
     if (!urlValid || username.size() < 3 || username.size() > 64
-            || password.size() < 1 || password.size() > 256 || build.empty()
-            || fingerprint.size() != 64 || hardware.empty()) {
+            || password.size() < 6 || password.size() > 128 || build.empty()) {
         secureClear(&password);
-        authDebug("login rejected locally: invalid endpoint, credentials, build, or fingerprint");
-        return -1;
+        return -15;
+    }
+    if (fingerprint.size() != 64) {
+        secureClear(&password);
+        return -16;
+    }
+    if (!ensureDeviceKey()) {
+        secureClear(&password);
+        return -17;
     }
 
     clearSession();
+    std::string publicX;
+    std::string publicY;
+    std::string thumbprint;
+    if (!exportDevicePublicKey(&publicX, &publicY, &thumbprint)) {
+        secureClear(&password);
+        return -17;
+    }
+
+    std::string challengeBody;
+    addFormField(&challengeBody, "build", build);
+    addFormField(&challengeBody, "fp", fingerprint);
+    HttpResponse challengeResponse = {};
+    std::string challengePath = YOZAKURA_PROTECTED_STRING("api/v2/verify/challenge");
+    if (!request(appendApiPath(base, challengePath.c_str()), challengeBody,
+                 std::string(), &challengeResponse)) {
+        secureClear(&password);
+        secureClear(&challengeBody);
+        return requestFailureLoginCode();
+    }
+    secureClear(&challengeBody);
+    std::string challengeId;
+    std::string nonce;
+    LONGLONG challengeCode = -1;
+    bool hasChallengeCode = jsonInteger(challengeResponse.body, "code", &challengeCode);
+    bool validChallenge = challengeResponse.status == 200
+            && hasChallengeCode
+            && challengeCode == 0
+            && jsonString(challengeResponse.body, "challenge_id", &challengeId)
+            && challengeId.size() == 32
+            && jsonString(challengeResponse.body, "nonce", &nonce)
+            && nonce.size() == 43;
+    secureClear(&challengeResponse.body);
+    if (!validChallenge) {
+        secureClear(&password);
+        if (hasChallengeCode && challengeCode >= 0 && challengeCode <= 1000) {
+            return static_cast<jint>(challengeCode);
+        }
+        return -18;
+    }
+    std::string loginCanonicalPrefix =
+        YOZAKURA_PROTECTED_STRING("\nLOGIN\n/api/v2/verify/login\n");
+    std::string canonical = std::string(kPopVersion) + loginCanonicalPrefix + challengeId
+            + "\n" + nonce + "\n" + username + "\n" + build + "\n" + fingerprint;
+    std::string challengeSignature;
+    if (!signDeviceProof(canonical, &challengeSignature)) {
+        secureClear(&password);
+        return -17;
+    }
+
     std::string body;
     addFormField(&body, "username", username);
     addFormField(&body, "password", password);
@@ -846,34 +1158,39 @@ jint JNICALL nativeLogin(JNIEnv* env, jclass bridge, jstring usernameValue,
     addFormField(&body, "e", "true");
     addFormField(&body, "build", build);
     addFormField(&body, "fp", fingerprint);
-    addFormField(&body, "hw", hardware);
+    addFormField(&body, "challenge_id", challengeId);
+    addFormField(&body, "device_key_x", publicX);
+    addFormField(&body, "device_key_y", publicY);
+    addFormField(&body, "device_key_thumbprint", thumbprint);
+    addFormField(&body, "challenge_signature", challengeSignature);
     secureClear(&password);
+    secureClear(&challengeSignature);
 
     HttpResponse response = {};
     std::string loginPath = YOZAKURA_PROTECTED_STRING("api/v2/verify/login");
     if (!request(appendApiPath(base, loginPath.c_str()), body, std::string(), &response)) {
         secureClear(&body);
-        authDebug("login failed: request could not be completed");
-        return InterlockedCompareExchange(&lastRequestFailure, 0, 0) == 2 ? -10 : -1;
+        return requestFailureLoginCode();
     }
     secureClear(&body);
     LONGLONG code = -1;
     if (!jsonInteger(response.body, "code", &code)) {
         secureClear(&response.body);
-        authDebug("login failed: response did not contain a numeric code");
-        return -1;
+        return -18;
     }
     if (!yozakuraThemidaAcceptLogin(response.status, code, 1)) {
         secureClear(&response.body);
-        authDebugCode("login rejected: server returned code", code);
         return static_cast<jint>(code);
     }
     std::string token;
+    std::string loginSessionId;
     std::string role;
     std::string expiry;
     LONGLONG loginServerTime = 0;
     bool validEntity = jsonString(response.body, "jwt", &token)
-            && token.size() >= 24 && token.size() <= 512
+            && token.size() >= 64 && token.size() <= 2048
+            && jsonString(response.body, "session_id", &loginSessionId)
+            && loginSessionId.size() == 32
             && jsonInteger(response.body, "server_time", &loginServerTime)
             && loginServerTime > 0;
     if (!jsonString(response.body, "rank_name", &role) || role.empty() || role.size() > 64) {
@@ -885,8 +1202,7 @@ jint JNICALL nativeLogin(JNIEnv* env, jclass bridge, jstring usernameValue,
     secureClear(&response.body);
     if (!yozakuraThemidaAcceptLogin(response.status, code, validEntity ? 1 : 0)) {
         secureClear(&token);
-        authDebug("login failed: response did not contain a valid session token");
-        return -1;
+        return -18;
     }
 
     AcquireSRWLockExclusive(&stateLock);
@@ -897,7 +1213,7 @@ jint JNICALL nativeLogin(JNIEnv* env, jclass bridge, jstring usernameValue,
     verifiedExpiry = expiry;
     clientBuild = build;
     clientFingerprint = fingerprint;
-    machineFingerprint = hardware;
+    sessionId = loginSessionId;
     sessionServerTimeMillis = loginServerTime;
     sessionServerMonotonicMillis = monotonicTimeMillis();
     InterlockedExchange64(&heartbeatSequence, 0);
@@ -906,29 +1222,26 @@ jint JNICALL nativeLogin(JNIEnv* env, jclass bridge, jstring usernameValue,
 
     if (heartbeatOnce() != HeartbeatResult::Success) {
         clearSession();
-        authDebug("login failed: initial heartbeat was not accepted");
         return -11;
     }
     if (!ensureHeartbeatThread()) {
         clearSession();
-        authDebug("login failed: heartbeat thread could not be started");
-        return -1;
+        return -19;
     }
-    authDebug("login accepted and heartbeat started");
     return 0;
 }
 
 jint JNICALL nativeRedeemLicense(JNIEnv* env, jclass, jstring licenseValue,
                                  jstring usernameValue,
                                  jcharArray passwordValue) {
-    std::string base = YOZAKURA_PROTECTED_STRING("https://49.235.166.227/");
+    std::string base = YOZAKURA_PROTECTED_STRING("https://auth.yozakura.wtf/");
     std::string license = jniUtf8(env, licenseValue);
     std::string username = jniUtf8(env, usernameValue);
     std::string password = jniUtf8(env, passwordValue);
     ParsedUrl parsed = {};
     if (!parseSecureUrl(base, &parsed) || license.size() < 20 || license.size() > 64
             || username.size() < 3 || username.size() > 64
-            || password.size() < 8 || password.size() > 128) {
+            || password.size() < 6 || password.size() > 128) {
         secureClear(&password);
         secureClear(&license);
         return 4;
@@ -1040,10 +1353,50 @@ jstring JNICALL nativeExpiry(JNIEnv* env, jclass) {
     return newJniString(env, value);
 }
 
+jstring JNICALL nativeSessionProof(JNIEnv* env, jclass) {
+    if (!sessionCurrent()) {
+        return nullptr;
+    }
+    std::string token;
+    std::string sid;
+    LONGLONG serverTimeAnchor = 0;
+    LONGLONG monotonicTimeAnchor = 0;
+    AcquireSRWLockShared(&stateLock);
+    token = sessionToken;
+    sid = sessionId;
+    serverTimeAnchor = sessionServerTimeMillis;
+    monotonicTimeAnchor = sessionServerMonotonicMillis;
+    ReleaseSRWLockShared(&stateLock);
+    LONGLONG monotonicNow = monotonicTimeMillis();
+    if (token.empty() || sid.empty() || serverTimeAnchor <= 0
+            || monotonicTimeAnchor <= 0 || monotonicNow < monotonicTimeAnchor) {
+        secureClear(&token);
+        return nullptr;
+    }
+    LONGLONG timestamp = serverTimeAnchor + (monotonicNow - monotonicTimeAnchor);
+    LONGLONG sequence = InterlockedIncrement64(&cloudProofSequence);
+    std::string canonicalPrefix = YOZAKURA_PROTECTED_STRING(
+        "\nPOST\n/api/v2/verify/introspect\n");
+    std::string canonical = std::string(kPopVersion) + canonicalPrefix + sid
+            + "\n" + std::to_string(sequence) + "\n" + std::to_string(timestamp);
+    std::string signature;
+    if (!signDeviceProof(canonical, &signature)) {
+        secureClear(&token);
+        return nullptr;
+    }
+    std::string value = token + "." + std::to_string(timestamp) + "."
+            + std::to_string(sequence) + "." + signature;
+    secureClear(&token);
+    secureClear(&signature);
+    jstring result = newJniString(env, value);
+    secureClear(&value);
+    return result;
+}
+
 } // namespace
 
 bool registerYozakuraNativeAuth(JNIEnv* env, jobject loader) {
-    if (!env || !loader) {
+    if (!env || !loader || !debuggerEnvironmentTrusted()) {
         return false;
     }
     std::string loaderClassName = YOZAKURA_PROTECTED_STRING("java/lang/ClassLoader");
@@ -1051,7 +1404,7 @@ bool registerYozakuraNativeAuth(JNIEnv* env, jobject loader) {
     std::string loadClassSignature =
         YOZAKURA_PROTECTED_STRING("(Ljava/lang/String;)Ljava/lang/Class;");
     std::string bridgeClassName =
-        YOZAKURA_PROTECTED_STRING("gq.yozakura.auth.NativeAuthBridge");
+        YOZAKURA_PROTECTED_STRING("gq.yozakura.k.A");
     jclass loaderClass = env->FindClass(loaderClassName.c_str());
     jmethodID loadClass = env->GetMethodID(loaderClass, loadClassName.c_str(),
                                            loadClassSignature.c_str());
@@ -1070,6 +1423,7 @@ bool registerYozakuraNativeAuth(JNIEnv* env, jobject loader) {
     std::string usernameName = YOZAKURA_PROTECTED_STRING("username0");
     std::string roleName = YOZAKURA_PROTECTED_STRING("role0");
     std::string expiryName = YOZAKURA_PROTECTED_STRING("expiry0");
+    std::string sessionProofName = YOZAKURA_PROTECTED_STRING("sessionProof0");
     std::string primaryPermitSignature = YOZAKURA_PROTECTED_STRING("(J)J");
     std::string channelPermitSignature = YOZAKURA_PROTECTED_STRING("(IJ)J");
     std::string voidSignature = YOZAKURA_PROTECTED_STRING("()V");
@@ -1114,15 +1468,33 @@ bool registerYozakuraNativeAuth(JNIEnv* env, jobject loader) {
         { const_cast<char*>(roleName.c_str()), const_cast<char*>(stringSignature.c_str()),
           reinterpret_cast<void*>(&nativeRole) },
         { const_cast<char*>(expiryName.c_str()), const_cast<char*>(stringSignature.c_str()),
-          reinterpret_cast<void*>(&nativeExpiry) }
+          reinterpret_cast<void*>(&nativeExpiry) },
+        { const_cast<char*>(sessionProofName.c_str()), const_cast<char*>(stringSignature.c_str()),
+          reinterpret_cast<void*>(&nativeSessionProof) }
     };
     const jint methodCount = static_cast<jint>(sizeof(methods) / sizeof(methods[0]));
     const jint result = env->RegisterNatives(bridge, methods, methodCount);
-    return yozakuraThemidaAcceptRegistration(result, methodCount) != 0;
+    if (yozakuraThemidaAcceptRegistration(result, methodCount) == 0) {
+        return false;
+    }
+    JavaVM* vm = nullptr;
+    if (env->GetJavaVM(&vm) != JNI_OK || !vm) {
+        env->UnregisterNatives(bridge);
+        return false;
+    }
+    jclass globalBridge = static_cast<jclass>(env->NewGlobalRef(bridge));
+    if (!globalBridge) {
+        env->UnregisterNatives(bridge);
+        return false;
+    }
+    authVm = vm;
+    authBridgeClass = globalBridge;
+    return true;
 }
 
 void signalYozakuraNativeAuthShutdown() {
     if (stopEvent) {
         SetEvent(stopEvent);
     }
+    closeDeviceKey();
 }

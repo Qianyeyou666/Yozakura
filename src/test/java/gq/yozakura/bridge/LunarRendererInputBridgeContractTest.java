@@ -27,7 +27,7 @@ public class LunarRendererInputBridgeContractTest {
     }
 
     @Test
-    public void reinjectionReplacesRatherThanNestsOldLoaderWrappers() throws IOException {
+    public void reinjectionReplacesRatherThanNestsOldLoaderCs() throws IOException {
         String renderer = source("src/main/java/gq/yozakura/bridge/StandaloneLivingRendererBridge.java");
         String movement = source("src/main/java/gq/yozakura/bridge/MovementInputBridge.java");
 

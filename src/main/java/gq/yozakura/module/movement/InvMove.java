@@ -1,8 +1,6 @@
 package gq.yozakura.module.movement;
 
 import gq.yozakura.module.ModuleType;
-import gq.yozakura.ui.click.material.MaterialClickGui;
-import gq.yozakura.ui.click.sakura.SakuraClickGui;
 import gq.yozakura.ui.click.yozakura.YozakuraClickGui;
 import gq.yozakura.module.Module;
 import gq.yozakura.util.minecraft.ClientUtil;
@@ -25,9 +23,7 @@ public class InvMove extends Module {
             return;
         }
         if (!(mc.currentScreen instanceof GuiContainer)
-                && !(mc.currentScreen instanceof YozakuraClickGui)
-                && !(mc.currentScreen instanceof MaterialClickGui)
-                && !(mc.currentScreen instanceof SakuraClickGui)) {
+                && !(mc.currentScreen instanceof YozakuraClickGui)) {
             return;
         }
         double speed = 0.05;

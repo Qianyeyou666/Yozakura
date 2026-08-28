@@ -17,6 +17,7 @@ import gq.yozakura.value.Numbers;
 import gq.yozakura.value.Option;
 import gq.yozakura.engine.font.CFontRenderer;
 import gq.yozakura.engine.font.FontLoaders;
+import gq.yozakura.engine.font.MinecraftFontLoaders;
 import gq.yozakura.engine.render.glow.GlowProfile;
 import gq.yozakura.engine.render.glow.GlowRenderer;
 import gq.yozakura.engine.render.ui.LiquidGlassSettings;
@@ -62,6 +63,7 @@ public class HUD extends Module {
     private static final int NIGHT_BLOOM_SURFACE_RAISED = NightBloomHudLayout.SURFACE_RAISED_COLOR;
     private static final float NIGHT_BLOOM_RADIUS = NightBloomHudLayout.PANEL_RADIUS;
     private static final long MODULE_LIST_CACHE_MILLIS = 80L;
+    private static final long NYMPH_TOGGLE_DURATION_MS = 500L;
     private static final LiquidGlassSettings SAKURA_GLASS_SETTINGS = LiquidGlassSettings.defaults()
             .withBlurRadius(18.0f)
             .withBlurDownscale(0.92f)
@@ -91,7 +93,27 @@ public class HUD extends Module {
 
     public enum ArrayListTheme {
         OLD,
-        SAKURA
+        SAKURA,
+        NYMPHILILA
+    }
+
+    public enum NymphFont {
+        CLIENT,
+        CIRCULAR,
+        VANILLA
+    }
+
+    public enum NymphBackground {
+        OUTLINE,
+        BARLEFT,
+        BARRIGHT,
+        BLUR,
+        NONE
+    }
+
+    public enum NymphToggleAnimation {
+        MOVE_IN,
+        SCALE_IN
     }
 
     public enum NotificationTheme {
@@ -171,8 +193,26 @@ public class HUD extends Module {
     private final Mode<HudStyle> hudStyle = new Mode<HudStyle>("HUD Style", "HUDStyle", HudStyle.values(), HudStyle.YOZAKURA);
     private final Mode<Theme> theme = new Mode<Theme>("Theme", "Theme", Theme.values(), Theme.DARK);
     private final Mode<ArrayListTheme> arrayListTheme = new Mode<ArrayListTheme>("ArrayList Theme", "ArrayListTheme", ArrayListTheme.values(), ArrayListTheme.OLD);
+    private final Mode<NymphArrayListStyle.ColorMode> nymphColorMode = new Mode<NymphArrayListStyle.ColorMode>(
+            "Nymph Color Mode", "NymphColorMode", NymphArrayListStyle.ColorMode.values(),
+            NymphArrayListStyle.ColorMode.PULSE);
+    private final Mode<NymphFont> nymphFont = new Mode<NymphFont>(
+            "Nymph Font", "NymphFont", NymphFont.values(), NymphFont.VANILLA);
+    private final Mode<NymphBackground> nymphBackground = new Mode<NymphBackground>(
+            "Nymph Background", "NymphBackground", NymphBackground.values(), NymphBackground.OUTLINE);
+    private final Option<Boolean> nymphGlow = new Option<Boolean>("Nymph Glow", "NymphGlow", true);
+    private final Mode<NymphToggleAnimation> nymphToggleAnimation = new Mode<NymphToggleAnimation>(
+            "Nymph Animation", "NymphAnimation", NymphToggleAnimation.values(), NymphToggleAnimation.MOVE_IN);
     private final Mode<NotificationTheme> notificationTheme = new Mode<NotificationTheme>("Notification Theme", "NotificationTheme", NotificationTheme.values(), NotificationTheme.AUTO);
     private final Numbers<Double> alpha = new Numbers<Double>("Alpha", "Alpha", 128.0, 45.0, 180.0, 5.0);
+    private final Numbers<Double> nymphBackgroundAlpha = new Numbers<Double>("Nymph Background Alpha", "NymphBackgroundAlpha", 120.0, 0.0, 255.0, 1.0);
+    private final Numbers<Double> nymphGlowSize = new Numbers<Double>("Nymph Glow Size", "NymphGlowSize", 6.0, 3.0, 8.0, 0.5);
+    private final Numbers<Double> nymphPrimaryRed = new Numbers<Double>("Nymph Primary Red", "NymphPrimaryRed", 209.0, 0.0, 255.0, 1.0);
+    private final Numbers<Double> nymphPrimaryGreen = new Numbers<Double>("Nymph Primary Green", "NymphPrimaryGreen", 50.0, 0.0, 255.0, 1.0);
+    private final Numbers<Double> nymphPrimaryBlue = new Numbers<Double>("Nymph Primary Blue", "NymphPrimaryBlue", 50.0, 0.0, 255.0, 1.0);
+    private final Numbers<Double> nymphSecondaryRed = new Numbers<Double>("Nymph Secondary Red", "NymphSecondaryRed", 29.0, 0.0, 255.0, 1.0);
+    private final Numbers<Double> nymphSecondaryGreen = new Numbers<Double>("Nymph Secondary Green", "NymphSecondaryGreen", 205.0, 0.0, 255.0, 1.0);
+    private final Numbers<Double> nymphSecondaryBlue = new Numbers<Double>("Nymph Secondary Blue", "NymphSecondaryBlue", 200.0, 0.0, 255.0, 1.0);
     private final Numbers<Double> radius = new Numbers<Double>("Radius", "Radius", 8.0, 3.0, 14.0, 1.0);
     private final Numbers<Double> watermarkX = new Numbers<Double>("Watermark X", "WatermarkX", 6.0, -1.0, 2000.0, 1.0);
     private final Numbers<Double> watermarkY = new Numbers<Double>("Watermark Y", "WatermarkY", 6.0, -1.0, 1200.0, 1.0);
@@ -195,12 +235,39 @@ public class HUD extends Module {
     private final Numbers<Double> notificationX = new Numbers<Double>("Notification X", "NotificationX", -1.0, -1.0, 2000.0, 1.0);
     private final Numbers<Double> notificationY = new Numbers<Double>("Notification Y", "NotificationY", -1.0, -1.0, 1200.0, 1.0);
 
+    /**
+     * Reused on the render thread so gradient labels do not allocate a color
+     * callback for every visible module on every frame.
+     */
+    private static final NightBloomGradientColorProvider NIGHT_BLOOM_GRADIENT_COLORS =
+            new NightBloomGradientColorProvider();
+
     private final Map<Module, Float> moduleAnimations = new HashMap<Module, Float>();
+    private final NymphArrayListRenderer nymphRenderer = new NymphArrayListRenderer();
+    private final Map<Module, NymphArrayListRowMotion> nymphModuleMotions =
+            new HashMap<Module, NymphArrayListRowMotion>();
+    private final List<ModuleListEntry> nymphModuleRenderScratch = new ArrayList<ModuleListEntry>();
+    private final Map<Module, NymphArrayListRenderRow> nymphRowSnapshots =
+            new HashMap<Module, NymphArrayListRenderRow>();
+    private final List<NymphArrayListRenderRow> nymphRowRenderScratch =
+            new ArrayList<NymphArrayListRenderRow>();
     private final NightBloomWatermarkLayout nightBloomWatermarkLayout = new NightBloomWatermarkLayout();
     private final UiClock nightBloomWatermarkClock = new UiClock();
     private final Map<Module, NightBloomModuleRowMotion> nightBloomModuleMotions = new HashMap<Module, NightBloomModuleRowMotion>();
     private final Map<Module, ModuleListEntry> nightBloomModuleEntries = new HashMap<Module, ModuleListEntry>();
     private final Map<Module, Float> nightBloomModuleWidthScratch = new HashMap<Module, Float>();
+    /**
+     * Per-frame cache of metaFont-measured {@code entry.sideText} widths for
+     * NIGHT_BLOOM module rows. Populated once in
+     * {@link #getSortedNightBloomModuleListEntries} (alongside
+     * {@link #nightBloomModuleWidthScratch}) and read by the 5 downstream draw
+     * paths (drawNightBloomModuleList initial loops + shadows/surfaces/list/
+     * interactions). Previously each of those 5 paths called
+     * {@code metaFont.getStringWidth(entry.sideText)} independently, producing
+     * 5x LRU cache-key String allocations per visible row per frame even when
+     * the widthCache hit rate was high.
+     */
+    private final Map<Module, Float> nightBloomMetaWidthScratch = new HashMap<Module, Float>();
     private final List<ModuleListEntry> nightBloomModuleSortScratch = new ArrayList<ModuleListEntry>();
     private final List<Module> nightBloomVisibleModuleScratch = new ArrayList<Module>();
     private final List<NightBloomModuleRenderEntry> nightBloomModuleRenderScratch = new ArrayList<NightBloomModuleRenderEntry>();
@@ -211,10 +278,93 @@ public class HUD extends Module {
     private final float[] nightBloomInventorySlotAnimations = new float[27];
     private final List<Module> hudModuleScratch = new ArrayList<Module>();
     private final List<ModuleListEntry> moduleEntryCache = new ArrayList<ModuleListEntry>();
+    /**
+     * MINIMAL-style module entries cached for {@link #MODULE_LIST_CACHE_MILLIS}.
+     * Reuses the same {@link ModuleListEntry} shape as the NIGHT_BLOOM cache,
+     * but {@code labelWidth} stores the MINIMAL total width
+     * ({@code nameWidth + 2 + sideWidth} when side text exists) measured with
+     * {@link #minimalTextWidth(String)} through the crisp Minecraft bitmap
+     * renderer, not {@link FontLoaders#TB20}.
+     * Previously every {@code drawMinimalModuleList} frame rebuilt
+     * {@link ModuleListLabel}s and re-measured widths {@code O(N log N)} times
+     * during the sort plus {@code 2N} times during max-width + render loops.
+     */
+    private final List<ModuleListEntry> minimalModuleEntryCache = new ArrayList<ModuleListEntry>();
+    private final List<ModuleListEntry> minimalModuleSortScratch = new ArrayList<ModuleListEntry>();
+    private int minimalModuleEntryCacheSignature;
+    private long minimalModuleEntryCacheTime;
+
+    /**
+     * Reusable {@link Comparator} instances. The previous anonymous-class
+     * instantiations allocated a fresh comparator object on every sort call
+     * (5 call sites per frame across the 4 HudStyle paths). Because sorts run
+     * every frame, lifting these to named fields removes 5 small allocations
+     * from the steady-state render path with no behavior change.
+     */
+    private static final Comparator<ModuleListEntry> MODULE_ENTRY_BY_LABEL_WIDTH_DESC =
+            new Comparator<ModuleListEntry>() {
+                @Override
+                public int compare(ModuleListEntry first, ModuleListEntry second) {
+                    return second.labelWidth - first.labelWidth;
+                }
+            };
+    /**
+     * Sorts MINIMAL-style entries by their precomputed total width
+     * (stored in {@link ModuleListEntry#labelWidth}). Reading the cached field
+     * avoids re-measuring each entry during the sort, which previously triggered
+     * {@code O(N log N)} {@link #minimalTextWidth(String)} calls per frame.
+     */
+    private static final Comparator<ModuleListEntry> MINIMAL_ENTRY_BY_TOTAL_WIDTH_DESC =
+            new Comparator<ModuleListEntry>() {
+                @Override
+                public int compare(ModuleListEntry first, ModuleListEntry second) {
+                    return second.labelWidth - first.labelWidth;
+                }
+            };
+    private static final Comparator<NightBloomModuleRenderEntry> NIGHT_BLOOM_ENTRY_BY_Y =
+            new Comparator<NightBloomModuleRenderEntry>() {
+                @Override
+                public int compare(NightBloomModuleRenderEntry first, NightBloomModuleRenderEntry second) {
+                    return Float.compare(first.snapshot.getY(), second.snapshot.getY());
+                }
+            };
+    private static final Comparator<PotionEffect> POTION_BY_DURATION_DESC =
+            new Comparator<PotionEffect>() {
+                @Override
+                public int compare(PotionEffect first, PotionEffect second) {
+                    return second.getDuration() - first.getDuration();
+                }
+            };
     private int moduleEntryCacheSignature;
     private int moduleEntryCacheGap;
     private CFontRenderer moduleEntryCacheFont;
     private long moduleEntryCacheTime;
+    /**
+     * Per-frame cached {@link ScaledResolution}. Constructed once at the top of
+     * {@link #renderOverlay()} and reused by every component method
+     * (drawWatermark/drawModuleList/drawPotionEffects/drawInventory) instead of
+     * each calling {@code new ScaledResolution(mc)} independently. The value is
+     * immutable for the frame's duration, so sharing a single instance is
+     * behavior-equivalent. Previously 5 separate constructions per frame, each
+     * re-reading displayWidth/Height + framebuffer + recomputing GUI scale.
+     */
+    private ScaledResolution activeScaledResolution;
+
+    /**
+     * Returns the per-frame cached {@link ScaledResolution}, lazily creating
+     * one only if a component method is invoked outside the normal
+     * {@link #renderOverlay()} flow (e.g. in tests). The normal render path
+     * populates {@link #activeScaledResolution} before any component runs, so
+     * the lazy branch is essentially free in steady state.
+     */
+    private ScaledResolution scaledResolution() {
+        ScaledResolution cached = activeScaledResolution;
+        if (cached == null) {
+            cached = new ScaledResolution(mc);
+            activeScaledResolution = cached;
+        }
+        return cached;
+    }
     private long lastFrameMS = System.currentTimeMillis();
     private float nightBloomInventoryFill;
     private boolean nightBloomWatermarkWasDragging;
@@ -224,12 +374,47 @@ public class HUD extends Module {
         Chinese = "HUD界面";
         instance = this;
         activeStyle = getSelectedStyle();
-        this.addValues(hudStyle,notificationTheme, arrayListTheme, theme, watermark, arrayList, backgrounds, frostedGlass, keybinds, parameters, notifications,
+        nymphColorMode.visibleWhen(this::isNymphArrayListTheme);
+        nymphFont.visibleWhen(this::isNymphArrayListTheme);
+        nymphBackground.visibleWhen(this::isNymphArrayListTheme);
+        nymphGlow.visibleWhen(this::isNymphArrayListTheme);
+        nymphToggleAnimation.visibleWhen(this::isNymphArrayListTheme);
+        nymphBackgroundAlpha.visibleWhen(this::isNymphArrayListTheme);
+        nymphGlowSize.visibleWhen(() -> isNymphArrayListTheme()
+                && Boolean.TRUE.equals(nymphGlow.getValue()));
+        nymphPrimaryRed.visibleWhen(this::isNymphPrimaryPaletteVisible);
+        nymphPrimaryGreen.visibleWhen(this::isNymphPrimaryPaletteVisible);
+        nymphPrimaryBlue.visibleWhen(this::isNymphPrimaryPaletteVisible);
+        nymphSecondaryRed.visibleWhen(this::isNymphSecondaryPaletteVisible);
+        nymphSecondaryGreen.visibleWhen(this::isNymphSecondaryPaletteVisible);
+        nymphSecondaryBlue.visibleWhen(this::isNymphSecondaryPaletteVisible);
+        this.addValues(hudStyle,notificationTheme, arrayListTheme, nymphColorMode, nymphFont, nymphBackground,
+                nymphGlow, nymphGlowSize, nymphToggleAnimation, nymphBackgroundAlpha,
+                nymphPrimaryRed, nymphPrimaryGreen, nymphPrimaryBlue,
+                nymphSecondaryRed, nymphSecondaryGreen, nymphSecondaryBlue,
+                theme, watermark, arrayList, backgrounds, frostedGlass, keybinds, parameters, notifications,
                 potionEffects, inventoryDisplay, glow, alpha, radius, watermarkX, watermarkY, watermarkScale,
                 watermarkBrandX, watermarkBrandY, watermarkVersionX, watermarkVersionY,
                 watermarkStatusX, watermarkStatusY,
                 moduleListX, moduleListY, moduleListScale, potionX, potionY, potionScale, inventoryX, inventoryY,
                 inventoryScale, notificationX, notificationY);
+    }
+
+    private boolean isNymphArrayListTheme() {
+        return getSelectedStyle() == HudStyle.YOZAKURA
+                && arrayListTheme.getValue() == ArrayListTheme.NYMPHILILA;
+    }
+
+    private boolean isNymphPrimaryPaletteVisible() {
+        NymphArrayListStyle.ColorMode mode = nymphColorMode.getValue();
+        return isNymphArrayListTheme() && (mode == NymphArrayListStyle.ColorMode.STATIC
+                || mode == NymphArrayListStyle.ColorMode.PULSE
+                || mode == NymphArrayListStyle.ColorMode.SWITCH);
+    }
+
+    private boolean isNymphSecondaryPaletteVisible() {
+        return isNymphArrayListTheme()
+                && nymphColorMode.getValue() == NymphArrayListStyle.ColorMode.SWITCH;
     }
 
     @EventTarget
@@ -257,6 +442,7 @@ public class HUD extends Module {
         long now = System.currentTimeMillis();
         float factor = animationFactor(now);
         ScaledResolution sr = new ScaledResolution(mc);
+        activeScaledResolution = sr;
         int width = sr.getScaledWidth();
         int height = sr.getScaledHeight();
 
@@ -300,6 +486,9 @@ public class HUD extends Module {
         }
         nightBloomInventoryFill = 0.0F;
         clearModuleEntryCache();
+        nymphRowSnapshots.clear();
+        nymphRowRenderScratch.clear();
+        nymphRenderer.dispose();
         lastFrameMS = System.currentTimeMillis();
     }
 
@@ -333,7 +522,7 @@ public class HUD extends Module {
         float panelH = 19.0f;
         float round = Math.max(6.0f, getRadius() - 1.0f);
         float uiScale = getScale(watermarkScale);
-        ScaledResolution sr = new ScaledResolution(mc);
+        ScaledResolution sr = scaledResolution();
         float[] pos = HudDrag.update("hud_watermark", watermarkX, watermarkY, watermarkScale, 6.0f, 6.0f,
                 panelW * uiScale, panelH * uiScale, sr);
         float x = pos[0];
@@ -378,7 +567,7 @@ public class HUD extends Module {
         float boxW = Math.max(214.0f, titleFont.getStringWidth(Client.name) + 86.0f);
         float boxH = 52.0f;
         float uiScale = getScale(watermarkScale);
-        ScaledResolution sr = new ScaledResolution(mc);
+        ScaledResolution sr = scaledResolution();
         float[] pos = HudDrag.update("hud_watermark", watermarkX, watermarkY, watermarkScale, 8.0f, 8.0f,
                 boxW * uiScale, boxH * uiScale, sr);
         float x = pos[0];
@@ -423,7 +612,7 @@ public class HUD extends Module {
         float fpsTileWidth = NightBloomHudLayout.watermarkMetadataWidth(fpsWidth);
         float panelHeight = NightBloomHudLayout.WATERMARK_HEIGHT;
         float uiScale = getScale(watermarkScale);
-        ScaledResolution sr = new ScaledResolution(mc);
+        ScaledResolution sr = scaledResolution();
         NightBloomWatermarkLayout.Snapshot snapshot = updateNightBloomWatermarkLayout(sr, uiScale,
                 brandTileWidth, versionTileWidth, fpsTileWidth, panelHeight);
         boolean localDragging = snapshot.isDragging();
@@ -796,7 +985,7 @@ public class HUD extends Module {
         float width = MinimalHudLayout.contentWidth(minimalTextWidth(text));
         float height = 12.0F;
         float uiScale = getScale(watermarkScale);
-        ScaledResolution sr = new ScaledResolution(mc);
+        ScaledResolution sr = scaledResolution();
         float[] pos = HudDrag.update("hud_watermark", watermarkX, watermarkY, watermarkScale,
                 4.0F, 4.0F, width * uiScale, height * uiScale, sr);
         float x = MinimalHudLayout.pixel(pos[0]);
@@ -814,53 +1003,46 @@ public class HUD extends Module {
     }
 
     private void drawMinimalModuleList(int screenWidth, int screenHeight, float factor, List<Module> modules) {
-        List<Module> sorted = new ArrayList<Module>(modules);
-        sorted.sort(new Comparator<Module>() {
-            @Override
-            public int compare(Module first, Module second) {
-                return minimalModuleWidth(second) - minimalModuleWidth(first);
-            }
-        });
-        if (sorted.isEmpty() && !HudDrag.isEditMode()) {
+        List<ModuleListEntry> entries = getSortedMinimalModuleListEntries(modules);
+        if (entries.isEmpty() && !HudDrag.isEditMode()) {
             return;
         }
         int maximumWidth = minimalTextWidth("Module List");
-        for (Module module : sorted) {
-            maximumWidth = Math.max(maximumWidth, minimalModuleWidth(module));
+        for (ModuleListEntry entry : entries) {
+            maximumWidth = Math.max(maximumWidth, entry.labelWidth);
         }
         float width = MinimalHudLayout.contentWidth(maximumWidth);
-        float height = MinimalHudLayout.listHeight(Math.min(24, sorted.size()));
+        float height = MinimalHudLayout.listHeight(Math.min(24, entries.size()));
         float uiScale = getScale(moduleListScale);
-        ScaledResolution sr = new ScaledResolution(mc);
+        ScaledResolution sr = scaledResolution();
         float[] pos = HudDrag.update("hud_module_list", moduleListX, moduleListY, moduleListScale,
                 screenWidth - width * uiScale - 3.0F, 3.0F, width * uiScale, height * uiScale, sr);
         float left = MinimalHudLayout.pixel(pos[0]);
         float top = MinimalHudLayout.pixel(pos[1]);
-        float right = left + width;
+        boolean rightSide = ModuleListAnchor.isRightSide(pos[0], width * uiScale, screenWidth);
         beginScaled(left, top, uiScale);
         try {
             int index = 0;
-            for (Module module : sorted) {
-                float progress = animateModule(module, factor);
+            for (ModuleListEntry entry : entries) {
+                float progress = animateModule(entry.module, factor);
                 if (progress <= 0.01F) {
                     continue;
                 }
-                ModuleListLabel label = getModuleListLabel(module);
-                String side = getModuleSideText(label);
                 float rowY = top + 1.0F + index * MinimalHudLayout.ROW_HEIGHT;
-                float rowRight = right - 2.0F;
-                int nameWidth = minimalTextWidth(label.name);
-                int sideWidth = side.length() == 0 ? 0 : minimalTextWidth(side);
-                float rowLeft = rowRight - nameWidth - (sideWidth > 0 ? sideWidth + 2.0F : 0.0F);
+                int nameWidth = entry.nameWidth;
+                int sideWidth = entry.sideWidth;
+                float textWidth = nameWidth + (sideWidth > 0 ? sideWidth + 2.0F : 0.0F);
+                float rowLeft = ModuleListAnchor.textX(left, width, textWidth, 2.0F, rightSide);
+                float rowRight = rowLeft + textWidth;
                 if (Boolean.TRUE.equals(backgrounds.getValue())) {
                     RenderServices.shapes().rounded(rowLeft - 2.0F, rowY - 1.0F,
                             rowRight + 2.0F, rowY + 9.0F, 1.5F,
                             withAlpha(MinimalHudLayout.BACKGROUND_COLOR, Math.round(120.0F * progress)));
                 }
-                drawMinimalText(label.name, rowLeft, rowY,
+                drawMinimalText(entry.label.name, rowLeft, rowY,
                         withAlpha(MinimalHudLayout.TEXT_COLOR, Math.round(255.0F * progress)));
                 if (sideWidth > 0) {
-                    drawMinimalText(side, rowRight - sideWidth, rowY,
+                    drawMinimalText(entry.sideText, rowRight - sideWidth, rowY,
                             withAlpha(MinimalHudLayout.MUTED_COLOR, Math.round(230.0F * progress)));
                 }
                 index++;
@@ -881,7 +1063,7 @@ public class HUD extends Module {
         float width = 146.0F;
         float height = 14.0F + Math.max(1, rows) * MinimalHudLayout.ROW_HEIGHT;
         float uiScale = getScale(potionScale);
-        ScaledResolution sr = new ScaledResolution(mc);
+        ScaledResolution sr = scaledResolution();
         float[] pos = HudDrag.update("hud_potions", potionX, potionY, potionScale,
                 sr.getScaledWidth() * 0.58F, 34.0F, width * uiScale, height * uiScale, sr);
         float x = MinimalHudLayout.pixel(pos[0]);
@@ -913,7 +1095,7 @@ public class HUD extends Module {
         float width = 166.0F;
         float height = 64.0F;
         float uiScale = getScale(inventoryScale);
-        ScaledResolution sr = new ScaledResolution(mc);
+        ScaledResolution sr = scaledResolution();
         float[] pos = HudDrag.update("hud_inventory", inventoryX, inventoryY, inventoryScale,
                 screenWidth * 0.5F - width * 0.5F, screenHeight - 92.0F,
                 width * uiScale, height * uiScale, sr);
@@ -940,40 +1122,23 @@ public class HUD extends Module {
     private void drawMinimalText(String text, float x, float y, int color) {
         float pixelX = Math.round(x);
         float pixelY = Math.round(y);
-        boolean unicodeFallback = MinimalHudLayout.usesUnicodeFallback(text);
         if (Boolean.TRUE.equals(glow.getValue()) && RenderServices.glow().isFrameOpen()) {
-            if (unicodeFallback) {
-                FontLoaders.C16.drawGlowString(text, pixelX, pixelY,
-                        withAlpha(color, 34), 0.08F, GlowProfile.TEXT);
-            } else {
-                RenderServices.glow().queueVanillaText(mc.fontRendererObj, text, pixelX, pixelY,
-                        withAlpha(color, 52), MinimalHudLayout.TEXT_GLOW_STRENGTH, GlowProfile.TEXT);
-            }
+            MinecraftFontLoaders.MINIMAL.drawGlowString(
+                    text, pixelX, pixelY, withAlpha(color, 52),
+                    MinimalHudLayout.TEXT_GLOW_STRENGTH, GlowProfile.TEXT);
         }
-        if (unicodeFallback) {
-            FontLoaders.C16.drawStringWithShadow(text, pixelX, pixelY, color);
-        } else {
-            mc.fontRendererObj.drawString(text, pixelX, pixelY, color, true);
-        }
+        MinecraftFontLoaders.MINIMAL.drawStringWithShadow(
+                text, pixelX, pixelY, color);
     }
 
     private int minimalTextWidth(String text) {
-        return MinimalHudLayout.usesUnicodeFallback(text)
-                ? FontLoaders.C16.getStringWidth(text)
-                : mc.fontRendererObj.getStringWidth(text);
+        return MinecraftFontLoaders.MINIMAL.getStringWidth(text);
     }
 
     private void drawMinimalBackground(float x, float y, float x2, float y2) {
         if (Boolean.TRUE.equals(backgrounds.getValue())) {
             RenderServices.shapes().rounded(x, y, x2, y2, 2.0F, MinimalHudLayout.BACKGROUND_COLOR);
         }
-    }
-
-    private int minimalModuleWidth(Module module) {
-        ModuleListLabel label = getModuleListLabel(module);
-        return minimalTextWidth(label.name)
-                + (getModuleSideText(label).length() == 0 ? 0
-                : 2 + minimalTextWidth(getModuleSideText(label)));
     }
 
     private void drawNightBloomModuleList(int screenWidth, int screenHeight, float factor, List<Module> modules) {
@@ -983,7 +1148,7 @@ public class HUD extends Module {
         float listWidth = NightBloomHudLayout.MIN_MODULE_ROW_WIDTH;
         int visibleRows = 0;
         for (ModuleListEntry entry : entries) {
-            float metaWidth = entry.sideText.length() == 0 ? 0.0F : metaFont.getStringWidth(entry.sideText);
+            float metaWidth = nightBloomCachedMetaWidth(entry, metaFont);
             listWidth = Math.max(listWidth, NightBloomHudLayout.moduleRowWidth(entry.nameWidth, metaWidth));
             visibleRows++;
             if (visibleRows >= NightBloomHudLayout.MAX_VISIBLE_MODULE_ROWS) {
@@ -991,7 +1156,7 @@ public class HUD extends Module {
             }
         }
         for (ModuleListEntry entry : nightBloomModuleEntries.values()) {
-            float metaWidth = entry.sideText.length() == 0 ? 0.0F : metaFont.getStringWidth(entry.sideText);
+            float metaWidth = nightBloomCachedMetaWidth(entry, metaFont);
             listWidth = Math.max(listWidth, NightBloomHudLayout.moduleRowWidth(entry.nameWidth, metaWidth));
         }
         visibleRows = Math.max(visibleRows, Math.min(NightBloomHudLayout.MAX_VISIBLE_MODULE_ROWS,
@@ -1002,7 +1167,7 @@ public class HUD extends Module {
 
         float listHeight = NightBloomHudLayout.moduleListHeight(visibleRows);
         float uiScale = getScale(moduleListScale);
-        ScaledResolution sr = new ScaledResolution(mc);
+        ScaledResolution sr = scaledResolution();
         float[] pos = HudDrag.updateDocked("hud_module_list", moduleListX, moduleListY, moduleListScale,
                 screenWidth - listWidth * uiScale - 6.0F, 6.0F,
                 listWidth * uiScale, listHeight * uiScale, NIGHT_BLOOM_RADIUS * uiScale,
@@ -1011,6 +1176,7 @@ public class HUD extends Module {
         float x = pos[0];
         float y = pos[1];
         float right = x + listWidth;
+        boolean rightSide = ModuleListAnchor.isRightSide(x, listWidth * uiScale, screenWidth);
 
         beginScaled(x, y, uiScale);
         try {
@@ -1022,23 +1188,23 @@ public class HUD extends Module {
                                 + NightBloomHudLayout.MODULE_ROW_GAP,
                         NIGHT_BLOOM_RADIUS, 1.0F);
                 float textWidth = nameFont.getStringWidth("Module List");
-                drawNightBloomText(nameFont, "Module List", right - textWidth - 8.0F,
+                drawNightBloomText(nameFont, "Module List",
+                        ModuleListAnchor.textX(x, listWidth, textWidth, 8.0F, rightSide),
                         y + (NightBloomHudLayout.MODULE_ROW_HEIGHT - nameFont.getHeight()) * 0.5F + 1.0F,
                         withNightBloomAlpha(NIGHT_BLOOM_SECONDARY, 0.72F),
                         withNightBloomAlpha(NIGHT_BLOOM_PRIMARY, 0.22F), 0.18F);
             } else {
-                drawNightBloomModuleShadows(rows, metaFont, right);
-                drawNightBloomModuleSurfaces(rows, metaFont, right, x, y, uiScale);
+                drawNightBloomModuleShadows(rows, metaFont, x, listWidth, rightSide, uiScale);
+                drawNightBloomModuleSurfaces(rows, metaFont, x, listWidth, rightSide, y, uiScale);
                 for (int index = 0; index < rows.size(); index++) {
                     NightBloomModuleRenderEntry row = rows.get(index);
                     ModuleListEntry entry = row.entry;
                     float progress = row.snapshot.getVisibility();
-                    float metaWidth = entry.sideText.length() == 0 ? 0.0F : metaFont.getStringWidth(entry.sideText);
+                    float metaWidth = nightBloomCachedMetaWidth(entry, metaFont);
                     float rowWidth = NightBloomHudLayout.moduleRowWidth(entry.nameWidth, metaWidth);
-                    float rowX = NightBloomHudLayout.moduleRowX(right, rowWidth, progress)
-                            + (1.0F - progress) * 5.0F;
+                    float rowX = ModuleListAnchor.rowX(x, listWidth, rowWidth, progress, rightSide);
                     drawNightBloomModuleRow(entry, nameFont, metaFont, rowX, row.snapshot.getY(), rowWidth,
-                            progress, gradientTick, x, y);
+                            progress, gradientTick, x, y, rightSide);
                 }
             }
         } finally {
@@ -1090,30 +1256,49 @@ public class HUD extends Module {
                 nightBloomModuleEntries.remove(module);
             }
         }
-        nightBloomModuleRenderScratch.sort(new Comparator<NightBloomModuleRenderEntry>() {
-            @Override
-            public int compare(NightBloomModuleRenderEntry first, NightBloomModuleRenderEntry second) {
-                return Float.compare(first.snapshot.getY(), second.snapshot.getY());
-            }
-        });
+        nightBloomModuleRenderScratch.sort(NIGHT_BLOOM_ENTRY_BY_Y);
         return nightBloomModuleRenderScratch;
     }
 
     private void drawNightBloomModuleShadows(List<NightBloomModuleRenderEntry> rows,
-                                              CFontRenderer metaFont, float right) {
+                                              CFontRenderer metaFont, float listX, float listWidth,
+                                              boolean rightSide, float uiScale) {
         if (!Boolean.TRUE.equals(backgrounds.getValue())) {
             return;
         }
-        for (NightBloomModuleRenderEntry row : rows) {
-            ModuleListEntry entry = row.entry;
+        for (int index = 0; index < rows.size(); index++) {
+            NightBloomModuleRenderEntry row = rows.get(index);
             float progress = row.snapshot.getVisibility();
-            float metaWidth = entry.sideText.length() == 0 ? 0.0F : metaFont.getStringWidth(entry.sideText);
-            float rowWidth = NightBloomHudLayout.moduleRowWidth(entry.nameWidth, metaWidth);
-            float rowX = NightBloomHudLayout.moduleRowX(right, rowWidth, progress)
-                    + (1.0F - progress) * 5.0F;
-            float bottom = NightBloomHudLayout.moduleRowBottom(row.snapshot.getY(), 0.0F, false);
-            drawNightBloomModuleShadow(rowX, row.snapshot.getY(), rowX + rowWidth, bottom,
-                    NIGHT_BLOOM_RADIUS, progress);
+            float rowWidth = nightBloomCachedRenderedRowWidth(row.entry, metaFont);
+            float rowX = ModuleListAnchor.rowX(listX, listWidth, rowWidth, progress, rightSide);
+            int shadowRunEnd = index;
+            float shadowRunBottom = NightBloomHudLayout.moduleRowBottom(
+                    row.snapshot.getY(), 0.0F, false);
+            float shadowRunAlpha = progress;
+            while (shadowRunEnd + 1 < rows.size()) {
+                NightBloomModuleRenderEntry runLast = rows.get(shadowRunEnd);
+                NightBloomModuleRenderEntry candidate = rows.get(shadowRunEnd + 1);
+                if (!NightBloomHudLayout.moduleRowsTouch(
+                        runLast.snapshot.getY(), candidate.snapshot.getY())) {
+                    break;
+                }
+                float candidateWidth = nightBloomCachedRenderedRowWidth(candidate.entry, metaFont);
+                float candidateProgress = candidate.snapshot.getVisibility();
+                float candidateX = ModuleListAnchor.rowX(
+                        listX, listWidth, candidateWidth, candidateProgress, rightSide);
+                if (!NightBloomHudLayout.moduleRowsSharePhysicalBounds(
+                        rowX, rowX + rowWidth,
+                        candidateX, candidateX + candidateWidth, uiScale)) {
+                    break;
+                }
+                shadowRunEnd++;
+                shadowRunBottom = NightBloomHudLayout.moduleRowBottom(
+                        candidate.snapshot.getY(), 0.0F, false);
+                shadowRunAlpha = Math.min(shadowRunAlpha, candidateProgress);
+            }
+            drawNightBloomModuleShadow(rowX, row.snapshot.getY(), rowX + rowWidth, shadowRunBottom,
+                    NIGHT_BLOOM_RADIUS, shadowRunAlpha);
+            index = shadowRunEnd;
         }
 
         for (int index = 0; index + 1 < rows.size(); index++) {
@@ -1122,16 +1307,20 @@ public class HUD extends Module {
             if (!NightBloomHudLayout.moduleRowsTouch(row.snapshot.getY(), next.snapshot.getY())) {
                 continue;
             }
-            float rowWidth = nightBloomRenderedModuleRowWidth(row.entry, metaFont);
-            float nextWidth = nightBloomRenderedModuleRowWidth(next.entry, metaFont);
-            float rowX = NightBloomHudLayout.moduleRowX(right, rowWidth, row.snapshot.getVisibility())
-                    + (1.0F - row.snapshot.getVisibility()) * 5.0F;
-            float nextX = NightBloomHudLayout.moduleRowX(right, nextWidth, next.snapshot.getVisibility())
-                    + (1.0F - next.snapshot.getVisibility()) * 5.0F;
+            float rowWidth = nightBloomCachedRenderedRowWidth(row.entry, metaFont);
+            float nextWidth = nightBloomCachedRenderedRowWidth(next.entry, metaFont);
+            float rowX = ModuleListAnchor.rowX(listX, listWidth, rowWidth,
+                    row.snapshot.getVisibility(), rightSide);
+            float nextX = ModuleListAnchor.rowX(listX, listWidth, nextWidth,
+                    next.snapshot.getVisibility(), rightSide);
+            if (NightBloomHudLayout.moduleRowsSharePhysicalBounds(
+                    rowX, rowX + rowWidth, nextX, nextX + nextWidth, uiScale)) {
+                continue;
+            }
             float alpha = Math.min(row.snapshot.getVisibility(), next.snapshot.getVisibility());
             float shadowRadius = NightBloomHudLayout.moduleFusionShadowRadius(NIGHT_BLOOM_RADIUS);
             drawNightBloomModuleShadowBridge(Math.max(rowX, nextX),
-                    next.snapshot.getY() - shadowRadius, right,
+                    next.snapshot.getY() - shadowRadius, Math.min(rowX + rowWidth, nextX + nextWidth),
                     next.snapshot.getY() + shadowRadius, alpha);
         }
     }
@@ -1141,8 +1330,8 @@ public class HUD extends Module {
     }
 
     private void drawNightBloomModuleSurfaces(List<NightBloomModuleRenderEntry> rows,
-                                               CFontRenderer metaFont, float right,
-                                               float listX, float listY, float uiScale) {
+                                               CFontRenderer metaFont, float listX, float listWidth,
+                                               boolean rightSide, float listY, float uiScale) {
         if (!Boolean.TRUE.equals(backgrounds.getValue())) {
             return;
         }
@@ -1155,17 +1344,42 @@ public class HUD extends Module {
             NightBloomModuleRenderEntry row = rows.get(index);
             ModuleListEntry entry = row.entry;
             float progress = row.snapshot.getVisibility();
-            float metaWidth = entry.sideText.length() == 0 ? 0.0F : metaFont.getStringWidth(entry.sideText);
+            float metaWidth = nightBloomCachedMetaWidth(entry, metaFont);
             float rowWidth = NightBloomHudLayout.moduleRowWidth(entry.nameWidth, metaWidth);
-            float rowX = NightBloomHudLayout.moduleRowX(right, rowWidth, progress)
-                    + (1.0F - progress) * 5.0F;
-            float bottom = NightBloomHudLayout.moduleRowBottom(row.snapshot.getY(), 0.0F, false);
+            float rowX = ModuleListAnchor.rowX(listX, listWidth, rowWidth, progress, rightSide);
+
+            int equalRunEnd = index;
+            float equalRunBottom = NightBloomHudLayout.moduleRowBottom(
+                    row.snapshot.getY(), 0.0F, false);
+            float equalRunAlpha = progress;
+            while (equalRunEnd + 1 < rows.size()) {
+                NightBloomModuleRenderEntry runLast = rows.get(equalRunEnd);
+                NightBloomModuleRenderEntry candidate = rows.get(equalRunEnd + 1);
+                if (!NightBloomHudLayout.moduleRowsTouch(
+                        runLast.snapshot.getY(), candidate.snapshot.getY())) {
+                    break;
+                }
+                float candidateWidth = nightBloomCachedRenderedRowWidth(candidate.entry, metaFont);
+                float candidateProgress = candidate.snapshot.getVisibility();
+                float candidateX = ModuleListAnchor.rowX(
+                        listX, listWidth, candidateWidth, candidateProgress, rightSide);
+                if (!NightBloomHudLayout.moduleRowsSharePhysicalBounds(
+                        rowX, rowX + rowWidth,
+                        candidateX, candidateX + candidateWidth, uiScale)) {
+                    break;
+                }
+                equalRunEnd++;
+                equalRunBottom = NightBloomHudLayout.moduleRowBottom(
+                        candidate.snapshot.getY(), 0.0F, false);
+                equalRunAlpha = Math.min(equalRunAlpha, candidateProgress);
+            }
+
             boolean joinsAbove = index > 0
                     && NightBloomHudLayout.moduleRowsTouch(rows.get(index - 1).snapshot.getY(),
                     row.snapshot.getY());
-            boolean joinsBelow = index + 1 < rows.size()
-                    && NightBloomHudLayout.moduleRowsTouch(row.snapshot.getY(),
-                    rows.get(index + 1).snapshot.getY());
+            boolean joinsBelow = equalRunEnd + 1 < rows.size()
+                    && NightBloomHudLayout.moduleRowsTouch(rows.get(equalRunEnd).snapshot.getY(),
+                    rows.get(equalRunEnd + 1).snapshot.getY());
             float topLeftRadius = NIGHT_BLOOM_RADIUS;
             float bottomLeftRadius = NIGHT_BLOOM_RADIUS;
 
@@ -1173,10 +1387,9 @@ public class HUD extends Module {
             float topJoinEnd = 0.0F;
             if (joinsAbove) {
                 NightBloomModuleRenderEntry above = rows.get(index - 1);
-                float aboveWidth = nightBloomRenderedModuleRowWidth(above.entry, metaFont);
-                float aboveX = NightBloomHudLayout.moduleRowX(right, aboveWidth,
-                        above.snapshot.getVisibility())
-                        + (1.0F - above.snapshot.getVisibility()) * 5.0F;
+                float aboveWidth = nightBloomCachedRenderedRowWidth(above.entry, metaFont);
+                float aboveX = ModuleListAnchor.rowX(listX, listWidth, aboveWidth,
+                        above.snapshot.getVisibility(), rightSide);
                 topJoinStart = NightBloomHudLayout.moduleJoinStart(
                         rowX, aboveX, NIGHT_BLOOM_RADIUS) - rowX;
                 topJoinEnd = NightBloomHudLayout.moduleJoinEnd(
@@ -1189,11 +1402,10 @@ public class HUD extends Module {
             float bottomJoinStart = 1.0F;
             float bottomJoinEnd = 0.0F;
             if (joinsBelow) {
-                NightBloomModuleRenderEntry next = rows.get(index + 1);
-                float nextWidth = nightBloomRenderedModuleRowWidth(next.entry, metaFont);
-                float nextX = NightBloomHudLayout.moduleRowX(right, nextWidth,
-                        next.snapshot.getVisibility())
-                        + (1.0F - next.snapshot.getVisibility()) * 5.0F;
+                NightBloomModuleRenderEntry next = rows.get(equalRunEnd + 1);
+                float nextWidth = nightBloomCachedRenderedRowWidth(next.entry, metaFont);
+                float nextX = ModuleListAnchor.rowX(listX, listWidth, nextWidth,
+                        next.snapshot.getVisibility(), rightSide);
                 bottomJoinStart = NightBloomHudLayout.moduleJoinStart(
                         rowX, nextX, NIGHT_BLOOM_RADIUS) - rowX;
                 bottomJoinEnd = NightBloomHudLayout.moduleJoinEnd(
@@ -1202,15 +1414,16 @@ public class HUD extends Module {
                 bottomLeftRadius = NightBloomHudLayout.moduleBottomLeftRadius(
                         rowX, nextX, NIGHT_BLOOM_RADIUS, joinsBelow);
                 if (joinsBelow) {
-                    bottom = NightBloomHudLayout.moduleRowBottom(row.snapshot.getY(),
-                            rows.get(index + 1).snapshot.getY(), true);
+                    equalRunBottom = NightBloomHudLayout.moduleRowBottom(
+                            rows.get(equalRunEnd).snapshot.getY(), next.snapshot.getY(), true);
                 }
             }
-            drawNightBloomModuleSurface(rowX, row.snapshot.getY(), rowX + rowWidth, bottom,
-                    NIGHT_BLOOM_RADIUS, topLeftRadius, bottomLeftRadius, progress,
+            drawNightBloomModuleSurface(rowX, row.snapshot.getY(), rowX + rowWidth, equalRunBottom,
+                    NIGHT_BLOOM_RADIUS, topLeftRadius, bottomLeftRadius, equalRunAlpha,
                     joinsAbove ? topJoinStart : 1.0F, joinsAbove ? topJoinEnd : 0.0F,
                     joinsBelow ? bottomJoinStart : 1.0F, joinsBelow ? bottomJoinEnd : 0.0F,
                     dockSurface, listX, listY, uiScale);
+            index = equalRunEnd;
         }
     }
 
@@ -1273,7 +1486,7 @@ public class HUD extends Module {
                 topLeftRadius, topRightRadius, bottomRightRadius, bottomLeftRadius,
                 topJoinStart, topJoinEnd, bottomJoinStart, bottomJoinEnd,
                 1.0F, 0.0F, rightJoinStart, rightJoinEnd,
-                withNightBloomAlpha(withNightBloomAlpha(NIGHT_BLOOM_SURFACE, 0.68F), alpha));
+                withNightBloomAlpha(withNightBloomAlpha(NIGHT_BLOOM_SURFACE, 0.82F), alpha));
     }
 
     private static float mergeJoinStart(float currentStart, float currentEnd, float nextStart) {
@@ -1286,23 +1499,34 @@ public class HUD extends Module {
 
     private void drawNightBloomModuleRow(ModuleListEntry entry, CFontRenderer nameFont, CFontRenderer metaFont,
                                           float x, float y, float width, float progress, long gradientTick,
-                                          float gradientOriginX, float gradientOriginY) {
+                                          float gradientOriginX, float gradientOriginY, boolean rightSide) {
         float rowRight = x + width;
         String meta = entry.sideText;
         float nameY = NightBloomHudLayout.moduleNameY(y, nameFont.getHeight());
         float metaY = NightBloomHudLayout.moduleMetadataY(y, metaFont.getHeight());
-        float contentRight = rowRight - 3.0F;
-        float metaWidth = meta.length() == 0 ? 0.0F : metaFont.getStringWidth(meta);
-        float nameX = contentRight - entry.nameWidth;
-        if (metaWidth > 0.0F) {
-            float metaX = contentRight - metaWidth;
-            drawNightBloomText(metaFont, meta, metaX, metaY,
-                    withNightBloomAlpha(NIGHT_BLOOM_SECONDARY, 0.90F * progress),
-                    withNightBloomAlpha(NIGHT_BLOOM_PRIMARY, 0.24F * progress), 0.20F);
-            nameX = metaX - NightBloomHudLayout.MODULE_TEXT_GAP - entry.nameWidth;
+        float metaWidth = nightBloomCachedMetaWidth(entry, metaFont);
+        float nameX;
+        if (rightSide) {
+            float contentRight = rowRight - 3.0F;
+            nameX = contentRight - entry.nameWidth;
+            if (metaWidth > 0.0F) {
+                float metaX = contentRight - metaWidth;
+                drawNightBloomText(metaFont, meta, metaX, metaY,
+                        withNightBloomAlpha(NIGHT_BLOOM_SECONDARY, 0.98F * progress),
+                        withNightBloomAlpha(NIGHT_BLOOM_PRIMARY, 0.18F * progress), 0.14F);
+                nameX = metaX - NightBloomHudLayout.MODULE_TEXT_GAP - entry.nameWidth;
+            }
+        } else {
+            nameX = x + 3.0F;
+            if (metaWidth > 0.0F) {
+                float metaX = nameX + entry.nameWidth + NightBloomHudLayout.MODULE_TEXT_GAP;
+                drawNightBloomText(metaFont, meta, metaX, metaY,
+                        withNightBloomAlpha(NIGHT_BLOOM_SECONDARY, 0.98F * progress),
+                        withNightBloomAlpha(NIGHT_BLOOM_PRIMARY, 0.18F * progress), 0.14F);
+            }
         }
         drawNightBloomArrayListGradientText(nameFont, entry.label.name, nameX, nameY,
-                0.98F * progress, 0.68F * progress, 0.52F, gradientTick,
+                1.0F * progress, 0.44F * progress, 0.36F, gradientTick,
                 gradientOriginX, gradientOriginY);
     }
 
@@ -1317,15 +1541,46 @@ public class HUD extends Module {
         if (font == null || text == null || text.length() == 0) {
             return;
         }
-        float cursor = x;
-        for (int index = 0; index < text.length(); index++) {
-            String glyph = String.valueOf(text.charAt(index));
-            int color = NightBloomArrayListGradient.colorAt(cursor - gradientOriginX,
-                    y - gradientOriginY, gradientTick);
-            int glyphColor = withNightBloomAlpha(color, opacity);
-            int gradientGlow = withNightBloomAlpha(color, glowOpacity);
-            drawNightBloomText(font, glyph, cursor, y, glyphColor, gradientGlow, glowStrength);
-            cursor += font.getStringWidth(glyph);
+        int glowSample = NightBloomArrayListGradient.colorAt(
+                x + font.getStringWidth(text) * 0.5F - gradientOriginX,
+                y - gradientOriginY, gradientTick);
+        queueNightBloomTextGlow(font, text, x, y,
+                withNightBloomAlpha(glowSample, glowOpacity), glowStrength);
+
+        NIGHT_BLOOM_GRADIENT_COLORS.configure(opacity, gradientTick, gradientOriginX, gradientOriginY);
+        font.drawColoredString(text, x, y, NIGHT_BLOOM_GRADIENT_COLORS);
+    }
+
+    private static void queueNightBloomTextGlow(CFontRenderer font, String text, double x, double y,
+                                                 int glowColor, float glowStrength) {
+        if (!isGlowEnabled() || !RenderServices.glow().isFrameOpen()
+                || glowStrength <= 0.0F || (glowColor >>> 24) <= 0) {
+            return;
+        }
+        float resolvedStrength = Math.min(1.0F,
+                Math.max(0.0F, glowStrength + NIGHT_BLOOM_GLOW_STRENGTH_BOOST));
+        font.drawGlowString(text, x, y, glowColor, resolvedStrength, GlowProfile.TEXT);
+    }
+
+    private static final class NightBloomGradientColorProvider
+            implements CFontRenderer.CodePointColorProvider {
+        private float opacity;
+        private long gradientTick;
+        private float gradientOriginX;
+        private float gradientOriginY;
+
+        private void configure(float opacity, long gradientTick,
+                               float gradientOriginX, float gradientOriginY) {
+            this.opacity = opacity;
+            this.gradientTick = gradientTick;
+            this.gradientOriginX = gradientOriginX;
+            this.gradientOriginY = gradientOriginY;
+        }
+
+        @Override
+        public int colorAt(int codePoint, int codePointIndex, float x, float y) {
+            return withNightBloomAlpha(NightBloomArrayListGradient.colorAt(
+                    x - gradientOriginX, y - gradientOriginY, gradientTick), opacity);
         }
     }
 
@@ -1360,7 +1615,7 @@ public class HUD extends Module {
         float width = 174.0f;
         float height = 28.0f + maxRows * rowH + 6.0f;
         float uiScale = getScale(potionScale);
-        ScaledResolution sr = new ScaledResolution(mc);
+        ScaledResolution sr = scaledResolution();
         float[] pos = HudDrag.update("hud_potions", potionX, potionY, potionScale, 8.0f,
                 Boolean.TRUE.equals(watermark.getValue()) ? 66.0f : 8.0f,
                 width * uiScale, height * uiScale, sr);
@@ -1376,8 +1631,9 @@ public class HUD extends Module {
             }
             FontLoaders.C16.drawString("Effects", x + 11.0f, y + 8.0f, withAlpha(palette().vapeOnSurface, 242));
             String count = String.valueOf(effects.size());
-            drawVapeTextChip(count, x + width - FontLoaders.C12.getStringWidth(count) - 19.0f, y + 7.0f,
-                    FontLoaders.C12.getStringWidth(count) + 14.0f, palette().vapePrimary);
+            int countWidth = FontLoaders.C12.getStringWidth(count);
+            drawVapeTextChip(count, x + width - countWidth - 19.0f, y + 7.0f,
+                    countWidth + 14.0f, palette().vapePrimary);
             if (effects.isEmpty()) {
                 FontLoaders.C12.drawString("No active effects", x + 12.0f, y + 34.0f,
                         withAlpha(palette().vapeOnVariant, 210));
@@ -1391,15 +1647,16 @@ public class HUD extends Module {
                     float rowY = y + 29.0f + i * rowH;
                     int accent = withAlpha(0xFF000000 | potion.getLiquidColor(), 220);
                     String duration = Potion.getDurationString(effect);
+                    int durationWidth = FontLoaders.C12.getStringWidth(duration);
                     String name = trim(I18n.format(potion.getName()) + amplifierSuffix(effect.getAmplifier()),
-                            FontLoaders.C12, width - FontLoaders.C12.getStringWidth(duration) - 44.0f);
+                            FontLoaders.C12, width - durationWidth - 44.0f);
                     if (Boolean.TRUE.equals(backgrounds.getValue())) {
                         RenderServices.shapes().rounded(x + 8.0f, rowY + 1.0f, x + width - 8.0f,
                                 rowY + rowH - 2.0f, 4.0f, withAlpha(palette().vapeSurfaceVariant, 112));
                     }
                     RenderServices.shapes().circle(x + 17.0f, rowY + 8.0f, 0, 360, 3.4f, accent);
                     FontLoaders.C12.drawString(name, x + 26.0f, rowY + 4.0f, withAlpha(palette().vapeOnSurface, 230));
-                    FontLoaders.C12.drawString(duration, x + width - FontLoaders.C12.getStringWidth(duration) - 12.0f,
+                    FontLoaders.C12.drawString(duration, x + width - durationWidth - 12.0f,
                             rowY + 4.0f, withAlpha(palette().vapeOnVariant, 215));
                     float progress = Math.max(0.08f, Math.min(1.0f, effect.getDuration() / 1200.0f));
                     RenderServices.shapes().progressBar(x + 26.0f, rowY + 14.0f, x + width - 12.0f, rowY + 15.6f,
@@ -1419,7 +1676,7 @@ public class HUD extends Module {
         float width = NightBloomHudLayout.POTION_WIDTH;
         float height = NightBloomHudLayout.potionHeight(nightBloomPotionMotion.getLayoutRows());
         float uiScale = getScale(potionScale);
-        ScaledResolution sr = new ScaledResolution(mc);
+        ScaledResolution sr = scaledResolution();
         float[] pos = HudDrag.updateDocked("hud_potions", potionX, potionY, potionScale, 6.0F,
                 Boolean.TRUE.equals(watermark.getValue()) ? 54.0F : 6.0F,
                 width * uiScale, height * uiScale, NIGHT_BLOOM_RADIUS * uiScale, sr);
@@ -1566,7 +1823,7 @@ public class HUD extends Module {
         float width = NightBloomHudLayout.INVENTORY_WIDTH;
         float height = NightBloomHudLayout.INVENTORY_HEIGHT;
         float uiScale = getScale(inventoryScale);
-        ScaledResolution sr = new ScaledResolution(mc);
+        ScaledResolution sr = scaledResolution();
         float[] pos = HudDrag.updateDocked("hud_inventory", inventoryX, inventoryY, inventoryScale,
                 screenWidth / 2.0F - width * uiScale / 2.0F, Math.max(58.0F, screenHeight - 114.0F),
                 width * uiScale, height * uiScale, NIGHT_BLOOM_RADIUS * uiScale, sr);
@@ -1664,7 +1921,7 @@ public class HUD extends Module {
         float width = 178.0f;
         float height = 88.0f;
         float uiScale = getScale(inventoryScale);
-        ScaledResolution sr = new ScaledResolution(mc);
+        ScaledResolution sr = scaledResolution();
         float[] pos = HudDrag.update("hud_inventory", inventoryX, inventoryY, inventoryScale,
                 screenWidth / 2.0f - width * uiScale / 2.0f, Math.max(58.0f, screenHeight - 114.0f),
                 width * uiScale, height * uiScale, sr);
@@ -1711,7 +1968,7 @@ public class HUD extends Module {
         float width = 190.0f;
         float height = 90.0f;
         float uiScale = getScale(inventoryScale);
-        ScaledResolution sr = new ScaledResolution(mc);
+        ScaledResolution sr = scaledResolution();
         float[] pos = HudDrag.update("hud_inventory", inventoryX, inventoryY, inventoryScale,
                 screenWidth / 2.0f - width * uiScale / 2.0f, Math.max(58.0f, screenHeight - 112.0f),
                 width * uiScale, height * uiScale, sr);
@@ -1728,8 +1985,9 @@ public class HUD extends Module {
             }
             FontLoaders.C16.drawString("Inventory", x + 11.0f, y + 8.0f, withAlpha(palette().vapeOnSurface, 242));
             String count = filled + "/27";
-            drawVapeTextChip(count, x + width - FontLoaders.C12.getStringWidth(count) - 21.0f, y + 7.0f,
-                    FontLoaders.C12.getStringWidth(count) + 14.0f, palette().vapeSecondary);
+            int countWidth = FontLoaders.C12.getStringWidth(count);
+            drawVapeTextChip(count, x + width - countWidth - 21.0f, y + 7.0f,
+                    countWidth + 14.0f, palette().vapeSecondary);
 
             float startX = x + 13.0f;
             float startY = y + 30.0f;
@@ -1762,20 +2020,29 @@ public class HUD extends Module {
         List<Module> modules = getHudModules();
         moduleAnimations.keySet().retainAll(modules);
         if (getSelectedStyle() == HudStyle.MINIMAL) {
+            clearNymphModuleMotions();
             clearNightBloomModuleMotions();
             drawMinimalModuleList(screenWidth, screenHeight, factor, modules);
             return;
         }
         if (getSelectedStyle() == HudStyle.OLD) {
+            clearNymphModuleMotions();
             clearNightBloomModuleMotions();
             drawVapeModuleList(screenWidth, screenHeight, factor, modules);
             return;
         }
         if (getSelectedStyle() == HudStyle.NIGHT_BLOOM) {
+            clearNymphModuleMotions();
             drawNightBloomModuleList(screenWidth, screenHeight, factor, modules);
             return;
         }
         clearNightBloomModuleMotions();
+
+        if (arrayListTheme.getValue() == ArrayListTheme.NYMPHILILA) {
+            drawNymphModuleList(screenWidth, factor, modules);
+            return;
+        }
+        clearNymphModuleMotions();
 
         final boolean sakura = arrayListTheme.getValue() == ArrayListTheme.SAKURA;
         final CFontRenderer font = sakura ? FontLoaders.C14 : FontLoaders.C18;
@@ -1800,11 +2067,11 @@ public class HUD extends Module {
         final float rowGap = sakura ? 2.0f : 3.0f;
         float listH = modules.isEmpty() ? 20.0f : Math.min(23, Math.max(1, visibleRows)) * (rowH + rowGap) - rowGap;
         float uiScale = getScale(moduleListScale);
-        ScaledResolution sr = new ScaledResolution(mc);
+        ScaledResolution sr = scaledResolution();
         float[] pos = HudDrag.update("hud_module_list", moduleListX, moduleListY, moduleListScale,
                 screenWidth - listW * uiScale - 6.0f, 6.0f, listW * uiScale, listH * uiScale, sr);
         float y = pos[1];
-        float right = pos[0] + listW;
+        boolean rightSide = ModuleListAnchor.isRightSide(pos[0], listW * uiScale, screenWidth);
         float round = getRadius();
         int index = 0;
         if (modules.isEmpty()) {
@@ -1839,28 +2106,35 @@ public class HUD extends Module {
                 int textW = entry.labelWidth;
                 String icon = ClickGuiIcons.forModule(module);
                 float rowW = textW + iconSlotW + rightPad;
-                float x = right - rowW - (1.0f - progress) * 8.0f;
+                float x = ModuleListAnchor.rowX(pos[0], listW, rowW, progress, rightSide);
+                float rowRight = x + rowW;
                 int accent = sakura ? palette().accent : getCategoryAccent(module);
 
                 if (sakura) {
-                    drawSakuraModuleRow(module, icon, label, x, y, right, rowH,
-                            progress, accent, font, iconSlotW);
+                    drawSakuraModuleRow(module, icon, label, x, y, rowRight, rowH,
+                            progress, accent, font, iconSlotW, rightSide);
                 } else if (Boolean.TRUE.equals(backgrounds.getValue())) {
                     int rowAlpha = Math.round(getGlassAlpha() * progress);
-                    RenderServices.shapes().shadow(x, y, right, y + rowH, round,
+                    RenderServices.shapes().shadow(x, y, rowRight, y + rowH, round,
                             withAlpha(palette().shadowColor, Math.round(34.0f * progress)), 4, 2.4f);
-                    drawHudFrostedGlass(x, y, right, y + rowH, round, 0.8f,
+                    drawHudFrostedGlass(x, y, rowRight, y + rowH, round, 0.8f,
                             withAlpha(palette().glass, rowAlpha), withAlpha(palette().border, Math.round(42.0f * progress)));
-                    RenderServices.shapes().verticalGradient(right - 3.0f, y + 3.0f, right - 1.4f, y + rowH - 3.0f,
+                    float accentX = rightSide ? rowRight - 3.0f : x + 1.4f;
+                    RenderServices.shapes().verticalGradient(accentX, y + 3.0f,
+                            accentX + 1.6f, y + rowH - 3.0f,
                             withAlpha(accent, Math.round(205.0f * progress)),
                             withAlpha(ColorUtils.lighten(accent, 0.16f), Math.round(165.0f * progress)));
-                    drawCenteredIcon(icon, FontLoaders.I16, x + iconSlotW / 2.0f + 2.0f, y + rowH / 2.0f,
+                    float iconCenter = rightSide ? x + iconSlotW / 2.0f + 2.0f
+                            : rowRight - iconSlotW / 2.0f - 2.0f;
+                    drawCenteredIcon(icon, FontLoaders.I16, iconCenter, y + rowH / 2.0f,
                             withAlpha(accent, Math.round(214.0f * progress)));
-                    drawModuleLabel(label, FontLoaders.C18, x + iconSlotW + 6.0f, y + 5.0f,
+                    float labelX = rightSide ? x + iconSlotW + 6.0f : x + rightPad;
+                    drawModuleLabel(label, FontLoaders.C18, labelX, y + 5.0f,
                             withAlpha(palette().text, Math.round(242.0f * progress)),
                             withAlpha(palette().muted, Math.round(216.0f * progress)), 4.0f);
                 } else {
-                    FontLoaders.C18.drawString(entry.fullText, right - textW, y + 4.0f,
+                    FontLoaders.C18.drawString(entry.fullText,
+                            ModuleListAnchor.textX(x, rowW, textW, 0.0F, rightSide), y + 4.0f,
                             withAlpha(accent, Math.round(245.0f * progress)));
                 }
 
@@ -1877,9 +2151,220 @@ public class HUD extends Module {
         HudDrag.handleScroll("hud_module_list", moduleListScale, pos[0], pos[1], listW * uiScale, listH * uiScale, 0.65f, 1.8f);
     }
 
+    private void drawNymphModuleList(int screenWidth, float factor, List<Module> modules) {
+        long now = System.currentTimeMillis();
+        updateNymphModuleMotions(modules, now);
+        nymphModuleRenderScratch.clear();
+        float listWidth = 0.0F;
+        for (Module module : nymphModuleMotions.keySet()) {
+            String displayText = module.getName();
+            int width = nymphTextWidth(displayText);
+            ModuleListLabel label = new ModuleListLabel(displayText, "", "");
+            nymphModuleRenderScratch.add(new ModuleListEntry(module, label, width, width,
+                    "", 0, displayText));
+            listWidth = Math.max(listWidth, width + 5.0F);
+        }
+        nymphModuleRenderScratch.sort(MODULE_ENTRY_BY_LABEL_WIDTH_DESC);
+        if (nymphModuleRenderScratch.isEmpty() && !HudDrag.isEditMode()) {
+            return;
+        }
+        if (nymphModuleRenderScratch.isEmpty()) {
+            return;
+        }
+
+        float rowHeight = NymphArrayListStyle.ROW_HEIGHT;
+        float listHeight = rowHeight * nymphModuleRenderScratch.size();
+        float uiScale = getScale(moduleListScale);
+        ScaledResolution sr = scaledResolution();
+        float[] pos = HudDrag.update("hud_module_list", moduleListX, moduleListY, moduleListScale,
+                screenWidth - listWidth * uiScale - 2.0F, 3.0F,
+                listWidth * uiScale, listHeight * uiScale, sr);
+        boolean rightSide = ModuleListAnchor.isRightSide(pos[0], listWidth * uiScale, screenWidth);
+        beginScaled(pos[0], pos[1], uiScale);
+        try {
+            nymphRowRenderScratch.clear();
+            float yOffset = 0.0F;
+            int rowIndex = 0;
+            for (ModuleListEntry entry : nymphModuleRenderScratch) {
+                String displayText = entry.module.getName();
+                float textWidth = entry.labelWidth;
+                NymphArrayListRowMotion motion = nymphModuleMotions.get(entry.module);
+                if (motion == null) {
+                    continue;
+                }
+                float progress = motion.snapshot(now).getProgress();
+                float rowY = pos[1] + yOffset;
+                float visibleX = rightSide
+                        ? pos[0] + listWidth - textWidth - 3.0F : pos[0] + 3.0F;
+                float textX = visibleX;
+                if (nymphToggleAnimation.getValue() == NymphToggleAnimation.MOVE_IN) {
+                    textX = NymphArrayListStyle.animatedTextX(
+                            visibleX, textWidth, screenWidth / uiScale, progress, rightSide);
+                }
+                boolean scaleIn = nymphToggleAnimation.getValue() == NymphToggleAnimation.SCALE_IN;
+                float alpha = scaleIn ? progress : 1.0F;
+                int color = withAlpha(NymphArrayListStyle.colorAt(nymphColorMode.getValue(),
+                        nymphPrimaryColor(), nymphSecondaryColor(), rowIndex * 200, now),
+                        Math.round(255.0F * alpha));
+
+                NymphArrayListRenderRow row = nymphRowSnapshots.get(entry.module);
+                if (row == null) {
+                    row = new NymphArrayListRenderRow();
+                    nymphRowSnapshots.put(entry.module, row);
+                }
+                row.set(displayText, textX, nymphSourceTextY(rowY), textWidth,
+                        rowY, progress, color, scaleIn);
+                nymphRowRenderScratch.add(row);
+                yOffset += progress * rowHeight;
+                rowIndex++;
+            }
+
+            nymphRenderer.drawBackgrounds(nymphBackground.getValue(), nymphRowRenderScratch,
+                    nymphBackgroundAlpha.getValue().floatValue());
+            for (NymphArrayListRenderRow row : nymphRowRenderScratch) {
+                if (row.scaleIn) {
+                    beginScaled(row.textX + row.textWidth * 0.5F,
+                            row.rowY + rowHeight * 0.5F - nymphTextHeight() * 0.5F,
+                            Math.max(0.01F, row.progress));
+                }
+                try {
+                    drawNymphText(row.text, row.textX, row.textY, row.color);
+                } finally {
+                    if (row.scaleIn) {
+                        endScaled();
+                    }
+                }
+            }
+        } finally {
+            endScaled();
+        }
+        HudDrag.drawHint("hud_module_list", pos[0], pos[1], listWidth * uiScale, listHeight * uiScale,
+                4.0F * uiScale);
+        HudDrag.handleScroll("hud_module_list", moduleListScale, pos[0], pos[1],
+                listWidth * uiScale, listHeight * uiScale, 0.65F, 1.8F);
+    }
+
+    private void drawNymphText(String text, float x, float y, int color) {
+        if (Boolean.TRUE.equals(nymphGlow.getValue())) {
+            GlowProfile profile = nymphTextGlowProfile(nymphGlowSize.getValue().floatValue());
+            float strength = 0.82F;
+            if (nymphFont.getValue() == NymphFont.VANILLA) {
+                RenderServices.glow().queueVanillaText(mc.fontRendererObj, text, x, y,
+                        color, strength, profile);
+            } else {
+                nymphCustomFont().drawGlowString(text, x, y, color, strength, profile);
+            }
+        }
+        if (nymphFont.getValue() == NymphFont.VANILLA) {
+            mc.fontRendererObj.drawStringWithShadow(text, x, y, color);
+            return;
+        }
+        nymphCustomFont().drawStringWithShadow(text, x, y, color);
+    }
+
+    private GlowProfile nymphTextGlowProfile(float size) {
+        if (size <= 3.75F) {
+            return GlowProfile.TEXT;
+        }
+        if (size <= 5.25F) {
+            return GlowProfile.ACCENT;
+        }
+        if (size <= 7.0F) {
+            return GlowProfile.SHADOW;
+        }
+        return GlowProfile.PANEL;
+    }
+
+    private float nymphSourceTextY(float rowY) {
+        float sourceOffset = nymphFont.getValue() == NymphFont.CIRCULAR ? 0.2F : 2.0F;
+        return rowY - sourceOffset
+                + (NymphArrayListStyle.ROW_HEIGHT * 0.5F - nymphTextHeight() * 0.5F);
+    }
+
+    private float nymphTextHeight() {
+        return nymphFont.getValue() == NymphFont.VANILLA
+                ? mc.fontRendererObj.FONT_HEIGHT : nymphCustomFont().getHeight();
+    }
+
+    private int nymphTextWidth(String text) {
+        return nymphFont.getValue() == NymphFont.VANILLA
+                ? mc.fontRendererObj.getStringWidth(text) : nymphCustomFont().getStringWidth(text);
+    }
+
+    private CFontRenderer nymphCustomFont() {
+        int size = NymphArrayListStyle.FONT_SIZE;
+        return nymphFont.getValue() == NymphFont.CIRCULAR
+                ? FontLoaders.circular(size) : FontLoaders.regular(size);
+    }
+
+    private int nymphPrimaryColor() {
+        return rgb(nymphPrimaryRed, nymphPrimaryGreen, nymphPrimaryBlue);
+    }
+
+    private int nymphSecondaryColor() {
+        return rgb(nymphSecondaryRed, nymphSecondaryGreen, nymphSecondaryBlue);
+    }
+
+    public static Numbers<Double> nymphPaletteChannel(boolean primary, int channel) {
+        HUD hud = instance;
+        if (hud == null) {
+            return null;
+        }
+        if (primary) {
+            return channel == 0 ? hud.nymphPrimaryRed
+                    : channel == 1 ? hud.nymphPrimaryGreen : hud.nymphPrimaryBlue;
+        }
+        return channel == 0 ? hud.nymphSecondaryRed
+                : channel == 1 ? hud.nymphSecondaryGreen : hud.nymphSecondaryBlue;
+    }
+
+    private static int rgb(Numbers<Double> red, Numbers<Double> green, Numbers<Double> blue) {
+        return 0xFF000000
+                | ColorUtils.clamp(red.getValue().intValue(), 0, 255) << 16
+                | ColorUtils.clamp(green.getValue().intValue(), 0, 255) << 8
+                | ColorUtils.clamp(blue.getValue().intValue(), 0, 255);
+    }
+
+    private static float nymphDecelerate(long elapsedMillis) {
+        float progress = ColorUtils.clamp(elapsedMillis / (float) NYMPH_TOGGLE_DURATION_MS, 0.0F, 1.0F);
+        float remaining = progress - 1.0F;
+        return 1.0F - remaining * remaining;
+    }
+
+    private void clearNymphModuleMotions() {
+        nymphModuleMotions.clear();
+        nymphModuleRenderScratch.clear();
+        nymphRowSnapshots.clear();
+        nymphRowRenderScratch.clear();
+    }
+
+    private void updateNymphModuleMotions(List<Module> activeModules, long now) {
+        for (Module module : activeModules) {
+            NymphArrayListRowMotion motion = nymphModuleMotions.get(module);
+            if (motion == null) {
+                motion = new NymphArrayListRowMotion();
+                nymphModuleMotions.put(module, motion);
+            }
+            motion.setVisible(true, now);
+        }
+
+        Iterator<Map.Entry<Module, NymphArrayListRowMotion>> iterator =
+                nymphModuleMotions.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<Module, NymphArrayListRowMotion> entry = iterator.next();
+            NymphArrayListRowMotion motion = entry.getValue();
+            motion.setVisible(activeModules.contains(entry.getKey()), now);
+            if (!motion.snapshot(now).isRetained()) {
+                nymphRowSnapshots.remove(entry.getKey());
+                iterator.remove();
+            }
+        }
+    }
+
     private void drawSakuraModuleRow(Module module, String icon, ModuleListLabel label,
                                       float x, float y, float right, float rowH,
-                                      float progress, int accent, CFontRenderer font, float iconSlotW) {
+                                      float progress, int accent, CFontRenderer font, float iconSlotW,
+                                      boolean rightSide) {
         boolean enabled = module.getState();
         float glassAlpha = getGlassAlpha() * 0.01f;
 
@@ -1896,21 +2381,22 @@ public class HUD extends Module {
                 withAlpha(SAKURA_GLASS, Math.round(152.0f * glassAlpha * progress)),
                 withAlpha(SAKURA, Math.round(28.0f * progress)));
 
-        // Right-edge sakura accent bar
+        // Outer-edge sakura accent bar follows the active screen anchor.
         float barAlpha = enabled ? 0.78f : 0.35f;
-        RenderServices.shapes().verticalGradient(right - 2.5f, y + 3.5f, right - 1.0f, y + rowH - 3.5f,
+        float barX = rightSide ? right - 2.5f : x + 1.0f;
+        RenderServices.shapes().verticalGradient(barX, y + 3.5f, barX + 1.5f, y + rowH - 3.5f,
                 withAlpha(accent, Math.round(190.0f * barAlpha * progress)),
                 withAlpha(palette().accentAlt, Math.round(140.0f * barAlpha * progress)));
 
         // Icon with sakura tint
-        float iconX = x + iconSlotW / 2.0f + 2.0f;
+        float iconX = rightSide ? x + iconSlotW / 2.0f + 2.0f : right - iconSlotW / 2.0f - 2.0f;
         float iconY = y + rowH / 2.0f;
         int iconColor = enabled ? withAlpha(accent, Math.round(228.0f * progress))
                 : withAlpha(palette().muted, Math.round(155.0f * progress));
         drawCenteredIcon(icon, FontLoaders.I16, iconX, iconY, iconColor);
 
         // Module name with glow
-        float textX = x + iconSlotW + 2.0f;
+        float textX = rightSide ? x + iconSlotW + 2.0f : x + 16.0f;
         float textY = y + (rowH - font.getHeight()) / 2.0f + 1.0f;
         int nameColor = enabled ? sakuraText(Math.round(242.0f * progress))
                 : sakuraMuted(Math.round(200.0f * progress));
@@ -1935,7 +2421,7 @@ public class HUD extends Module {
 
         // Toggle indicator dot
         if (enabled) {
-            float dotX = right - 8.0f;
+            float dotX = rightSide ? right - 8.0f : x + 8.0f;
             float dotY = y + rowH / 2.0f;
             RenderServices.shapes().shadow(dotX - 2.5f, dotY - 2.5f, dotX + 2.5f, dotY + 2.5f,
                     2.5f, withAlpha(SAKURA, Math.round(42.0f * progress)), 3, 1.2f);
@@ -1966,7 +2452,7 @@ public class HUD extends Module {
         int rows = Math.min(12, Math.max(1, visibleRows));
         float listH = modules.isEmpty() ? rowH : rows * rowH;
         float uiScale = getScale(moduleListScale);
-        ScaledResolution sr = new ScaledResolution(mc);
+        ScaledResolution sr = scaledResolution();
         float[] pos = HudDrag.update("hud_module_list", moduleListX, moduleListY, moduleListScale,
                 8.0f, 8.0f, listW * uiScale, listH * uiScale, sr);
         float x = pos[0];
@@ -2049,12 +2535,7 @@ public class HUD extends Module {
         ArrayList<PotionEffect> effects = activeEffects == null
                 ? new ArrayList<PotionEffect>()
                 : new ArrayList<PotionEffect>(activeEffects);
-        effects.sort(new Comparator<PotionEffect>() {
-            @Override
-            public int compare(PotionEffect first, PotionEffect second) {
-                return second.getDuration() - first.getDuration();
-            }
-        });
+        effects.sort(POTION_BY_DURATION_DESC);
 
         if (getSelectedStyle() == HudStyle.MINIMAL) {
             drawMinimalPotionEffects(effects);
@@ -2076,7 +2557,7 @@ public class HUD extends Module {
         float width = 166.0f;
         float height = 23.0f + maxRows * rowH + 7.0f;
         float uiScale = getScale(potionScale);
-        ScaledResolution sr = new ScaledResolution(mc);
+        ScaledResolution sr = scaledResolution();
         float[] pos = HudDrag.update("hud_potions", potionX, potionY, potionScale, 6.0f,
                 Boolean.TRUE.equals(watermark.getValue()) ? 54.0f : 6.0f,
                 width * uiScale, height * uiScale, sr);
@@ -2153,9 +2634,20 @@ public class HUD extends Module {
         return count;
     }
 
+    /**
+     * Roman-numeral suffixes for potion amplifier levels (II..X). Lifted to a
+     * static final array: the previous inline {@code new String[]{"", " II", ...}}
+     * allocated a fresh 10-element array on every call, and this method is
+     * invoked once per active potion per frame across multiple HudStyle paths
+     * (line 897 / 1394 / 1464 / 2106).
+     */
+    private static final String[] AMPLIFIER_SUFFIXES =
+            new String[]{"", " II", " III", " IV", " V", " VI", " VII", " VIII", " IX", " X"};
+
     private String amplifierSuffix(int amplifier) {
-        String[] levels = new String[]{"", " II", " III", " IV", " V", " VI", " VII", " VIII", " IX", " X"};
-        return amplifier >= 0 && amplifier < levels.length ? levels[amplifier] : " " + (amplifier + 1);
+        return amplifier >= 0 && amplifier < AMPLIFIER_SUFFIXES.length
+                ? AMPLIFIER_SUFFIXES[amplifier]
+                : " " + (amplifier + 1);
     }
 
     private void drawSakuraPanel(float x, float y, float x2, float y2, float radius, float alpha) {
@@ -2520,6 +3012,7 @@ public class HUD extends Module {
         for (Module module : ModuleManager.getModules()) {
             if (module != null
                     && module.getState()
+                    && !module.isHidden()
                     && module != this
                     && !"ClickGUI".equalsIgnoreCase(module.getName())) {
                 hudModuleScratch.add(module);
@@ -2534,9 +3027,13 @@ public class HUD extends Module {
         nightBloomModuleSortScratch.clear();
         nightBloomModuleSortScratch.addAll(getSortedModuleListEntries(modules, nameFont, 5.0F));
         nightBloomModuleWidthScratch.clear();
+        nightBloomMetaWidthScratch.clear();
         for (ModuleListEntry entry : nightBloomModuleSortScratch) {
+            float metaWidth = entry.sideText.length() == 0
+                    ? 0.0F : metaFont.getStringWidth(entry.sideText);
+            nightBloomMetaWidthScratch.put(entry.module, metaWidth);
             nightBloomModuleWidthScratch.put(entry.module,
-                    nightBloomRenderedModuleRowWidth(entry, metaFont));
+                    NightBloomHudLayout.moduleRowWidth(entry.nameWidth, metaWidth));
         }
         nightBloomModuleSortScratch.sort(new Comparator<ModuleListEntry>() {
             @Override
@@ -2556,6 +3053,35 @@ public class HUD extends Module {
         return NightBloomHudLayout.moduleRowWidth(entry.nameWidth, metaWidth);
     }
 
+    /**
+     * Returns the rendered row width previously computed in
+     * {@link #getSortedNightBloomModuleListEntries}. Falls back to a fresh
+     * computation only if the entry's module was not in the cached scratch map
+     * (e.g. a row added between the sort and the layout pass). Reading from the
+     * cache avoids re-measuring {@code entry.sideText} with metaFont on every
+     * layout query (4 downstream call sites per visible row).
+     */
+    private float nightBloomCachedRenderedRowWidth(ModuleListEntry entry, CFontRenderer metaFont) {
+        Float cached = nightBloomModuleWidthScratch.get(entry.module);
+        return cached != null ? cached.floatValue() : nightBloomRenderedModuleRowWidth(entry, metaFont);
+    }
+
+    /**
+     * Returns the metaFont-measured width of {@code entry.sideText}, read from
+     * the per-frame scratch cache populated in
+     * {@link #getSortedNightBloomModuleListEntries}. Falls back to a fresh
+     * measurement on cache miss. Eliminates 5x redundant
+     * {@code metaFont.getStringWidth(entry.sideText)} calls per visible row per
+     * frame across drawNightBloomModuleList/Shadows/Surfaces/List/Interactions.
+     */
+    private float nightBloomCachedMetaWidth(ModuleListEntry entry, CFontRenderer metaFont) {
+        if (entry.sideText.length() == 0) {
+            return 0.0F;
+        }
+        Float cached = nightBloomMetaWidthScratch.get(entry.module);
+        return cached != null ? cached.floatValue() : metaFont.getStringWidth(entry.sideText);
+    }
+
     private List<ModuleListEntry> getSortedModuleListEntries(List<Module> modules, CFontRenderer font, float gap) {
         int roundedGap = Math.round(gap);
         int signature = moduleListSignature(modules, font, roundedGap);
@@ -2568,12 +3094,7 @@ public class HUD extends Module {
         }
 
         rebuildModuleListEntries(moduleEntryCache, modules, font, roundedGap);
-        moduleEntryCache.sort(new Comparator<ModuleListEntry>() {
-            @Override
-            public int compare(ModuleListEntry first, ModuleListEntry second) {
-                return second.labelWidth - first.labelWidth;
-            }
-        });
+        moduleEntryCache.sort(MODULE_ENTRY_BY_LABEL_WIDTH_DESC);
         moduleEntryCacheSignature = signature;
         moduleEntryCacheFont = font;
         moduleEntryCacheGap = roundedGap;
@@ -2606,6 +3127,52 @@ public class HUD extends Module {
         moduleEntryCacheGap = 0;
         moduleEntryCacheFont = null;
         moduleEntryCacheTime = 0L;
+        clearMinimalModuleEntryCache();
+    }
+
+    /**
+     * Returns MINIMAL-style module entries sorted by total rendered width
+     * (descending). Reuses {@link #minimalModuleEntryCache} for
+     * {@link #MODULE_LIST_CACHE_MILLIS} when the module set + parameter/keybind
+     * flags + style signature is unchanged, eliminating per-frame
+     * {@link ModuleListLabel} allocations and {@link #minimalTextWidth(String)}
+     * measurements on steady frames. The sort result is written to
+     * {@link #minimalModuleSortScratch} so the cached entries remain unsorted
+     * (cache reuse preserves insertion order across frames, the sort is cheap).
+     */
+    private List<ModuleListEntry> getSortedMinimalModuleListEntries(List<Module> modules) {
+        int signature = moduleListSignature(modules, null, 0);
+        long now = System.currentTimeMillis();
+        if (signature != minimalModuleEntryCacheSignature
+                || now - minimalModuleEntryCacheTime > MODULE_LIST_CACHE_MILLIS) {
+            rebuildMinimalModuleListEntries(minimalModuleEntryCache, modules);
+            minimalModuleEntryCacheSignature = signature;
+            minimalModuleEntryCacheTime = now;
+        }
+        minimalModuleSortScratch.clear();
+        minimalModuleSortScratch.addAll(minimalModuleEntryCache);
+        minimalModuleSortScratch.sort(MINIMAL_ENTRY_BY_TOTAL_WIDTH_DESC);
+        return minimalModuleSortScratch;
+    }
+
+    private void rebuildMinimalModuleListEntries(List<ModuleListEntry> entries, List<Module> modules) {
+        entries.clear();
+        for (Module module : modules) {
+            ModuleListLabel label = getModuleListLabel(module);
+            String side = getModuleSideText(label);
+            int nameWidth = minimalTextWidth(label.name);
+            int sideWidth = side.length() == 0 ? 0 : minimalTextWidth(side);
+            int totalWidth = nameWidth + (sideWidth > 0 ? 2 + sideWidth : 0);
+            entries.add(new ModuleListEntry(module, label, totalWidth, nameWidth,
+                    side, sideWidth, label.fullText()));
+        }
+    }
+
+    private void clearMinimalModuleEntryCache() {
+        minimalModuleEntryCache.clear();
+        minimalModuleSortScratch.clear();
+        minimalModuleEntryCacheSignature = 0;
+        minimalModuleEntryCacheTime = 0L;
     }
 
     private void rebuildModuleListEntries(List<ModuleListEntry> entries, List<Module> modules, CFontRenderer font, int roundedGap) {
@@ -2984,10 +3551,12 @@ public class HUD extends Module {
         GlStateManager.translate(x, y, 0.0f);
         GlStateManager.scale(scale, scale, 1.0f);
         GlStateManager.translate(-x, -y, 0.0f);
+        RenderServices.markHudEffectsStateChanged();
     }
 
     private void endScaled() {
         GlStateManager.popMatrix();
+        RenderServices.markHudEffectsStateChanged();
     }
 
     private static int withAlpha(int color, int alpha) {

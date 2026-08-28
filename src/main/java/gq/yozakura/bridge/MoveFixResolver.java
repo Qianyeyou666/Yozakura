@@ -31,20 +31,15 @@ final class MoveFixResolver {
                 }
             }
         }
-        float axisScale = resolveAxisScale(forward, strafe, bestForward, bestStrafe);
+        float axisScale = resolveAxisScale(forward, strafe);
         return new ResolvedInput(bestForward * axisScale, bestStrafe * axisScale);
     }
 
-    private static float resolveAxisScale(float forward, float strafe,
-                                          int candidateForward, int candidateStrafe) {
-        int nonZeroAxes = (candidateForward == 0 ? 0 : 1) + (candidateStrafe == 0 ? 0 : 1);
-        float sourceMagnitude = (float) Math.sqrt(forward * forward + strafe * strafe);
-        float effectiveMagnitude = Math.min(1.0F, sourceMagnitude);
-        if (effectiveMagnitude < 1.0F) {
-            return effectiveMagnitude / (float) Math.sqrt(nonZeroAxes);
-        }
-        float sourceAxis = Math.max(Math.abs(forward), Math.abs(strafe));
-        return Math.max(sourceAxis, 1.0F / (float) Math.sqrt(nonZeroAxes));
+    private static float resolveAxisScale(float forward, float strafe) {
+        // Grim 1.8 enumerates physical -1/0/1 key axes and then applies the
+        // shared sneak scale. Preserve that shared scale instead of creating
+        // magnitude-preserving fractional axes that no real key state emits.
+        return Math.min(1.0F, Math.max(Math.abs(forward), Math.abs(strafe)));
     }
 
     private static float movementYaw(float yaw, float forward, float strafe) {

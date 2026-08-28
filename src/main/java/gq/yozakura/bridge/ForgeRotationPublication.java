@@ -11,6 +11,7 @@ final class ForgeRotationPublication {
     private final AtomicLong sequence = new AtomicLong();
     private final AtomicLong sentGeneration = new AtomicLong();
     private volatile Snapshot current = INACTIVE;
+    private long invalidatedGeneration;
 
     synchronized Snapshot beginPre() {
         Snapshot next = new Snapshot(true, false, 0.0F, 0.0F, sequence.incrementAndGet());
@@ -23,7 +24,8 @@ final class ForgeRotationPublication {
         if (!previous.preInProgress || previous.generation <= 0L) {
             throw new IllegalStateException("Forge rotation PRE was not started");
         }
-        Snapshot published = new Snapshot(false, active, yaw, pitch, previous.generation);
+        boolean publishActive = active && previous.generation > invalidatedGeneration;
+        Snapshot published = new Snapshot(false, publishActive, yaw, pitch, previous.generation);
         current = published;
         return published;
     }
@@ -42,8 +44,19 @@ final class ForgeRotationPublication {
         return current;
     }
 
+    synchronized void invalidateForTeleport() {
+        Snapshot previous = current;
+        if (previous.generation > invalidatedGeneration) {
+            invalidatedGeneration = previous.generation;
+        }
+        current = previous.preInProgress
+                ? new Snapshot(true, false, 0.0F, 0.0F, previous.generation)
+                : INACTIVE;
+    }
+
     synchronized void clear() {
         current = INACTIVE;
+        invalidatedGeneration = sequence.get();
     }
 
     void markSent(Snapshot snapshot) {

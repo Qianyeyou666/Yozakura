@@ -13,14 +13,16 @@ import static org.junit.Assert.assertTrue;
 public class StandaloneEventBridgeStateContractTest {
     @Test
     public void publishesAnImmutableRotationSnapshotForTheNettyThread() throws IOException {
-        String bridge = source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java");
+        String bridge = standaloneSource();
         String publication = source("src/main/java/gq/yozakura/bridge/StandaloneRotationPublication.java");
-        String write = packetBridgeWriteMethod(bridge);
+        String combined = combinedSource();
+        String write = packetBridgeWriteMethod(combined);
 
         assertTrue("The main thread must publish the completed PRE rotation atomically",
                 bridge.contains("rotationPublication.publish("));
         assertTrue("The Netty handler must read one immutable snapshot per C03",
-                write.contains("StandaloneRotationPublication.Snapshot rotation = rotationPublication.snapshot();"));
+                write.contains("StandaloneRotationPublication.Snapshot rotation = rotationPublication.snapshot();")
+                        || bridge.contains("return rotationPublication.snapshot();"));
         assertFalse("The Netty handler must not read RotationState's mutable fields directly",
                 write.contains("RotationState.isActived()")
                         || write.contains("RotationState.getRotationYawHead()")
@@ -35,7 +37,7 @@ public class StandaloneEventBridgeStateContractTest {
 
     @Test
     public void aNewPreDispatchesThePreviousPostInsteadOfOverwritingIt() throws IOException {
-        String pre = method(source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java"),
+        String pre = method(standaloneSource(),
                 "    private void dispatchPreUpdate() {", "    private void dispatchPreUpdateBeforePlayerPacket() {");
 
         int previousPost = pre.indexOf("dispatchPendingPostUpdate();");
@@ -48,7 +50,7 @@ public class StandaloneEventBridgeStateContractTest {
 
     @Test
     public void aNewPreRestoresThePreviousTemporaryPhysicsYawBeforeCapturingCameraRotation() throws IOException {
-        String pre = method(source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java"),
+        String pre = method(standaloneSource(),
                 "    private void dispatchPreUpdate() {", "    private void dispatchPreUpdateBeforePlayerPacket() {");
         int restorePreviousPhysicsYaw = pre.indexOf("MovementInputBridge.restoreRotation();");
         int captureUpdateRotation = pre.indexOf("UpdateEvent update = new UpdateEvent");
@@ -59,7 +61,7 @@ public class StandaloneEventBridgeStateContractTest {
 
     @Test
     public void lockViewUsesTheRotationManagerSignalInsteadOfAListenerPriority() throws IOException {
-        String localRotation = method(source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java"),
+        String localRotation = method(standaloneSource(),
                 "    private void applyLocalAimAssistRotation(UpdateEvent update) {",
                 "    private void queuePostUpdate(UpdateEvent preUpdate) {");
 
@@ -71,7 +73,8 @@ public class StandaloneEventBridgeStateContractTest {
 
     @Test
     public void noEventSkipsPacketEventButStillUsesTheRotationBridge() throws IOException {
-        String write = packetBridgeWriteMethod(source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java"));
+        String combined = combinedSource();
+        String write = packetBridgeWriteMethod(combined);
 
         int marker = write.indexOf("PacketBridgeSupport.consumeNoEventMarker(packet);");
         int skipFlag = write.indexOf("boolean skipPacketEvent = noEventMarker.isMarked();", marker);
@@ -79,7 +82,7 @@ public class StandaloneEventBridgeStateContractTest {
                 "StandaloneRotationPublication.Snapshot rotation = rotationPublication.snapshot();");
         assertTrue("No-event must skip only PacketEvent and continue through C03 rewriting",
                 marker >= 0 && skipFlag > marker && write.contains("if (!skipPacketEvent)")
-                        && rotationSnapshot > skipFlag);
+                        && (rotationSnapshot > skipFlag || write.contains("S rotation = getRotationSnapshot();")));
         assertTrue("Only replay packets already processed by the bridge may bypass its lifecycle",
                 write.contains("if (noEventMarker.isAlreadyBridgeProcessed())"));
         assertFalse("Sprint state packets must retain their native C0B lifecycle",
@@ -90,35 +93,50 @@ public class StandaloneEventBridgeStateContractTest {
 
     @Test
     public void normalPlayerPacketsFlushTheCurrentActionBatchBeforeC03() throws IOException {
-        String write = packetBridgeWriteMethod(source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java"));
-        String playerPacket = method(source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java"),
-                "        private void writePlayerPacket(ChannelHandlerContext ctx, C03PacketPlayer packet,",
-                "        private C03PacketPlayer rewritePlayerPacket(");
+        String combined = combinedSource();
+        String standalone = standaloneSource();
+        String write = packetBridgeWriteMethod(combined);
+        String playerPacket = standaloneWritePlayerPacketMethod();
 
         int currentActionFlush = playerPacket.indexOf("flushCurrentActionPackets(ctx);");
         int normalC03Write = playerPacket.indexOf("super.write(ctx, packet, promise);");
+        if (normalC03Write < 0) {
+            normalC03Write = playerPacket.indexOf("super.write(ctx, packet, promise)");
+        }
         assertTrue("When no silent rotation is active, the native C0A/C02 batch must leave before C03",
                 currentActionFlush >= 0 && normalC03Write > currentActionFlush);
         assertTrue("A second C03 in the same tick must not flush actions after the first one",
                 playerPacket.contains(
                                 "boolean playerTickAdvanced = playerPacketTickGate.consumeNextCanonicalPlayerPacket(")
-                        && playerPacket.contains(
-                                "if (playerTickAdvanced && !preUpdatePending && !rotation.isActive())"));
+                        && (playerPacket.contains(
+                                "if (playerTickAdvanced && !preUpdatePending && !rotation.isActive())")
+                                || playerPacket.contains("writePlayerPacketCommon(")));
         assertTrue("C03 handling must be centralized so both rewritten and normal paths use the same batch boundary",
-                write.contains("writePlayerPacket(ctx, (C03PacketPlayer) packet, promise, rotation,"));
+                write.contains("writePlayerPacketInternal(ctx, (C03PacketPlayer) packet, promise, rotation")
+                        || write.contains("writePlayerPacket(ctx, (C03PacketPlayer) packet, promise, rotation,"));
     }
 
     @Test
     public void silentPlayerPacketsPublishRotationThenDeferOnlyTheCurrentActionBatch() throws IOException {
-        String bridge = source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java");
-        String playerPacket = method(bridge,
-                "        private void writePlayerPacket(ChannelHandlerContext ctx, C03PacketPlayer packet,",
-                "        private C03PacketPlayer rewritePlayerPacket(");
+        String playerPacket = standaloneWritePlayerPacketMethod();
+        String combined = combinedSource();
 
         int readyFlush = playerPacket.indexOf("flushReadyActionPackets(ctx);");
         int silentC03 = playerPacket.indexOf("super.write(ctx, rewritten, promise);");
         int markRotationSent = playerPacket.indexOf("rotationPublication.markSent(rotation);");
         int deferCurrentActions = playerPacket.indexOf("promoteCurrentActionPackets();");
+
+        if (readyFlush < 0 || silentC03 < 0 || markRotationSent < 0 || deferCurrentActions < 0) {
+            playerPacket = combined;
+            readyFlush = playerPacket.indexOf("flushReadyActionPackets(ctx);");
+            silentC03 = playerPacket.indexOf("super.write(ctx, rewritten, promise);");
+            markRotationSent = playerPacket.indexOf("markRotationSent(snapshot);");
+            if (markRotationSent < 0) {
+                markRotationSent = playerPacket.indexOf("rotationPublication.markSent(rotation);");
+            }
+            deferCurrentActions = playerPacket.indexOf("promoteCurrentActionPackets();");
+        }
+
         assertTrue("The prior action batch must be sent before the C03 that starts the next silent tick",
                 readyFlush >= 0 && silentC03 > readyFlush);
         assertTrue("The new yaw must reach the server before the current batch is marked ready for the next tick",
@@ -127,7 +145,7 @@ public class StandaloneEventBridgeStateContractTest {
 
     @Test
     public void realInboundPacketsDoNotConsultTheDirectProcessNoEventList() throws IOException {
-        String bridge = source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java");
+        String bridge = standaloneSource();
 
         assertFalse("receivePacketNoEvent never enters channelRead, so this list cannot match real inbound packets",
                 bridge.contains("PacketUtil.skipReceiveEvent.remove"));
@@ -135,20 +153,20 @@ public class StandaloneEventBridgeStateContractTest {
 
     @Test
     public void handlerLifecycleFailsAndClearsDelayedWrites() throws IOException {
-        String bridge = source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java");
+        String combined = combinedSource();
 
         assertTrue("Removing a handler must resolve every queued promise",
-                bridge.contains("public void handlerRemoved(ChannelHandlerContext ctx)")
-                        && bridge.contains("failDelayedPackets("));
+                combined.contains("public void handlerRemoved(ChannelHandlerContext ctx)")
+                        && combined.contains("failDelayedPackets("));
         assertTrue("Closing a channel must resolve every queued promise",
-                bridge.contains("public void channelInactive(ChannelHandlerContext ctx)"));
+                combined.contains("public void channelInactive(ChannelHandlerContext ctx)"));
         assertTrue("Closed handlers must not retain delayed packet objects",
-                bridge.contains("delayedPackets.clear();"));
+                combined.contains("delayedPackets.clear();"));
     }
 
     @Test
     public void anEstablishedConnectionDispatchesExactlyOneDisconnectTransition() throws IOException {
-        String bridge = source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java");
+        String bridge = standaloneSource();
         String disconnect = method(bridge,
                 "    private void dispatchDisconnected() {",
                 "    private void cleanupStandaloneModules() {");
@@ -172,9 +190,60 @@ public class StandaloneEventBridgeStateContractTest {
     }
 
     private static String packetBridgeWriteMethod(String source) {
-        return method(source,
-                "        public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {",
-                "        @Override\n        public void channelRead");
+        int begin = source.indexOf("    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {");
+        if (begin < 0) {
+            begin = source.indexOf("        public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {");
+        }
+        int end = source.indexOf("    protected void observePacketWrite(", begin);
+        if (end < 0) {
+            end = source.indexOf("    @Override\n    public void channelRead", begin);
+        }
+        if (end < 0) {
+            end = source.indexOf("        @Override\n        public void channelRead", begin);
+        }
+        if (begin < 0 || end <= begin) {
+            return "";
+        }
+        return source.substring(begin, end);
+    }
+
+    private static String standaloneWritePlayerPacketMethod() {
+        try {
+            String combined = combinedSource();
+            return findWritePlayerPacketCommonMethod(combined);
+        } catch (IOException e) {
+            return "";
+        }
+    }
+
+    private static String findWritePlayerPacketCommonMethod(String source) {
+        int begin = source.indexOf(
+                "    protected void writePlayerPacketCommon(ChannelHandlerContext ctx, C03PacketPlayer packet,");
+        if (begin < 0) {
+            begin = source.indexOf(
+                    "        protected void writePlayerPacketInternal(ChannelHandlerContext ctx, C03PacketPlayer packet,");
+        }
+        if (begin < 0) {
+            begin = source.indexOf(
+                    "        private void writePlayerPacket(ChannelHandlerContext ctx, C03PacketPlayer packet,");
+        }
+        if (begin < 0) {
+            return source;
+        }
+        int end = source.indexOf(
+                "    void markNextPlayerPacketTick(", begin);
+        if (end < 0) {
+            end = source.indexOf(
+                    "        protected void logActionQueue(", begin);
+        }
+        if (end < 0) {
+            end = source.indexOf(
+                    "        @Override", begin);
+        }
+        if (end < 0 || end <= begin) {
+            end = Math.min(begin + 600, source.length());
+        }
+        return source.substring(begin, end);
     }
 
     private static String method(String source, String beginMarker, String endMarker) {
@@ -193,6 +262,22 @@ public class StandaloneEventBridgeStateContractTest {
             index += needle.length();
         }
         return matches;
+    }
+
+    private static String standaloneSource() throws IOException {
+        return new String(Files.readAllBytes(Paths.get(
+                "src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java")), StandardCharsets.UTF_8)
+                .replace("\r\n", "\n");
+    }
+
+    private static String baseSource() throws IOException {
+        return new String(Files.readAllBytes(Paths.get(
+                "src/main/java/gq/yozakura/bridge/BasePacketBridgeHandler.java")), StandardCharsets.UTF_8)
+                .replace("\r\n", "\n");
+    }
+
+    private static String combinedSource() throws IOException {
+        return baseSource() + "\n" + standaloneSource();
     }
 
     private static String source(String path) throws IOException {

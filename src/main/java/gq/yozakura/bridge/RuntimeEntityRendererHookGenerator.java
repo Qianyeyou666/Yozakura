@@ -40,13 +40,20 @@ final class RuntimeEntityRendererHookGenerator {
         int renderWorldDescriptor = pool.utf8("(FJ)V");
         int getMouseOverName = pool.utf8("getMouseOver");
         int getMouseOverDescriptor = pool.utf8("(F)V");
+        int updateCameraAndRenderName = pool.utf8("updateCameraAndRender");
+        int updateCameraAndRenderDescriptor = pool.utf8("(FJ)V");
 
         int superRenderWorld = pool.methodRef(rendererInternalName, "renderWorld", "(FJ)V");
         int superGetMouseOver = pool.methodRef(rendererInternalName, "getMouseOver", "(F)V");
-        int beginRenderWorld = pool.methodRef(bridgeInternalName, "beginRuntimeRenderWorld", "()V");
+        int superUpdateCameraAndRender = pool.methodRef(rendererInternalName, "updateCameraAndRender", "(FJ)V");
+        int beginRenderWorld = pool.methodRef(bridgeInternalName, "beginRuntimeRenderWorld", "(F)V");
         int finishRenderWorld = pool.methodRef(bridgeInternalName, "finishRuntimeRenderWorld", "(Ljava/lang/Object;F)V");
         int abortRenderWorld = pool.methodRef(bridgeInternalName, "abortRuntimeRenderWorld", "()V");
         int dispatchMouseOver = pool.methodRef(bridgeInternalName, "dispatchRuntimeMouseOver", "(F)V");
+        int beginRuntimeFrame = pool.methodRef(bridgeInternalName, "beginRuntimeFrame", "(F)Ljava/lang/Object;");
+        int finishRuntimeFrame = pool.methodRef(bridgeInternalName, "finishRuntimeFrame",
+                "(Ljava/lang/Object;Ljava/lang/Object;F)V");
+        int abortRuntimeFrame = pool.methodRef(bridgeInternalName, "abortRuntimeFrame", "(Ljava/lang/Object;)V");
 
         ByteArrayOutputStream bytes = new ByteArrayOutputStream(256);
         DataOutputStream output = new DataOutputStream(bytes);
@@ -60,12 +67,16 @@ final class RuntimeEntityRendererHookGenerator {
         output.writeShort(rendererClass);
         output.writeShort(0);
         output.writeShort(0);
-        output.writeShort(2);
+        output.writeShort(3);
         writeMethod(output, codeAttribute, ACC_PUBLIC, renderWorldName, renderWorldDescriptor,
                 renderWorldCode(beginRenderWorld, superRenderWorld, finishRenderWorld, abortRenderWorld),
-                4, 5, throwableClass, 3, 9, 15);
+                4, 5, throwableClass, 4, 10, 16);
         writeMethod(output, codeAttribute, ACC_PUBLIC, getMouseOverName, getMouseOverDescriptor,
                 mouseOverCode(superGetMouseOver, dispatchMouseOver), 2, 2, 0, 0, 0, 0);
+        writeMethod(output, codeAttribute, ACC_PUBLIC, updateCameraAndRenderName, updateCameraAndRenderDescriptor,
+                updateCameraAndRenderCode(beginRuntimeFrame, superUpdateCameraAndRender,
+                        finishRuntimeFrame, abortRuntimeFrame),
+                4, 6, throwableClass, 6, 20, 20);
         output.writeShort(0);
         output.flush();
         return bytes.toByteArray();
@@ -74,6 +85,7 @@ final class RuntimeEntityRendererHookGenerator {
     private static byte[] renderWorldCode(int beginRenderWorld, int superRenderWorld,
                                            int finishRenderWorld, int abortRenderWorld) {
         ByteArrayOutputStream code = new ByteArrayOutputStream(24);
+        code.write(0x23); // fload_1
         writeInvokeStatic(code, beginRenderWorld);
         code.write(0x2A); // aload_0
         code.write(0x23); // fload_1
@@ -100,6 +112,34 @@ final class RuntimeEntityRendererHookGenerator {
         code.write(0x23); // fload_1
         writeInvokeStatic(code, dispatchMouseOver);
         code.write(0xB1); // return
+        return code.toByteArray();
+    }
+
+    private static byte[] updateCameraAndRenderCode(int beginRuntimeFrame, int superUpdateCameraAndRender,
+                                                    int finishRuntimeFrame, int abortRuntimeFrame) {
+        ByteArrayOutputStream code = new ByteArrayOutputStream(32);
+        code.write(0x23); // fload_1
+        writeInvokeStatic(code, beginRuntimeFrame);
+        code.write(0x3A); // astore 4
+        code.write(0x04);
+        code.write(0x2A); // aload_0
+        code.write(0x23); // fload_1
+        code.write(0x20); // lload_2
+        writeInvokeSpecial(code, superUpdateCameraAndRender);
+        code.write(0x2A); // aload_0
+        code.write(0x19); // aload 4
+        code.write(0x04);
+        code.write(0x23); // fload_1
+        writeInvokeStatic(code, finishRuntimeFrame);
+        code.write(0xB1); // return
+        code.write(0x3A); // astore 5
+        code.write(0x05);
+        code.write(0x19); // aload 4
+        code.write(0x04);
+        writeInvokeStatic(code, abortRuntimeFrame);
+        code.write(0x19); // aload 5
+        code.write(0x05);
+        code.write(0xBF); // athrow
         return code.toByteArray();
     }
 

@@ -8,13 +8,31 @@ import gq.yozakura.event.bus.events.Event;
  */
 public final class PlayerPacketBoundaryEvent implements Event {
     private final long writeId;
+    private final float yaw;
+    private final float pitch;
+    private final boolean rotated;
 
-    public PlayerPacketBoundaryEvent(long writeId) {
+    public PlayerPacketBoundaryEvent(long writeId, float yaw, float pitch, boolean rotated) {
         this.writeId = writeId;
+        this.yaw = yaw;
+        this.pitch = pitch;
+        this.rotated = rotated;
     }
 
     public long getWriteId() {
         return writeId;
+    }
+
+    public float getYaw() {
+        return yaw;
+    }
+
+    public float getPitch() {
+        return pitch;
+    }
+
+    public boolean isRotated() {
+        return rotated;
     }
 
     public boolean isPacketAccepted() {

@@ -65,8 +65,8 @@ public class JumpResetPacketBoundaryContractTest {
         String jumpResetSettings = webSource.substring(jumpResetBegin, nextModuleBegin);
 
         assertTrue(moduleSource.contains("new PercentProperty(\"Chance\", 100)"));
-        assertTrue(moduleSource.contains(
-                "controller.acceptVelocity(Boolean.TRUE.equals(fakeCheck.getValue()), chance.getValue())"));
+        assertTrue(moduleSource.contains("controller.acceptVelocity("));
+        assertTrue(moduleSource.contains("packet.getMotionX(), packet.getMotionY(), packet.getMotionZ()"));
         assertTrue(jumpResetSettings.contains(".number(\"Chance\", 100.0D, 0.0D, 100.0D, 1.0D);"));
     }
 }

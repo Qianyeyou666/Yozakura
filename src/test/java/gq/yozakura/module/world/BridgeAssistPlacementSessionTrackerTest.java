@@ -2,67 +2,59 @@ package gq.yozakura.module.world;
 
 import org.junit.Test;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertEquals;
 
+/** Guards the reference Legit behavior against placement-packet coupling. */
 public class BridgeAssistPlacementSessionTrackerTest {
     @Test
-    public void claimsAnAcceptedPlacementDuringItsFirstSneakInput() {
-        BridgeAssistSneakController.PlacementSessionTracker tracker =
-                new BridgeAssistSneakController.PlacementSessionTracker();
+    public void acceptedPlacementDoesNotStartLegitSneakingOnSupportedGround() {
+        BridgeAssistSneakStateMachine machine = new BridgeAssistSneakStateMachine();
 
-        tracker.onPlacementAccepted(101L);
-        long inputFrame = tracker.beginInputFrame();
-        assertTrue(tracker.hasPlacementForInputFrame(inputFrame));
-        tracker.finishInputFrame(true, inputFrame);
-
-        assertTrue(tracker.hasPendingPlacementForActiveSession());
-        tracker.onPlacementCompleted(101L, true);
-        assertTrue(tracker.consumePlacementCommit());
+        assertEquals(BridgeAssistSneakStateMachine.Decision.KEEP,
+                machine.update(frame(100, false, true, false)));
+        assertEquals(BridgeAssistSneakStateMachine.State.IDLE, machine.getState());
     }
 
     @Test
-    public void preservesACompletionThatWinsTheRaceAgainstTheFirstSessionClaim() {
-        BridgeAssistSneakController.PlacementSessionTracker tracker =
-                new BridgeAssistSneakController.PlacementSessionTracker();
+    public void completedPlacementDoesNotReleaseLegitSneakAtTheEdge() {
+        BridgeAssistSneakStateMachine machine = new BridgeAssistSneakStateMachine();
 
-        tracker.onPlacementAccepted(102L);
-        tracker.onPlacementCompleted(102L, true);
-        long inputFrame = tracker.beginInputFrame();
-        tracker.finishInputFrame(true, inputFrame);
-
-        assertFalse(tracker.hasPendingPlacementForActiveSession());
-        assertTrue(tracker.consumePlacementCommit());
+        assertEquals(BridgeAssistSneakStateMachine.Decision.FORCE_ON,
+                machine.update(frame(100, true, false, false)));
+        assertEquals(BridgeAssistSneakStateMachine.Decision.FORCE_ON,
+                machine.update(frame(101, true, false, true)));
+        assertEquals(BridgeAssistSneakStateMachine.State.EDGE_HELD, machine.getState());
     }
 
     @Test
-    public void doesNotClaimAnUnrelatedPlacementInALaterSneakSession() {
-        BridgeAssistSneakController.PlacementSessionTracker tracker =
-                new BridgeAssistSneakController.PlacementSessionTracker();
+    public void packetStateDoesNotExtendReleasePastTheConfiguredDelay() {
+        BridgeAssistSneakStateMachine machine = new BridgeAssistSneakStateMachine();
 
-        tracker.onPlacementAccepted(103L);
-        long firstInput = tracker.beginInputFrame();
-        tracker.finishInputFrame(false, firstInput);
-        long secondInput = tracker.beginInputFrame();
-        tracker.finishInputFrame(true, secondInput);
-
-        assertFalse(tracker.hasPendingPlacementForActiveSession());
-        assertFalse(tracker.consumePlacementCommit());
+        assertEquals(BridgeAssistSneakStateMachine.Decision.FORCE_ON,
+                machine.update(frame(100, true, false, false)));
+        assertEquals(BridgeAssistSneakStateMachine.Decision.FORCE_ON,
+                machine.update(frame(101, false, true, false)));
+        assertEquals(BridgeAssistSneakStateMachine.Decision.KEEP,
+                machine.update(frame(102, false, false, true)));
     }
 
-    @Test
-    public void ignoresAnOldWriteCompletionAfterReset() {
-        BridgeAssistSneakController.PlacementSessionTracker tracker =
-                new BridgeAssistSneakController.PlacementSessionTracker();
-
-        tracker.onPlacementAccepted(104L);
-        long firstInput = tracker.beginInputFrame();
-        tracker.finishInputFrame(true, firstInput);
-        tracker.reset();
-        long secondInput = tracker.beginInputFrame();
-        tracker.finishInputFrame(true, secondInput);
-        tracker.onPlacementCompleted(104L, true);
-
-        assertFalse(tracker.consumePlacementCommit());
+    private static BridgeAssistSneakStateMachine.Frame frame(int tick, boolean edge,
+                                                              boolean placementPending,
+                                                              boolean placementCommitted) {
+        return new BridgeAssistSneakStateMachine.Frame(
+                tick,
+                true,
+                true,
+                false,
+                false,
+                false,
+                true,
+                edge,
+                false,
+                placementPending,
+                placementCommitted,
+                1,
+                0
+        );
     }
 }

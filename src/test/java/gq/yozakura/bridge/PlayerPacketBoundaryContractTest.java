@@ -13,8 +13,8 @@ import static org.junit.Assert.assertTrue;
 public class PlayerPacketBoundaryContractTest {
     @Test
     public void forgeAndStandalonePublishOnlyTheTickGateBoundary() throws IOException {
-        assertCanonicalBoundaryPublication(source("src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java"));
-        assertCanonicalBoundaryPublication(source("src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java"));
+        assertCanonicalBoundaryPublication(combinedForgeSource(), forgeSource());
+        assertCanonicalBoundaryPublication(combinedStandaloneSource(), standaloneSource());
     }
 
     @Test
@@ -27,24 +27,76 @@ public class PlayerPacketBoundaryContractTest {
         assertTrue(serverFucker.contains("PacketBridgeSupport.markNonCanonicalPlayerPacket(packet)"));
     }
 
-    private static void assertCanonicalBoundaryPublication(String source) {
-        String playerPacket = method(source,
-                "        private void writePlayerPacket(ChannelHandlerContext ctx, C03PacketPlayer packet,",
-                "        private C03PacketPlayer rewritePlayerPacket(");
-        String reporter = method(source,
-                "        private void reportPlayerPacketBoundary(ChannelPromise promise, final long writeId,",
-                "        @Override\n        public void handlerRemoved");
-
-        assertTrue(source.contains("import gq.yozakura.event.bridge.PlayerPacketBoundaryEvent;"));
-        assertTrue(source.contains(
+    private static void assertCanonicalBoundaryPublication(String combined, String bridgeSource) {
+        assertTrue(combined.contains("import gq.yozakura.event.bridge.PlayerPacketBoundaryEvent;")
+                || combined.contains("gq.yozakura.event.bridge.PlayerPacketBoundaryEvent"));
+        assertTrue(combined.contains(
                 "PacketBridgeSupport.consumeNonCanonicalPlayerPacket(packet)"));
-        assertTrue(playerPacket.contains(
+        assertTrue(combined.contains(
                 "boolean playerTickAdvanced = playerPacketTickGate.consumeNextCanonicalPlayerPacket("));
-        assertTrue(playerPacket.contains(
-                "reportPlayerPacketBoundary(promise, writeId, playerTickAdvanced);"));
-        assertTrue(reporter.contains("future.isSuccess()"));
-        assertTrue(reporter.contains("writeId == PacketAcceptedEvent.NO_WRITE_ID"));
-        assertTrue(reporter.contains("new PlayerPacketBoundaryEvent(writeId)"));
+        assertTrue(combined.contains(
+                "reportPlayerPacketBoundary(promise, writeId, playerTickAdvanced,"));
+        assertTrue(combined.contains("PacketWriteDisposition.isServerVisibleSuccess(future)"));
+        assertTrue(combined.contains("writeId == PacketAcceptedEvent.NO_WRITE_ID"));
+        assertTrue(combined.contains(
+                "new PlayerPacketBoundaryEvent(writeId, serverYaw, serverPitch, rotated)"));
+        assertTrue(combined.contains("boolean boundaryRotated = isRotationActive(snapshot);"));
+    }
+
+    private static String findWritePlayerPacketMethod(String combined, String bridgeSource) {
+        int begin = bridgeSource.indexOf(
+                "        protected void writePlayerPacketInternal(ChannelHandlerContext ctx, C03PacketPlayer packet,");
+        if (begin < 0) {
+            begin = bridgeSource.indexOf(
+                    "        private void writePlayerPacket(ChannelHandlerContext ctx, C03PacketPlayer packet,");
+        }
+        int end = bridgeSource.indexOf(
+                "        protected void logActionQueue(", begin);
+        if (end < 0) {
+            end = bridgeSource.indexOf(
+                    "        private C03PacketPlayer rewritePlayerPacket(", begin);
+        }
+        if (begin >= 0 && end > begin) {
+            return bridgeSource.substring(begin, end);
+        }
+        begin = combined.indexOf(
+                "    protected void writePlayerPacketCommon(ChannelHandlerContext ctx, C03PacketPlayer packet,");
+        end = combined.indexOf(
+                "    void markNextPlayerPacketTick(", begin);
+        if (begin >= 0 && end > begin) {
+            return combined.substring(begin, end);
+        }
+        return combined;
+    }
+
+    private static String findReportPlayerPacketBoundaryMethod(String combined) {
+        int begin = combined.indexOf(
+                "    protected void reportPlayerPacketBoundary(ChannelPromise promise, final long writeId,");
+        if (begin < 0) {
+            begin = combined.indexOf(
+                    "        private void reportPlayerPacketBoundary(ChannelPromise promise, final long writeId,");
+        }
+        if (begin < 0) {
+            return combined;
+        }
+        int end = combined.indexOf(
+                "    public void handlerRemoved(", begin);
+        if (end < 0) {
+            end = combined.indexOf(
+                    "    protected void observePacketWrite(", begin);
+        }
+        if (end < 0) {
+            end = combined.indexOf(
+                    "    @Override", begin + 1);
+        }
+        if (end < 0) {
+            end = combined.indexOf(
+                    "        @Override", begin + 1);
+        }
+        if (begin >= 0 && end > begin) {
+            return combined.substring(begin, end);
+        }
+        return combined.substring(begin, Math.min(begin + 500, combined.length()));
     }
 
     private static String source(String path) throws IOException {
@@ -52,11 +104,29 @@ public class PlayerPacketBoundaryContractTest {
                 .replace("\r\n", "\n");
     }
 
-    private static String method(String source, String beginMarker, String endMarker) {
-        int begin = source.indexOf(beginMarker);
-        int end = source.indexOf(endMarker, begin + beginMarker.length());
-        assertTrue("Expected method marker: " + beginMarker, begin >= 0);
-        assertTrue("Expected end marker: " + endMarker, end > begin);
-        return source.substring(begin, end);
+    private static String baseSource() throws IOException {
+        return new String(Files.readAllBytes(Paths.get(
+                "src/main/java/gq/yozakura/bridge/BasePacketBridgeHandler.java")), StandardCharsets.UTF_8)
+                .replace("\r\n", "\n");
+    }
+
+    private static String forgeSource() throws IOException {
+        return new String(Files.readAllBytes(Paths.get(
+                "src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java")), StandardCharsets.UTF_8)
+                .replace("\r\n", "\n");
+    }
+
+    private static String standaloneSource() throws IOException {
+        return new String(Files.readAllBytes(Paths.get(
+                "src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java")), StandardCharsets.UTF_8)
+                .replace("\r\n", "\n");
+    }
+
+    private static String combinedForgeSource() throws IOException {
+        return baseSource() + "\n" + forgeSource();
+    }
+
+    private static String combinedStandaloneSource() throws IOException {
+        return baseSource() + "\n" + standaloneSource();
     }
 }

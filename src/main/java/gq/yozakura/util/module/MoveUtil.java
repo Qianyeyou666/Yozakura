@@ -155,48 +155,44 @@ public class MoveUtil {
     }
 
     public static void fixStrafe(float targetYaw) {
-        float angle = MathHelper.wrapAngleTo180_float(MoveUtil.adjustYaw(MoveUtil.mc.thePlayer.rotationYaw, MoveUtil.getForwardValue(), MoveUtil.getLeftValue()) - targetYaw + 22.5f);
+        float angle = MathHelper.wrapAngleTo180_float(
+                MoveUtil.adjustYaw(MoveUtil.mc.thePlayer.rotationYaw,
+                        MoveUtil.getForwardValue(), MoveUtil.getLeftValue()) - targetYaw + 22.5f);
         switch ((int) (angle + 180.0f) / 45 % 8) {
-            case 0: {
+            case 0:
                 MoveUtil.mc.thePlayer.movementInput.moveForward = -1.0f;
                 MoveUtil.mc.thePlayer.movementInput.moveStrafe = 0.0f;
                 break;
-            }
-            case 1: {
+            case 1:
                 MoveUtil.mc.thePlayer.movementInput.moveForward = -1.0f;
                 MoveUtil.mc.thePlayer.movementInput.moveStrafe = 1.0f;
                 break;
-            }
-            case 2: {
+            case 2:
                 MoveUtil.mc.thePlayer.movementInput.moveForward = 0.0f;
                 MoveUtil.mc.thePlayer.movementInput.moveStrafe = 1.0f;
                 break;
-            }
-            case 3: {
+            case 3:
                 MoveUtil.mc.thePlayer.movementInput.moveForward = 1.0f;
                 MoveUtil.mc.thePlayer.movementInput.moveStrafe = 1.0f;
                 break;
-            }
-            case 4: {
+            case 4:
                 MoveUtil.mc.thePlayer.movementInput.moveForward = 1.0f;
                 MoveUtil.mc.thePlayer.movementInput.moveStrafe = 0.0f;
                 break;
-            }
-            case 5: {
+            case 5:
                 MoveUtil.mc.thePlayer.movementInput.moveForward = 1.0f;
                 MoveUtil.mc.thePlayer.movementInput.moveStrafe = -1.0f;
                 break;
-            }
-            case 6: {
+            case 6:
                 MoveUtil.mc.thePlayer.movementInput.moveForward = 0.0f;
                 MoveUtil.mc.thePlayer.movementInput.moveStrafe = -1.0f;
                 break;
-            }
-            case 7: {
+            case 7:
                 MoveUtil.mc.thePlayer.movementInput.moveForward = -1.0f;
                 MoveUtil.mc.thePlayer.movementInput.moveStrafe = -1.0f;
                 break;
-            }
+            default:
+                break;
         }
         if (MoveUtil.mc.thePlayer.movementInput.sneak) {
             MoveUtil.mc.thePlayer.movementInput.moveForward *= 0.3f;

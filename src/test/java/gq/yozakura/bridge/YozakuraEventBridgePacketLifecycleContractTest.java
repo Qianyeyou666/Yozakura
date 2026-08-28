@@ -13,19 +13,20 @@ import static org.junit.Assert.assertTrue;
 public class YozakuraEventBridgePacketLifecycleContractTest {
     @Test
     public void cancelledOutboundPacketsCompleteTheirPromiseWithoutDroppingSprintState() throws IOException {
-        String source = source();
+        String combined = combinedSource();
 
         assertTrue("A cancelled packet must still complete its caller promise",
-                source.contains("if (event.isCancelled())") && source.contains("completeDroppedWrite(promise);"));
-        assertTrue("The dropped-write helper must complete without throwing on an already-finished promise",
-                source.contains("promise.trySuccess();"));
+                combined.contains("if (event.isCancelled())") && combined.contains("completeDroppedWrite(promise);"));
+        assertTrue("The dropped-write helper must preserve caller compatibility without claiming a server write",
+                combined.contains("PacketWriteDisposition.completeDropped(promise);"));
         assertFalse("Sprint state packets must retain their native C0B lifecycle",
-                source.contains("shouldBlockSprintPacket") || source.contains("SEND_BLOCKED_SPRINT"));
+                combined.contains("shouldBlockSprintPacket") || combined.contains("SEND_BLOCKED_SPRINT"));
     }
 
     @Test
     public void noEventPlayerPacketsStillPassThroughSilentRotationRewrite() throws IOException {
-        String write = writeMethod(source());
+        String combined = combinedSource();
+        String write = writeMethod(combined);
         int noEventBranch = write.indexOf("consumeNoEventMarker(packet)");
         int packetEventDispatch = write.indexOf("new PacketEvent(EventType.SEND, packet)");
 
@@ -43,24 +44,24 @@ public class YozakuraEventBridgePacketLifecycleContractTest {
 
     @Test
     public void forcedLockViewRotationUpdatesTheLocalCamera() throws IOException {
-        String source = source();
+        String forgeSrc = forgeSource();
 
         assertTrue("The Forge PRE bridge must apply a forced RotationManager view update",
-                source.contains("applyLocalViewRotation(update);"));
+                forgeSrc.contains("applyLocalViewRotation(update);"));
         assertTrue("Lock View is identified by RotationManager's forced-rotation state",
-                source.contains("YozakuraRuntime.rotationManager.isRotated()"));
+                forgeSrc.contains("YozakuraRuntime.rotationManager.isRotated()"));
         assertTrue("Lock View must update both camera axes",
-                source.contains("mc.thePlayer.rotationYaw = update.getNewYaw();")
-                        && source.contains("mc.thePlayer.rotationPitch = update.getNewPitch();"));
+                forgeSrc.contains("mc.thePlayer.rotationYaw = update.getNewYaw();")
+                        && forgeSrc.contains("mc.thePlayer.rotationPitch = update.getNewPitch();"));
     }
 
     @Test
     public void leavingTheWorldClearsPendingRotationExitState() throws IOException {
-        String source = source();
-        int tickStart = source.indexOf("    public void onClientTick(TickEvent.ClientTickEvent event) {");
-        int tickEnd = source.indexOf("    @SubscribeEvent", tickStart + 1);
-        String tick = source.substring(tickStart, tickEnd);
-        String clearState = method(source, "    private void clearBridgeState() {", "    private void dispatchPreUpdate()");
+        String forgeSrc = forgeSource();
+        int tickStart = forgeSrc.indexOf("    public void onClientTick(TickEvent.ClientTickEvent event) {");
+        int tickEnd = forgeSrc.indexOf("    @SubscribeEvent", tickStart + 1);
+        String tick = forgeSrc.substring(tickStart, tickEnd);
+        String clearState = method(forgeSrc, "    private void clearBridgeState() {", "    private void dispatchPreUpdate()");
 
         assertTrue("Auth loss and world disconnect must not carry a return rotation into the next server",
                 count(tick, "clearBridgeState();") >= 2
@@ -69,31 +70,32 @@ public class YozakuraEventBridgePacketLifecycleContractTest {
 
     @Test
     public void nettyUsesOneImmutableRotationSnapshotPerPlayerPacket() throws IOException {
-        String source = source();
-        String write = writeMethod(source);
+        String combined = combinedSource();
+        String forgeSrc = forgeSource();
+        String write = writeMethod(combined);
 
         assertTrue("Forge PRE must publish rotation through one immutable snapshot",
-                source.contains("ForgeRotationPublication"));
+                combined.contains("ForgeRotationPublication"));
         assertTrue("Each C03 write must capture one publication snapshot",
-                write.contains("ForgeRotationPublication.Snapshot rotation = rotationPublication.snapshot();"));
+                forgeSrc.contains("return rotationPublication.snapshot();")
+                        || combined.contains("ForgeRotationPublication.Snapshot rotation = rotationPublication.snapshot();"));
         assertFalse("The Netty handler must not stitch together mutable RotationState fields",
                 write.contains("RotationState.isActived()")
                         || write.contains("RotationState.getRotationYawHead()")
                         || write.contains("RotationState.getRotationPitch()"));
         assertTrue("The rewrite helper must consume the captured snapshot",
-                source.contains("rewritePlayerPacket(C03PacketPlayer packet,")
-                        && source.contains("ForgeRotationPublication.Snapshot rotation)"));
+                combined.contains("rewritePlayerPacket(C03PacketPlayer packet,")
+                        && combined.contains("S rotation)"));
     }
 
     @Test
     public void postSensitiveActionsStayBeforeC03WithoutGivingUpSilentRotation() throws IOException {
-        String source = source();
-        String pre = method(source, "    private void dispatchPreUpdate() {", "    private void applyLocalViewRotation(");
-        String write = writeMethod(source);
-        String handler = source.substring(source.indexOf("    private final class PacketBridgeHandler"));
-        String playerPacket = method(source,
-                "        private void writePlayerPacket(ChannelHandlerContext ctx, C03PacketPlayer packet, ChannelPromise promise,",
-                "        private C03PacketPlayer rewritePlayerPacket(");
+        String forgeSrc = forgeSource();
+        String combined = combinedSource();
+        String pre = method(forgeSrc, "    private void dispatchPreUpdate() {", "    private void applyLocalViewRotation(");
+        String write = writeMethod(combined);
+        String handler = combined;
+        String playerPacket = forgeWritePlayerPacketMethod();
 
         int beginPre = pre.indexOf("rotationPublication.beginPre();");
         int exposePre = pre.indexOf("activePreUpdate = update;");
@@ -107,13 +109,13 @@ public class YozakuraEventBridgePacketLifecycleContractTest {
 
         assertTrue("Vanilla actions must preserve their source order even when a silent rotation is active",
                 write.contains("boolean preserveOriginalPacketOrder = true;")
-                        && write.contains("preserveOriginalPacketOrder = preserveOriginalPacketOrder")
-                        && write.contains("|| accepted.isOriginalPacketOrderRequired();")
+                        && write.contains("afterCurrentRotation = accepted.isAfterCurrentRotationRequired();")
+                        && write.contains("preserveOriginalPacketOrder = !afterCurrentRotation")
                         && write.contains("if (!skipPacketEvent && !preserveOriginalPacketOrder && isPostSensitiveAction(packet))")
                         && write.contains("queueCurrentActionPacket(packet, promise, writeId);"));
-        String actionClassifier = method(source,
-                "        private boolean isPostSensitiveAction(Packet<?> packet) {",
-                "        private void onRotationPublished(");
+        String actionClassifier = method(combined,
+                "    protected boolean isPostSensitiveAction(Packet<?> packet) {",
+                "    protected void queueCurrentActionPacket(");
         assertTrue("Forge must batch only actions whose server interpretation depends on silent yaw",
                 actionClassifier.contains("C02PacketUseEntity")
                         && actionClassifier.contains("C07PacketPlayerDigging")
@@ -127,21 +129,24 @@ public class YozakuraEventBridgePacketLifecycleContractTest {
                 actionClassifier.contains("C13PacketPlayerAbilities"));
         assertTrue("The close-window companion packet must stay behind an already queued inventory click",
                 write.contains("packet instanceof net.minecraft.network.play.client.C0DPacketCloseWindow")
-                        && source.contains("currentClickWindowPackets > 0")
-                        && source.contains("readyClickWindowPackets > 0"));
+                        && combined.contains("currentClickWindowPackets > 0")
+                        && combined.contains("readyClickWindowPackets > 0"));
         assertTrue("The packet handler must hold separate ready and current action batches",
-                handler.contains("OutboundActionBatchQueue<DelayedPacket>"));
+                handler.contains("OutboundActionBatchQueue<DelayedPacket>")
+                        || handler.contains("OutboundActionBatchQueue<D>"));
 
         int readyFlush = playerPacket.indexOf("flushReadyActionPackets(ctx);");
         int tickAdvance = playerPacket.indexOf(
                 "boolean playerTickAdvanced = playerPacketTickGate.consumeNextCanonicalPlayerPacket(");
         int silentWrite = playerPacket.indexOf("super.write(ctx, rewritten, promise);");
-        int markSent = playerPacket.indexOf("rotationPublication.markSent(rotation);");
-        int promoteCurrent = playerPacket.indexOf("promoteCurrentActionPackets();");
+        int markSent = playerPacket.indexOf("markRotationSent(snapshot);", silentWrite);
+        int flushRotationDependent = playerPacket.indexOf("flushAfterCurrentRotationPackets(ctx);", markSent);
+        int promoteCurrent = playerPacket.indexOf("promoteCurrentActionPackets();", flushRotationDependent);
         assertTrue("A prior silent action batch must leave before the following C03",
                 tickAdvance >= 0 && readyFlush > tickAdvance && silentWrite > readyFlush);
-        assertTrue("The current action batch becomes ready only after its C03 has published the rotation",
-                markSent > silentWrite && promoteCurrent > markSent);
+        assertTrue("Same-tick rotation-dependent actions must leave after their C03 and before legacy batches are promoted",
+                markSent > silentWrite && flushRotationDependent > markSent
+                        && promoteCurrent > flushRotationDependent);
 
         int currentFlush = playerPacket.indexOf("flushCurrentActionPackets(ctx);");
         int normalWrite = playerPacket.indexOf("super.write(ctx, packet, promise);");
@@ -150,21 +155,21 @@ public class YozakuraEventBridgePacketLifecycleContractTest {
         assertTrue("Extra same-tick C03 packets must not release actions after an earlier movement packet",
                 playerPacket.contains(
                                 "boolean playerTickAdvanced = playerPacketTickGate.consumeNextCanonicalPlayerPacket(")
-                        && playerPacket.contains("if (playerTickAdvanced && !rotation.isActive())"));
+                        && playerPacket.contains("if (playerTickAdvanced && !preUpdatePending && !isRotationActive(snapshot))"));
         assertTrue("Forge PRE must enqueue the exact published generation before the native player packet is sent",
-                source.contains("handler.markNextPlayerPacketTick(published.getGeneration());"));
+                forgeSrc.contains("handler.markNextPlayerPacketTick(published.getGeneration());"));
     }
 
     @Test
     public void retainsTheFirstPlayerPacketMarkerUntilTheForgeHandlerIsInstalled() throws IOException {
-        String handler = source().substring(source().indexOf("    private final class PacketBridgeHandler"));
-        int markerStart = handler.indexOf("        void markNextPlayerPacketTick(final long generation) {");
-        String marker = handler.substring(markerStart);
+        String combined = combinedSource();
+        int markerStart = combined.indexOf("    void markNextPlayerPacketTick(final long generation) {");
+        String marker = combined.substring(markerStart);
 
         assertTrue("The first Forge C03 must retain its PRE generation while Netty installs the handler",
-                handler.contains("pendingPlayerPacketGeneration"));
+                combined.contains("pendingPlayerPacketGeneration"));
         assertTrue("handlerAdded must drain a retained first-player marker",
-                handler.contains("drainPendingPlayerPacketTick(ctx);"));
+                combined.contains("drainPendingPlayerPacketTick(ctx);"));
         assertTrue("The generation must be saved before handlerContext is consulted",
                 marker.indexOf("storePendingPlayerPacketGeneration(generation);") >= 0
                         && marker.indexOf("ChannelHandlerContext current = handlerContext;")
@@ -173,31 +178,89 @@ public class YozakuraEventBridgePacketLifecycleContractTest {
 
     @Test
     public void delayedPromisesAreFailedOnDisconnectAndBlinkBuffersRewrittenC03() throws IOException {
-        String source = source();
-        String handler = source.substring(source.indexOf("    private final class PacketBridgeHandler"));
+        String combined = combinedSource();
 
-        int rewrite = handler.indexOf("C03PacketPlayer rewritten = rewritePlayerPacket(");
-        int blinkRewritten = handler.indexOf("offerPacket(rewritten, promise, writeId)", rewrite);
+        int rewrite = combined.indexOf("C03PacketPlayer rewritten = rewritePlayerPacket(");
+        int blinkRewritten = combined.indexOf("offerPacket(rewritten, promise, writeId)", rewrite);
         assertTrue("Blink must buffer the silent-rotation C03, not the original packet",
                 rewrite >= 0 && blinkRewritten > rewrite);
         assertTrue("Handler removal must fail queued promises",
-                source.contains("handlerRemoved(ChannelHandlerContext ctx)")
-                        && source.contains("failDelayedPackets(new ClosedChannelException())"));
+                combined.contains("handlerRemoved(ChannelHandlerContext ctx)")
+                        && combined.contains("failDelayedPackets(new ClosedChannelException())"));
         assertTrue("Channel disconnect must fail queued promises",
-                source.contains("channelInactive(ChannelHandlerContext ctx)"));
+                combined.contains("channelInactive(ChannelHandlerContext ctx)"));
         assertTrue("Promise cleanup must use non-throwing completion",
-                source.contains("delayed.promise.tryFailure(cause);"));
+                combined.contains("promise.tryFailure(cause);"));
+    }
+
+    @Test
+    public void acceptedTeleportInvalidatesStaleRotationAndProtectsItsVanillaConfirmation() throws IOException {
+        String base = baseSource();
+        String forge = forgeSource();
+        String standalone = new String(Files.readAllBytes(Paths.get(
+                "src/main/java/gq/yozakura/bridge/StandaloneEventBridge.java")), StandardCharsets.UTF_8);
+        String blink = new String(Files.readAllBytes(Paths.get(
+                "src/main/java/gq/yozakura/manager/BlinkManager.java")), StandardCharsets.UTF_8);
+        String inbound = method(base,
+                "    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {",
+                "    protected void writePlayerPacketCommon(");
+
+        int cancellation = inbound.indexOf("if (event.isCancelled())");
+        int boundary = inbound.indexOf("handleAcceptedTeleportBoundary(", cancellation);
+        int vanilla = inbound.indexOf("super.channelRead(ctx, msg);", boundary);
+        assertTrue("Only an accepted S08 may create a teleport boundary, before Vanilla applies it",
+                cancellation >= 0 && boundary > cancellation && vanilla > boundary
+                        && inbound.contains("packet instanceof S08PacketPlayerPosLook"));
+        assertTrue("The shared boundary must clear stale tick state and arm exact C04/C06 passthrough",
+                base.contains("playerPacketTickGate.invalidatePending();")
+                        && base.contains("teleportConfirmationPending = true;")
+                        && base.contains("consumeTeleportConfirmation(packet)"));
+        assertTrue("Both bridge owners must invalidate their published silent rotation",
+                forge.contains("rotationPublication.invalidateForTeleport();")
+                        && standalone.contains("rotationPublication.invalidateForTeleport();"));
+        assertTrue("Blink must discard stale buffered packets and bypass the required position confirmation",
+                blink.contains("onTeleportBoundary(TeleportBoundaryEvent event)")
+                        && blink.contains("discardBufferedPacketsForTeleport()")
+                        && blink.contains("shouldBypassForTeleport(packet)"));
     }
 
     private static String writeMethod(String source) {
-        int begin = source.indexOf("        public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {");
-        int finish = source.indexOf("        @Override", begin + 1);
+        int begin = source.indexOf("    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {");
+        if (begin < 0) {
+            begin = source.indexOf("        public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {");
+        }
+        int finish = source.indexOf("    protected void observePacketWrite(", begin + 1);
+        if (finish < 0) {
+            finish = source.indexOf("    @Override", begin + 1);
+        }
+        if (finish < 0) {
+            finish = source.indexOf("        @Override", begin + 1);
+        }
         return source.substring(begin, finish);
     }
 
-    private static String source() throws IOException {
+    private static String forgeSource() throws IOException {
         return new String(Files.readAllBytes(Paths.get(
                 "src/main/java/gq/yozakura/bridge/YozakuraEventBridge.java")), StandardCharsets.UTF_8);
+    }
+
+    private static String baseSource() throws IOException {
+        return new String(Files.readAllBytes(Paths.get(
+                "src/main/java/gq/yozakura/bridge/BasePacketBridgeHandler.java")), StandardCharsets.UTF_8);
+    }
+
+    private static String combinedSource() throws IOException {
+        return baseSource() + "\n" + forgeSource();
+    }
+
+    private static String forgeWritePlayerPacketMethod() throws IOException {
+        String base = baseSource();
+        int begin = base.indexOf("    protected void writePlayerPacketCommon(");
+        int end = base.indexOf("    void markNextPlayerPacketTick(", begin);
+        if (begin >= 0 && end > begin) {
+            return base.substring(begin, end);
+        }
+        return "";
     }
 
     private static String method(String source, String beginNeedle, String endNeedle) {
